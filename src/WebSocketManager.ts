@@ -1,4 +1,5 @@
 // src/WebSocketManager.ts
+import { ConnectionResilienceManager } from './ReconnectionResilienceManager';
 
 interface ConnectionOptions {
   // Define other options as needed, e.g., reconnection strategies, serialization/deserialization functions
@@ -19,20 +20,46 @@ interface WebSocketConnection {
 }
 
 class WebSocketManager {
+  private connectionResilienceManager = new ConnectionResilienceManager();
+
   createConnection(
     url: string,
     options?: ConnectionOptions
   ): WebSocketConnection {
     const socket = new WebSocket(url);
 
-    // You can extend this to handle events (open, message, error, close) as per your API design.
     socket.onopen = () => {
       console.log('WebSocket connection established');
     };
 
     const connection: WebSocketConnection = { socket, url, options };
+
+    // If reconnection options are provided, configure and enable reconnection
+    if (options?.reconnectionStrategy) {
+      this.connectionResilienceManager.configureReconnection(
+        connection,
+        options.reconnectionStrategy
+      );
+      this.connectionResilienceManager.enableReconnection(connection);
+    }
+
     return connection;
   }
+
+  // createConnection(
+  //   url: string,
+  //   options?: ConnectionOptions
+  // ): WebSocketConnection {
+  //   const socket = new WebSocket(url);
+
+  //   // You can extend this to handle events (open, message, error, close) as per your API design.
+  //   socket.onopen = () => {
+  //     console.log('WebSocket connection established');
+  //   };
+
+  //   const connection: WebSocketConnection = { socket, url, options };
+  //   return connection;
+  // }
 
   sendMessage(connection: WebSocketConnection, message: any): void {
     // Here, you can implement serialization based on the connection options if needed
@@ -68,8 +95,6 @@ class WebSocketManager {
       // Implement reconnection logic here based on the connection options if needed
     };
   }
-
-  
 }
 
 export {
