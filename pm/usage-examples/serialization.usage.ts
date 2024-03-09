@@ -1,4 +1,4 @@
-import { DataSerializationManager } from './DataSerializationManager';
+import { DataSerializationManager } from '../../src/DataSerializationManager';
 
 // Initialize the manager
 const serializationManager = new DataSerializationManager();

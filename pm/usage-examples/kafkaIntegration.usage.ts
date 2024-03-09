@@ -1,7 +1,7 @@
 import {
   KafkaIntegrationManager,
   ProducerMessage,
-} from './KafkaIntegrationManager';
+} from '../../src/KafkaIntegrationManager';
 
 const kafkaConfig = {
   clientId: 'my-app',
