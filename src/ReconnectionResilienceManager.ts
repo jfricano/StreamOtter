@@ -1,4 +1,9 @@
 // src/ConnectionResilienceManager.ts
+
+/**
+ * To validate the implementation, simulate various scenarios like normal disconnection, exceeding maximum retry attempts, and successful reconnection. Adjust the logic as necessary to handle real WebSocket connections and ensure the reconnection behavior aligns with your application's requirements.
+ */
+
 import { WebSocketConnection } from './WebSocketManager';
 import { ReconnectionOptions } from './ReconnectionOptions';
 
