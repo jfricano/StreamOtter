@@ -5,7 +5,13 @@
  */
 
 import { WebSocketConnection } from './WebSocketManager';
-import { ReconnectionOptions } from './ReconnectionOptions';
+// import { ReconnectionOptions } from './ReconnectionOptions';
+
+interface ReconnectionOptions {
+  maxRetries: number;
+  retryDelay: number;
+  exponentialBackoff: boolean;
+}
 
 export class ConnectionResilienceManager {
   configureReconnection(

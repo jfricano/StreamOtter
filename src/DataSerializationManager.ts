@@ -4,10 +4,18 @@
  * You can further customize the serialization and deserialization process by implementing and setting custom strategies. This allows your library to handle a wide range of data formats and use cases, making it adaptable to different backend systems and data structures.
  */
 
-import {
-  SerializationStrategy,
-  DeserializationStrategy,
-} from './SerializationStrategy';
+// import {
+//   SerializationStrategy,
+//   DeserializationStrategy,
+// } from './SerializationStrategy';
+
+interface SerializationStrategy {
+  serialize(data: any): string | ArrayBuffer | Blob;
+}
+
+interface DeserializationStrategy {
+  deserialize(data: string | ArrayBuffer | Blob): any;
+}
 
 class DataSerializationManager {
   private serializationStrategy: SerializationStrategy;
