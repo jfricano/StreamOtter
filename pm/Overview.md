@@ -1,5 +1,7 @@
 # KAFKASOCKS 2
 
+https://chat.openai.com/c/ee50dbf3-aaab-4103-8a5c-aa53ec01a4b6
+
 ## 1. Define the Core Features and API
 
 Start by defining what features your library will offer. Since your goal is to abstract and encapsulate the complexity of managing WebSocket connections on the frontend and interfacing with Kafka streams on the backend, consider these features:
