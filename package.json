@@ -12,9 +12,11 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^20.11.25",
+    "@types/ws": "^8.5.12",
     "typescript": "^5.4.2"
   },
   "dependencies": {
-    "kafkajs": "^2.2.4"
+    "kafkajs": "^2.2.4",
+    "ws": "^8.18.0"
   }
 }

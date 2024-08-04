@@ -1,5 +1,6 @@
 // src/WebSocketManager.ts
-import { ConnectionResilienceManager } from './ReconnectionResilienceManager';
+import { ConnectionResilienceManager } from "./ConnectionResilienceManager";
+import WebSocket from "ws";
 
 interface ConnectionOptions {
   // Define other options as needed, e.g., reconnection strategies, serialization/deserialization functions
@@ -29,7 +30,7 @@ class WebSocketManager {
     const socket = new WebSocket(url);
 
     socket.onopen = () => {
-      console.log('WebSocket connection established');
+      console.log("WebSocket connection established");
     };
 
     const connection: WebSocketConnection = { socket, url, options };
@@ -46,21 +47,6 @@ class WebSocketManager {
     return connection;
   }
 
-  // createConnection(
-  //   url: string,
-  //   options?: ConnectionOptions
-  // ): WebSocketConnection {
-  //   const socket = new WebSocket(url);
-
-  //   // You can extend this to handle events (open, message, error, close) as per your API design.
-  //   socket.onopen = () => {
-  //     console.log('WebSocket connection established');
-  //   };
-
-  //   const connection: WebSocketConnection = { socket, url, options };
-  //   return connection;
-  // }
-
   sendMessage(connection: WebSocketConnection, message: any): void {
     // Here, you can implement serialization based on the connection options if needed
     const serializedMessage = JSON.stringify(message); // Simple serialization
@@ -73,7 +59,7 @@ class WebSocketManager {
   ): void {
     connection.socket.onmessage = (event) => {
       // Here, you can implement deserialization based on the connection options if needed
-      const message = JSON.parse(event.data); // Simple deserialization
+      const message = JSON.parse(event.data.toString()); // Simple deserialization
       listener(message);
     };
   }
