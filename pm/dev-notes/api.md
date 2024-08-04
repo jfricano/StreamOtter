@@ -2,7 +2,7 @@
 
 ## I. WebSocketManager API
 
-For the WebSocket management aspect of your library, you will need an API that abstracts the complexity of WebSocket operations while providing a flexible interface for real-time data streaming. Here's a proposal for a simple yet powerful API tailored for WebSocket management within your library:
+StreamOtter abstracts the complexity of WebSocket operations while providing a flexible interface for real-time data streaming. StreamOtter offers a simple yet powerful API tailored for WebSocket management within your application:
 
 #### 1. Initialization and Configuration
 
@@ -66,21 +66,21 @@ For the WebSocket management aspect of your library, you will need an API that a
 Here's a simple usage example:
 
 ```typescript
-import { WebSocketManager } from 'your-library';
+import { WebSocketManager } from "your-library";
 
 const wsManager = new WebSocketManager();
 
-const connection = wsManager.createConnection('wss://example.com', {
+const connection = wsManager.createConnection("wss://example.com", {
   // Optional configurations
 });
 
 wsManager.onMessage(connection, (message) => {
-  console.log('Received message:', message);
+  console.log("Received message:", message);
 });
 
 wsManager.sendMessage(connection, {
-  type: 'greeting',
-  payload: 'Hello, WebSocket!',
+  type: "greeting",
+  payload: "Hello, WebSocket!",
 });
 
 // Later...
@@ -93,7 +93,7 @@ This API design offers a balance between simplicity and flexibility, allowing de
 
 ## II. DataSerializationManager API
 
-For the Data Serialization and Deserialization aspect of your library, you want to provide a flexible yet simple API that allows developers to customize how data is prepared for transmission over WebSockets and how it is processed upon receipt. This feature is crucial for ensuring data integrity and facilitating easier data handling between the frontend and backend, especially when interfacing with Kafka streams.
+StreamOtter provides a flexible yet simple API that allows developers to customize how data is prepared for transmission over WebSockets and how it is processed upon receipt. This feature is crucial for ensuring data integrity and facilitating easier data handling between the frontend and backend, especially when interfacing with Kafka streams.
 
 #### 1. Configuration
 
@@ -156,7 +156,7 @@ import {
   DataSerializationManager,
   SerializationStrategy,
   DeserializationStrategy,
-} from 'your-library';
+} from "your-library";
 
 // Define custom serialization strategy
 const customSerializationStrategy: SerializationStrategy = {
@@ -179,7 +179,7 @@ DataSerializationManager.setDeserializationStrategy(
 );
 
 // Use custom strategy for specific messages
-const message = { type: 'update', content: 'This is a test' };
+const message = { type: "update", content: "This is a test" };
 const serialized = DataSerializationManager.serializeMessage(
   message,
   customSerializationStrategy
@@ -194,7 +194,7 @@ const deserialized = DataSerializationManager.deserializeMessage(
 
 ## III. ConnectionResilienceManager API
 
-For the Connection Resilience aspect of your library, focusing on implementing automatic reconnection strategies for WebSockets is essential. This feature ensures that temporary network issues or brief disconnections don't interrupt the service, providing a seamless experience for the end-users. Here's how you might design an API to manage connection resilience:
+StreamOtter implements automatic reconnection strategies for WebSockets. This feature ensures that temporary network issues or brief disconnections don't interrupt the service, providing a seamless experience for the end-users.
 
 #### 1. Configuration
 
@@ -256,7 +256,7 @@ To handle reconnection events and provide feedback to the application or user in
 ### Usage Example
 
 ```typescript
-import { ConnectionResilienceManager, WebSocketManager } from 'your-library';
+import { ConnectionResilienceManager, WebSocketManager } from "your-library";
 
 // Configure global reconnection options
 ConnectionResilienceManager.configureReconnection({
@@ -266,7 +266,7 @@ ConnectionResilienceManager.configureReconnection({
 });
 
 const wsManager = new WebSocketManager();
-const connection = wsManager.createConnection('wss://example.com');
+const connection = wsManager.createConnection("wss://example.com");
 
 // Enable reconnection with custom options for a specific connection
 ConnectionResilienceManager.enableReconnection(connection, {
@@ -290,7 +290,7 @@ This Connection Resilience API design provides a robust foundation for managing 
 
 ## IV. KafkaIntegrationManager API
 
-For the Kafka Integration aspect of your library, you'll be providing a simplified API that abstracts the complexity of Kafka producer and consumer operations. This is crucial for enabling backend services to easily send to and receive messages from Kafka topics, bridging the communication with frontend services through WebSockets. Here's how you might design an API for Kafka Integration within your library:
+StreamOtter provides a simplified API that abstracts the complexity of Kafka producer and consumer operations. This is crucial for enabling backend services to easily send to and receive messages from Kafka topics, bridging the communication with frontend services through WebSockets.
 
 #### 1. Kafka Producer API
 
@@ -343,24 +343,24 @@ For the Kafka Integration aspect of your library, you'll be providing a simplifi
 ### Usage Example
 
 ```typescript
-import { KafkaIntegrationManager } from 'your-library';
+import { KafkaIntegrationManager } from "your-library";
 
 const producerConfig = {
   // Kafka broker configuration
 };
 const producer = KafkaIntegrationManager.createProducer(producerConfig);
 
-const topic = 'user-actions';
-const message = { key: 'user1', value: 'clicked-button' };
+const topic = "user-actions";
+const message = { key: "user1", value: "clicked-button" };
 
 KafkaIntegrationManager.sendMessage(producer, topic, message)
-  .then(() => console.log('Message sent successfully'))
-  .catch((error) => console.error('Failed to send message', error));
+  .then(() => console.log("Message sent successfully"))
+  .catch((error) => console.error("Failed to send message", error));
 
 const consumerConfig = {
   // Kafka consumer configuration
 };
-const topics = ['user-actions'];
+const topics = ["user-actions"];
 
 const consumer = KafkaIntegrationManager.createConsumer(
   consumerConfig,
@@ -371,8 +371,8 @@ const consumer = KafkaIntegrationManager.createConsumer(
 );
 
 KafkaIntegrationManager.startConsumer(consumer)
-  .then(() => console.log('Consumer started successfully'))
-  .catch((error) => console.error('Failed to start consumer', error));
+  .then(() => console.log("Consumer started successfully"))
+  .catch((error) => console.error("Failed to start consumer", error));
 ```
 
 This Kafka Integration API design simplifies the process of sending and receiving messages through Kafka, making it accessible to developers without requiring deep knowledge of Kafka's underlying complexities. By integrating this with the WebSocket management features, your library will enable seamless real-time data streaming between the frontend and backend, leveraging the power and scalability of Kafka.
@@ -381,7 +381,7 @@ This Kafka Integration API design simplifies the process of sending and receivin
 
 ## V. SecurityManager API
 
-For the Security aspect of your developer tool, focusing on secure WebSocket connections (WSS) and secure communication with Kafka is essential. This is crucial for protecting data in transit, ensuring data privacy, and complying with various security standards. Here's how you might design a Security API for your library:
+StreamOtter provides secure WebSocket connections (WSS) and secure communication with Kafka. This is crucial for protecting data in transit, ensuring data privacy, and complying with various security standards.
 
 #### 1. Secure WebSocket Connections
 
@@ -426,7 +426,7 @@ For the Security aspect of your developer tool, focusing on secure WebSocket con
 ### Usage Example
 
 ```typescript
-import { SecurityManager } from 'your-library';
+import { SecurityManager } from "your-library";
 
 // Configure secure WebSocket connections
 SecurityManager.configureWebSocketSecurity({
@@ -439,15 +439,15 @@ SecurityManager.configureKafkaSecurity({
 });
 
 // Generate a token for WebSocket authentication
-const userDetails = { userId: 'user123', roles: ['admin'] };
-const token = SecurityManager.generateWebSocketToken(userDetails, 'secretKey');
+const userDetails = { userId: "user123", roles: ["admin"] };
+const token = SecurityManager.generateWebSocketToken(userDetails, "secretKey");
 
 // Validate a received WebSocket token
-const isValid = SecurityManager.validateWebSocketToken(token, 'secretKey');
+const isValid = SecurityManager.validateWebSocketToken(token, "secretKey");
 if (isValid) {
-  console.log('Token is valid');
+  console.log("Token is valid");
 } else {
-  console.log('Invalid token');
+  console.log("Invalid token");
 }
 ```
 
@@ -457,7 +457,7 @@ This Security API design ensures that both WebSocket connections and Kafka commu
 
 ## VI. ErrorHandlingAndLoggingManager API
 
-For the Error Handling and Logging component of your developer tool, creating an API that facilitates robust error management and detailed logging is key. This aspect is crucial for diagnosing and resolving issues quickly, ensuring a smooth developer experience. Here’s a proposed design for the Error Handling and Logging API:
+StreamOtter facilitates robust error management and detailed logging. This aspect is crucial for diagnosing and resolving issues quickly, ensuring a smooth developer experience.
 
 #### 1. Error Handling
 
@@ -496,9 +496,9 @@ For the Error Handling and Logging component of your developer tool, creating an
   ```typescript
   interface LoggingOptions {
     level: LogLevel;
-    output: 'console' | 'file' | 'service';
+    output: "console" | "file" | "service";
     filePath?: string; // Required if output is 'file'
-    format?: 'text' | 'json';
+    format?: "text" | "json";
     serviceEndpoint?: string; // Required if output is 'service'
   }
   ```
@@ -507,36 +507,36 @@ For the Error Handling and Logging component of your developer tool, creating an
 
   ```typescript
   enum LogLevel {
-    DEBUG = 'debug',
-    INFO = 'info',
-    WARN = 'warn',
-    ERROR = 'error',
+    DEBUG = "debug",
+    INFO = "info",
+    WARN = "warn",
+    ERROR = "error",
   }
   ```
 
 ### Usage Example
 
 ```typescript
-import { ErrorHandlingAndLoggingManager } from 'your-library';
+import { ErrorHandlingAndLoggingManager } from "your-library";
 
 // Configure global error handler
 ErrorHandlingAndLoggingManager.onError((error) => {
-  console.error('An error occurred:', error.message);
+  console.error("An error occurred:", error.message);
 });
 
 // Configure logging
 ErrorHandlingAndLoggingManager.configureLogging({
   level: LogLevel.INFO,
-  output: 'console',
-  format: 'text',
+  output: "console",
+  format: "text",
 });
 
 // Example usage of logging
-ErrorHandlingAndLoggingManager.log('Application started', LogLevel.INFO);
+ErrorHandlingAndLoggingManager.log("Application started", LogLevel.INFO);
 ErrorHandlingAndLoggingManager.log(
-  'An unexpected situation occurred',
+  "An unexpected situation occurred",
   LogLevel.WARN,
-  { detail: 'More info' }
+  { detail: "More info" }
 );
 ```
 
