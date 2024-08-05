@@ -1,6 +1,6 @@
-## StreamOtter API
+# KafkaSocks API
 
-### I. WebSocketManager API
+## I. WebSocketManager API
 
 StreamOtter abstracts the complexity of WebSocket operations while providing a flexible interface for real-time data streaming. StreamOtter offers a simple yet powerful API tailored for WebSocket management within your application:
 
@@ -91,7 +91,7 @@ This API design offers a balance between simplicity and flexibility, allowing de
 
 ---
 
-### II. DataSerializationManager API
+## II. DataSerializationManager API
 
 StreamOtter provides a flexible yet simple API that allows developers to customize how data is prepared for transmission over WebSockets and how it is processed upon receipt. This feature is crucial for ensuring data integrity and facilitating easier data handling between the frontend and backend, especially when interfacing with Kafka streams.
 
@@ -192,7 +192,7 @@ const deserialized = DataSerializationManager.deserializeMessage(
 
 ---
 
-### III. ConnectionResilienceManager API
+## III. ConnectionResilienceManager API
 
 StreamOtter implements automatic reconnection strategies for WebSockets. This feature ensures that temporary network issues or brief disconnections don't interrupt the service, providing a seamless experience for the end-users.
 
@@ -288,7 +288,7 @@ This Connection Resilience API design provides a robust foundation for managing 
 
 ---
 
-### IV. KafkaIntegrationManager API
+## IV. KafkaIntegrationManager API
 
 StreamOtter provides a simplified API that abstracts the complexity of Kafka producer and consumer operations. This is crucial for enabling backend services to easily send to and receive messages from Kafka topics, bridging the communication with frontend services through WebSockets.
 
@@ -379,7 +379,7 @@ This Kafka Integration API design simplifies the process of sending and receivin
 
 ---
 
-### V. SecurityManager API
+## V. SecurityManager API
 
 StreamOtter provides secure WebSocket connections (WSS) and secure communication with Kafka. This is crucial for protecting data in transit, ensuring data privacy, and complying with various security standards.
 
@@ -455,7 +455,7 @@ This Security API design ensures that both WebSocket connections and Kafka commu
 
 ---
 
-### VI. ErrorHandlingAndLoggingManager API
+## VI. ErrorHandlingAndLoggingManager API
 
 StreamOtter facilitates robust error management and detailed logging. This aspect is crucial for diagnosing and resolving issues quickly, ensuring a smooth developer experience.
 
@@ -541,84 +541,3 @@ ErrorHandlingAndLoggingManager.log(
 ```
 
 This API design for Error Handling and Logging ensures that developers can effectively manage and track issues within their applications, promoting quick identification and resolution of errors. The flexible logging configuration further enhances the ability to monitor application behavior, performance issues, and system health, tailored to the needs of different environments and use cases.
-
----
-
-### VII. WebSocketClient API
-
-StreamOtter also offers a client-side utility for managing WebSocket connections from a web browser. This provides a unified interface for both backend and frontend WebSocket management.
-
-#### 1. Initialization and Configuration
-
-- **`createConnection(url: string, options?: ConnectionOptions): WebSocketClientConnection`**
-
-  Initializes a new WebSocket connection to the specified URL from the client-side. `options` can include custom configurations such as reconnection strategies and headers for authentication.
-
-  - `url`: The WebSocket server URL to connect to.
-  - `options`: Optional. Configuration options for the connection.
-
-#### 2. Sending and Receiving Messages
-
-- **`sendMessage(connection: WebSocketClientConnection, message: any): void`**
-
-  Sends a message through the specified WebSocket connection. The `message` can be of any type; the library will handle serialization based on the provided or default serializer.
-
-  - `connection`: The WebSocketClientConnection instance to send the message through.
-  - `message`: The message to be sent. It can be an object, string, etc.
-
-- **`onMessage(connection: WebSocketClientConnection, listener: (message: any) => void): void`**
-
-  Registers a listener to handle messages received through the specified WebSocket connection. The library will automatically deserialize incoming messages.
-
-  - `connection`: The WebSocketClientConnection instance to listen on.
-  - `listener`: A callback function that gets executed whenever a message is received.
-
-#### 3. Connection Management
-
-- **`closeConnection(connection: WebSocketClientConnection, code?: number, reason?: string): void`**
-
-  Closes the specified WebSocket connection optionally with a status code and a reason.
-
-  - `connection`: The WebSocketClientConnection instance to close.
-  - `code`: Optional. The status code explaining why the connection is being closed.
-  - `reason`: Optional. A human-readable string explaining why the connection is closed.
-
-- **`onConnectionClosed(connection: WebSocketClientConnection, listener: (code: number, reason: string) => void): void`**
-
-  Registers a listener to handle the WebSocket connection close event.
-
-  - `connection`: The WebSocketClientConnection instance to monitor for closure.
-  - `listener`: A callback function that gets executed whenever the connection is closed.
-
-### Types and Interfaces
-
-- **`WebSocketClientConnection`**: Represents a WebSocket connection instance on the client-side.
-
-### Usage Example
-
-Here's a simple usage example for the WebSocket client utility:
-
-```typescript
-import { WebSocketClient } from "your-library";
-
-const wsClient = new WebSocketClient();
-
-const connection = wsClient.createConnection("wss://example.com", {
-  // Optional configurations
-});
-
-wsClient.onMessage(connection, (message) => {
-  console.log("Received message:", message);
-});
-
-wsClient.sendMessage(connection, {
-  type: "greeting",
-  payload: "Hello, WebSocket!",
-});
-
-// Later...
-wsClient.closeConnection(connection);
-```
-
-This client-side utility provides a unified interface for managing WebSocket connections from both backend and frontend, making StreamOtter a comprehensive solution for real-time data streaming across different layers of an application.
-
