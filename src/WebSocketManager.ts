@@ -1,4 +1,5 @@
 // src/WebSocketManager.ts
+
 import { ConnectionResilienceManager } from "./ConnectionResilienceManager";
 import WebSocket from "ws";
 
@@ -31,6 +32,14 @@ class WebSocketManager {
 
     socket.onopen = () => {
       console.log("WebSocket connection established");
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    socket.onclose = (event) => {
+      console.log("WebSocket connection closed:", event.code, event.reason);
     };
 
     const connection: WebSocketConnection = { socket, url, options };
