@@ -1,11 +1,9 @@
-// src/WebSocketManager.ts
-
 import { ConnectionResilienceManager } from "./ConnectionResilienceManager";
 import WebSocket from "ws";
 
 interface ConnectionOptions {
-  // Define other options as needed, e.g., reconnection strategies, serialization/deserialization functions
   reconnectionStrategy?: ReconnectionStrategy;
+  messageParser?: (data: any) => any; // Option to specify a custom message parser
 }
 
 interface ReconnectionStrategy {
@@ -18,11 +16,11 @@ interface WebSocketConnection {
   socket: WebSocket;
   url: string;
   options?: ConnectionOptions;
-  // Add any additional properties needed for managing the connection
 }
 
 class WebSocketManager {
-  private connectionResilienceManager = new ConnectionResilienceManager();
+  private readonly connectionResilienceManager =
+    new ConnectionResilienceManager();
 
   createConnection(
     url: string,
@@ -31,11 +29,12 @@ class WebSocketManager {
     const socket = new WebSocket(url);
 
     socket.onopen = () => {
-      console.log("WebSocket connection established");
+      console.log(`WebSocket connection established to ${url}`);
     };
 
     socket.onerror = (error) => {
       console.error("WebSocket error:", error);
+      socket.close(); // Close connection on error
     };
 
     socket.onclose = (event) => {
@@ -57,20 +56,27 @@ class WebSocketManager {
   }
 
   sendMessage(connection: WebSocketConnection, message: any): void {
-    // Here, you can implement serialization based on the connection options if needed
-    const serializedMessage = JSON.stringify(message); // Simple serialization
-    connection.socket.send(serializedMessage);
-  }
-
-  onMessage(
-    connection: WebSocketConnection,
-    listener: (message: any) => void
-  ): void {
-    connection.socket.onmessage = (event) => {
-      // Here, you can implement deserialization based on the connection options if needed
-      const message = JSON.parse(event.data.toString()); // Simple deserialization
-      listener(message);
-    };
+    try {
+      let serializedMessage: string | ArrayBuffer | Blob;
+      if (typeof message === "string") {
+        serializedMessage = message;
+      } else if (message instanceof Buffer) {
+        serializedMessage = message;
+      } else if (message instanceof ArrayBuffer) {
+        serializedMessage = message;
+      } else if (
+        Array.isArray(message) &&
+        message.every((item) => item instanceof Buffer)
+      ) {
+        serializedMessage = Buffer.concat(message);
+      } else {
+        serializedMessage = JSON.stringify(message); // Default serialization
+      }
+      connection.socket.send(serializedMessage);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      connection.socket.close(); // Close connection on error
+    }
   }
 
   closeConnection(
@@ -87,7 +93,40 @@ class WebSocketManager {
   ): void {
     connection.socket.onclose = (event) => {
       listener(event.code, event.reason);
-      // Implement reconnection logic here based on the connection options if needed
+    };
+  }
+
+  onMessage(
+    connection: WebSocketConnection,
+    listener: (message: any) => void
+  ): void {
+    connection.socket.onmessage = (event) => {
+      let parsedMessage: any;
+      try {
+        // Use custom message parser if provided
+        if (connection.options?.messageParser) {
+          parsedMessage = connection.options.messageParser(event.data);
+        } else {
+          // Default parsing logic
+          if (typeof event.data === "string") {
+            parsedMessage = JSON.parse(event.data);
+          } else if (event.data instanceof Buffer) {
+            parsedMessage = JSON.parse(event.data.toString());
+          } else if (event.data instanceof ArrayBuffer) {
+            parsedMessage = JSON.parse(Buffer.from(event.data).toString());
+          } else {
+            console.error(
+              "Unknown data type received in WebSocket message:",
+              typeof event.data
+            );
+            return; // Exit on unknown type
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing WebSocket message:", error);
+        return; // Exit on parsing error
+      }
+      listener(parsedMessage); // Call the listener with the parsed message
     };
   }
 }

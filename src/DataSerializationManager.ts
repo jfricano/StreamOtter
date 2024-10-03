@@ -1,13 +1,7 @@
-// src/DataSerializationManager.ts
-
 /** Customization
- * You can further customize the serialization and deserialization process by implementing and setting custom strategies. This allows your library to handle a wide range of data formats and use cases, making it adaptable to different backend systems and data structures.
+ * You can further customize the serialization and deserialization process by implementing and setting custom strategies.
+ * This allows your library to handle a wide range of data formats and use cases, making it adaptable to different backend systems and data structures.
  */
-
-// import {
-//   SerializationStrategy,
-//   DeserializationStrategy,
-// } from './SerializationStrategy';
 
 interface SerializationStrategy {
   serialize(data: any): string | ArrayBuffer | Blob;
@@ -24,7 +18,12 @@ class DataSerializationManager {
   constructor() {
     // Set default strategies
     this.serializationStrategy = {
-      serialize: (data: any): string => JSON.stringify(data),
+      serialize: (data: any): string => {
+        if (data === undefined) {
+          throw new Error("Cannot serialize undefined.");
+        }
+        return JSON.stringify(data);
+      },
     };
 
     this.deserializationStrategy = {
@@ -33,31 +32,67 @@ class DataSerializationManager {
   }
 
   setSerializationStrategy(strategy: SerializationStrategy): void {
-    this.serializationStrategy = strategy;
+    if (strategy && typeof strategy.serialize === "function") {
+      this.serializationStrategy = strategy;
+    } else {
+      throw new Error(
+        "Invalid serialization strategy: must implement 'serialize' method."
+      );
+    }
   }
 
   setDeserializationStrategy(strategy: DeserializationStrategy): void {
-    this.deserializationStrategy = strategy;
+    if (strategy && typeof strategy.deserialize === "function") {
+      this.deserializationStrategy = strategy;
+    } else {
+      throw new Error(
+        "Invalid deserialization strategy: must implement 'deserialize' method."
+      );
+    }
+  }
+
+  resetToDefaultStrategies(): void {
+    this.serializationStrategy = {
+      serialize: (data: any): string => {
+        if (data === undefined) {
+          throw new Error("Cannot serialize undefined.");
+        }
+        return JSON.stringify(data);
+      },
+    };
+    this.deserializationStrategy = {
+      deserialize: (data: string): any => JSON.parse(data),
+    };
   }
 
   serializeMessage(
     message: any,
     customStrategy?: SerializationStrategy
   ): string | ArrayBuffer | Blob {
-    if (customStrategy) {
-      return customStrategy.serialize(message);
+    try {
+      if (customStrategy) {
+        return customStrategy.serialize(message);
+      }
+      return this.serializationStrategy.serialize(message);
+    } catch (error) {
+      console.error("Serialization error:", error);
+      throw new Error("Failed to serialize message.");
     }
-    return this.serializationStrategy.serialize(message);
   }
 
   deserializeMessage(
     data: string | ArrayBuffer | Blob,
     customStrategy?: DeserializationStrategy
   ): any {
-    if (customStrategy) {
-      return customStrategy.deserialize(data);
+    try {
+      if (customStrategy) {
+        return customStrategy.deserialize(data);
+      }
+      return this.deserializationStrategy.deserialize(data);
+    } catch (error) {
+      console.error("Deserialization error:", error);
+      throw new Error("Failed to deserialize message.");
     }
-    return this.deserializationStrategy.deserialize(data);
   }
 }
 

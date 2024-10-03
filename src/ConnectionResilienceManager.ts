@@ -4,8 +4,7 @@
  * To validate the implementation, simulate various scenarios like normal disconnection, exceeding maximum retry attempts, and successful reconnection. Adjust the logic as necessary to handle real WebSocket connections and ensure the reconnection behavior aligns with your application's requirements.
  */
 
-import { WebSocketConnection } from './WebSocketManager';
-// import { ReconnectionOptions } from './ReconnectionOptions';
+import { WebSocketConnection } from "./WebSocketManager";
 
 interface ReconnectionOptions {
   maxRetries: number;
@@ -29,7 +28,7 @@ export class ConnectionResilienceManager {
 
   enableReconnection(connection: WebSocketConnection): void {
     if (!connection.options?.reconnectionStrategy) {
-      console.warn('Reconnection strategy not configured for this connection.');
+      console.warn("Reconnection strategy not configured for this connection.");
       return;
     }
     const { reconnectionStrategy } = connection.options;
@@ -39,18 +38,22 @@ export class ConnectionResilienceManager {
       if (attempts < reconnectionStrategy.maxRetries) {
         setTimeout(() => {
           console.log(`Reconnection attempt ${attempts + 1}`);
-          // Simulate reconnection logic
-          // In a real scenario, you would try to reconnect the WebSocket here
-          attempts++;
-          attemptReconnect();
+          try {
+            // Simulate reconnection logic
+            // In a real scenario, you would try to reconnect the WebSocket here
+            attempts++;
+            attemptReconnect();
+          } catch (error) {
+            console.error(`Reconnection attempt ${attempts} failed: ${error}`);
+          }
         }, this.getRetryDelay(attempts, reconnectionStrategy));
       } else {
-        console.log('Max reconnection attempts reached.');
+        console.log("Max reconnection attempts reached.");
       }
     };
 
     connection.socket.onclose = () => {
-      console.log('Connection closed. Attempting to reconnect...');
+      console.log("Connection closed. Attempting to reconnect...");
       attemptReconnect();
     };
   }

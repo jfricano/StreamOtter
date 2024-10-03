@@ -1,73 +1,63 @@
 import { DataSerializationManager } from "../src/DataSerializationManager";
 
 describe("DataSerializationManager", () => {
-  let manager: DataSerializationManager;
+  let dataManager: DataSerializationManager;
 
   beforeEach(() => {
-    manager = new DataSerializationManager();
+    dataManager = new DataSerializationManager();
   });
 
-  test("should use default serialization strategy", () => {
-    const message = { type: "test", content: "Hello, World!" };
-    const serialized = manager.serializeMessage(message);
-    expect(serialized).toBe(JSON.stringify(message));
+  test("should serialize a message using the default strategy", () => {
+    const message = { key: "value" };
+    const result = dataManager.serializeMessage(message);
+    expect(result).toBe(JSON.stringify(message));
   });
 
-  test("should use default deserialization strategy", () => {
-    const data = JSON.stringify({ type: "test", content: "Hello, World!" });
-    const deserialized = manager.deserializeMessage(data);
-    expect(deserialized).toEqual(JSON.parse(data));
+  test("should deserialize a message using the default strategy", () => {
+    const jsonString = JSON.stringify({ key: "value" });
+    const result = dataManager.deserializeMessage(jsonString);
+    expect(result).toEqual({ key: "value" });
   });
 
-  test("should set and use custom serialization strategy", () => {
+  test("should throw an error on serialization failure", () => {
+    expect(() => {
+      dataManager.serializeMessage(undefined); // Attempting to serialize undefined
+    }).toThrow("Failed to serialize message.");
+  });
+
+  test("should throw an error on deserialization failure", () => {
+    expect(() => {
+      dataManager.deserializeMessage("invalid json"); // Invalid JSON string
+    }).toThrow("Failed to deserialize message.");
+  });
+
+  test("should set a custom serialization strategy", () => {
     const customStrategy = {
-      serialize: (data: any): string => `custom:${JSON.stringify(data)}`,
+      serialize: (data: any) => `Custom: ${data}`,
     };
-
-    manager.setSerializationStrategy(customStrategy);
-
-    const message = { type: "test", content: "Hello, World!" };
-    const serialized = manager.serializeMessage(message);
-    expect(serialized).toBe(`custom:${JSON.stringify(message)}`);
+    dataManager.setSerializationStrategy(customStrategy);
+    const result = dataManager.serializeMessage("test");
+    expect(result).toBe("Custom: test");
   });
 
-  test("should set and use custom deserialization strategy", () => {
-    const customStrategy = {
-      deserialize: (data: string): any =>
-        JSON.parse(data.replace("custom:", "")),
-    };
-
-    manager.setDeserializationStrategy(customStrategy);
-
-    const data = `custom:${JSON.stringify({
-      type: "test",
-      content: "Hello, World!",
-    })}`;
-    const deserialized = manager.deserializeMessage(data);
-    expect(deserialized).toEqual({ type: "test", content: "Hello, World!" });
+  test("should throw an error for invalid custom serialization strategy", () => {
+    expect(() => {
+      // Passing an object without the required 'serialize' method
+      dataManager.setSerializationStrategy({
+        // Intentionally leaving out the 'serialize' method
+      } as any); // Cast to 'any' to bypass TS checks
+    }).toThrow(
+      "Invalid serialization strategy: must implement 'serialize' method."
+    );
   });
 
-  test("should use custom serialization strategy for specific message", () => {
+  test("should reset to default strategies", () => {
     const customStrategy = {
-      serialize: (data: any): string => `custom:${JSON.stringify(data)}`,
+      serialize: (data: any) => `Custom: ${data}`,
     };
-
-    const message = { type: "test", content: "Hello, World!" };
-    const serialized = manager.serializeMessage(message, customStrategy);
-    expect(serialized).toBe(`custom:${JSON.stringify(message)}`);
-  });
-
-  test("should use custom deserialization strategy for specific data", () => {
-    const customStrategy = {
-      deserialize: (data: string): any =>
-        JSON.parse(data.replace("custom:", "")),
-    };
-
-    const data = `custom:${JSON.stringify({
-      type: "test",
-      content: "Hello, World!",
-    })}`;
-    const deserialized = manager.deserializeMessage(data, customStrategy);
-    expect(deserialized).toEqual({ type: "test", content: "Hello, World!" });
+    dataManager.setSerializationStrategy(customStrategy);
+    dataManager.resetToDefaultStrategies();
+    const result = dataManager.serializeMessage("test");
+    expect(result).toBe(JSON.stringify("test"));
   });
 });

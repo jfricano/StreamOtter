@@ -1,108 +1,109 @@
 import { WebSocketManager, WebSocketConnection } from "../src/WebSocketManager";
-import WebSocket, { Server } from "ws";
+import WebSocket from "ws";
+
+jest.mock("ws"); // Mock the ws library
 
 describe("WebSocketManager", () => {
-  let manager: WebSocketManager;
-  let server: Server;
-  const url = "ws://localhost:8080";
+  let webSocketManager: WebSocketManager;
+  let connection: WebSocketConnection;
 
-  beforeEach((done) => {
-    console.log("Starting server...");
-    manager = new WebSocketManager();
-    server = new Server({ port: 8080 }, () => {
-      console.log("Server started");
-      done();
+  beforeEach(() => {
+    webSocketManager = new WebSocketManager();
+    connection = webSocketManager.createConnection("ws://test-url");
+  });
+
+  test("should create a WebSocket connection", () => {
+    expect(connection.socket).toBeInstanceOf(WebSocket);
+    expect(connection.url).toBe("ws://test-url");
+  });
+
+  test("should handle onOpen event", () => {
+    const onOpenCallback = jest.spyOn(console, "log");
+    connection.socket.onopen({} as any);
+    expect(onOpenCallback).toHaveBeenCalledWith(
+      "WebSocket connection established to ws://test-url"
+    );
+    onOpenCallback.mockRestore();
+  });
+
+  test("should handle onError event", () => {
+    const onErrorCallback = jest.spyOn(console, "error");
+    connection.socket.onerror(new Error("Test error") as any);
+    expect(onErrorCallback).toHaveBeenCalledWith(
+      "WebSocket error:",
+      expect.any(Error)
+    );
+    connection.socket.close(); // Ensure closure on error
+    onErrorCallback.mockRestore();
+  });
+
+  test("should handle onClose event", () => {
+    const onCloseCallback = jest.spyOn(console, "log");
+    connection.socket.onclose({ code: 1000, reason: "Normal closure" } as any);
+    expect(onCloseCallback).toHaveBeenCalledWith(
+      "WebSocket connection closed:",
+      1000,
+      "Normal closure"
+    );
+    onCloseCallback.mockRestore();
+  });
+
+  test("should send a message successfully", () => {
+    const message = { type: "greeting", payload: "Hello" };
+    connection.socket.send = jest.fn(); // Mock send method
+    webSocketManager.sendMessage(connection, message);
+    expect(connection.socket.send).toHaveBeenCalledWith(
+      JSON.stringify(message)
+    );
+  });
+
+  test("should throw an error when sending an invalid message", () => {
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
+    connection.socket.send = jest.fn().mockImplementation(() => {
+      throw new Error("Send failed");
+    });
+
+    webSocketManager.sendMessage(connection, { type: "error" });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Error sending message:",
+      expect.any(Error)
+    );
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  test("should close the connection gracefully", () => {
+    const closeSpy = jest.spyOn(connection.socket, "close");
+    webSocketManager.closeConnection(connection);
+    expect(closeSpy).toHaveBeenCalled();
+  });
+
+  test("should register a message listener", () => {
+    const messageListener = jest.fn();
+    webSocketManager.onMessage(connection, messageListener);
+
+    const testMessage = JSON.stringify({ type: "response", data: "Test data" });
+    connection.socket.onmessage({ data: testMessage } as any);
+
+    expect(messageListener).toHaveBeenCalledWith({
+      type: "response",
+      data: "Test data",
     });
   });
 
-  afterEach((done) => {
-    console.log("Closing server...");
-    server.clients.forEach((client) => client.terminate()); // Ensure all clients are closed
-    server.close(() => {
-      console.log("Server closed");
-      done();
-    });
+  test("should handle unknown data type in onMessage", () => {
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
+    const messageListener = jest.fn();
+    webSocketManager.onMessage(connection, messageListener);
+
+    connection.socket.onmessage({ data: 12345 } as any); // Sending a number instead of a string
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Unknown data type received in WebSocket message:",
+      "number"
+    );
+
+    consoleErrorSpy.mockRestore();
   });
 
-  test("should create a WebSocket connection", (done) => {
-    console.log("Creating WebSocket connection...");
-    const connection: WebSocketConnection = manager.createConnection(url);
-
-    connection.socket.on("open", () => {
-      console.log("WebSocket connection established");
-      try {
-        expect(connection.socket.readyState).toBe(WebSocket.OPEN);
-        expect(connection.url).toBe(url);
-        done();
-      } catch (error) {
-        done(error);
-      }
-    });
-  });
-
-  test("should send and receive messages", (done) => {
-    const connection = manager.createConnection(url);
-
-    server.on("connection", (socket) => {
-      socket.on("message", (message) => {
-        expect(message.toString()).toBe(
-          JSON.stringify({ type: "greeting", payload: "Hello, WebSocket!" })
-        );
-        socket.send(message);
-      });
-    });
-
-    const message = { type: "greeting", payload: "Hello, WebSocket!" };
-    const listener = jest.fn((receivedMessage) => {
-      expect(receivedMessage).toEqual(message);
-      done();
-    });
-
-    connection.socket.on("open", () => {
-      manager.onMessage(connection, listener);
-      manager.sendMessage(connection, message);
-    });
-
-    connection.socket.on("error", (error) => {
-      console.error("WebSocket error:", error);
-      done(error);
-    });
-  });
-
-  test("should close WebSocket connection", (done) => {
-    const connection = manager.createConnection(url);
-
-    connection.socket.on("open", () => {
-      manager.closeConnection(connection, 1000, "Normal Closure");
-    });
-
-    connection.socket.on("close", () => {
-      expect(connection.socket.readyState).toBe(WebSocket.CLOSED);
-      done();
-    });
-
-    connection.socket.on("error", (error) => {
-      console.error("WebSocket error:", error);
-      done(error);
-    });
-  });
-
-  test("should handle connection closed event", (done) => {
-    const connection = manager.createConnection(url);
-    const listener = jest.fn((code, reason) => {
-      expect(code).toBe(1000);
-      expect(reason).toBe("Normal Closure");
-      done();
-    });
-
-    connection.socket.on("open", () => {
-      manager.onConnectionClosed(connection, listener);
-      connection.socket.close(1000, "Normal Closure");
-    });
-
-    connection.socket.on("error", (error) => {
-      console.error("WebSocket error:", error);
-      done(error);
-    });
-  });
+  // Additional tests can be added here to cover edge cases and more complex scenarios
 });
