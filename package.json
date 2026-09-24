@@ -24,7 +24,9 @@
     "example": "pnpm --filter order-dashboard dev",
     "example:kafka": "pnpm --filter order-dashboard dev:kafka",
     "verify:kafka": "pnpm test:kafka",
-    "test:load": "node --conditions=streamotter-source --expose-gc --test --test-timeout=180000 \"tests/load/**/*.test.ts\""
+    "test:load": "node --conditions=streamotter-source --expose-gc --test --test-timeout=180000 \"tests/load/**/*.test.ts\"",
+    "browsers:setup": "./scripts/browser/setup.sh",
+    "test:browser": "pnpm build && node --conditions=streamotter-source --test --test-concurrency=1 --test-timeout=120000 \"tests/browser/**/*.test.ts\""
   },
   "devDependencies": {
     "@streamotter/client": "workspace:*",

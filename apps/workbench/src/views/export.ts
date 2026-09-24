@@ -30,8 +30,8 @@ export function renderExport(root: HTMLElement, state: WorkbenchState): void {
           `# expect: Fingerprint: sha256:${exported.fingerprint}`,
           "streamotter generate --config streamotter.json --out src/generated"
         ].join("\n")),
-        h("h3", {}, "Canonical content"),
-        h("pre", { class: "data-view" }, exported.content));
+        h("h3", { id: "canonical-heading" }, "Canonical content"),
+        h("pre", { class: "data-view", "aria-labelledby": "canonical-heading" }, exported.content));
     } catch (error) {
       if (error instanceof ApiError && Array.isArray(error.error.details?.["issues"])) {
         const issues = error.error.details["issues"] as { path: string; code: string; message: string }[];
