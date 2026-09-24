@@ -13,7 +13,7 @@ V1 slices 1–4 are implemented and tested; the public home site and hosted demo
 - `packages/contracts`, `packages/gateway`, `packages/client`, `packages/cli`: the shared contracts, gateway (fixture and KafkaJS sources, synchronization, Socket.IO transport, development management API), browser SDK, and CLI with the TypeScript generator.
 - `apps/workbench`: the local workbench served by `streamotter dev`.
 - `examples/order-dashboard`: the reusable order-status application (fixture and Kafka modes, vanilla TypeScript and React views, reproducible scenarios).
-- `tests/`: fixture-backed integration tests, real-Kafka tests against a pinned local Apache Kafka 4.1.2, and a declared-workload resource test.
+- `tests/`: fixture-backed integration tests, real-Kafka tests against a pinned local Apache Kafka 4.1.2, a declared-workload resource test, Playwright browser tests, and a production deployment check behind a TLS-terminating proxy. All pass on Node 24 and 26.
 - `contracts/v1/`: the design contract now re-exports the implementation; the example and negative type checks compile against it.
 
 Implementation decisions that refine the specification are recorded in [V1_API.md section 13](./V1_API.md#13-implementation-refinements-contract-revision-02).

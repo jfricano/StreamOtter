@@ -54,8 +54,9 @@ NODE_ENV=production streamotter start --config streamotter.json --handlers dist/
 - **One dedicated consumer group per source.** Never share it with another application.
 - **TLS termination.** Browsers use HTTPS/WSS at your reverse proxy or load balancer; the
   gateway can serve plain HTTP behind it. The proxy must forward WebSocket upgrades on the
-  configured path (default `/streamotter/socket.io`). The transport is WebSocket-only, so sticky
-  sessions are not required for Socket.IO's sake — but there is still only one gateway.
+  configured path (default `/streamotter/socket.io`) and pass the browser's `Origin` header
+  unchanged. The transport is WebSocket-only, so sticky sessions are not required for
+  Socket.IO's sake — but there is still only one gateway. See the verified recipe below.
 - **Kafka connections.** Verified: TLS with a supplied CA; TLS + SASL PLAIN, SCRAM-SHA-256,
   SCRAM-SHA-512 (Apache Kafka 4.1.2). Implemented but not verified here: TLS with the system
   trust store (`tls: {}`). Other broker versions are unverified.
@@ -65,6 +66,34 @@ NODE_ENV=production streamotter start --config streamotter.json --handlers dist/
 - **Logs.** Operator diagnostics are single-line JSON-ish records on stdout/stderr with source
   IDs and redacted coordinates; no payloads or credentials. Supply `logger` to `createGateway`
   to route them elsewhere.
+
+### Verified recipe: one origin behind Caddy
+
+This shape is exercised by `pnpm test:deploy` (Caddy 2.11.4, compiled `streamotter start`,
+Kafka over TLS + SCRAM-SHA-512). The application and the gateway share one HTTPS origin, so
+the SDK's default `origin` (the page origin) works and `allowedOrigins` is that single origin.
+
+```caddyfile
+https://app.example.com {
+	handle /streamotter/* {
+		reverse_proxy 127.0.0.1:7400   # streamotter start (gateway.host 127.0.0.1)
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000   # your application
+	}
+}
+```
+
+```json
+"gateway": { "host": "127.0.0.1", "port": 7400, "path": "/streamotter/socket.io", "allowedOrigins": ["https://app.example.com"] }
+```
+
+Bind the gateway to loopback (or a private interface) so browsers reach it only through the
+proxy. Caddy forwards WebSocket upgrades and the `Origin` header without extra configuration;
+for nginx, forward `Upgrade`/`Connection` headers on the socket path and keep proxy read
+timeouts above Socket.IO's 25-second ping interval (not exercised here). A graceful restart
+(`SIGTERM`, then start again) was verified: open views show *stale* and resynchronize from
+snapshots once the new gateway joins its consumer group.
 
 ### Resource limits
 

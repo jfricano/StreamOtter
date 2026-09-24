@@ -4,7 +4,7 @@ Make live data straightforward to build with—and understandable when it breaks
 
 StreamOtter carries KafkaSocks’ original goal of simpler Kafka-to-frontend integration into a broader developer experience: connect, define delivery behavior, integrate, inspect, and test recovery.
 
-**Status: V1 is implemented and tested in this repository** — a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI, a local web workbench, and a reference order-status application. It is a release candidate, not a published release: packages are not on npm, and the public home site and hosted demo are the next milestone. What was verified, how, and the known limitations are recorded in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md).
+**Status: V1 is implemented and tested in this repository** — a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI, a local web workbench, and a reference order-status application. It is a release candidate that meets the Gate A readiness checks, not a published release: packages are not on npm, and the public home site and hosted demo are the next milestone. What was verified, how, and the known limitations are recorded in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md).
 
 ## What V1 does
 
@@ -45,7 +45,13 @@ pnpm test:load          # declared-workload resource test
 pnpm kafka:setup        # once: checksum-verified JDK 21 + Apache Kafka 4.1.2 into .local/
 pnpm kafka:start        # local broker: PLAINTEXT :19092, TLS :19093, SASL_SSL :19094
 pnpm test:kafka         # real-Kafka acceptance tests (builds first)
+pnpm browsers:setup     # once: headless Chromium for Playwright into .local/
+pnpm test:browser       # workbench and example in a real browser (builds first)
+pnpm deploy:setup       # once: checksum-verified Caddy into .local/
+pnpm test:deploy        # production gateway behind a TLS-terminating proxy (needs kafka:start)
 ```
+
+Everything downloaded by the setup scripts (JDK, Kafka, Chromium, Caddy) lives in the gitignored `.local/` folder; delete it to remove them. All suites pass on Node 24 and Node 26.
 
 ## Repository layout
 
@@ -58,8 +64,9 @@ pnpm test:kafka         # real-Kafka acceptance tests (builds first)
 | `apps/workbench` | Local workbench UI (Connect, Define, Preview, Inspect, Export), served by `streamotter dev` |
 | `examples/order-dashboard` | Reference application: fixture and Kafka modes, vanilla TypeScript and React views |
 | `contracts/v1` | The V1 contract surface, re-exporting the implementation, with the compile-time example and negative checks |
-| `tests` | Integration, Kafka, and load tests |
+| `tests` | Integration, Kafka, load, browser (Playwright), and deployment tests |
 | `scripts/kafka` | Local broker setup/start/stop (native) and an unexercised Docker Compose alternative |
+| `scripts/browser`, `scripts/deploy` | Project-local Playwright browser and Caddy setup |
 
 ## Documents
 

@@ -2,7 +2,7 @@
 
 September 24, 2026 · V1 release candidate (unreleased; packages not published)
 
-V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, and manual browser checks. The public home site and hosted demo (Gate B milestone) are **not started**.
+V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and hosted demo (Gate B milestone) are **not started**.
 
 This document records what exists, the commands that verify it, the results observed, and the limitations that remain. The [V1 specification](./V1_API.md) governs behavior; its [section 13](./V1_API.md#13-implementation-refinements-contract-revision-02) lists refinements made during implementation.
 
@@ -11,13 +11,14 @@ This document records what exists, the commands that verify it, the results obse
 | Component | Version |
 | --- | --- |
 | OS / CPU | macOS (Darwin 25.6), Apple silicon (arm64), 10 cores |
-| Node.js | **26.9.0** (the specification targets Node 24; Node 24 itself was not exercised) |
+| Node.js | **24.21.0** (the specification's target; project-local in `.local/node24`) and **26.9.0** |
 | pnpm / TypeScript | 11.19.0 / 5.9.3 |
 | Socket.IO server and client | 4.8.3 (pinned, identical) |
 | KafkaJS | 2.2.4 (pinned) |
 | Apache Kafka | 4.1.2, single-node KRaft, native (`scripts/kafka`), Eclipse Temurin JDK 21.0.12.1 |
 | esbuild / React | 0.28.2 / 19.3.0 (workbench and example only) |
-| Browser for manual checks | Chromium-based in-app browser |
+| Browser automation | Playwright 1.63.0 with Chrome Headless Shell 153 (`.local/ms-playwright`) |
+| Reverse proxy | Caddy 2.11.4 (`.local/caddy`, checksum-verified by `scripts/deploy/setup-caddy.sh`) |
 
 ## What is implemented
 
@@ -33,11 +34,12 @@ This document records what exists, the commands that verify it, the results obse
 | Workbench | `apps/workbench` | Connect (status, staged checks, resume, fixture advance), Define (channel contracts, candidate editor, validation, restart-required indicator), Preview (real SDK subscription as a development principal; advance, disconnect, resync), Inspect (filterable, polling trace table), Export (canonical file, fingerprint, CLI commands). |
 | Reference example | `examples/order-dashboard` | Application-owned identity, ownership rules, snapshot storage; fixture and Kafka modes; vanilla TypeScript and React views; reproducible scenarios. |
 | Local Kafka | `scripts/kafka` | Checksum-verified download of Kafka 4.1.2 and a JDK; broker with PLAINTEXT/SSL/SASL_SSL listeners and generated certificates; an unexercised Docker Compose alternative. |
-| Docs | `docs/DEPLOYMENT.md`, this file, `README.md`, V1 spec §13 | Local setup and the single-gateway production boundary. |
+| Docs | `docs/DEPLOYMENT.md`, this file, `README.md`, V1 spec §13 | Local setup, the single-gateway production boundary, and a verified reverse-proxy recipe. |
+| Browser and deployment tests | `tests/browser`, `tests/deploy`, `scripts/browser`, `scripts/deploy` | Playwright checks of the workbench and example; a Caddy-fronted production deployment check. |
 
 ## Verification commands and results
 
-All runs on September 24, 2026 in the environment above.
+All runs on September 24, 2026 in the environment above. Build, checks, and every test suite passed on both Node 24.21.0 and Node 26.9.0 (timings from Node 26); install and the clean-checkout simulation ran on Node 26.
 
 | Command | Result |
 | --- | --- |
@@ -48,6 +50,8 @@ All runs on September 24, 2026 in the environment above.
 | `pnpm test` | **113 / 113 passed**, 21 suites, about 10 s. |
 | `pnpm test:kafka` | **20 / 20 passed** against Apache Kafka 4.1.2, 1 min 54 s (includes ~30 s waiting out a killed consumer's session). |
 | `pnpm test:load` | Passed (results below). |
+| `pnpm test:browser` | **13 / 13 passed**: 7 workbench and 6 example checks in headless Chromium (builds first). |
+| `pnpm test:deploy` | **4 / 4 passed**: the Caddy-fronted production deployment below (builds first; needs the broker and Caddy). |
 | Clean checkout | The tree copied without `node_modules`, build output, `.local/`, or data: install, build, `check:contracts`, `typecheck`, `test` (103 tests at that point), `test:load`, and `pnpm example` all succeeded. |
 
 ### Acceptance scenarios (V1 specification §12)
@@ -95,7 +99,18 @@ Real-Kafka behaviors also verified: `startFrom` latest vs earliest for new group
 
 This is a single-process, loopback measurement of bounded behavior, not a capacity claim.
 
-### Manual browser checks (in-app Chromium)
+### Automated browser tests (`pnpm test:browser`)
+
+Playwright drives the built assets in headless Chromium against real gateways and fails on any console error, page error, failed request, or CSP violation.
+
+- **Workbench** (`tests/browser/workbench.test.ts`): a wrong token is refused and the per-run token opens it; Connect shows status and staged checks; Preview subscribes as a development principal, applies fixture updates, and after a forced disconnect shows stale → fresh snapshot → live; Inspect lists every stage and filters by outcome; Define shows the restart-required indicator and validation messages; Export's fingerprint equals SHA-256 of the canonical content; after a reload the token is gone (no local/session storage or cookies).
+- **Order dashboard** (`tests/browser/order-dashboard.test.ts`): an update committed while the snapshot loads appears after the snapshot and before `live`; a same-ID order in another tenant never appears; a non-owned order is denied with no data and no recovery buttons; Reconnect produces stale → fresh snapshot → live; the React page shows two live orders and one denial; at 375 px wide there is no horizontal overflow.
+
+### Deployment behind a TLS-terminating proxy (`pnpm test:deploy`)
+
+One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/streamotter/*` goes to the gateway, run by the **compiled** `streamotter start` in production mode and consuming Kafka over TLS + SASL SCRAM-SHA-512; everything else goes to the example application in Kafka mode. Verified: the browser's socket is `wss://…/streamotter/socket.io/` through the proxy; an application-published Kafka change reaches the page; a disallowed or missing `Origin` is `FORBIDDEN` through the proxy while the exact origin reaches authentication; no management route exists on the public origin or on port 7401; after `SIGTERM` (exit 0) the page shows *Reconnecting*, and a restarted gateway brings it back to live (about 2.5 s) with later updates delivered.
+
+### Earlier manual browser checks (in-app Chromium)
 
 - **Workbench** (a scaffolded project under `streamotter dev`): no console errors under its CSP. Checked: Connect status and staged checks; Define with an invalid candidate (clear V2 messages) and the restart-required indicator; Preview as a development principal — live, fixture updates, forced disconnect → stale → reconnect → fresh snapshot; Inspect stage ordering; Export fingerprint equal to `streamotter validate`. The workbench was exercised through a local test proxy that attached the management token server-side, so pasting the printed token into the token screen was not itself exercised.
 - **Order dashboard**, fixture mode: sign-in, live snapshot and updates, a same-ID order in another tenant not delivered, denial for a non-owned order, Reconnect → fresh snapshot, and the React page (two live orders, one denied).
@@ -112,9 +127,9 @@ This is a single-process, loopback measurement of bounded behavior, not a capaci
 
 ## Limitations and open items
 
-- **Node 24** (the stated target) was not exercised; everything ran on Node 26.9. Tests execute TypeScript sources through Node's type stripping and the `streamotter-source` export condition; published artifacts are the compiled `dist/`.
-- **Browser coverage** is one Chromium-based browser, checked manually. No automated browser tests (for example Playwright) exist yet for the workbench or example; SDK lifecycle is covered by automated tests running the SDK in Node against the real gateway.
-- **Production deployment** was verified on loopback only: compiled `streamotter start` against TLS/SASL Kafka. A deployment behind an HTTPS/WSS reverse proxy has not been exercised.
+- **Browsers:** automated and manual checks use Chromium only. Firefox and Safari (WebKit) are untested.
+- **Deployment** was verified on one machine: Caddy on loopback with a private CA. Real hosting, public certificates, and other proxies (nginx, cloud load balancers) are unverified; their only requirements are WebSocket upgrade forwarding on the socket path and passing the browser's `Origin` header.
+- Tests execute TypeScript sources through Node's type stripping and the `streamotter-source` export condition; published artifacts are the compiled `dist/`.
 - **No production health endpoint** (management is development-only by design); see `docs/DEPLOYMENT.md`.
 - **Single gateway.** No multi-gateway operation, shared revocation, or durable revocation store, by design for V1.
 - **Workbench:** one preview subscription at a time; the management token must be re-entered after a reload; the workbench does not run when the gateway fails to start (the CLI prints the same staged diagnostics instead).
@@ -125,9 +140,9 @@ This is a single-process, loopback measurement of bounded behavior, not a capaci
 | Gate A condition | Status |
 | --- | --- |
 | Full V1 acceptance scenarios pass, including real Kafka progress, rebalance, and failure | Met (tables above) |
-| Gateway, SDK, workbench, CLI, generation complete their workflow; clean checkout and exported example verified | Met, with the workbench verified manually rather than by automated browser tests |
-| Production build works within the single-gateway boundary and exposes no management or development actions | Met locally; reverse-proxy deployment not exercised |
+| Gateway, SDK, workbench, CLI, generation complete their workflow; clean checkout and exported example verified | Met (automated browser tests for the workbench and example) |
+| Production build works within the single-gateway boundary and exposes no management or development actions | Met (compiled CLI behind a TLS-terminating proxy; no management routes) |
 | Auth, revocation, synchronization, cleanup, overload/resource limits, broker authentication paths have results and explicit limitations | Met |
 | No unresolved failure contradicts a promised V1 behavior | No known contradiction; limitations are listed above |
 
-Recommended before starting the public-experience milestone: run the suites once on Node 24, add automated browser checks for the workbench preview flow and the example, and exercise one deployment behind a TLS-terminating proxy.
+Gate A is met. The next milestone is the public home site and integrated `/demo` (Gate B), which needs product decisions first: domain, site framework, hosting provider, operating budget, and the demo's operator.

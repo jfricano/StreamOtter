@@ -30,7 +30,7 @@ if (process.env["NODE_ENV"] === "production") {
 
 // Kafka mode persists the authoritative store so it stays consistent with the topic across
 // restarts (delete .data/ together with the topic to start over). Fixture mode needs no store here.
-const DATA_FILE = resolve(import.meta.dirname, "../../.data/orders.json");
+const DATA_FILE = process.env["ORDER_DATA_FILE"] ?? resolve(import.meta.dirname, "../../.data/orders.json");
 const restored = KAFKA_MODE && existsSync(DATA_FILE);
 const store: Map<string, StoredOrder> = restored
   ? new Map(Object.entries(JSON.parse(readFileSync(DATA_FILE, "utf8")) as Record<string, StoredOrder>))
