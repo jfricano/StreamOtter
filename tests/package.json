@@ -1,0 +1,17 @@
+{
+  "name": "@streamotter/tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@streamotter/cli": "workspace:*",
+    "@streamotter/client": "workspace:*",
+    "@streamotter/contracts": "workspace:*",
+    "@streamotter/gateway": "workspace:*",
+    "kafkajs": "2.2.4",
+    "socket.io-client": "4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6"
+  }
+}

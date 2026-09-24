@@ -1,0 +1,29 @@
+{
+  "name": "order-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StreamOtter V1 reference application: live order status with application-owned identity, access rules, and snapshots.",
+  "type": "module",
+  "scripts": {
+    "build": "streamotter generate --config streamotter.json --out src/generated && tsc -p tsconfig.json && tsc -p tsconfig.web.json && node build-web.mjs",
+    "dev": "pnpm run build && node scripts/dev.mjs",
+    "dev:kafka": "pnpm run build && node scripts/dev.mjs --kafka",
+    "scenarios": "node --conditions=streamotter-source scripts/scenarios.ts"
+  },
+  "dependencies": {
+    "@streamotter/cli": "workspace:*",
+    "@streamotter/client": "workspace:*",
+    "@streamotter/contracts": "workspace:*",
+    "@streamotter/gateway": "workspace:*",
+    "kafkajs": "2.2.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

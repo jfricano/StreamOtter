@@ -1,0 +1,33 @@
+{
+  "name": "@streamotter/cli",
+  "version": "0.1.0",
+  "description": "StreamOtter V1 command-line interface: init, validate, generate, dev, start.",
+  "type": "module",
+  "bin": {
+    "streamotter": "./bin/streamotter.js"
+  },
+  "exports": {
+    ".": {
+      "streamotter-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@streamotter/contracts": "workspace:*",
+    "@streamotter/gateway": "workspace:*",
+    "@streamotter/workbench": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6"
+  }
+}

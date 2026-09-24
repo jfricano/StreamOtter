@@ -1,0 +1,36 @@
+{
+  "name": "streamotter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "StreamOtter V1: gateway, browser SDK, CLI, workbench, and reference example.",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -b && pnpm --filter @streamotter/workbench --filter order-dashboard run build",
+    "typecheck": "tsc -p tsconfig.check.json && tsc -p apps/workbench/tsconfig.json && tsc -p examples/order-dashboard/tsconfig.web.json && tsc -p examples/order-dashboard/tsconfig.json --noEmit",
+    "check:contracts": "tsc -p contracts/v1/tsconfig.json",
+    "test": "node --conditions=streamotter-source --test --test-concurrency=4 \"packages/*/test/**/*.test.ts\" \"tests/integration/**/*.test.ts\"",
+    "test:unit": "node --conditions=streamotter-source --test \"packages/*/test/**/*.test.ts\"",
+    "test:integration": "node --conditions=streamotter-source --test --test-concurrency=4 \"tests/integration/**/*.test.ts\"",
+    "test:kafka": "tsc -b && node --conditions=streamotter-source --test --test-concurrency=1 --test-timeout=300000 \"tests/kafka/**/*.test.ts\"",
+    "kafka:setup": "./scripts/kafka/setup.sh",
+    "kafka:start": "./scripts/kafka/start.sh",
+    "kafka:stop": "./scripts/kafka/stop.sh",
+    "verify": "pnpm typecheck && pnpm check:contracts && pnpm test",
+    "streamotter": "node --conditions=streamotter-source packages/cli/src/main.ts",
+    "example": "pnpm --filter order-dashboard dev",
+    "example:kafka": "pnpm --filter order-dashboard dev:kafka",
+    "verify:kafka": "pnpm test:kafka",
+    "test:load": "node --conditions=streamotter-source --expose-gc --test --test-timeout=180000 \"tests/load/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@streamotter/client": "workspace:*",
+    "@streamotter/contracts": "workspace:*",
+    "@streamotter/gateway": "workspace:*",
+    "@types/node": "24.13.6",
+    "typescript": "5.9.3"
+  }
+}

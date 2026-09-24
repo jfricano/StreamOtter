@@ -1,0 +1,38 @@
+{
+  "name": "@streamotter/gateway",
+  "version": "0.1.0",
+  "description": "StreamOtter V1 Node.js gateway: sources, handlers, synchronization, Socket.IO delivery, and development management.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "streamotter-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./management": {
+      "streamotter-source": "./src/management/index.ts",
+      "types": "./dist/management/index.d.ts",
+      "default": "./dist/management/index.js"
+    },
+    "./internals": {
+      "streamotter-source": "./src/internals.ts",
+      "types": "./dist/internals.d.ts",
+      "default": "./dist/internals.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@streamotter/contracts": "workspace:*",
+    "kafkajs": "2.2.4",
+    "socket.io": "4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@streamotter/workbench",
+  "version": "0.1.0",
+  "description": "StreamOtter V1 local workbench, served by `streamotter dev` from the management origin.",
+  "type": "module",
+  "files": ["dist"],
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@streamotter/client": "workspace:*",
+    "@streamotter/contracts": "workspace:*",
+    "esbuild": "0.28.2"
+  }
+}

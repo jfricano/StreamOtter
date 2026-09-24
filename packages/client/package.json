@@ -1,0 +1,19 @@
+{
+  "name": "@streamotter/client",
+  "version": "0.1.0",
+  "description": "StreamOtter V1 TypeScript browser SDK using Socket.IO.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "streamotter-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@streamotter/contracts": "workspace:*",
+    "socket.io-client": "4.8.3"
+  }
+}

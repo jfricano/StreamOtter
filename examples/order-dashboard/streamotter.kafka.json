@@ -1,0 +1,104 @@
+{
+  "configVersion": 1,
+  "projectId": "order-dashboard",
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 7400,
+    "path": "/streamotter/socket.io",
+    "allowedOrigins": [
+      "http://127.0.0.1:3000",
+      "http://localhost:3000"
+    ]
+  },
+  "connections": {
+    "local": {
+      "brokers": [
+        "127.0.0.1:19092"
+      ],
+      "tls": false
+    }
+  },
+  "sources": {
+    "orders": {
+      "kind": "kafka",
+      "generation": "orders-local-1",
+      "connectionRef": "local",
+      "topics": [
+        "orders.status"
+      ],
+      "consumerGroup": "streamotter-order-dashboard",
+      "codec": "json",
+      "startFrom": "earliest"
+    }
+  },
+  "schemas": {
+    "OrderParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderId"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "OrderState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderId",
+        "status",
+        "progress",
+        "updatedAt",
+        "note"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "placed",
+            "picking",
+            "packed",
+            "shipped",
+            "delivered"
+          ]
+        },
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    }
+  },
+  "channels": {
+    "orderStatus": {
+      "version": 1,
+      "source": "orders",
+      "paramsSchema": "OrderParams",
+      "payloadSchema": "OrderState",
+      "handlersRef": "orderStatus",
+      "delivery": {
+        "kind": "state",
+        "overflow": "resync"
+      }
+    }
+  }
+}
