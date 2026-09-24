@@ -133,7 +133,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 - **No production health endpoint** (management is development-only by design); see `docs/DEPLOYMENT.md`.
 - **Single gateway.** No multi-gateway operation, shared revocation, or durable revocation store, by design for V1.
 - **Workbench:** one preview subscription at a time; the management token must be re-entered after a reload; the workbench does not run when the gateway fails to start (the CLI prints the same staged diagnostics instead).
-- **Packages are not published** to npm; the CLI runs from this repository.
+- **Packages are not published** to npm and have not yet been tested as installed packages; the CLI runs from this repository. See the [release plan](./RELEASE_PLAN.md).
 
 ## Gate A status (home site and demo plan)
 

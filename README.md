@@ -76,5 +76,6 @@ Everything downloaded by the setup scripts (JDK, Kafka, Chromium, Caddy) lives i
 - [V1 API specification](./docs/V1_API.md): configuration, handlers, SDK, synchronization, protocol, management endpoints, limits, errors — and the refinements made during implementation (section 13).
 - [Implementation status](./docs/IMPLEMENTATION_STATUS.md): what is implemented, commands, verified results, support matrix, and limitations.
 - [Running StreamOtter](./docs/DEPLOYMENT.md): local development and the single-gateway production boundary.
+- [Release plan](./docs/RELEASE_PLAN.md): npm packages, GitHub, guides, home site and demo, and the announcement — decisions, workstreams, and sequencing.
 - [Implementation handoff](./docs/IMPLEMENTATION_HANDOFF.md): reading order, build sequence, and acceptance checks.
 - [Home site and demo plan](./docs/WEBSITE_AND_DEMO_PLAN.md): public experience, integrated demo, launch scope, and readiness gates (next milestone; not implemented).
