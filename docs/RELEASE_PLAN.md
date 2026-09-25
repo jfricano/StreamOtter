@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.1` on npm and `0.1.0-rc.2` (guides and npm pages) prepared; source public on GitHub; the home site goes to the owner (Codex); the article has its own chat
+September 25, 2026 · `0.1.0-rc.2` on npm (`latest`), with guides and npm pages; source public on GitHub; the home site goes to the owner (Codex); the article has its own chat
 
 ## Goal
 
@@ -69,7 +69,7 @@ Each package page is its README, so each gets a short, runnable guide with links
 | `@streamotter/contracts` | Types and config validation for tooling authors; most users do not install it directly. |
 | `@streamotter/workbench` | One paragraph: it is served by `streamotter dev`. |
 
-**Status (September 25):** the guides are written in `docs/guides/` ([getting started](./guides/getting-started.md), [existing app](./guides/existing-app.md), [Kafka](./guides/kafka.md), [troubleshooting](./guides/troubleshooting.md)), and [DEPLOYMENT.md](./DEPLOYMENT.md) is now the npm-based production guide. The root README leads with the npm install, the guides, and the packages, and links to npm. Each package README links to the guides and to the other packages. Because npm shows a version's own README, `0.1.0-rc.2` carries these READMEs to npm. The five READMEs are written with absolute links. The install test checks that each tarball contains its README and has no relative links. Every code sample was type-checked against the installed packages, and the CLI README's first-run flow was run as written.
+**Status (September 25):** the guides are written in `docs/guides/` ([getting started](./guides/getting-started.md), [existing app](./guides/existing-app.md), [Kafka](./guides/kafka.md), [troubleshooting](./guides/troubleshooting.md)), and [DEPLOYMENT.md](./DEPLOYMENT.md) is now the npm-based production guide. The root README leads with the npm install, the guides, and the packages, and links to npm. Each package README links to the guides and to the other packages. Because npm shows a version's own README, `0.1.0-rc.2` carries these READMEs to npm. It was published on September 25 and verified from the registry (14 / 14). The five READMEs are written with absolute links. The install test checks that each tarball contains its README and has no relative links. Every code sample was type-checked against the installed packages, and the CLI README's first-run flow was run as written.
 
 Longer guides — adding live state to an existing app, Kafka and TLS/SASL setup, and deployment behind a proxy — come from the existing docs. They should live where the site can also publish them; coordinate with workstream 4.
 

@@ -57,7 +57,7 @@ git push origin main v<version>          # owner go-ahead
 
 ## 5. Publish (owner)
 
-npm requires two-factor authentication to publish. Pass a fresh code from your authenticator app with `--otp`; codes last about 30 seconds.
+npm requires two-factor authentication to publish. With an authenticator app, pass a fresh code with `--otp` (codes last about 30 seconds). With a passkey (for example Touch ID), leave out `--otp`: pnpm prints a link, and you approve in the browser.
 
 ```bash
 npm login
@@ -70,6 +70,8 @@ pnpm -r --filter @streamotter/contracts --filter @streamotter/client --filter @s
 ```bash
 for p in contracts client gateway workbench cli; do npm dist-tag add @streamotter/$p@<version> next --otp <code>; done
 ```
+
+With passkey-only two-factor authentication, `npm dist-tag add` waited without completing on September 25, so `next` still points to `0.1.0-rc.1`. The step is optional: `latest` is what `npm install` uses and what the npm pages show. To run it, the account needs a method that produces codes for `--otp`, such as an authenticator app added alongside the passkey.
 
 From the first stable version on, publish stable versions with `--tag latest`, and prereleases with `--tag next` only.
 
