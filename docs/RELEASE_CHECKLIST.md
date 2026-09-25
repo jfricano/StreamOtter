@@ -71,7 +71,7 @@ pnpm -r --filter @streamotter/contracts --filter @streamotter/client --filter @s
 for p in contracts client gateway workbench cli; do npm dist-tag add @streamotter/$p@<version> next --otp <code>; done
 ```
 
-With passkey-only two-factor authentication, `npm dist-tag add` waited without completing on September 25, so `next` still points to `0.1.0-rc.1`. The step is optional: `latest` is what `npm install` uses and what the npm pages show. To run it, the account needs a method that produces codes for `--otp`, such as an authenticator app added alongside the passkey.
+With a passkey, every `npm dist-tag add` needs its own browser sign-in ("Authenticate your account at …"). On September 25, running the five in a quick loop hit npm's rate limit (`E429 Too Many Requests`), so `next` still points to `0.1.0-rc.1`. The step is optional: `latest` is what `npm install` uses and what the npm pages show. To run it with a passkey, do one package at a time: run the command, approve in the browser, and wait for its `+next: …` line before starting the next. After an `E429`, wait before retrying. An authenticator app added alongside the passkey lets you pass `--otp` instead.
 
 From the first stable version on, publish stable versions with `--tag latest`, and prereleases with `--tag next` only.
 
