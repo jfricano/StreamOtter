@@ -2,9 +2,9 @@
 
 All five packages (`@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, `@streamotter/workbench`) are released together with the same version. Package versions follow [Semantic Versioning](https://semver.org/) and are independent of the V1 protocol (`protocolVersion: 1`) and configuration format (`configVersion: 1`). Before 1.0.0, a minor release may contain breaking API changes; they will be listed here.
 
-## [0.1.0-rc.1] — not yet published
+## [0.1.0-rc.1] — 2026-09-25
 
-First public release candidate of StreamOtter V1, to be published under the npm `next` tag.
+First public release candidate of StreamOtter V1, released under the npm `next` tag.
 
 ### Added
 

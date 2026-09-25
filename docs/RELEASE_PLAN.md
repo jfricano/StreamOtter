@@ -28,10 +28,10 @@ Every public claim must match verified behavior: no invented adoption, performan
 | First version | **Decided: `0.1.0-rc.1`** (pre-1.0 API). Package SemVer is independent of product milestones and `protocolVersion`, per the roadmap. |
 | GitHub location | **Decided and done: `jfricano/StreamOtter`, public** since September 25, 2026. |
 | Which packages are public | All five, as prepared. Folding the workbench's static assets into `@streamotter/cli` (four packages) remains possible before the first publish. |
-| npm organization | **Open.** Create the `streamotter` organization on npmjs.com; the owner holds the credentials and 2FA. Claude never handles npm tokens or logins. |
-| Publishing method | **Open.** Manual `pnpm publish` by the owner (the [release checklist](./RELEASE_CHECKLIST.md) is written for this), or GitHub Actions with npm provenance and a token or trusted publisher the owner sets up. |
+| npm organization | **Done:** the owner created the `streamotter` organization on September 25. The owner holds the credentials and 2FA; Claude never handles npm tokens or logins. |
+| Publishing method | **Decided for `0.1.0-rc.1`:** manual `pnpm publish` by the owner, following the [release checklist](./RELEASE_CHECKLIST.md). GitHub Actions publishing with provenance (a trusted publisher, configured per package once it exists) remains an option for later releases. |
 | Author email in history | **Decided and done:** before the first push, the history was rewritten to "Jason Fricano" with the account's GitHub no-reply address, and the repository's git configuration uses the same identity. |
-| Security reporting | **Open.** `SECURITY.md` points to GitHub private vulnerability reporting, which the owner must enable in the repository settings. A `CODE_OF_CONDUCT.md` was not added; decide whether to have one. |
+| Security reporting | **Done:** GitHub private vulnerability reporting, which `SECURITY.md` points to, was enabled on September 25. Still open: whether to add a `CODE_OF_CONDUCT.md`. |
 | Launch owner and date | **Open.** Who approves "go", and when. |
 
 ## Workstreams
