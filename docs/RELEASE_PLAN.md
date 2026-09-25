@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.2` on npm (`latest`), with guides and npm pages; source public on GitHub; the home site goes to the owner (Codex); the article has its own chat
+September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site goes to the owner (Codex); the article has its own chat
 
 ## Goal
 
