@@ -107,11 +107,15 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     const sub = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
     const seen = observe(sub);
     await sub.ready();
+    // The application's state changes; its change event reaches the source only after the disconnect.
+    // Updating the store first keeps the outcome independent of how fast the client reconnects.
+    h.app.put("acme", "alice", "ord_1", 2, "processing", 20);
+    const statesBefore = seen.states.length;
     h.internals.disconnectPreviewSession(preview.previewSessionId);
-    await waitFor(() => sub.state === "stale", 2_000, "stale after disconnect");
+    // Recorded by the state listener: `stale` can be brief, because reconnection starts after 0–500 ms of jitter.
+    await waitFor(() => seen.states.slice(statesBefore).includes("stale"), 2_000, "stale after disconnect");
     // Changes during the outage are not replayed; the snapshot carries current state.
     await h.advance(1);
-    h.app.put("acme", "alice", "ord_1", 2, "processing", 20);
     await waitFor(() => sub.state === "live" && seen.events.length === 2, 5_000, "resynchronized");
     assert.deepEqual(seen.events.map(event => `${event.kind}:${event.revision}`), ["snapshot:1", "snapshot:2"]);
     assert.deepEqual(states, ["connecting", "connected", "reconnecting", "connected"]);

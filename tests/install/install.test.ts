@@ -261,7 +261,8 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     await writeFile(join(consumer, "dev-subscribe.mjs"), DEV_SUBSCRIBE);
     const dev = startProcess(bin("streamotter"), ["dev", "--config", "app/streamotter.json", "--handlers", "app/server/handlers.mjs", "--management-port", "0"], consumer);
     try {
-      await waitFor(() => /Token\s+\S+/.test(dev.output()), 30_000, `dev banner\n${dev.output()}`);
+      // The banner arrives line by line; wait for its last line before parsing it.
+      await waitFor(() => /Press Ctrl\+C to stop/.test(dev.output()), 30_000, `dev banner\n${dev.output()}`);
       const output = dev.output();
       const workbench = /Workbench\s+(http:\/\/127\.0\.0\.1:\d+)\//.exec(output)?.[1];
       assert.ok(workbench !== undefined, `the workbench is found in the installed package\n${output}`);

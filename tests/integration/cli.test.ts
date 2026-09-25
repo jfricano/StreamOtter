@@ -76,7 +76,8 @@ describe("CLI: init, validate, generate, dev, start", () => {
     await writeFile(join(project, "streamotter.json"), JSON.stringify(scaffold, null, 2));
     const dev = startCli(["dev", "--config", "streamotter.json", "--handlers", "server/handlers.mjs", "--management-port", "0"], project);
     try {
-      await waitFor(() => /Token\s+\S+/.test(dev.output()), 20_000, "dev banner");
+      // The banner arrives line by line; wait for its last line before parsing it.
+      await waitFor(() => /Press Ctrl\+C to stop/.test(dev.output()), 20_000, "dev banner");
       const token = /Token\s+(\S+)/.exec(dev.output())![1]!;
       const management = /Management\s+(http:\/\/127\.0\.0\.1:\d+)/.exec(dev.output())![1]!;
       const gatewayOrigin = /Gateway\s+(http:\/\/127\.0\.0\.1:\d+)/.exec(dev.output())![1]!;

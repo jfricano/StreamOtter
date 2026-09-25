@@ -51,7 +51,7 @@ export async function runScenarios(): Promise<ScenarioResult[]> {
   const { origin } = await gateway.start();
   const internals = getGatewayInternals(gateway);
   const clients: Client<AppChannels>[] = [];
-  const client = (token: () => string) => {
+  const client = (token: () => string | Promise<string>) => {
     const created = createClient<AppChannels>({ origin, getToken: token });
     clients.push(created);
     return created;
@@ -82,12 +82,18 @@ export async function runScenarios(): Promise<ScenarioResult[]> {
 
     await run("Disconnect, change while away, resynchronize", async () => {
       const preview = internals.createPreviewSession("alice");
-      const view = watch(client(() => preview.token), "ord_1002");
+      // Reconnection asks for a token first; holding it back until the change is made keeps the
+      // change "while away" however quickly the client would otherwise reconnect.
+      let away: Promise<void> = Promise.resolve();
+      let comeBack = () => {};
+      const view = watch(client(() => away.then(() => preview.token)), "ord_1002");
       await view.subscription.ready({ timeoutMs: 10_000 });
+      away = new Promise(resolve => { comeBack = () => resolve(); });
       internals.disconnectPreviewSession(preview.previewSessionId);
       await waitFor(() => view.states.includes("stale"), 5_000, "stale");
       // While disconnected, acme/ord_1002 moves to revision 2. It is not replayed; the snapshot carries it.
       if (await internals.advanceFixture("orders", 1) !== 1) throw new Error("fixture did not advance");
+      comeBack();
       await waitFor(() => view.subscription.state === "live" && view.events.length === 2, 10_000, "resynchronized");
       const kinds = view.events.map(event => `${event.kind}:r${event.revision}`).join(", ");
       if (kinds !== "snapshot:r1, snapshot:r2") throw new Error(`events ${kinds}`);
