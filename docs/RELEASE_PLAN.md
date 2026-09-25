@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · Workstreams 1–3 done; source public on GitHub; nothing published to npm
+September 25, 2026 · Release candidate `0.1.0-rc.1` published to npm; source public on GitHub; site, demo, and article not started
 
 ## Goal
 
@@ -12,8 +12,8 @@ Every public claim must match verified behavior: no invented adoption, performan
 
 | Item | State |
 | --- | --- |
-| Packages | All five are ready to publish as `0.1.0-rc.1`: metadata, `LICENSE`, and a README guide in each, and `publishConfig` that drops the in-repository source condition. `pnpm test:install` packs them, installs the tarballs with npm outside the workspace, and uses them as an application would (14 / 14 on Node 24 and 26 with the broker). `pnpm publish --dry-run` passes for all five. |
-| npm names | On September 24, 2026 none of the five names nor plain `streamotter` was published, and the registry reported no `streamotter` organization. Only creating the organization confirms availability. |
+| Packages | All five are ready to publish as `0.1.0-rc.1`: metadata, `LICENSE`, and a README guide in each, and `publishConfig` that drops the in-repository source condition. `pnpm test:install` packs them, installs the tarballs with npm outside the workspace, and uses them as an application would (14 / 14 on Node 24 and 26 with the broker). `pnpm publish --dry-run` passes for all five. The owner published `0.1.0-rc.1` on September 25 from tag `v0.1.0-rc.1`. As expected for new packages, both `next` and `latest` point to it. The registry install test passed 14 / 14. |
+| npm names | The five packages are published under the owner's `streamotter` organization, with `jfricano` as maintainer. The unscoped name `streamotter` remains unpublished. |
 | License | MIT, © 2026 Orca Solutions: a root `LICENSE`, a copy in each package, and `license` fields. The workbench also ships the notices of the Socket.IO client code it bundles. |
 | Source control | Public at [github.com/jfricano/StreamOtter](https://github.com/jfricano/StreamOtter) since September 25, 2026 (`main` only; commits authored with a GitHub no-reply address). The pre-push scan found no secrets, keys, certificates, `.local/`, or build output in the tree or history. Both CI workflows pass: `ci.yml` on Node 24 and 26, and `extended.yml` (Kafka, install, browser, and deployment on Linux). |
 | Version fields | Every public package is `0.1.0-rc.1` (`scripts/release/set-version.mjs` keeps them together); nothing is tagged. |
@@ -110,7 +110,7 @@ No competitor disparagement, invented metrics, or claims beyond the implementati
 1. **Owner decisions:** license, npm organization, first version, GitHub location, publishing method.
 2. **Release chat:** packaging work and the install test, then `LICENSE`, repository hygiene, CI, and the npm-page guides.
 3. **GitHub:** the owner creates the repository; push with the owner's go-ahead (public or private per decision 1).
-4. **Release candidate:** the owner publishes (or CI publishes) under `next`; verify installation from the registry in a clean project.
+4. **Release candidate:** the owner publishes (or CI publishes) under `next`; verify installation from the registry in a clean project. *Done September 25.*
 5. **Site and demo chat:** build on the published release candidate; complete Gate B.
 6. **Article:** draft, then review against the implementation status and working links.
 7. **Launch:** promote packages to `latest` (or publish the stable version), make the repository public if not already, bring the site and demo live, publish the article, and smoke-test every public link.

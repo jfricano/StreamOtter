@@ -4,7 +4,7 @@ Make live data straightforward to build with—and understandable when it breaks
 
 StreamOtter carries KafkaSocks’ original goal of simpler Kafka-to-frontend integration into a broader developer experience: connect, define delivery behavior, integrate, inspect, and test recovery.
 
-**Status: V1 is implemented and tested in this repository** — a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI, a local web workbench, and a reference order-status application. It is a release candidate that meets the Gate A readiness checks, not a published release. The five packages are prepared as `0.1.0-rc.1` and tested as installed packages, but they are not on npm yet, and the public home site and hosted demo are the next milestone. What was verified, how, and the known limitations are recorded in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md).
+**Status: V1 is implemented and tested in this repository** — a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI, a local web workbench, and a reference order-status application. The release candidate `0.1.0-rc.1` is published on npm (the five `@streamotter/*` packages, under the `next` tag) and meets the Gate A readiness checks. The public home site and hosted demo are the next milestone. What was verified, how, and the known limitations are recorded in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md).
 
 ## What V1 does
 
@@ -15,7 +15,16 @@ StreamOtter carries KafkaSocks’ original goal of simpler Kafka-to-frontend int
 - **Kafka source progress.** KafkaJS behind an internal adapter: explicit per-record commits, poison records pause without skipping, rebalance/outage trigger resynchronization. Deterministic fixture sources for development.
 - **Diagnosis.** Staged connection checks (resolve → connect → TLS → authenticate → metadata) and a bounded, payload-free trace of each record's path through validate, map, queue, send, receipt, and commit.
 
-## Quickstart
+## Install
+
+```bash
+npm install @streamotter/cli@next @streamotter/client@next
+npx streamotter init .
+```
+
+Node.js 24 or later. The [CLI guide](./packages/cli/README.md) walks from `init` through the workbench to production; the [client](./packages/client/README.md) and [gateway](./packages/gateway/README.md) guides cover the SDK and the handlers.
+
+## Quickstart (from this repository)
 
 Prerequisites: Node.js 24+ and pnpm 11 (`npx pnpm@11.19.0` works without a global install).
 
@@ -85,4 +94,4 @@ Everything downloaded by the setup scripts (JDK, Kafka, Chromium, Caddy) lives i
 
 ## License
 
-[MIT](./LICENSE) © 2026 Orca Solutions. Each package has a usage guide that becomes its npm page when published: [client](./packages/client/README.md), [gateway](./packages/gateway/README.md), [CLI](./packages/cli/README.md), [contracts](./packages/contracts/README.md), [workbench](./apps/workbench/README.md).
+[MIT](./LICENSE) © 2026 Orca Solutions. Each package's usage guide is also its npm page: [client](./packages/client/README.md), [gateway](./packages/gateway/README.md), [CLI](./packages/cli/README.md), [contracts](./packages/contracts/README.md), [workbench](./apps/workbench/README.md).
