@@ -45,10 +45,40 @@ export function uniqueName(prefix: string): string {
   return `${prefix}-${randomBytes(4).toString("hex")}`;
 }
 
+/**
+ * Resolves once the consumer group has no members, for example after a SIGKILLed member's
+ * session has expired. A replacement started earlier would spend that wait inside its own
+ * startup deadline, which equals the session timeout.
+ */
+export async function waitForEmptyGroup(groupId: string, timeoutMs = 45_000): Promise<void> {
+  const client = await testAdmin();
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { groups } = await client.describeGroups([groupId]);
+    if ((groups[0]?.members.length ?? 0) === 0) return;
+    if (Date.now() > deadline) throw new Error(`Consumer group ${groupId} still has members after ${timeoutMs} ms`);
+    await new Promise(done => setTimeout(done, 500));
+  }
+}
+
 export async function createTopic(partitions = 3): Promise<string> {
   const topic = uniqueName("so-test");
-  await (await testAdmin()).createTopics({ topics: [{ topic, numPartitions: partitions }], waitForLeaders: true });
-  return topic;
+  const client = await testAdmin();
+  try {
+    await client.createTopics({ topics: [{ topic, numPartitions: partitions }], waitForLeaders: true });
+  } catch (error) {
+    // A broker that has only just started can report the new topic's partitions as unknown while
+    // their leaders are elected. The topic was created; wait for its leaders below instead.
+    if ((error as { type?: string }).type !== "UNKNOWN_TOPIC_OR_PARTITION") throw error;
+  }
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    const metadata = await client.fetchTopicMetadata({ topics: [topic] }).catch(() => null);
+    const found = metadata?.topics[0]?.partitions ?? [];
+    if (found.length === partitions && found.every(partition => partition.leader >= 0)) return topic;
+    if (Date.now() > deadline) throw new Error(`Topic ${topic} has no leaders for all ${partitions} partitions after 15 s`);
+    await new Promise(done => setTimeout(done, 200));
+  }
 }
 
 let producerPromise: Promise<kafkajs.Producer> | null = null;

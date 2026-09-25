@@ -45,6 +45,8 @@ interface Manifest {
   repository?: { type?: string; url?: string; directory?: string };
   publishConfig?: { access?: string; exports?: unknown };
   exports?: unknown;
+  main?: string;
+  types?: string;
   bin?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -214,6 +216,9 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
         assert.ok(sources.length > 0);
         assert.deepEqual([...outputs].sort(), [...sources].sort(), "dist contains exactly the compiled sources (no stale output)");
         for (const source of sources) assert.ok(entries.includes(`dist/${source}.d.ts`), `declarations for ${source}`);
+        assert.equal(manifest.main, "./dist/index.js");
+        assert.equal(manifest.types, "./dist/index.d.ts");
+        assert.ok(entries.includes("dist/index.js") && entries.includes("dist/index.d.ts"), "main and types files exist");
       } else {
         for (const asset of ["index.html", "app.js", "styles.css", "THIRD_PARTY_LICENSES.txt"]) assert.ok(entries.includes(`dist/${asset}`), `workbench ${asset}`);
       }

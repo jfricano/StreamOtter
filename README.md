@@ -1,97 +1,81 @@
 # StreamOtter
 
-Make live data straightforward to build with—and understandable when it breaks.
+Make live data straightforward to build with, and understandable when it breaks.
 
-StreamOtter carries KafkaSocks’ original goal of simpler Kafka-to-frontend integration into a broader developer experience: connect, define delivery behavior, integrate, inspect, and test recovery.
+[![npm](https://img.shields.io/npm/v/@streamotter/cli?label=%40streamotter%2Fcli)](https://www.npmjs.com/package/@streamotter/cli)
+[![CI](https://github.com/jfricano/StreamOtter/actions/workflows/ci.yml/badge.svg)](https://github.com/jfricano/StreamOtter/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**Status: V1 is implemented and tested in this repository** — a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI, a local web workbench, and a reference order-status application. The release candidate `0.1.0-rc.1` is published on npm (the five `@streamotter/*` packages, under the `next` tag) and meets the Gate A readiness checks. The public home site and hosted demo are the next milestone. What was verified, how, and the known limitations are recorded in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md).
+StreamOtter gets state from Kafka to the browser in a way you can trust. Browsers subscribe to **state channels**, not raw topics. Each view starts from an authoritative snapshot and then receives full-state updates in revision order. Every view is either verifiably `live` or visibly `stale`, never silently wrong after a disconnect, a restart, or a slow client. Your own handlers decide who may see what.
 
-## What V1 does
+It is a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI with a local workbench, and a TypeScript generator for your channels. It continues KafkaSocks' goal of simpler Kafka-to-frontend integration.
 
-- **State channels.** Browsers subscribe to named, versioned, parameterized channels (never raw topics). Each subscription receives an authoritative snapshot, then full-state updates ordered by a domain revision. A snapshot/update race is resolved by capture-before-snapshot and revision comparison.
-- **Explicit delivery states.** `authorizing → synchronizing → live`, with `stale`, `resync-required`, and `failed` when something goes wrong. A disconnected or superseded view is never reported as live.
-- **Application-owned access.** Your `authenticate`, `authorize`, `map`, and `snapshot` handlers decide identity, audience, public payload, and authoritative state. Revocation works while authorization or a snapshot is pending.
-- **Bounded delivery.** One frame in flight per subscription, finite per-subscription/connection/gateway budgets, overflow → resynchronization, and slow receipts disconnect only the slow client. Source progress never waits for browsers.
-- **Kafka source progress.** KafkaJS behind an internal adapter: explicit per-record commits, poison records pause without skipping, rebalance/outage trigger resynchronization. Deterministic fixture sources for development.
-- **Diagnosis.** Staged connection checks (resolve → connect → TLS → authenticate → metadata) and a bounded, payload-free trace of each record's path through validate, map, queue, send, receipt, and commit.
+> **Status: release candidate.** `0.1.0-rc` versions are [on npm](https://www.npmjs.com/org/streamotter). The API may still change before `0.1.0`. What is verified, how, and the known limitations: [implementation status](./docs/IMPLEMENTATION_STATUS.md).
 
 ## Install
 
 ```bash
-npm install @streamotter/cli@next @streamotter/client@next
+npm install @streamotter/cli @streamotter/client
+```
+
+Node.js 24 or later for the gateway and CLI; current evergreen browsers for the SDK.
+
+## Try it in five minutes
+
+In a new folder; no Kafka needed, because the scaffold uses a built-in fixture source.
+
+```bash
+npm install @streamotter/cli @streamotter/client
 npx streamotter init .
+npx streamotter dev --config streamotter.json --handlers server/handlers.mjs
 ```
 
-Node.js 24 or later. The [CLI guide](./packages/cli/README.md) walks from `init` through the workbench to production; the [client](./packages/client/README.md) and [gateway](./packages/gateway/README.md) guides cover the SDK and the handlers.
+Open the workbench URL that `dev` prints, paste its one-time token, then preview the `jobProgress` channel and advance the fixture to watch revisions arrive. [Getting started](./docs/guides/getting-started.md) continues from there to a real web page.
 
-## Quickstart (from this repository)
+## Guides
 
-Prerequisites: Node.js 24+ and pnpm 11 (`npx pnpm@11.19.0` works without a global install).
-
-```bash
-pnpm install --frozen-lockfile
-pnpm build
-pnpm example            # order dashboard at http://localhost:3000, workbench at http://127.0.0.1:7401
-```
-
-`pnpm example` prints a one-time management token; paste it into the workbench. See [examples/order-dashboard](./examples/order-dashboard/README.md) for the walkthrough and scenarios.
-
-Start your own project with the CLI (from this repository, `pnpm streamotter <command>` runs it from source):
-
-```bash
-pnpm streamotter init ../my-app
-cd ../my-app
-<repo>/packages/cli/bin/streamotter.js dev --config streamotter.json --handlers server/handlers.mjs
-```
-
-## Checks
-
-```bash
-pnpm check:contracts    # the V1 contract, example, and negative type checks against the real packages
-pnpm typecheck          # strict type-check of every package, app, example, and test
-pnpm test               # unit + integration tests (fixture-backed gateway and SDK, CLI, management, example)
-pnpm test:load          # declared-workload resource test
-pnpm test:install       # pack the five packages, install them with npm outside the workspace, use them as an app
-pnpm kafka:setup        # once: checksum-verified JDK 21 + Apache Kafka 4.1.2 into .local/
-pnpm kafka:start        # local broker: PLAINTEXT :19092, TLS :19093, SASL_SSL :19094
-pnpm test:kafka         # real-Kafka acceptance tests (builds first)
-pnpm browsers:setup     # once: headless Chromium for Playwright into .local/
-pnpm test:browser       # workbench and example in a real browser (builds first)
-pnpm deploy:setup       # once: checksum-verified Caddy into .local/
-pnpm test:deploy        # production gateway behind a TLS-terminating proxy (needs kafka:start)
-```
-
-Everything downloaded by the setup scripts (JDK, Kafka, Chromium, Caddy) lives in the gitignored `.local/` folder; delete it to remove them. All suites pass on Node 24 and Node 26.
-
-## Repository layout
-
-| Path | Contents |
+| Guide | |
 | --- | --- |
-| `packages/contracts` | Public types, protocol constants, schema/config validation (shared by gateway and SDK) |
-| `packages/gateway` | `createGateway`, `defineProject`, sources (fixture, KafkaJS), synchronization, Socket.IO transport, development management API |
-| `packages/client` | `createClient` browser SDK |
-| `packages/cli` | `streamotter init | validate | generate | dev | start` and the TypeScript generator |
-| `apps/workbench` | Local workbench UI (Connect, Define, Preview, Inspect, Export), served by `streamotter dev` |
-| `examples/order-dashboard` | Reference application: fixture and Kafka modes, vanilla TypeScript and React views |
-| `contracts/v1` | The V1 contract surface, re-exporting the implementation, with the compile-time example and negative checks |
-| `tests` | Integration, Kafka, load, browser (Playwright), deployment, and install tests |
-| `scripts/kafka` | Local broker setup/start/stop (native) and an unexercised Docker Compose alternative |
-| `scripts/browser`, `scripts/deploy` | Project-local Playwright browser and Caddy setup |
+| [Getting started](./docs/guides/getting-started.md) | From `npm install` to a live page in the browser, in about ten minutes |
+| [Add live state to an existing app](./docs/guides/existing-app.md) | Your sessions, your database, Kafka events, revocation, and React |
+| [Connect to Kafka](./docs/guides/kafka.md) | Topic shape, TLS and SASL, progress, bad records, crashes, and diagnostics |
+| [Run in production](./docs/DEPLOYMENT.md) | `streamotter start`, supervision, and the reverse-proxy recipe |
+| [Troubleshooting](./docs/guides/troubleshooting.md) | Symptoms, causes, and fixes |
 
-## Documents
+## Packages
 
-- [Founding document](./docs/FOUNDING.md): purpose, developer problems, philosophy, first product boundary, and engineering acceptance criteria.
-- [Research brief](./docs/RESEARCH.md): firsthand developer reports, technical constraints, existing alternatives, and the assumptions behind our decisions.
-- [API and feature roadmap](./docs/API_AND_FEATURE_ROADMAP.md): V1, V2, V3, later possibilities, API forecasts, incremental delivery, and compatibility rules.
-- [V1 API specification](./docs/V1_API.md): configuration, handlers, SDK, synchronization, protocol, management endpoints, limits, errors — and the refinements made during implementation (section 13).
-- [Implementation status](./docs/IMPLEMENTATION_STATUS.md): what is implemented, commands, verified results, support matrix, and limitations.
-- [Running StreamOtter](./docs/DEPLOYMENT.md): local development and the single-gateway production boundary.
-- [Release plan](./docs/RELEASE_PLAN.md): npm packages, GitHub, guides, home site and demo, and the announcement — decisions, workstreams, and sequencing.
-- [Release checklist](./docs/RELEASE_CHECKLIST.md) and [changelog](./CHANGELOG.md): how each release is built, verified, tagged, published, and corrected.
-- [Contributing](./CONTRIBUTING.md) and [security policy](./SECURITY.md).
-- [Implementation handoff](./docs/IMPLEMENTATION_HANDOFF.md): reading order, build sequence, and acceptance checks.
-- [Home site and demo plan](./docs/WEBSITE_AND_DEMO_PLAN.md): public experience, integrated demo, launch scope, and readiness gates (next milestone; not implemented).
+| Package | Use it for | |
+| --- | --- | --- |
+| [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | `init`, `validate`, `generate`, `dev` with the workbench, and the production `start`. Includes the gateway. | [guide](./packages/cli/README.md) |
+| [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up | [guide](./packages/client/README.md) |
+| [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Your handlers' types, and running the gateway from your own Node.js code | [guide](./packages/gateway/README.md) |
+| [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors | [guide](./packages/contracts/README.md) |
+| [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets; installed by the CLI | [guide](./apps/workbench/README.md) |
+
+All five are released together with the same version; see the [changelog](./CHANGELOG.md).
+
+## What V1 does
+
+- **State channels.** Browsers subscribe to named, versioned, parameterized channels. Each subscription receives an authoritative snapshot, then full-state updates ordered by a domain revision. A snapshot/update race is resolved by capturing updates before the snapshot and comparing revisions.
+- **Explicit delivery states.** `authorizing → synchronizing → live`, with `stale`, `resync-required`, and `failed` when something goes wrong. A disconnected or superseded view is never reported as live.
+- **Application-owned access.** Your `authenticate`, `authorize`, `map`, and `snapshot` handlers decide identity, audience, public payload, and authoritative state. Revocation works even while authorization or a snapshot is pending.
+- **Bounded delivery.** One frame in flight per subscription; finite budgets per subscription, per connection, and for the whole gateway; overflow leads to resynchronization; and slow receipts disconnect only the slow client. Source progress never waits for browsers.
+- **Kafka source progress.** Explicit per-record commits; poison records pause without skipping; rebalances and outages trigger resynchronization. Deterministic fixture sources for development.
+- **Diagnosis.** Staged connection checks (resolve → connect → TLS → authenticate → metadata) and a bounded, payload-free trace of each record's path through validate, map, queue, send, receipt, and commit.
+
+**Limits in V1, by design:** one gateway per project, no durable replay or history, no durable revocation store, and no production health endpoint. Chromium is the only browser that is automatically tested. Kafka is verified against Apache Kafka 4.1.2.
+
+## Documentation
+
+- [Guides](./docs/guides/getting-started.md), listed above, and the [documentation index](./docs/README.md)
+- [V1 API specification](./docs/V1_API.md): configuration, handlers, SDK, synchronization, protocol, limits, and errors
+- [Implementation status](./docs/IMPLEMENTATION_STATUS.md): verified results, the Kafka support matrix, and limitations
+- [Reference example](./examples/order-dashboard/README.md): an order dashboard with fixture and Kafka modes, and vanilla TypeScript and React views
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](./CONTRIBUTING.md) covers building from source, the test tiers, and running the example. Report security problems as described in [SECURITY.md](./SECURITY.md).
 
 ## License
 
-[MIT](./LICENSE) © 2026 Orca Solutions. Each package's usage guide is also its npm page: [client](./packages/client/README.md), [gateway](./packages/gateway/README.md), [CLI](./packages/cli/README.md), [contracts](./packages/contracts/README.md), [workbench](./apps/workbench/README.md).
+[MIT](./LICENSE) © 2026 Orca Solutions.

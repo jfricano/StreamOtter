@@ -4,10 +4,10 @@ The public types, protocol constants, error vocabulary, and runtime validation s
 
 **Most applications don't install it directly.** [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) and [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) re-export the types you need. Install this package when you build tooling around StreamOtter: editors, linters, or deployment checks for `streamotter.json`, or anything that must agree exactly with the gateway's rules.
 
-> **Release candidate.** `0.1.0-rc.1` is published under the `next` tag. Package versions follow SemVer independently of the V1 protocol (`PROTOCOL_VERSION = 1`) and `configVersion: 1`.
+> **Release candidate** of StreamOtter `0.1.0`; the API may still change before `0.1.0`. Package versions follow SemVer independently of the V1 protocol (`PROTOCOL_VERSION = 1`) and `configVersion: 1`.
 
 ```bash
-npm install @streamotter/contracts@next
+npm install @streamotter/contracts
 ```
 
 ESM only, with TypeScript declarations included. It has no dependencies and runs in browsers and Node.js.
@@ -42,9 +42,22 @@ This is the same validator `defineProject()`, the CLI, and the workbench use. Va
 
 The types are the public contract that the [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md) describes. Where the specification and the types differ, this package is authoritative for types (see its §13).
 
-## More
+## Documentation
 
-- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): configuration and schemas (§2), protocol (§8), errors (§9), management (§10)
-- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues)
+- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): configuration and schemas (§2), the protocol (§8), errors (§9), and management (§10)
+- [Getting started](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md), if you are here to build an application
+- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues) · [Security policy](https://github.com/jfricano/StreamOtter/blob/main/SECURITY.md)
+
+## StreamOtter packages
+
+| Package | |
+| --- | --- |
+| [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | Scaffold, validate, generate types, develop with the workbench, and run the production gateway |
+| [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up |
+| [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Handler types, and running the gateway from your own Node.js code |
+| [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | **This package.** Shared types and configuration validation, for tooling authors |
+| [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets, installed by the CLI |
+
+All five are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
 
 MIT License © 2026 Orca Solutions

@@ -2,10 +2,10 @@
 
 The StreamOtter browser SDK. Subscribe to a **state channel** served by a [StreamOtter gateway](https://www.npmjs.com/package/@streamotter/gateway): each subscription gets an authoritative snapshot, then full-state updates in revision order. It also reports whether the view is verifiably current (`live`) or not (`stale`), so a screen is never silently wrong.
 
-> **Release candidate.** `0.1.0-rc.1` is published under the `next` tag. Package versions follow SemVer independently of the V1 protocol (`protocolVersion: 1`).
+> **Release candidate** of StreamOtter `0.1.0`; the API may still change before `0.1.0`. Package versions follow SemVer independently of the V1 protocol (`protocolVersion: 1`).
 
 ```bash
-npm install @streamotter/client@next
+npm install @streamotter/client
 ```
 
 Transport: Socket.IO 4.8.3 over WebSocket only. Targets current evergreen browsers. ESM only, with TypeScript declarations included.
@@ -112,10 +112,25 @@ export function useJobProgress(jobId: string) {
 
 Pass a stable `getToken` (for example from `useCallback`) so the client is not recreated on every render. The [reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard) has vanilla TypeScript and React versions of this pattern, including denied access and reconnection.
 
-## More
+## Documentation
 
-- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): SDK (§4), states and synchronization (§5), errors (§9)
+- [Getting started](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md): from `npm install` to a live page in about ten minutes
+- [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md): your sessions, handlers, and this SDK together
+- [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md): `FORBIDDEN`, `UNAUTHENTICATED`, `stale`, `resync-required`, and more
+- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): the SDK (§4), states and synchronization (§5), and errors (§9)
 - [Implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md): what is verified, and the known limitations (for example, automated browser checks cover Chromium only)
-- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues)
+- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues) · [Security policy](https://github.com/jfricano/StreamOtter/blob/main/SECURITY.md)
+
+## StreamOtter packages
+
+| Package | |
+| --- | --- |
+| [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | Scaffold, validate, generate types, develop with the workbench, and run the production gateway |
+| [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | **This package.** The browser SDK: subscribe, render `live` and `stale`, and clean up |
+| [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Handler types, and running the gateway from your own Node.js code |
+| [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors |
+| [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets, installed by the CLI |
+
+All five are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
 
 MIT License © 2026 Orca Solutions

@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · Release candidate `0.1.0-rc.1` published to npm; source public on GitHub; site, demo, and article not started
+September 25, 2026 · `0.1.0-rc.1` on npm and `0.1.0-rc.2` (guides and npm pages) prepared; source public on GitHub; the home site goes to the owner (Codex); the article has its own chat
 
 ## Goal
 
@@ -53,7 +53,7 @@ Work that needs no owner decisions:
 - `CHANGELOG.md`, and a release checklist covering build, every suite, the install test, tag, publish, and verification from the registry.
 - Plan corrections: prefer `npm deprecate` and a patch release over `unpublish` (npm restricts unpublishing after 72 hours).
 
-Publish the release candidate under the `next` dist-tag first; promote to `latest` at launch.
+Publish the release candidate under the `next` dist-tag first; promote to `latest` at launch. (npm assigned `latest` to `0.1.0-rc.1` anyway, because the packages were new. Until the first stable version, each release candidate therefore goes to both `latest` and `next`, and the npm pages show the newest one.)
 
 **Status (September 25):** done, except `CHANGELOG.md`'s publication date, which is set at publish time. The install test is `pnpm test:install`, and its registry mode (`STREAMOTTER_INSTALL_FROM=registry`) is the verification step after publishing. The build, every suite, the install test, tagging, publishing, registry verification, promotion, and corrections are in the [release checklist](./RELEASE_CHECKLIST.md). For a brand-new package, the registry may also point `latest` at the first version published; the checklist says how to check.
 
@@ -69,7 +69,7 @@ Each package page is its README, so each gets a short, runnable guide with links
 | `@streamotter/contracts` | Types and config validation for tooling authors; most users do not install it directly. |
 | `@streamotter/workbench` | One paragraph: it is served by `streamotter dev`. |
 
-**Status (September 25):** the five READMEs are written with absolute links. The install test checks that each tarball contains its README and has no relative links. Every code sample was type-checked against the installed packages, and the CLI README's first-run flow was run as written.
+**Status (September 25):** the guides are written in `docs/guides/` ([getting started](./guides/getting-started.md), [existing app](./guides/existing-app.md), [Kafka](./guides/kafka.md), [troubleshooting](./guides/troubleshooting.md)), and [DEPLOYMENT.md](./DEPLOYMENT.md) is now the npm-based production guide. The root README leads with the npm install, the guides, and the packages, and links to npm. Each package README links to the guides and to the other packages. Because npm shows a version's own README, `0.1.0-rc.2` carries these READMEs to npm. The five READMEs are written with absolute links. The install test checks that each tarball contains its README and has no relative links. Every code sample was type-checked against the installed packages, and the CLI README's first-run flow was run as written.
 
 Longer guides — adding live state to an existing app, Kafka and TLS/SASL setup, and deployment behind a proxy — come from the existing docs. They should live where the site can also publish them; coordinate with workstream 4.
 
@@ -88,6 +88,8 @@ Preparation (no remote needed):
 Pushing publishes code and is done only with the owner's explicit go-ahead. The repository is public, so the npm pages' links resolve.
 
 ### 4. Home site and `/demo` (separate chat)
+
+The owner will build the home site with ChatGPT Codex. The guides in `docs/guides/` are plain Markdown, so the site can publish them.
 
 Part of this release and its Gate B, planned in detail in its own chat per [the home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md). Dependencies on this plan: the demo runs the **published** release candidate, and the site's install instructions and links point at the real npm packages and GitHub repository.
 

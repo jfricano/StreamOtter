@@ -1,6 +1,6 @@
 {
   "name": "@streamotter/client",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "StreamOtter browser SDK: subscribe to state channels with authoritative snapshots, revision-ordered updates, and explicit live/stale states over Socket.IO.",
   "keywords": ["streamotter", "kafka", "socket.io", "websocket", "realtime", "live-data", "state-sync", "browser", "typescript"],
   "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/client#readme",
@@ -10,6 +10,8 @@
   "author": "Orca Solutions",
   "type": "module",
   "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "streamotter-source": "./src/index.ts",

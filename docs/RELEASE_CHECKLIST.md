@@ -15,7 +15,7 @@ Applies to every release, starting with `0.1.0-rc.1`. The five public packages (
 
 - [ ] `node scripts/release/set-version.mjs <version>` sets the version in all five manifests. The install test fails if they differ.
 - [ ] `CHANGELOG.md`: complete the entry and replace "not yet published" with the date.
-- [ ] Package READMEs (`packages/*/README.md`, `apps/workbench/README.md`): the status line and the `@next` install commands must match the release. Remove the release-candidate notice for a stable release.
+- [ ] Package READMEs (`packages/*/README.md`, `apps/workbench/README.md`): the status line must match the release. Remove the release-candidate notice for a stable release. npm shows the README of the version tagged `latest`, so README changes reach npm only with a new version.
 - [ ] `README.md` and `docs/IMPLEMENTATION_STATUS.md` state accurately what is published.
 - [ ] Commit.
 
@@ -57,16 +57,26 @@ git push origin main v<version>          # owner go-ahead
 
 ## 5. Publish (owner)
 
+npm requires two-factor authentication to publish. Pass a fresh code from your authenticator app with `--otp`; codes last about 30 seconds.
+
 ```bash
 npm login
 pnpm -r --filter @streamotter/contracts --filter @streamotter/client --filter @streamotter/gateway \
-  --filter @streamotter/workbench --filter @streamotter/cli publish --tag next --access public
+  --filter @streamotter/workbench --filter @streamotter/cli publish --tag <tag> --access public --otp <code>
 ```
 
+**Which tag.** npm pointed `latest` at `0.1.0-rc.1` when the packages were first published. So until the first stable version, publish each release candidate with `--tag latest`, then point `next` at it too:
+
+```bash
+for p in contracts client gateway workbench cli; do npm dist-tag add @streamotter/$p@<version> next --otp <code>; done
+```
+
+From the first stable version on, publish stable versions with `--tag latest`, and prereleases with `--tag next` only.
+
 - The real publish keeps pnpm's git checks: a clean tree on the publish branch, in sync with the remote. That's why the push in step 4 comes first.
-- Use `--tag next` for release candidates. Without an explicit tag, a prerelease can become `latest`.
+- Always pass `--tag` explicitly.
 - pnpm publishes in dependency order and skips versions already on the registry. If a one-time password expires or the network fails partway, rerun the same command.
-- For a **brand-new** package, the registry may also point `latest` at the first version published, whatever `--tag` says. Check with `npm dist-tag ls` in step 6. `latest` cannot be removed, only moved.
+- A **brand-new** package gets `latest` on its first publish, whatever `--tag` says (this happened for `0.1.0-rc.1`). Check with `npm dist-tag ls` in step 6. `latest` can be moved but not removed.
 
 ## 6. Verify from the registry
 

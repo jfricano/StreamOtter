@@ -2,10 +2,10 @@
 
 The StreamOtter Node.js gateway. It consumes Kafka (or deterministic fixtures during development), runs **your** handlers to decide identity, access, public payload, and authoritative state, and delivers state channels to browsers using [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client). Each subscription gets a snapshot, then full-state updates ordered by revision, with bounded queues and explicit `live`/`stale` states.
 
-> **Release candidate.** `0.1.0-rc.1` is published under the `next` tag. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
+> **Release candidate** of StreamOtter `0.1.0`; the API may still change before `0.1.0`. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
 
 ```bash
-npm install @streamotter/gateway@next
+npm install @streamotter/gateway
 ```
 
 Requires Node.js 24 or later. ESM only, with TypeScript declarations included. Kafka access uses KafkaJS 2.2.4 behind an internal adapter. Browser delivery uses Socket.IO 4.8.3 over WebSocket.
@@ -125,6 +125,7 @@ console.log(`StreamOtter listening on ${origin} (${path})`);
 process.once("SIGTERM", () => void gateway.stop({ timeoutMs: 10_000 }));
 ```
 
+- This is an ES module (`"type": "module"` in your `package.json`), because it uses top-level `await`.
 - `defineProject` validates the configuration synchronously and throws `CONFIG_INVALID` with every issue.
 - `start()` rolls back and rejects if startup fails or takes longer than 30 seconds. A stopped gateway cannot restart; create a new one.
 - `mode: "production"` refuses fixture sources, plaintext Kafka, and the `development` option, and requires an exact browser `Origin` on every connection. `mode: "development"` accepts `development: { principals, fixtures }` for local work.
@@ -145,14 +146,30 @@ Revocation takes effect immediately, including while `authorize` or `snapshot` i
 
 ## Production boundary
 
-Run **exactly one gateway per project** (V1 has no multi-gateway coordination), behind a TLS-terminating proxy that forwards WebSocket upgrades and the browser's `Origin`. There is no management or health endpoint in production. See [Running StreamOtter](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md) for the verified reverse-proxy recipe and the [Kafka support matrix](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md#kafka-support-matrix-kafkajs-224--apache-kafka-412): TLS, and TLS with SASL PLAIN and SCRAM-SHA-256/512, are verified against Apache Kafka 4.1.2. Other broker versions and managed services are unverified.
+Run **exactly one gateway per project** (V1 has no multi-gateway coordination), behind a TLS-terminating proxy that forwards WebSocket upgrades and the browser's `Origin`. There is no management or health endpoint in production. See [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md) for the verified reverse-proxy recipe and the [Kafka support matrix](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md#kafka-support-matrix-kafkajs-224--apache-kafka-412): TLS, and TLS with SASL PLAIN and SCRAM-SHA-256/512, are verified against Apache Kafka 4.1.2. Other broker versions and managed services are unverified.
 
 `@streamotter/gateway/management` is the development-only management API used by `streamotter dev`; it refuses production gateways. `@streamotter/gateway/internals` exists for StreamOtter's own CLI and is not a stable API.
 
-## More
+## Documentation
 
-- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): handlers and lifecycle (§3), synchronization (§5), source progress and limits (§6), access (§7)
+- [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md): handlers, revisions, the outbox, and revocation, step by step
+- [Connect to Kafka](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/kafka.md): topic shape, TLS and SASL, bad records, crashes, and diagnostics
+- [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md): `streamotter start`, supervision, and the reverse-proxy recipe
+- [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md)
+- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): handlers and lifecycle (§3), synchronization (§5), source progress and limits (§6), and access (§7)
 - [Reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard): fixture and Kafka handlers for a real app
-- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues)
+- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues) · [Security policy](https://github.com/jfricano/StreamOtter/blob/main/SECURITY.md)
+
+## StreamOtter packages
+
+| Package | |
+| --- | --- |
+| [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | Scaffold, validate, generate types, develop with the workbench, and run the production gateway |
+| [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up |
+| [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | **This package.** Handler types, and running the gateway from your own Node.js code |
+| [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors |
+| [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets, installed by the CLI |
+
+All five are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
 
 MIT License © 2026 Orca Solutions

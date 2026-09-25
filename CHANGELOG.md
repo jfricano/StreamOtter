@@ -2,9 +2,26 @@
 
 All five packages (`@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, `@streamotter/workbench`) are released together with the same version. Package versions follow [Semantic Versioning](https://semver.org/) and are independent of the V1 protocol (`protocolVersion: 1`) and configuration format (`configVersion: 1`). Before 1.0.0, a minor release may contain breaking API changes; they will be listed here.
 
+## [0.1.0-rc.2] — 2026-09-25
+
+Documentation and packaging. The gateway, SDK, CLI, and workbench code is unchanged from `0.1.0-rc.1`.
+
+### Added
+
+- Guides: [getting started](./docs/guides/getting-started.md), [adding live state to an existing app](./docs/guides/existing-app.md), [connecting to Kafka](./docs/guides/kafka.md), and [troubleshooting](./docs/guides/troubleshooting.md). The [production guide](./docs/DEPLOYMENT.md) is rewritten for npm installs, with supervision and restart-after-crash advice.
+- `main` and `types` fields in the package manifests, for tools that don't read `exports`.
+
+### Changed
+
+- Package READMEs (the npm pages): install commands without a tag, links to the guides, and a table of the StreamOtter packages.
+
+### Fixed
+
+- Tests only: the Kafka restart-after-crash test could miss its 30-second startup deadline and then hang its suite; it now waits for the crashed member to leave the consumer group, and always cleans up. Topic creation right after the broker starts no longer fails, and every test script exits once its tests finish (`--test-force-exit`).
+
 ## [0.1.0-rc.1] — 2026-09-25
 
-First public release candidate of StreamOtter V1, released under the npm `next` tag.
+First public release candidate of StreamOtter V1, published under the npm `next` tag. Because the packages were new, npm also pointed `latest` at it.
 
 ### Added
 
@@ -22,4 +39,5 @@ Acceptance scenarios, real-Kafka behavior (Apache Kafka 4.1.2), a declared-workl
 
 A single gateway per project, no durable replay or revocation store, no production health endpoint, Chromium-only browser checks, and Kafka verification against one broker version. Details are in the implementation status document.
 
+[0.1.0-rc.2]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.2
 [0.1.0-rc.1]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.1

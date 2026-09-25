@@ -1,6 +1,6 @@
 {
   "name": "@streamotter/workbench",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "StreamOtter local workbench (static assets), served by `streamotter dev` from the loopback management origin.",
   "keywords": ["streamotter", "kafka", "realtime", "workbench", "developer-tools"],
   "homepage": "https://github.com/jfricano/StreamOtter/tree/main/apps/workbench#readme",

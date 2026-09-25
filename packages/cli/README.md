@@ -2,10 +2,10 @@
 
 The `streamotter` command: scaffold a project, validate its configuration, generate TypeScript channel types, run a development gateway with the local workbench, and start the production gateway.
 
-> **Release candidate.** `0.1.0-rc.1` is published under the `next` tag. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
+> **Release candidate** of StreamOtter `0.1.0`; the API may still change before `0.1.0`. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
 
 ```bash
-npm install @streamotter/cli@next
+npm install @streamotter/cli
 ```
 
 Requires Node.js 24 or later. It installs [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) and the workbench assets. Install it as a regular dependency, because `streamotter start` runs in production.
@@ -15,7 +15,7 @@ Requires Node.js 24 or later. It installs [`@streamotter/gateway`](https://www.n
 ```bash
 mkdir live-jobs && cd live-jobs
 npm init -y
-npm install @streamotter/cli@next @streamotter/client@next
+npm install @streamotter/cli @streamotter/client
 npx streamotter init .
 ```
 
@@ -64,10 +64,12 @@ npx streamotter generate --config streamotter.json --out generated
 
 This writes `generated/streamotter.generated.ts` (`AppChannels`, the parameter and payload types, and `channelVersions`) and `generated/streamotter.client.example.ts`. The generator overwrites only files that carry its own marker. Use the types with [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) in the browser and with `HandlerRegistry<AppChannels>` on the server. Numeric ranges and string lengths are still checked at runtime.
 
+To see a real page update live, [Getting started](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md) continues from here: it adds a development-only token to `authenticate` and serves `web/example.ts` with Vite.
+
 ## Go to production
 
 1. Implement `authenticate` with your real session verification, and read snapshots from your authoritative store.
-2. Replace the fixture source with a Kafka source over TLS (optionally with SASL); see the [gateway guide](https://www.npmjs.com/package/@streamotter/gateway).
+2. Replace the fixture source with a Kafka source over TLS (optionally with SASL); see [Connect to Kafka](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/kafka.md).
 3. Compile your handlers to JavaScript (the CLI loads compiled modules only and refuses `.ts` files).
 4. Run exactly one gateway per project:
 
@@ -81,7 +83,7 @@ NODE_ENV=production npx streamotter start --config streamotter.json --handlers d
 - missing secret environment variables or unreadable CA files, without printing their values;
 - browser connections whose `Origin` is missing or not listed in `gateway.allowedOrigins` (no wildcards).
 
-Startup waits until every source has joined its consumer group (30-second deadline). If a source fails, `start` prints staged diagnostics and exits.
+Startup waits until every source has joined its consumer group (30-second deadline). If a source fails, `start` prints staged diagnostics and exits. Supervision, restarts after a crash, and the reverse-proxy recipe are in [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md).
 
 ## Commands and exit codes
 
@@ -95,10 +97,25 @@ Startup waits until every source has joined its consumer group (30-second deadli
 
 Exit codes: `0` success, `2` invalid input or configuration, `1` startup or runtime failure. `SIGINT` and `SIGTERM` shut down gracefully (10-second deadline) and exit 0.
 
-## More
+## Documentation
 
-- [Running StreamOtter](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md): local development, the production boundary, and a verified reverse-proxy recipe
-- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): configuration (§2), management and workbench (§10), CLI (§11)
-- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues)
+- [Getting started](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md): this walkthrough, continued to a live web page
+- [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md)
+- [Connect to Kafka](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/kafka.md) and [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md)
+- [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md): every CLI refusal and what to do about it
+- [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): configuration (§2), management and the workbench (§10), and the CLI (§11)
+- [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues) · [Security policy](https://github.com/jfricano/StreamOtter/blob/main/SECURITY.md)
+
+## StreamOtter packages
+
+| Package | |
+| --- | --- |
+| [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | **This package.** Scaffold, validate, generate types, develop with the workbench, and run the production gateway |
+| [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up |
+| [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Handler types, and running the gateway from your own Node.js code |
+| [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors |
+| [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets, installed by the CLI |
+
+All five are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
 
 MIT License © 2026 Orca Solutions

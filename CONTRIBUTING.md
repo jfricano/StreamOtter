@@ -19,6 +19,8 @@ pnpm build
 pnpm example        # the reference app at http://localhost:3000, the workbench at http://127.0.0.1:7401
 ```
 
+`pnpm example` prints a one-time management token for the workbench; [examples/order-dashboard](./examples/order-dashboard/README.md) walks through its scenarios. To run the CLI from source against a project of your own, use `pnpm streamotter <command>` (for example `pnpm streamotter init ../my-app`), or `packages/cli/bin/streamotter.js` after `pnpm build`.
+
 Tests and type-checks run the TypeScript sources through the `streamotter-source` export condition. `pnpm build` emits `dist/`, which is what the packages publish. Each package's `publishConfig.exports` repeats its `exports` without that condition, so keep the two maps in step. `pnpm test:install` fails if they differ.
 
 ## Test tiers
@@ -35,6 +37,21 @@ Tests and type-checks run the TypeScript sources through the `streamotter-source
 With the broker running, `pnpm test:install` also runs the installed `streamotter start` against TLS Kafka.
 
 The setup scripts download pinned, checksum-verified tools into the gitignored `.local/` folder: Apache Kafka 4.1.2 (plus a JDK on Apple silicon; elsewhere they use Java 17+ from `PATH`), headless Chromium, and Caddy. Stop the broker with `pnpm kafka:stop`, and delete `.local/` to remove everything.
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `packages/contracts` | Public types, protocol constants, and schema and configuration validation, shared by the gateway and the SDK |
+| `packages/gateway` | `createGateway`, `defineProject`, the fixture and KafkaJS sources, synchronization, the Socket.IO transport, and the development management API |
+| `packages/client` | The `createClient` browser SDK |
+| `packages/cli` | `streamotter init`, `validate`, `generate`, `dev`, and `start`, plus the TypeScript generator |
+| `apps/workbench` | The local workbench UI (Connect, Define, Preview, Inspect, Export), served by `streamotter dev` |
+| `examples/order-dashboard` | The reference application: fixture and Kafka modes, and vanilla TypeScript and React views |
+| `contracts/v1` | The V1 contract surface, re-exporting the implementation, with the compile-time example and negative checks |
+| `tests` | Integration, Kafka, load, browser (Playwright), deployment, and install tests |
+| `scripts/kafka`, `scripts/browser`, `scripts/deploy` | Project-local Kafka, Playwright, and Caddy setup; `scripts/release` holds release helpers |
+| `docs` | User guides (`docs/guides`), the specification, status, and project documents; see [docs/README.md](./docs/README.md) |
 
 ## Making a change
 
