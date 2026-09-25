@@ -1,7 +1,13 @@
 {
   "name": "@streamotter/cli",
-  "version": "0.1.0",
-  "description": "StreamOtter V1 command-line interface: init, validate, generate, dev, start.",
+  "version": "0.1.0-rc.1",
+  "description": "StreamOtter command-line interface: init, validate, generate, dev (with the local workbench), and start.",
+  "keywords": ["streamotter", "kafka", "socket.io", "realtime", "live-data", "state-sync", "cli", "codegen", "typescript"],
+  "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/cli#readme",
+  "bugs": { "url": "https://github.com/jfricano/StreamOtter/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/jfricano/StreamOtter.git", "directory": "packages/cli" },
+  "license": "MIT",
+  "author": "Orca Solutions",
   "type": "module",
   "bin": {
     "streamotter": "./bin/streamotter.js"
@@ -16,11 +22,19 @@
   "files": [
     "bin",
     "dist",
-    "src",
-    "templates"
+    "src"
   ],
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   },
   "dependencies": {
     "@streamotter/contracts": "workspace:*",

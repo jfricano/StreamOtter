@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "description": "StreamOtter V1: gateway, browser SDK, CLI, workbench, and reference example.",
+  "license": "MIT",
   "packageManager": "pnpm@11.19.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "build": "tsc -b && pnpm --filter @streamotter/workbench --filter order-dashboard run build",
+    "clean": "rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo apps/workbench/dist",
     "typecheck": "tsc -p tsconfig.check.json && tsc -p apps/workbench/tsconfig.json && tsc -p examples/order-dashboard/tsconfig.web.json && tsc -p examples/order-dashboard/tsconfig.json --noEmit",
     "check:contracts": "tsc -p contracts/v1/tsconfig.json",
     "test": "node --conditions=streamotter-source --test --test-concurrency=4 \"packages/*/test/**/*.test.ts\" \"tests/integration/**/*.test.ts\"",
@@ -28,7 +30,8 @@
     "browsers:setup": "./scripts/browser/setup.sh",
     "test:browser": "pnpm build && node --conditions=streamotter-source --test --test-concurrency=1 --test-timeout=120000 \"tests/browser/**/*.test.ts\"",
     "deploy:setup": "./scripts/deploy/setup-caddy.sh",
-    "test:deploy": "pnpm build && node --conditions=streamotter-source --test --test-concurrency=1 --test-timeout=240000 \"tests/deploy/**/*.test.ts\""
+    "test:deploy": "pnpm build && node --conditions=streamotter-source --test --test-concurrency=1 --test-timeout=240000 \"tests/deploy/**/*.test.ts\"",
+    "test:install": "pnpm build && node --conditions=streamotter-source --test --test-concurrency=1 --test-timeout=600000 \"tests/install/**/*.test.ts\""
   },
   "devDependencies": {
     "@streamotter/client": "workspace:*",

@@ -1,7 +1,13 @@
 {
   "name": "@streamotter/gateway",
-  "version": "0.1.0",
-  "description": "StreamOtter V1 Node.js gateway: sources, handlers, synchronization, Socket.IO delivery, and development management.",
+  "version": "0.1.0-rc.1",
+  "description": "StreamOtter Node.js gateway: Kafka and fixture sources, application-owned access handlers, snapshot synchronization, and bounded Socket.IO delivery.",
+  "keywords": ["streamotter", "kafka", "kafkajs", "socket.io", "websocket", "realtime", "live-data", "state-sync", "gateway", "typescript"],
+  "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/gateway#readme",
+  "bugs": { "url": "https://github.com/jfricano/StreamOtter/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/jfricano/StreamOtter.git", "directory": "packages/gateway" },
+  "license": "MIT",
+  "author": "Orca Solutions",
   "type": "module",
   "exports": {
     ".": {
@@ -26,6 +32,23 @@
   ],
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./management": {
+        "types": "./dist/management/index.d.ts",
+        "default": "./dist/management/index.js"
+      },
+      "./internals": {
+        "types": "./dist/internals.d.ts",
+        "default": "./dist/internals.js"
+      }
+    }
   },
   "dependencies": {
     "@streamotter/contracts": "workspace:*",

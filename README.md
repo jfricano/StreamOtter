@@ -4,7 +4,7 @@ Make live data straightforward to build with—and understandable when it breaks
 
 StreamOtter carries KafkaSocks’ original goal of simpler Kafka-to-frontend integration into a broader developer experience: connect, define delivery behavior, integrate, inspect, and test recovery.
 
-**Status: V1 is implemented and tested in this repository** — a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI, a local web workbench, and a reference order-status application. It is a release candidate that meets the Gate A readiness checks, not a published release: packages are not on npm, and the public home site and hosted demo are the next milestone. What was verified, how, and the known limitations are recorded in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md).
+**Status: V1 is implemented and tested in this repository** — a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI, a local web workbench, and a reference order-status application. It is a release candidate that meets the Gate A readiness checks, not a published release. The five packages are prepared as `0.1.0-rc.1` and tested as installed packages, but they are not on npm yet, and the public home site and hosted demo are the next milestone. What was verified, how, and the known limitations are recorded in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md).
 
 ## What V1 does
 
@@ -42,6 +42,7 @@ pnpm check:contracts    # the V1 contract, example, and negative type checks aga
 pnpm typecheck          # strict type-check of every package, app, example, and test
 pnpm test               # unit + integration tests (fixture-backed gateway and SDK, CLI, management, example)
 pnpm test:load          # declared-workload resource test
+pnpm test:install       # pack the five packages, install them with npm outside the workspace, use them as an app
 pnpm kafka:setup        # once: checksum-verified JDK 21 + Apache Kafka 4.1.2 into .local/
 pnpm kafka:start        # local broker: PLAINTEXT :19092, TLS :19093, SASL_SSL :19094
 pnpm test:kafka         # real-Kafka acceptance tests (builds first)
@@ -64,7 +65,7 @@ Everything downloaded by the setup scripts (JDK, Kafka, Chromium, Caddy) lives i
 | `apps/workbench` | Local workbench UI (Connect, Define, Preview, Inspect, Export), served by `streamotter dev` |
 | `examples/order-dashboard` | Reference application: fixture and Kafka modes, vanilla TypeScript and React views |
 | `contracts/v1` | The V1 contract surface, re-exporting the implementation, with the compile-time example and negative checks |
-| `tests` | Integration, Kafka, load, browser (Playwright), and deployment tests |
+| `tests` | Integration, Kafka, load, browser (Playwright), deployment, and install tests |
 | `scripts/kafka` | Local broker setup/start/stop (native) and an unexercised Docker Compose alternative |
 | `scripts/browser`, `scripts/deploy` | Project-local Playwright browser and Caddy setup |
 
@@ -77,5 +78,11 @@ Everything downloaded by the setup scripts (JDK, Kafka, Chromium, Caddy) lives i
 - [Implementation status](./docs/IMPLEMENTATION_STATUS.md): what is implemented, commands, verified results, support matrix, and limitations.
 - [Running StreamOtter](./docs/DEPLOYMENT.md): local development and the single-gateway production boundary.
 - [Release plan](./docs/RELEASE_PLAN.md): npm packages, GitHub, guides, home site and demo, and the announcement — decisions, workstreams, and sequencing.
+- [Release checklist](./docs/RELEASE_CHECKLIST.md) and [changelog](./CHANGELOG.md): how each release is built, verified, tagged, published, and corrected.
+- [Contributing](./CONTRIBUTING.md) and [security policy](./SECURITY.md).
 - [Implementation handoff](./docs/IMPLEMENTATION_HANDOFF.md): reading order, build sequence, and acceptance checks.
 - [Home site and demo plan](./docs/WEBSITE_AND_DEMO_PLAN.md): public experience, integrated demo, launch scope, and readiness gates (next milestone; not implemented).
+
+## License
+
+[MIT](./LICENSE) © 2026 Orca Solutions. Each package has a usage guide that becomes its npm page when published: [client](./packages/client/README.md), [gateway](./packages/gateway/README.md), [CLI](./packages/cli/README.md), [contracts](./packages/contracts/README.md), [workbench](./apps/workbench/README.md).

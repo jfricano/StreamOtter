@@ -1,7 +1,13 @@
 {
   "name": "@streamotter/client",
-  "version": "0.1.0",
-  "description": "StreamOtter V1 TypeScript browser SDK using Socket.IO.",
+  "version": "0.1.0-rc.1",
+  "description": "StreamOtter browser SDK: subscribe to state channels with authoritative snapshots, revision-ordered updates, and explicit live/stale states over Socket.IO.",
+  "keywords": ["streamotter", "kafka", "socket.io", "websocket", "realtime", "live-data", "state-sync", "browser", "typescript"],
+  "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/client#readme",
+  "bugs": { "url": "https://github.com/jfricano/StreamOtter/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/jfricano/StreamOtter.git", "directory": "packages/client" },
+  "license": "MIT",
+  "author": "Orca Solutions",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -12,6 +18,15 @@
     }
   },
   "files": ["dist", "src"],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
   "dependencies": {
     "@streamotter/contracts": "workspace:*",
     "socket.io-client": "4.8.3"

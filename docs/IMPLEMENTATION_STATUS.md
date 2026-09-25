@@ -1,6 +1,6 @@
 # StreamOtter V1 implementation status
 
-September 24, 2026 · V1 release candidate (unreleased; packages not published)
+September 25, 2026 · V1 release candidate, packaged as `0.1.0-rc.1` (not yet published to npm)
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and hosted demo (Gate B milestone) are **not started**.
 
@@ -13,6 +13,7 @@ This document records what exists, the commands that verify it, the results obse
 | OS / CPU | macOS (Darwin 25.6), Apple silicon (arm64), 10 cores |
 | Node.js | **24.21.0** (the specification's target; project-local in `.local/node24`) and **26.9.0** |
 | pnpm / TypeScript | 11.19.0 / 5.9.3 |
+| npm (install test) | 11.19.1 with Node 26, 11.19.0 with Node 24 |
 | Socket.IO server and client | 4.8.3 (pinned, identical) |
 | KafkaJS | 2.2.4 (pinned) |
 | Apache Kafka | 4.1.2, single-node KRaft, native (`scripts/kafka`), Eclipse Temurin JDK 21.0.12.1 |
@@ -35,11 +36,12 @@ This document records what exists, the commands that verify it, the results obse
 | Reference example | `examples/order-dashboard` | Application-owned identity, ownership rules, snapshot storage; fixture and Kafka modes; vanilla TypeScript and React views; reproducible scenarios. |
 | Local Kafka | `scripts/kafka` | Checksum-verified download of Kafka 4.1.2 and a JDK; broker with PLAINTEXT/SSL/SASL_SSL listeners and generated certificates; an unexercised Docker Compose alternative. |
 | Docs | `docs/DEPLOYMENT.md`, this file, `README.md`, V1 spec §13 | Local setup, the single-gateway production boundary, and a verified reverse-proxy recipe. |
+| Packaging | package manifests, `LICENSE`, package READMEs, `tests/install`, `docs/RELEASE_CHECKLIST.md` | MIT license; version `0.1.0-rc.1` for all five public packages; published manifests pin internal dependencies to that version and drop the in-repository `streamotter-source` condition; each package's README is its npm-page guide; the workbench ships the license notices of the Socket.IO client code it bundles. |
 | Browser and deployment tests | `tests/browser`, `tests/deploy`, `scripts/browser`, `scripts/deploy` | Playwright checks of the workbench and example; a Caddy-fronted production deployment check. |
 
 ## Verification commands and results
 
-All runs on September 24, 2026 in the environment above. Build, checks, and every test suite passed on both Node 24.21.0 and Node 26.9.0 (timings from Node 26); install and the clean-checkout simulation ran on Node 26.
+Runs on September 24, 2026 in the environment above, repeated on September 25 after the packaging changes (every suite passed again; see the note on `pnpm test` below). Build, checks, and every test suite passed on both Node 24.21.0 and Node 26.9.0 (timings from Node 26); install and the clean-checkout simulation ran on Node 26.
 
 | Command | Result |
 | --- | --- |
@@ -52,7 +54,23 @@ All runs on September 24, 2026 in the environment above. Build, checks, and ever
 | `pnpm test:load` | Passed (results below). |
 | `pnpm test:browser` | **13 / 13 passed**: 7 workbench and 6 example checks in headless Chromium (builds first). |
 | `pnpm test:deploy` | **4 / 4 passed**: the Caddy-fronted production deployment below (builds first; needs the broker and Caddy). |
+| `pnpm test:install` | **14 / 14 passed** on Node 24.21.0 and 26.9.0 with the broker running (13 plus one skipped without it): the installed-package checks below. |
+| `pnpm publish --dry-run` (all five) | Passes for `0.1.0-rc.1` in dependency order (contracts, client, gateway, workbench, cli). |
 | Clean checkout | The tree copied without `node_modules`, build output, `.local/`, or data: install, build, `check:contracts`, `typecheck`, `test` (103 tests at that point), `test:load`, and `pnpm example` all succeeded. |
+
+### Installed packages (`pnpm test:install`)
+
+`tests/install/install.test.ts` packs the five public packages with pnpm (as `pnpm publish` does), installs the tarballs with npm into a new project in the system temporary directory (no workspace links; `streamotter-source` unavailable), and checks:
+
+- **Tarballs:** one version across all five; `workspace:` rewritten to that exact version; MIT `license`, `repository`, `homepage`, `bugs`, and public access; published `exports` equal the workspace `exports` minus the source condition; only `package.json`, `README.md`, `LICENSE`, `dist`, `src`, and `bin` at the top level; `LICENSE` identical to the repository's; README links absolute; `dist` contains exactly the compiled sources (no stale output) with declarations; the workbench assets and third-party license notices.
+- **Installation:** real, deduplicated copies inside the consumer project; the `streamotter` bin linked.
+- **CLI:** `init`, `validate` (fingerprint), `generate`; `dev` serves the workbench page and its assets from the installed `@streamotter/workbench`, and a script using the installed `@streamotter/client` creates a preview session, subscribes, advances the fixture, and receives revisions 0 → 100 %, then `SIGINT` exits 0; `start` refuses the fixture scaffold with exit code 2.
+- **Bundling:** esbuild bundles the scaffold's browser code for `platform: browser`; every input comes from the consumer project, the SDK and contracts from `dist/`, none from `src/`.
+- **Types:** strict `tsc` (with `skipLibCheck: false` and `exactOptionalPropertyTypes`) over browser code (bundler resolution, DOM, no Node.js types) and server code (NodeNext) importing every public entry point, with `@ts-expect-error` checks that generated channel types reach the published generics.
+- **Programmatic gateway:** `createGateway` + `@streamotter/gateway/management` + the installed SDK: snapshot revision 1, fixture update revision 2, then session revocation (`closedSubscriptions: 1, closedConnections: 1`), the client in `auth-required`, the subscription `stale`, and `live` not restored.
+- **With the broker running:** the installed `streamotter start` in production mode consumes Kafka over TLS, has no management routes, delivers a produced update, and exits 0 on `SIGTERM`.
+
+After publishing, `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` runs the same checks against the version on the npm registry. The package READMEs' code samples were also type-checked against the installed packages, the gateway README's configuration validated, and the CLI README's first-run flow (`npm init`, install, `init .`, `validate`, `dev`, `generate`) run as written; those were one-time checks, not part of the automated test.
 
 ### Acceptance scenarios (V1 specification §12)
 
@@ -129,11 +147,13 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 
 - **Browsers:** automated and manual checks use Chromium only. Firefox and Safari (WebKit) are untested.
 - **Deployment** was verified on one machine: Caddy on loopback with a private CA. Real hosting, public certificates, and other proxies (nginx, cloud load balancers) are unverified; their only requirements are WebSocket upgrade forwarding on the socket path and passing the browser's `Origin` header.
-- Tests execute TypeScript sources through Node's type stripping and the `streamotter-source` export condition; published artifacts are the compiled `dist/`.
+- Tests execute TypeScript sources through Node's type stripping and the `streamotter-source` export condition; published artifacts are the compiled `dist/`, which `pnpm test:install` exercises from packed tarballs.
 - **No production health endpoint** (management is development-only by design); see `docs/DEPLOYMENT.md`.
 - **Single gateway.** No multi-gateway operation, shared revocation, or durable revocation store, by design for V1.
 - **Workbench:** one preview subscription at a time; the management token must be re-entered after a reload; the workbench does not run when the gateway fails to start (the CLI prints the same staged diagnostics instead).
-- **Packages are not published** to npm and have not yet been tested as installed packages; the CLI runs from this repository. See the [release plan](./RELEASE_PLAN.md).
+- **Packages are not yet published** to npm. They are packaged as `0.1.0-rc.1` and tested as installed packages (`pnpm test:install`); publishing follows the [release checklist](./RELEASE_CHECKLIST.md) and the [release plan](./RELEASE_PLAN.md).
+- **An unexplained `pnpm test` failure.** On September 25, one of twelve consecutive runs reported 112 / 113 (one failing test); the output of that run was not kept, so the test is not identified. The next eleven runs passed 113 / 113. Treat it as a possible timing-sensitive test until it is reproduced and fixed.
+- **CI workflows** (`.github/workflows/ci.yml`, `extended.yml`) are written but have not run yet: there is no GitHub remote. The Linux paths of the Kafka and browser setup (Java from `actions/setup-java`, Playwright's system libraries) are exercised only there.
 
 ## Gate A status (home site and demo plan)
 

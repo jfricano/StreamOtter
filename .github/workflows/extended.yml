@@ -1,0 +1,53 @@
+# Nightly and on demand: real Kafka (Apache Kafka 4.1.2), the install test including the installed
+# `streamotter start` over TLS Kafka, browser tests (headless Chromium), and the production
+# deployment check behind Caddy. Every download is pinned and checksum-verified by the setup scripts.
+name: Extended checks
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extended:
+    name: Kafka, install, browser, and deployment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      # scripts/kafka/setup.sh pins a JDK for macOS only; on Linux it uses the java on PATH.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Start Kafka 4.1.2
+        run: pnpm kafka:setup && pnpm kafka:start
+      - name: Install headless Chromium and its system libraries
+        run: |
+          pnpm browsers:setup
+          sudo "$(command -v node)" tests/node_modules/playwright/cli.js install-deps chromium
+      - run: pnpm deploy:setup
+      - run: pnpm test:kafka
+      - run: pnpm test:install
+      - run: pnpm test:browser
+      - run: pnpm test:deploy
+      - name: Stop Kafka
+        if: always()
+        run: pnpm kafka:stop
+      - name: Upload the broker log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kafka-log
+          path: .local/kafka.log
+          if-no-files-found: ignore

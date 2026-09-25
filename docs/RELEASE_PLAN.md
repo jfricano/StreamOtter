@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 24, 2026 · Planning; nothing published yet
+September 25, 2026 · Workstreams 1–3 prepared on branch `release/0.1.0-rc.1`; nothing pushed or published
 
 ## Goal
 
@@ -12,25 +12,27 @@ Every public claim must match verified behavior: no invented adoption, performan
 
 | Item | State |
 | --- | --- |
-| Packages | `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, `@streamotter/workbench` build to `dist/` with types and conditional exports. **Never tested as installed packages**: all tests used workspace links. |
+| Packages | All five are ready to publish as `0.1.0-rc.1`: metadata, `LICENSE`, and a README guide in each, and `publishConfig` that drops the in-repository source condition. `pnpm test:install` packs them, installs the tarballs with npm outside the workspace, and uses them as an application would (14 / 14 on Node 24 and 26 with the broker). `pnpm publish --dry-run` passes for all five. |
 | npm names | On September 24, 2026 none of the five names nor plain `streamotter` was published, and the registry reported no `streamotter` organization. Only creating the organization confirms availability. |
-| License | **None.** No LICENSE file or `license` fields; this blocks publishing. |
-| Source control | Local git repository, branch `main`, no remote. |
-| Version fields | Every package is `0.1.0`; nothing is tagged. |
+| License | MIT, © 2026 Orca Solutions: a root `LICENSE`, a copy in each package, and `license` fields. The workbench also ships the notices of the Socket.IO client code it bundles. |
+| Source control | Local git repository with no remote. The release work is on branch `release/0.1.0-rc.1`. The target is `github.com/jfricano/StreamOtter`. `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, and CI workflows are written; the workflows have not run yet. Pre-push scan: no secrets, keys, certificates, `.local/`, or build output in the tree or history. The existing commits' author email is a personal address, which GitHub will display (owner decision below). |
+| Version fields | Every public package is `0.1.0-rc.1` (`scripts/release/set-version.mjs` keeps them together); nothing is tagged. |
 | Site and demo | Planned in the home site and demo plan; not started. |
 | Guides and article | Not started. The README, [deployment guide](./DEPLOYMENT.md), and the [example README](../examples/order-dashboard/README.md) are the starting material. |
 
 ## Decisions for the owner
 
-| Decision | Options and notes |
+| Decision | Status |
 | --- | --- |
-| License | MIT (simplest, most common for JavaScript libraries) or Apache-2.0 (explicit patent grant). Applies to every package and the repository. |
-| npm organization | Create the `streamotter` organization on npmjs.com; the owner holds credentials and 2FA. Claude never handles npm tokens or logins. |
-| First version | `0.1.0-rc.1` (signals pre-1.0 API) or `1.0.0-rc.1` (aligns the package with "V1"). Package SemVer is independent of product milestones and `protocolVersion` per the roadmap. |
-| Which packages are public | All five, or fold the workbench's static assets into `@streamotter/cli` so there are four. |
-| GitHub location | Personal account or an organization (for example `streamotter/streamotter`); public now or at launch. |
-| Publishing method | Manual `pnpm publish` by the owner, or GitHub Actions with an npm automation token the owner creates and npm provenance. |
-| Launch owner and date | Who approves "go", and when. |
+| License | **Decided: MIT**, copyright "Orca Solutions" (also the packages' `author`). |
+| First version | **Decided: `0.1.0-rc.1`** (pre-1.0 API). Package SemVer is independent of product milestones and `protocolVersion`, per the roadmap. |
+| GitHub location | **Decided: `jfricano/StreamOtter`.** Still open: public now or at launch. |
+| Which packages are public | All five, as prepared. Folding the workbench's static assets into `@streamotter/cli` (four packages) remains possible before the first publish. |
+| npm organization | **Open.** Create the `streamotter` organization on npmjs.com; the owner holds the credentials and 2FA. Claude never handles npm tokens or logins. |
+| Publishing method | **Open.** Manual `pnpm publish` by the owner (the [release checklist](./RELEASE_CHECKLIST.md) is written for this), or GitHub Actions with npm provenance and a token or trusted publisher the owner sets up. |
+| Author email in history | **Open.** The existing commits carry a personal email address. Keep it, or rewrite the unpushed history to a GitHub no-reply address before the first push. |
+| Security reporting | **Open.** `SECURITY.md` points to GitHub private vulnerability reporting, which the owner must enable in the repository settings. A `CODE_OF_CONDUCT.md` was not added; decide whether to have one. |
+| Launch owner and date | **Open.** Who approves "go", and when. |
 
 ## Workstreams
 
@@ -53,6 +55,8 @@ Work that needs no owner decisions:
 
 Publish the release candidate under the `next` dist-tag first; promote to `latest` at launch.
 
+**Status (September 25):** done, except `CHANGELOG.md`'s publication date, which is set at publish time. The install test is `pnpm test:install`, and its registry mode (`STREAMOTTER_INSTALL_FROM=registry`) is the verification step after publishing. The build, every suite, the install test, tagging, publishing, registry verification, promotion, and corrections are in the [release checklist](./RELEASE_CHECKLIST.md). For a brand-new package, the registry may also point `latest` at the first version published; the checklist says how to check.
+
 ### 2. Practical guides for the npm pages
 
 Each package page is its README, so each gets a short, runnable guide with links to the full docs:
@@ -65,6 +69,8 @@ Each package page is its README, so each gets a short, runnable guide with links
 | `@streamotter/contracts` | Types and config validation for tooling authors; most users do not install it directly. |
 | `@streamotter/workbench` | One paragraph: it is served by `streamotter dev`. |
 
+**Status (September 25):** the five READMEs are written with absolute links. The install test checks that each tarball contains its README and has no relative links. Every code sample was type-checked against the installed packages, and the CLI README's first-run flow was run as written.
+
 Longer guides — adding live state to an existing app, Kafka and TLS/SASL setup, and deployment behind a proxy — come from the existing docs. They should live where the site can also publish them; coordinate with workstream 4.
 
 ### 3. GitHub repository
@@ -76,6 +82,8 @@ Preparation (no remote needed):
   - Every push: install with the frozen lockfile, build, `check:contracts`, `typecheck`, `test`, `test:load`, and the install test.
   - Nightly or on demand: `test:browser`, and Kafka and deploy jobs (Linux runners need the setup scripts extended beyond macOS, or a Kafka service container).
 - Final review before the first push: no secrets, certificates, or `.local/` content in the tree or history.
+
+**Status (September 25):** `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, and `.github/workflows/ci.yml` (every push and pull request: Node 24 and 26, the frozen-lockfile install, build, `check:contracts`, `typecheck`, `test`, `test:load`, and `test:install`) and `extended.yml` (nightly and on demand, Linux: Java from `actions/setup-java`, then `test:kafka`, `test:install` with the broker, `test:browser`, and `test:deploy`) are in place. The workflows have not run, because there is no remote yet. The pre-push review found nothing to remove.
 
 The owner creates the repository and adds the remote; pushing publishes code and is done only with the owner's explicit go-ahead. Decide whether the repository goes public before or at launch. npm package pages link to it, so it must be reachable by the time `latest` is published.
 
