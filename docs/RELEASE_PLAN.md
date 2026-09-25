@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · Workstreams 1–3 prepared on branch `release/0.1.0-rc.1`; nothing pushed or published
+September 25, 2026 · Workstreams 1–3 done; source public on GitHub; nothing published to npm
 
 ## Goal
 
@@ -15,7 +15,7 @@ Every public claim must match verified behavior: no invented adoption, performan
 | Packages | All five are ready to publish as `0.1.0-rc.1`: metadata, `LICENSE`, and a README guide in each, and `publishConfig` that drops the in-repository source condition. `pnpm test:install` packs them, installs the tarballs with npm outside the workspace, and uses them as an application would (14 / 14 on Node 24 and 26 with the broker). `pnpm publish --dry-run` passes for all five. |
 | npm names | On September 24, 2026 none of the five names nor plain `streamotter` was published, and the registry reported no `streamotter` organization. Only creating the organization confirms availability. |
 | License | MIT, © 2026 Orca Solutions: a root `LICENSE`, a copy in each package, and `license` fields. The workbench also ships the notices of the Socket.IO client code it bundles. |
-| Source control | Local git repository with no remote. The release work is on branch `release/0.1.0-rc.1`. The target is `github.com/jfricano/StreamOtter`. `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, and CI workflows are written; the workflows have not run yet. Pre-push scan: no secrets, keys, certificates, `.local/`, or build output in the tree or history. The existing commits' author email is a personal address, which GitHub will display (owner decision below). |
+| Source control | Public at [github.com/jfricano/StreamOtter](https://github.com/jfricano/StreamOtter) since September 25, 2026 (`main` only; commits authored with a GitHub no-reply address). The pre-push scan found no secrets, keys, certificates, `.local/`, or build output in the tree or history. The CI workflow passed on its first run (Node 24 and 26); the nightly extended workflow has not run yet. |
 | Version fields | Every public package is `0.1.0-rc.1` (`scripts/release/set-version.mjs` keeps them together); nothing is tagged. |
 | Site and demo | Planned in the home site and demo plan; not started. |
 | Guides and article | Not started. The README, [deployment guide](./DEPLOYMENT.md), and the [example README](../examples/order-dashboard/README.md) are the starting material. |
@@ -26,11 +26,11 @@ Every public claim must match verified behavior: no invented adoption, performan
 | --- | --- |
 | License | **Decided: MIT**, copyright "Orca Solutions" (also the packages' `author`). |
 | First version | **Decided: `0.1.0-rc.1`** (pre-1.0 API). Package SemVer is independent of product milestones and `protocolVersion`, per the roadmap. |
-| GitHub location | **Decided: `jfricano/StreamOtter`.** Still open: public now or at launch. |
+| GitHub location | **Decided and done: `jfricano/StreamOtter`, public** since September 25, 2026. |
 | Which packages are public | All five, as prepared. Folding the workbench's static assets into `@streamotter/cli` (four packages) remains possible before the first publish. |
 | npm organization | **Open.** Create the `streamotter` organization on npmjs.com; the owner holds the credentials and 2FA. Claude never handles npm tokens or logins. |
 | Publishing method | **Open.** Manual `pnpm publish` by the owner (the [release checklist](./RELEASE_CHECKLIST.md) is written for this), or GitHub Actions with npm provenance and a token or trusted publisher the owner sets up. |
-| Author email in history | **Open.** The existing commits carry a personal email address. Keep it, or rewrite the unpushed history to a GitHub no-reply address before the first push. |
+| Author email in history | **Decided and done:** before the first push, the history was rewritten to "Jason Fricano" with the account's GitHub no-reply address, and the repository's git configuration uses the same identity. |
 | Security reporting | **Open.** `SECURITY.md` points to GitHub private vulnerability reporting, which the owner must enable in the repository settings. A `CODE_OF_CONDUCT.md` was not added; decide whether to have one. |
 | Launch owner and date | **Open.** Who approves "go", and when. |
 
@@ -83,9 +83,9 @@ Preparation (no remote needed):
   - Nightly or on demand: `test:browser`, and Kafka and deploy jobs (Linux runners need the setup scripts extended beyond macOS, or a Kafka service container).
 - Final review before the first push: no secrets, certificates, or `.local/` content in the tree or history.
 
-**Status (September 25):** `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, and `.github/workflows/ci.yml` (every push and pull request: Node 24 and 26, the frozen-lockfile install, build, `check:contracts`, `typecheck`, `test`, `test:load`, and `test:install`) and `extended.yml` (nightly and on demand, Linux: Java from `actions/setup-java`, then `test:kafka`, `test:install` with the broker, `test:browser`, and `test:deploy`) are in place. The workflows have not run, because there is no remote yet. The pre-push review found nothing to remove.
+**Status (September 25):** `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, and `.github/workflows/ci.yml` (every push and pull request: Node 24 and 26, the frozen-lockfile install, build, `check:contracts`, `typecheck`, `test`, `test:load`, and `test:install`) and `extended.yml` (nightly and on demand, Linux: Java from `actions/setup-java`, then `test:kafka`, `test:install` with the broker, `test:browser`, and `test:deploy`) are in place. On September 25 the repository was created (public) and `main` was pushed. `ci.yml` passed on its first run: both Node versions, every step including `test:install`, about 70 seconds per job. `extended.yml` first runs on its nightly schedule. The pre-push review found nothing to remove.
 
-The owner creates the repository and adds the remote; pushing publishes code and is done only with the owner's explicit go-ahead. Decide whether the repository goes public before or at launch. npm package pages link to it, so it must be reachable by the time `latest` is published.
+Pushing publishes code and is done only with the owner's explicit go-ahead. The repository is public, so the npm pages' links resolve.
 
 ### 4. Home site and `/demo` (separate chat)
 

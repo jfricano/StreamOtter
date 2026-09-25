@@ -24,7 +24,7 @@ jobs:
         node: [24, 26]
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4 # uses the version in package.json "packageManager"
+      - uses: pnpm/action-setup@v6 # uses the version in package.json "packageManager"
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}

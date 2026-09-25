@@ -153,7 +153,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 - **Workbench:** one preview subscription at a time; the management token must be re-entered after a reload; the workbench does not run when the gateway fails to start (the CLI prints the same staged diagnostics instead).
 - **Packages are not yet published** to npm. They are packaged as `0.1.0-rc.1` and tested as installed packages (`pnpm test:install`); publishing follows the [release checklist](./RELEASE_CHECKLIST.md) and the [release plan](./RELEASE_PLAN.md).
 - **An unexplained `pnpm test` failure.** On September 25, one of twelve consecutive runs reported 112 / 113 (one failing test); the output of that run was not kept, so the test is not identified. The next eleven runs passed 113 / 113. Treat it as a possible timing-sensitive test until it is reproduced and fixed.
-- **CI workflows** (`.github/workflows/ci.yml`, `extended.yml`) are written but have not run yet: there is no GitHub remote. The Linux paths of the Kafka and browser setup (Java from `actions/setup-java`, Playwright's system libraries) are exercised only there.
+- **CI:** `.github/workflows/ci.yml` passed on its first GitHub run on September 25 (Ubuntu 24.04, Node 24 and 26: install, build, `check:contracts`, `typecheck`, `test`, `test:load`, `test:install`). `extended.yml` (Kafka, install with the broker, browser, and deployment on Linux) has not run yet, so the Linux paths of the Kafka and browser setup (Java from `actions/setup-java`, Playwright's system libraries) are unverified until it does.
 
 ## Gate A status (home site and demo plan)
 
