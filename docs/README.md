@@ -10,7 +10,7 @@
 | [Run in production](./DEPLOYMENT.md) | `streamotter start`, supervision, reverse proxies, limits, and programmatic use |
 | [Troubleshooting](./guides/troubleshooting.md) | Symptoms, causes, and fixes |
 
-Package guides, also shown on npm: [`@streamotter/cli`](../packages/cli/README.md), [`@streamotter/client`](../packages/client/README.md), [`@streamotter/gateway`](../packages/gateway/README.md), [`@streamotter/contracts`](../packages/contracts/README.md), and [`@streamotter/workbench`](../apps/workbench/README.md).
+Package guides, also shown on npm: [`streamotter`](../packages/streamotter/README.md) (everything in one install), [`@streamotter/cli`](../packages/cli/README.md), [`@streamotter/client`](../packages/client/README.md), [`@streamotter/gateway`](../packages/gateway/README.md), [`@streamotter/contracts`](../packages/contracts/README.md), and [`@streamotter/workbench`](../apps/workbench/README.md).
 
 ## Reference
 

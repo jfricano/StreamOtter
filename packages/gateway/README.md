@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/jfricano/StreamOtter/main/docs/assets/streamotter-logo.png" alt="StreamOtter" width="300"></p>
+
 # @streamotter/gateway
 
 The StreamOtter Node.js gateway. It consumes Kafka (or deterministic fixtures during development), runs **your** handlers to decide identity, access, public payload, and authoritative state, and delivers state channels to browsers using [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client). Each subscription gets a snapshot, then full-state updates ordered by revision, with bounded queues and explicit `live`/`stale` states.
@@ -7,6 +9,8 @@ The StreamOtter Node.js gateway. It consumes Kafka (or deterministic fixtures du
 ```bash
 npm install @streamotter/gateway
 ```
+
+Using the all-in-one [`streamotter`](https://www.npmjs.com/package/streamotter) package instead? Import from `streamotter/gateway`; everything on this page applies unchanged.
 
 Requires Node.js 24 or later. ESM only, with TypeScript declarations included. Kafka access uses KafkaJS 2.2.4 behind an internal adapter. Browser delivery uses Socket.IO 4.8.3 over WebSocket.
 
@@ -164,12 +168,13 @@ Run **exactly one gateway per project** (V1 has no multi-gateway coordination), 
 
 | Package | |
 | --- | --- |
+| [`streamotter`](https://www.npmjs.com/package/streamotter) | Everything below in one install, with the `streamotter` command |
 | [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | Scaffold, validate, generate types, develop with the workbench, and run the production gateway |
 | [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up |
 | [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | **This package.** Handler types, and running the gateway from your own Node.js code |
 | [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors |
 | [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets, installed by the CLI |
 
-All five are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
+All six are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
 
 MIT License © 2026 Orca Solutions

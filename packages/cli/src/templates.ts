@@ -1,5 +1,8 @@
+import { streamotterModules, type PackageStyle } from "./generate.ts";
+
 /** Files created by `streamotter init`. The scaffold is fixture-only and has no production credentials. */
-export function scaffoldFiles(projectId: string): { path: string; content: string }[] {
+export function scaffoldFiles(projectId: string, options: { packages?: PackageStyle } = {}): { path: string; content: string }[] {
+  const modules = streamotterModules(options.packages);
   const config = {
     configVersion: 1,
     projectId,
@@ -46,7 +49,7 @@ const jobs = new Map([
   ["local/job_1", { revision: "1", data: { jobId: "job_1", state: "queued", percent: 0 } }]
 ]);
 
-/** @type {import("@streamotter/gateway").HandlerRegistry<any>} */
+/** @type {import("${modules.gateway}").HandlerRegistry<any>} */
 export const handlers = {
   async authenticate({ token }) {
     // TODO: verify your application's session token and return its Principal
@@ -96,7 +99,7 @@ export const development = {
 };
 `;
 
-  const example = `import { createClient } from "@streamotter/client";
+  const example = `import { createClient } from "${modules.client}";
 import { channelVersions, type AppChannels } from "../generated/streamotter.generated.js";
 
 /**

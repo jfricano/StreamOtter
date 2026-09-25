@@ -2,6 +2,8 @@
 
 This guide adds a live **order status** view to an application that already has signed-in users, a database, and Kafka. The steps apply to any state that people watch change: job progress, deliveries, tickets, dashboards. If you haven't used StreamOtter yet, start with [Getting started](./getting-started.md).
 
+The examples import from the all-in-one [`streamotter`](https://www.npmjs.com/package/streamotter) package (`npm install streamotter`). With the individual packages, import from `@streamotter/gateway` and `@streamotter/client` instead; a frontend that lives apart from the gateway needs only `@streamotter/client`.
+
 Who owns what:
 
 | Your application | StreamOtter |
@@ -90,7 +92,7 @@ Handlers are trusted server code that the gateway calls. They usually live in yo
 
 ```ts
 // src/streamotter/handlers.ts: compile to JavaScript, then pass the .js file to --handlers
-import type { HandlerRegistry } from "@streamotter/gateway";
+import type { HandlerRegistry } from "streamotter/gateway";
 import type { AppChannels, OrderState } from "../generated/streamotter.generated.js";
 import { orders, sessions } from "../app.js"; // your session store and data access
 
@@ -131,7 +133,7 @@ The CLI loads compiled JavaScript (it refuses `.ts` files). Compile with your us
 ## 6. Subscribe from the browser
 
 ```ts
-import { createClient } from "@streamotter/client";
+import { createClient } from "streamotter/client";
 import { channelVersions, type AppChannels } from "./generated/streamotter.generated.js";
 
 const client = createClient<AppChannels>({ getToken: () => session.getAccessToken() }); // your own session token
@@ -142,7 +144,7 @@ order.on("error", error => renderError(error));
 ```
 
 - **Origin:** by default the SDK connects to the page's own origin at `/streamotter/socket.io`, which is what you want behind a reverse proxy that serves both your app and the gateway (see [Run in production](../DEPLOYMENT.md)). Otherwise pass `origin`, and list the page's exact origin in `gateway.allowedOrigins`.
-- **Rendering states and errors, cleanup, and a React hook:** see the [client guide](https://www.npmjs.com/package/@streamotter/client).
+- **Rendering states and errors, cleanup, and a React hook:** see the [client guide](https://www.npmjs.com/package/@streamotter/client); it applies unchanged with `streamotter/client`.
 
 ## 7. Handle access changes
 
@@ -161,7 +163,7 @@ await gateway.revoke({ kind: "channel", tenantId, subject, channel: "orderStatus
 
 ```ts
 import { readFile } from "node:fs/promises";
-import { createGateway, defineProject } from "@streamotter/gateway";
+import { createGateway, defineProject } from "streamotter/gateway";
 import type { AppChannels } from "../generated/streamotter.generated.js";
 import { handlers } from "./handlers.js";
 

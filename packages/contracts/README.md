@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/jfricano/StreamOtter/main/docs/assets/streamotter-logo.png" alt="StreamOtter" width="300"></p>
+
 # @streamotter/contracts
 
 The public types, protocol constants, error vocabulary, and runtime validation shared by the StreamOtter gateway and browser SDK. Both are built on this package.
@@ -9,6 +11,8 @@ The public types, protocol constants, error vocabulary, and runtime validation s
 ```bash
 npm install @streamotter/contracts
 ```
+
+The all-in-one [`streamotter`](https://www.npmjs.com/package/streamotter) package also exposes this package as `streamotter/contracts`.
 
 ESM only, with TypeScript declarations included. It has no dependencies and runs in browsers and Node.js.
 
@@ -52,12 +56,13 @@ The types are the public contract that the [V1 API specification](https://github
 
 | Package | |
 | --- | --- |
+| [`streamotter`](https://www.npmjs.com/package/streamotter) | Everything below in one install, with the `streamotter` command |
 | [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | Scaffold, validate, generate types, develop with the workbench, and run the production gateway |
 | [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up |
 | [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Handler types, and running the gateway from your own Node.js code |
 | [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | **This package.** Shared types and configuration validation, for tooling authors |
 | [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets, installed by the CLI |
 
-All five are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
+All six are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
 
 MIT License © 2026 Orca Solutions

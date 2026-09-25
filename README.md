@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/streamotter-logo.png" alt="StreamOtter" width="480"></p>
+
 # StreamOtter
 
 Make live data straightforward to build with, and understandable when it breaks.
@@ -15,17 +17,18 @@ It is a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI with a l
 ## Install
 
 ```bash
-npm install @streamotter/cli @streamotter/client
+npm install streamotter
 ```
 
-Node.js 24 or later for the gateway and CLI; current evergreen browsers for the SDK.
+[`streamotter`](https://www.npmjs.com/package/streamotter) is everything in one install: the `streamotter` command, the gateway (`streamotter/gateway`), and the browser SDK (`streamotter/client`). A frontend that lives apart from the gateway can install just [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client). Node.js 24 or later for the gateway and CLI; current evergreen browsers for the SDK.
 
 ## Try it in five minutes
 
 In a new folder; no Kafka needed, because the scaffold uses a built-in fixture source.
 
 ```bash
-npm install @streamotter/cli @streamotter/client
+npm init -y
+npm install streamotter
 npx streamotter init .
 npx streamotter dev --config streamotter.json --handlers server/handlers.mjs
 ```
@@ -46,13 +49,14 @@ Open the workbench URL that `dev` prints, paste its one-time token, then preview
 
 | Package | Use it for | |
 | --- | --- | --- |
+| [`streamotter`](https://www.npmjs.com/package/streamotter) | Everything below in one install, with the `streamotter` command. Import `streamotter/client` in the browser and `streamotter/gateway` on the server. | [guide](./packages/streamotter/README.md) |
 | [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | `init`, `validate`, `generate`, `dev` with the workbench, and the production `start`. Includes the gateway. | [guide](./packages/cli/README.md) |
 | [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up | [guide](./packages/client/README.md) |
 | [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Your handlers' types, and running the gateway from your own Node.js code | [guide](./packages/gateway/README.md) |
 | [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors | [guide](./packages/contracts/README.md) |
 | [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets; installed by the CLI | [guide](./apps/workbench/README.md) |
 
-All five are released together with the same version; see the [changelog](./CHANGELOG.md).
+All six are released together with the same version; see the [changelog](./CHANGELOG.md).
 
 ## What V1 does
 

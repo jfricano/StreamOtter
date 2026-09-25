@@ -1,6 +1,6 @@
 # StreamOtter V1 implementation status
 
-September 25, 2026 · V1 release candidate `0.1.0-rc.2` published to npm (`latest`)
+September 25, 2026 · V1 release candidate: `0.1.0-rc.2` on npm (`latest`); `0.1.0-rc.3` (adds the all-in-one `streamotter` package) prepared
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and hosted demo (Gate B milestone) are **not started**.
 
@@ -49,27 +49,28 @@ Runs on September 24, 2026 in the environment above, repeated on September 25 af
 | `pnpm build` | Passes: `tsc -b` for all packages (JS + declarations), workbench bundle (87 KB), example server and web bundles. |
 | `pnpm check:contracts` | Passes. The original example and every `@ts-expect-error` negative check compile against the implementation. |
 | `pnpm typecheck` | Passes (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`) for packages, tests, workbench, and example. |
-| `pnpm test` | **113 / 113 passed**, 21 suites, about 10 s. |
+| `pnpm test` | **114 / 114 passed**, 21 suites, about 10 s. |
 | `pnpm test:kafka` | **20 / 20 passed** against Apache Kafka 4.1.2, 1 min 54 s (includes ~30 s waiting out a killed consumer's session). |
 | `pnpm test:load` | Passed (results below). |
 | `pnpm test:browser` | **13 / 13 passed**: 7 workbench and 6 example checks in headless Chromium (builds first). |
 | `pnpm test:deploy` | **4 / 4 passed**: the Caddy-fronted production deployment below (builds first; needs the broker and Caddy). |
-| `pnpm test:install` | **14 / 14 passed** on Node 24.21.0 and 26.9.0 with the broker running (13 plus one skipped without it): the installed-package checks below. |
-| `pnpm publish --dry-run` (all five) | Passes for `0.1.0-rc.1` in dependency order (contracts, client, gateway, workbench, cli). |
+| `pnpm test:install` | **20 / 20 passed** with the broker running (19 plus one skipped without it), for `0.1.0-rc.3`: the installed-package checks below, including the all-in-one `streamotter`. Earlier versions of the test (14 checks) passed on Node 24.21.0 and 26.9.0. |
+| `pnpm publish --dry-run` (all six) | Passes in dependency order (contracts, client, gateway, workbench, cli, then `streamotter`). |
 | `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` | **14 / 14 passed** against the published `0.1.0-rc.1`, and again against `0.1.0-rc.2`, from the npm registry (broker running, Node 26.9.0), after each publish on September 25. |
 | Clean checkout | The tree copied without `node_modules`, build output, `.local/`, or data: install, build, `check:contracts`, `typecheck`, `test` (103 tests at that point), `test:load`, and `pnpm example` all succeeded. |
 
 ### Installed packages (`pnpm test:install`)
 
-`tests/install/install.test.ts` packs the five public packages with pnpm (as `pnpm publish` does), installs the tarballs with npm into a new project in the system temporary directory (no workspace links; `streamotter-source` unavailable), and checks:
+`tests/install/install.test.ts` packs the six public packages with pnpm (as `pnpm publish` does), and installs them with npm into two new projects in the system temporary directory (no workspace links; `streamotter-source` unavailable). One project lists the five `@streamotter/*` packages; the other lists only `streamotter`, with npm `overrides` resolving its dependencies to the local tarballs until they are published. The test checks:
 
-- **Tarballs:** one version across all five; `workspace:` rewritten to that exact version; MIT `license`, `repository`, `homepage`, `bugs`, and public access; published `exports` equal the workspace `exports` minus the source condition; only `package.json`, `README.md`, `LICENSE`, `dist`, `src`, and `bin` at the top level; `LICENSE` identical to the repository's; README links absolute; `dist` contains exactly the compiled sources (no stale output) with declarations; the workbench assets and third-party license notices.
+- **Tarballs:** one version across all six; `workspace:` rewritten to that exact version; MIT `license`, `repository`, `homepage`, `bugs`, and public access; published `exports` equal the workspace `exports` minus the source condition; only `package.json`, `README.md`, `LICENSE`, `dist`, `src`, and `bin` at the top level; `LICENSE` identical to the repository's; README links and images absolute; `dist` contains exactly the compiled sources (no stale output) with declarations; the workbench assets and third-party license notices.
 - **Installation:** real, deduplicated copies inside the consumer project; the `streamotter` bin linked.
 - **CLI:** `init`, `validate` (fingerprint), `generate`; `dev` serves the workbench page and its assets from the installed `@streamotter/workbench`, and a script using the installed `@streamotter/client` creates a preview session, subscribes, advances the fixture, and receives revisions 0 → 100 %, then `SIGINT` exits 0; `start` refuses the fixture scaffold with exit code 2.
 - **Bundling:** esbuild bundles the scaffold's browser code for `platform: browser`; every input comes from the consumer project, the SDK and contracts from `dist/`, none from `src/`.
 - **Types:** strict `tsc` (with `skipLibCheck: false` and `exactOptionalPropertyTypes`) over browser code (bundler resolution, DOM, no Node.js types) and server code (NodeNext) importing every public entry point, with `@ts-expect-error` checks that generated channel types reach the published generics.
 - **Programmatic gateway:** `createGateway` + `@streamotter/gateway/management` + the installed SDK: snapshot revision 1, fixture update revision 2, then session revocation (`closedSubscriptions: 1, closedConnections: 1`), the client in `auth-required`, the subscription `stale`, and `live` not restored.
 - **With the broker running:** the installed `streamotter start` in production mode consumes Kafka over TLS, has no management routes, delivers a produced update, and exits 0 on `SIGTERM`.
+- **The all-in-one `streamotter`:** installed alone, it brings every individual package without nested copies, and both `streamotter` commands run. `init` and `generate` write `streamotter/client` and `streamotter/gateway` imports, and `dev` serves the workbench. esbuild bundles browser code from `streamotter/client` with no input from the gateway, CLI, workbench, KafkaJS, or the Socket.IO server. The same strict type checks and programmatic gateway run pass through `streamotter/…` subpaths.
 
 After publishing, `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` runs the same checks against the version on the npm registry. The package READMEs' code samples were also type-checked against the installed packages, the gateway README's configuration validated, and the CLI README's first-run flow (`npm init`, install, `init .`, `validate`, `dev`, `generate`) run as written; those were one-time checks, not part of the automated test.
 

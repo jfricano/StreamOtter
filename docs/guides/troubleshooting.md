@@ -50,6 +50,13 @@ Exit code `2` means invalid input or configuration; `1` means startup or runtime
 | `Refusing to overwrite existing files: …` (`init`) or `… not created by the generator: …` (`generate`) | Choose another directory, or move those files away. |
 | `… is invalid (N issues):` followed by paths and codes | Fix the configuration. Deferred V2 fields such as `history` or `recovery` are reported by name. |
 
+## Module not found
+
+| What you see | Why | What to do |
+| --- | --- | --- |
+| `Cannot find module '@streamotter/client'` (or `@streamotter/gateway`), usually with pnpm | You installed `streamotter`, but the code imports an individual package. pnpm makes only the packages you installed directly importable. | Import from `streamotter/client` or `streamotter/gateway`. For generated files, run `streamotter generate` again: it picks the import style from your `package.json`. |
+| An error about `"exports"` in `node_modules/streamotter/package.json` | The code imports the bare `streamotter`. | Import a subpath: `streamotter/client` in the browser, `streamotter/gateway` on the server. |
+
 ## The workbench
 
 - It asks for the token again after a reload. That's by design: the token lives only in the page's memory.

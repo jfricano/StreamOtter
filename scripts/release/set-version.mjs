@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Sets the same version in all five public package manifests (they are released together).
+// Sets the same version in all six public package manifests (they are released together).
 // Usage: node scripts/release/set-version.mjs <version>
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const PACKAGES = ["packages/contracts", "packages/client", "packages/gateway", "packages/cli", "apps/workbench"];
+const PACKAGES = ["packages/contracts", "packages/client", "packages/gateway", "packages/cli", "apps/workbench", "packages/streamotter"];
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 const version = process.argv[2];

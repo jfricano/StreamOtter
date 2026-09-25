@@ -1,9 +1,10 @@
 /**
  * Pack-and-install test (release plan, workstream 1). Packs every public package with pnpm, as
- * `pnpm publish` would, installs the tarballs with npm into a fresh project outside the workspace,
- * and uses them the way an application does: check the tarballs, run the CLI workflow, bundle a
- * browser app with the SDK, type-check against the published declarations, and drive the gateway
- * programmatically. Nothing in the consumer project can reach workspace links or TypeScript sources.
+ * `pnpm publish` would, and installs them with npm into two fresh projects outside the workspace:
+ * one with the individual @streamotter/* packages, one with only the all-in-one `streamotter`
+ * package. Then it uses them the way an application does: check the tarballs, run the CLI
+ * workflow, bundle a browser app with the SDK, type-check against the published declarations, and
+ * drive the gateway programmatically. Nothing there can reach workspace links or TypeScript sources.
  *
  * Run with `pnpm test:install` (builds first). npm fetches the third-party dependencies (Socket.IO,
  * KafkaJS, TypeScript, esbuild, @types/node) from the registry. With the local broker running
@@ -32,8 +33,11 @@ const PACKAGES: readonly PublicPackage[] = [
   { name: "@streamotter/client", dir: "packages/client", compiled: true },
   { name: "@streamotter/gateway", dir: "packages/gateway", compiled: true },
   { name: "@streamotter/cli", dir: "packages/cli", compiled: true },
-  { name: "@streamotter/workbench", dir: "apps/workbench", compiled: false }
+  { name: "@streamotter/workbench", dir: "apps/workbench", compiled: false },
+  { name: "streamotter", dir: "packages/streamotter", compiled: true }
 ];
+/** The individual packages; `streamotter` is the all-in-one package that depends on them. */
+const SCOPED = PACKAGES.filter(pkg => pkg.name !== "streamotter");
 
 interface Manifest {
   name: string;
@@ -131,8 +135,10 @@ const kafka = await brokerAvailable();
 describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` : "packed packages installed with npm outside the workspace", () => {
   let work = "";
   let consumer = "";
+  let umbrella = "";
   const tarballs = new Map<string, Tarball>();
   const bin = (name: string) => join(consumer, "node_modules/.bin", name);
+  const umbrellaBin = (name: string) => join(umbrella, "node_modules/.bin", name);
 
   before(async () => {
     work = await realpath(await mkdtemp(join(tmpdir(), "streamotter-install-")));
@@ -166,10 +172,21 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
       `@types/node@${rootManifest.devDependencies?.["@types/node"]}`,
       `esbuild@${workspaceManifests.get("@streamotter/workbench")!.devDependencies?.["esbuild"]}`
     ];
-    const packages = FROM_REGISTRY ? PACKAGES.map(pkg => `${pkg.name}@${VERSION}`) : [...tarballs.values()].map(tarball => tarball.file);
+    const spec = (name: string) => FROM_REGISTRY ? `${name}@${VERSION}` : tarballs.get(name)!.file;
     const freshness = FROM_REGISTRY ? "--prefer-online" : "--prefer-offline";
-    const installed = await run(NPM, ["install", "--no-audit", "--no-fund", freshness, ...packages, ...tools], { cwd: consumer, timeoutMs: 300_000 });
+    const installed = await run(NPM, ["install", "--no-audit", "--no-fund", freshness, ...SCOPED.map(pkg => spec(pkg.name)), ...tools], { cwd: consumer, timeoutMs: 300_000 });
     assert.equal(installed.code, 0, `npm install failed:\n${installed.stdout}\n${installed.stderr}`);
+
+    // Only `streamotter` is a dependency here. Before publishing, overrides resolve its @streamotter/*
+    // dependencies to the local tarballs; from the registry, npm resolves them normally.
+    umbrella = join(work, "umbrella");
+    await mkdir(umbrella);
+    const overrides = Object.fromEntries(SCOPED.map(pkg => [pkg.name, `file:${tarballs.get(pkg.name)!.file}`]));
+    await writeFile(join(umbrella, "package.json"), `${JSON.stringify({
+      name: "streamotter-umbrella-check", version: "0.0.0", private: true, type: "module", ...(FROM_REGISTRY ? {} : { overrides })
+    }, null, 2)}\n`);
+    const installedUmbrella = await run(NPM, ["install", "--no-audit", "--no-fund", freshness, spec("streamotter"), ...tools], { cwd: umbrella, timeoutMs: 300_000 });
+    assert.equal(installedUmbrella.code, 0, `npm install streamotter failed:\n${installedUmbrella.stdout}\n${installedUmbrella.stderr}`);
   });
 
   after(async () => {
@@ -209,6 +226,8 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
       const readme = await tar(["-xOzf", file, "package/README.md"]);
       const relativeLinks = [...readme.matchAll(/\]\(([^)\s]+)/g)].map(match => match[1]!).filter(target => !/^(https?:|mailto:|#)/.test(target));
       assert.deepEqual(relativeLinks, [], "README links are absolute (npm cannot resolve relative links)");
+      const relativeImages = [...readme.matchAll(/<img[^>]*\ssrc="([^"]+)"/g)].map(match => match[1]!).filter(src => !src.startsWith("https://"));
+      assert.deepEqual(relativeImages, [], "README images use absolute https URLs");
 
       if (pkg.compiled) {
         const sources = entries.filter(entry => entry.startsWith("src/") && entry.endsWith(".ts") && !entry.endsWith(".d.ts")).map(entry => entry.slice(4, -3));
@@ -216,13 +235,18 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
         assert.ok(sources.length > 0);
         assert.deepEqual([...outputs].sort(), [...sources].sort(), "dist contains exactly the compiled sources (no stale output)");
         for (const source of sources) assert.ok(entries.includes(`dist/${source}.d.ts`), `declarations for ${source}`);
-        assert.equal(manifest.main, "./dist/index.js");
-        assert.equal(manifest.types, "./dist/index.d.ts");
-        assert.ok(entries.includes("dist/index.js") && entries.includes("dist/index.d.ts"), "main and types files exist");
+        if (pkg.name === "streamotter") {
+          assert.equal(manifest.main, undefined, "no root entry point: browser and server code are separate subpaths");
+          assert.deepEqual([...sources].sort(), ["cli", "client", "contracts", "gateway", "management"]);
+        } else {
+          assert.equal(manifest.main, "./dist/index.js");
+          assert.equal(manifest.types, "./dist/index.d.ts");
+          assert.ok(entries.includes("dist/index.js") && entries.includes("dist/index.d.ts"), "main and types files exist");
+        }
       } else {
         for (const asset of ["index.html", "app.js", "styles.css", "THIRD_PARTY_LICENSES.txt"]) assert.ok(entries.includes(`dist/${asset}`), `workbench ${asset}`);
       }
-      if (pkg.name === "@streamotter/cli") {
+      if (pkg.name === "@streamotter/cli" || pkg.name === "streamotter") {
         assert.ok(entries.includes("bin/streamotter.js"));
         assert.match(manifest.bin?.["streamotter"] ?? "", /bin\/streamotter\.js$/);
       }
@@ -231,7 +255,8 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
 
   it("installs real copies, deduplicated, with no links back to the workspace", async () => {
     const root = await realpath(consumer);
-    for (const pkg of PACKAGES) {
+    assert.ok(!existsSync(join(consumer, "node_modules/streamotter")), "the individual packages don't pull in the all-in-one package");
+    for (const pkg of SCOPED) {
       const directory = join(consumer, "node_modules", pkg.name);
       assert.ok(!(await lstat(directory)).isSymbolicLink(), `${pkg.name} is not a link`);
       assert.ok((await realpath(directory)).startsWith(root), `${pkg.name} lives in the consumer project`);
@@ -327,21 +352,7 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     await mkdir(join(consumer, "check"), { recursive: true });
     await writeFile(join(consumer, "check/web.ts"), WEB_CHECK);
     await writeFile(join(consumer, "check/server.ts"), SERVER_CHECK);
-    const strict = { strict: true, noEmit: true, skipLibCheck: false, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ES2023" };
-    // Browser code: bundler resolution, DOM, and no Node.js types.
-    await writeFile(join(consumer, "tsconfig.web.json"), JSON.stringify({
-      compilerOptions: { ...strict, module: "ESNext", moduleResolution: "Bundler", lib: ["ES2023", "DOM", "DOM.Iterable"], types: [] },
-      include: ["check/web.ts", "app/web/**/*.ts", "app/generated/**/*.ts"]
-    }, null, 2));
-    // Server code: Node.js ESM resolution.
-    await writeFile(join(consumer, "tsconfig.server.json"), JSON.stringify({
-      compilerOptions: { ...strict, module: "NodeNext", moduleResolution: "NodeNext", lib: ["ES2023"], types: ["node"] },
-      include: ["check/server.ts"]
-    }, null, 2));
-    for (const project of ["tsconfig.web.json", "tsconfig.server.json"]) {
-      const checked = await run(bin("tsc"), ["-p", project], { cwd: consumer });
-      assert.equal(checked.code, 0, `${project}\n${checked.stdout}${checked.stderr}`);
-    }
+    await typeCheck(consumer);
   });
 
   it("drives @streamotter/gateway programmatically with the installed SDK", async () => {
@@ -389,7 +400,98 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
       assert.equal(await start.stop("SIGTERM"), 0, start.output());
     }
   });
+
+  it("streamotter: installs alone and brings every individual package", async () => {
+    const direct = Object.keys(readJson<Manifest>(join(umbrella, "package.json")).dependencies ?? {});
+    assert.ok(direct.includes("streamotter"));
+    assert.deepEqual(direct.filter(name => name.startsWith("@streamotter/")), [], "only streamotter is a direct dependency");
+    for (const pkg of PACKAGES) {
+      const directory = join(umbrella, "node_modules", pkg.name);
+      assert.equal(readJson<Manifest>(join(directory, "package.json")).version, VERSION, pkg.name);
+      assert.ok(!existsSync(join(directory, "node_modules/@streamotter")), `${pkg.name} has no nested StreamOtter copies`);
+    }
+    const help = await run(umbrellaBin("streamotter"), ["--help"], { cwd: umbrella });
+    assert.equal(help.code, 0);
+    assert.match(help.stdout, /streamotter init <directory>/);
+    const own = await run(process.execPath, [join(umbrella, "node_modules/streamotter/bin/streamotter.js"), "--help"], { cwd: umbrella });
+    assert.equal(own.code, 0, `the streamotter package's own bin runs\n${own.stderr}`);
+  });
+
+  it("streamotter: init and generate import from streamotter/*, and dev serves the workbench", async () => {
+    const cli = umbrellaBin("streamotter");
+    const init = await run(cli, ["init", "app"], { cwd: umbrella });
+    assert.equal(init.code, 0, init.stderr);
+    assert.match(await readFile(join(umbrella, "app/web/example.ts"), "utf8"), /from "streamotter\/client"/);
+    assert.match(await readFile(join(umbrella, "app/server/handlers.mjs"), "utf8"), /import\("streamotter\/gateway"\)/);
+    const generate = await run(cli, ["generate", "--config", "app/streamotter.json", "--out", "app/generated"], { cwd: umbrella });
+    assert.equal(generate.code, 0, generate.stderr);
+    for (const file of ["streamotter.generated.ts", "streamotter.client.example.ts"]) {
+      assert.match(await readFile(join(umbrella, "app/generated", file), "utf8"), /from "streamotter\/client"/, file);
+    }
+    const configPath = join(umbrella, "app/streamotter.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as { gateway: { port: number } };
+    config.gateway.port = 0;
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+    const dev = startProcess(cli, ["dev", "--config", "app/streamotter.json", "--handlers", "app/server/handlers.mjs", "--management-port", "0"], umbrella);
+    try {
+      await waitFor(() => /Press Ctrl\+C to stop/.test(dev.output()), 30_000, "dev banner");
+      const workbench = /Workbench\s+(http:\/\/127\.0\.0\.1:\d+)\//.exec(dev.output())?.[1];
+      assert.ok(workbench !== undefined, `the workbench is found through the all-in-one package\n${dev.output()}`);
+      assert.equal((await fetch(`${workbench}/`)).status, 200);
+    } finally {
+      assert.equal(await dev.stop("SIGINT"), 0, `graceful shutdown on SIGINT\n${dev.output()}`);
+    }
+  });
+
+  it("streamotter: bundles browser code from streamotter/client without any server code", async () => {
+    await mkdir(join(umbrella, "out"), { recursive: true });
+    const bundled = await run(umbrellaBin("esbuild"), [
+      "app/web/example.ts", "--bundle", "--format=esm", "--platform=browser", "--target=es2022",
+      "--outfile=out/web.js", "--metafile=out/web.meta.json", "--log-level=warning"
+    ], { cwd: umbrella });
+    assert.equal(bundled.code, 0, bundled.stderr);
+    const inputs = Object.keys((JSON.parse(await readFile(join(umbrella, "out/web.meta.json"), "utf8")) as { inputs: Record<string, unknown> }).inputs);
+    assert.ok(inputs.includes("node_modules/streamotter/dist/client.js"), "through streamotter/client");
+    assert.ok(inputs.some(input => input.startsWith("node_modules/@streamotter/client/dist/")), "the SDK itself");
+    for (const input of inputs) {
+      assert.doesNotMatch(input, /node_modules\/(@streamotter\/(gateway|cli|workbench)\/|kafkajs\/|socket\.io\/|engine\.io\/)/, `server code in the browser bundle: ${input}`);
+    }
+  });
+
+  it("streamotter: type-checks browser and server code through its subpaths", async () => {
+    await mkdir(join(umbrella, "check"), { recursive: true });
+    await writeFile(join(umbrella, "check/web.ts"), throughUmbrella(WEB_CHECK));
+    await writeFile(join(umbrella, "check/server.ts"), throughUmbrella(SERVER_CHECK));
+    await typeCheck(umbrella);
+  });
+
+  it("streamotter: runs the gateway, its management API, and the SDK through its subpaths", async () => {
+    await writeFile(join(umbrella, "gateway-check.mjs"), throughUmbrella(GATEWAY_CHECK));
+    const checked = await run(process.execPath, ["gateway-check.mjs"], { cwd: umbrella, timeoutMs: 60_000 });
+    assert.equal(checked.code, 0, `${checked.stdout}\n${checked.stderr}`);
+    assert.deepEqual((JSON.parse(checked.stdout) as { events: string[] }).events, ["snapshot:1:queued", "update:2:shipped"]);
+  });
 });
+
+/** Strict tsc over browser code (bundler resolution, DOM, no Node.js types) and server code (NodeNext). */
+async function typeCheck(project: string): Promise<void> {
+  const strict = { strict: true, noEmit: true, skipLibCheck: false, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ES2023" };
+  await writeFile(join(project, "tsconfig.web.json"), JSON.stringify({
+    compilerOptions: { ...strict, module: "ESNext", moduleResolution: "Bundler", lib: ["ES2023", "DOM", "DOM.Iterable"], types: [] },
+    include: ["check/web.ts", "app/web/**/*.ts", "app/generated/**/*.ts"]
+  }, null, 2));
+  await writeFile(join(project, "tsconfig.server.json"), JSON.stringify({
+    compilerOptions: { ...strict, module: "NodeNext", moduleResolution: "NodeNext", lib: ["ES2023"], types: ["node"] },
+    include: ["check/server.ts"]
+  }, null, 2));
+  for (const config of ["tsconfig.web.json", "tsconfig.server.json"]) {
+    const checked = await run(join(project, "node_modules/.bin/tsc"), ["-p", config], { cwd: project });
+    assert.equal(checked.code, 0, `${config}\n${checked.stdout}${checked.stderr}`);
+  }
+}
+
+/** The same code, importing through the all-in-one package's subpaths (`streamotter/client`, …). */
+const throughUmbrella = (code: string) => code.replaceAll('"@streamotter/', '"streamotter/');
 
 /** Run in the consumer project: a preview session on `streamotter dev`, subscribed with the installed SDK. */
 const DEV_SUBSCRIBE = `import { createClient } from "@streamotter/client";

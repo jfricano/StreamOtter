@@ -6,11 +6,13 @@ In production, StreamOtter is one gateway process (`streamotter start`), behind 
 
 ## Install and build
 
-Add the CLI as a regular dependency, because `start` runs in production. It brings the gateway with it.
+Add StreamOtter as a regular dependency, because `start` runs in production:
 
 ```bash
-npm install @streamotter/cli
+npm install streamotter
 ```
+
+A service that runs only the gateway can install [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) instead; it provides the same `streamotter` command.
 
 Compile your handlers in your build step (the CLI loads compiled JavaScript only). Where the gateway runs, install only the locked production dependencies:
 
@@ -66,7 +68,7 @@ WorkingDirectory=/srv/shop
 Environment=NODE_ENV=production
 # KAFKA_USERNAME and KAFKA_PASSWORD, referenced from streamotter.json
 EnvironmentFile=/etc/shop/streamotter.env
-ExecStart=/usr/bin/node node_modules/@streamotter/cli/bin/streamotter.js start --config streamotter.json --handlers dist/streamotter/handlers.js
+ExecStart=/usr/bin/node node_modules/.bin/streamotter start --config streamotter.json --handlers dist/streamotter/handlers.js
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
@@ -125,7 +127,7 @@ All budgets in `limits` ([V1 specification §6](./V1_API.md#proposed-default-lim
 To revoke access from your own code, or to route logs, run the gateway inside your own Node.js process instead of `streamotter start`:
 
 ```ts
-import { createGateway, defineProject } from "@streamotter/gateway";
+import { createGateway, defineProject } from "streamotter/gateway"; // or "@streamotter/gateway"
 const gateway = createGateway({ config: defineProject(config), handlers, mode: "production" });
 await gateway.start();
 // When your authorization policy changes, update it durably first, then:

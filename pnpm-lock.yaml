@@ -119,6 +119,25 @@ importers:
         specifier: 24.13.6
         version: 24.13.6
 
+  packages/streamotter:
+    dependencies:
+      '@streamotter/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@streamotter/client':
+        specifier: workspace:*
+        version: link:../client
+      '@streamotter/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@streamotter/gateway':
+        specifier: workspace:*
+        version: link:../gateway
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.6
+        version: 24.13.6
+
   tests:
     dependencies:
       '@streamotter/cli':

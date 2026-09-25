@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/jfricano/StreamOtter/main/docs/assets/streamotter-logo.png" alt="StreamOtter" width="300"></p>
+
 # @streamotter/cli
 
 The `streamotter` command: scaffold a project, validate its configuration, generate TypeScript channel types, run a development gateway with the local workbench, and start the production gateway.
@@ -7,6 +9,8 @@ The `streamotter` command: scaffold a project, validate its configuration, gener
 ```bash
 npm install @streamotter/cli
 ```
+
+The all-in-one [`streamotter`](https://www.npmjs.com/package/streamotter) package includes this CLI and the same `streamotter` command. `init` and `generate` write imports from `streamotter/…` when your `package.json` lists `streamotter`, and from `@streamotter/…` otherwise.
 
 Requires Node.js 24 or later. It installs [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) and the workbench assets. Install it as a regular dependency, because `streamotter start` runs in production.
 
@@ -110,12 +114,13 @@ Exit codes: `0` success, `2` invalid input or configuration, `1` startup or runt
 
 | Package | |
 | --- | --- |
+| [`streamotter`](https://www.npmjs.com/package/streamotter) | Everything below in one install, with the `streamotter` command |
 | [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | **This package.** Scaffold, validate, generate types, develop with the workbench, and run the production gateway |
 | [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up |
 | [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Handler types, and running the gateway from your own Node.js code |
 | [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors |
 | [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets, installed by the CLI |
 
-All five are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
+All six are released together with the same version ([changelog](https://github.com/jfricano/StreamOtter/blob/main/CHANGELOG.md)).
 
 MIT License © 2026 Orca Solutions

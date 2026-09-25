@@ -13,7 +13,7 @@ Every public claim must match verified behavior: no invented adoption, performan
 | Item | State |
 | --- | --- |
 | Packages | All five are ready to publish as `0.1.0-rc.1`: metadata, `LICENSE`, and a README guide in each, and `publishConfig` that drops the in-repository source condition. `pnpm test:install` packs them, installs the tarballs with npm outside the workspace, and uses them as an application would (14 / 14 on Node 24 and 26 with the broker). `pnpm publish --dry-run` passes for all five. The owner published `0.1.0-rc.1` on September 25 from tag `v0.1.0-rc.1`. As expected for new packages, both `next` and `latest` point to it. The registry install test passed 14 / 14. |
-| npm names | The five packages are published under the owner's `streamotter` organization, with `jfricano` as maintainer. The unscoped name `streamotter` remains unpublished. |
+| npm names | The five `@streamotter/*` packages are published under the owner's `streamotter` organization, with `jfricano` as maintainer. The unscoped `streamotter` was still unpublished on September 25; `0.1.0-rc.3` claims it for the all-in-one package. |
 | License | MIT, © 2026 Orca Solutions: a root `LICENSE`, a copy in each package, and `license` fields. The workbench also ships the notices of the Socket.IO client code it bundles. |
 | Source control | Public at [github.com/jfricano/StreamOtter](https://github.com/jfricano/StreamOtter) since September 25, 2026 (`main` only; commits authored with a GitHub no-reply address). The pre-push scan found no secrets, keys, certificates, `.local/`, or build output in the tree or history. Both CI workflows pass: `ci.yml` on Node 24 and 26, and `extended.yml` (Kafka, install, browser, and deployment on Linux). |
 | Version fields | Every public package is `0.1.0-rc.1` (`scripts/release/set-version.mjs` keeps them together); nothing is tagged. |
@@ -27,7 +27,7 @@ Every public claim must match verified behavior: no invented adoption, performan
 | License | **Decided: MIT**, copyright "Orca Solutions" (also the packages' `author`). |
 | First version | **Decided: `0.1.0-rc.1`** (pre-1.0 API). Package SemVer is independent of product milestones and `protocolVersion`, per the roadmap. |
 | GitHub location | **Decided and done: `jfricano/StreamOtter`, public** since September 25, 2026. |
-| Which packages are public | All five, as prepared. Folding the workbench's static assets into `@streamotter/cli` (four packages) remains possible before the first publish. |
+| Which packages are public | **Decided:** the five `@streamotter/*` packages, plus, from `0.1.0-rc.3`, the all-in-one `streamotter` (the `streamotter` command and subpaths such as `streamotter/client` and `streamotter/gateway`), so that `npm install streamotter` is the front door. |
 | npm organization | **Done:** the owner created the `streamotter` organization on September 25. The owner holds the credentials and 2FA; Claude never handles npm tokens or logins. |
 | Publishing method | **Decided for `0.1.0-rc.1`:** manual `pnpm publish` by the owner, following the [release checklist](./RELEASE_CHECKLIST.md). GitHub Actions publishing with provenance (a trusted publisher, configured per package once it exists) remains an option for later releases. |
 | Author email in history | **Decided and done:** before the first push, the history was rewritten to "Jason Fricano" with the account's GitHub no-reply address, and the repository's git configuration uses the same identity. |

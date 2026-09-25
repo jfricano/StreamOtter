@@ -1,6 +1,6 @@
 {
   "name": "@streamotter/contracts",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0-rc.3",
   "description": "StreamOtter public types, protocol constants, and runtime validation shared by the gateway and browser SDK.",
   "keywords": ["streamotter", "kafka", "socket.io", "realtime", "state-sync", "json-schema", "typescript"],
   "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/contracts#readme",

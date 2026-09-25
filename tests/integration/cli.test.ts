@@ -107,6 +107,30 @@ describe("CLI: init, validate, generate, dev, start", () => {
     assert.match(dev.output(), /Received SIGINT; shutting down gracefully/);
   });
 
+  it("imports from the all-in-one streamotter package when the project depends on it instead of @streamotter/client", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "so-style-"));
+    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "umbrella-app", private: true, dependencies: { streamotter: "0.1.0" } }));
+    assert.equal((await runCli(["init", "app"], dir)).code, 0);
+    assert.match(await readFile(join(dir, "app/web/example.ts"), "utf8"), /from "streamotter\/client"/);
+    assert.match(await readFile(join(dir, "app/server/handlers.mjs"), "utf8"), /import\("streamotter\/gateway"\)/);
+    assert.equal((await runCli(["generate", "--config", "app/streamotter.json", "--out", "app/generated"], dir)).code, 0);
+    for (const file of ["streamotter.generated.ts", "streamotter.client.example.ts"]) {
+      const content = await readFile(join(dir, "app/generated", file), "utf8");
+      assert.match(content, /from "streamotter\/client"/, file);
+      assert.doesNotMatch(content, /@streamotter\//, file);
+    }
+
+    // Listing the individual packages keeps the scoped imports, even alongside streamotter.
+    await writeFile(join(dir, "package.json"), JSON.stringify({ dependencies: { streamotter: "0.1.0", "@streamotter/client": "0.1.0" } }));
+    assert.equal((await runCli(["generate", "--config", "app/streamotter.json", "--out", "app/generated"], dir)).code, 0);
+    assert.match(await readFile(join(dir, "app/generated/streamotter.generated.ts"), "utf8"), /from "@streamotter\/client"/);
+
+    // So does a project with no package.json at all.
+    const bare = await mkdtemp(join(tmpdir(), "so-style-bare-"));
+    assert.equal((await runCli(["init", "app"], bare)).code, 0);
+    assert.match(await readFile(join(bare, "app/web/example.ts"), "utf8"), /from "@streamotter\/client"/);
+  });
+
   it("exports from the workbench API and validates in the CLI with the same canonical form and fingerprint", async () => {
     const dir = await mkdtemp(join(tmpdir(), "so-export-"));
     await runCli(["init", join(dir, "app")]);

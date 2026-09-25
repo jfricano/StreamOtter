@@ -9,11 +9,11 @@ You need Node.js 24 or later, npm, and a current browser.
 ```bash
 mkdir live-jobs && cd live-jobs
 npm init -y
-npm install @streamotter/cli @streamotter/client
+npm install streamotter
 npm install --save-dev vite
 ```
 
-[`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) brings the `streamotter` command, the gateway, and the local workbench. [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) is the browser SDK. [Vite](https://vite.dev) serves the page; any bundler works.
+[`streamotter`](https://www.npmjs.com/package/streamotter) brings the `streamotter` command, the gateway, the local workbench, and the browser SDK (imported as `streamotter/client`). [Vite](https://vite.dev) serves the page; any bundler works.
 
 ## 2. Scaffold a StreamOtter project
 
@@ -25,7 +25,7 @@ npx streamotter init .
 | --- | --- |
 | `streamotter.json` | The configuration: a `jobs` fixture source, two JSON schemas, and a `jobProgress` channel whose parameter is `jobId` |
 | `server/handlers.mjs` | Your trusted server code: `authenticate`, `authorize`, `map`, and `snapshot`. Its `development` export has a `developer` principal and four fixture records. |
-| `web/example.ts` | A function that subscribes to one job and renders it |
+| `web/example.ts` | A function that subscribes to one job and renders it. It imports from `streamotter/client`, because your `package.json` lists `streamotter`. |
 | `README.md` | A short version of these steps |
 
 `init` refuses to overwrite existing files, so run it in a new folder or a subfolder.

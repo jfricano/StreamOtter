@@ -1,0 +1,104 @@
+{
+  "name": "streamotter",
+  "version": "0.1.0-rc.3",
+  "description": "StreamOtter in one install: the CLI and local workbench, the Node.js gateway, and the browser SDK, for live Kafka state in the browser that is either verifiably live or visibly stale.",
+  "keywords": [
+    "streamotter",
+    "kafka",
+    "socket.io",
+    "websocket",
+    "realtime",
+    "live-data",
+    "state-sync",
+    "gateway",
+    "browser",
+    "typescript"
+  ],
+  "homepage": "https://github.com/jfricano/StreamOtter#readme",
+  "bugs": {
+    "url": "https://github.com/jfricano/StreamOtter/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jfricano/StreamOtter.git",
+    "directory": "packages/streamotter"
+  },
+  "license": "MIT",
+  "author": "Orca Solutions",
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "streamotter": "./bin/streamotter.js"
+  },
+  "exports": {
+    "./client": {
+      "streamotter-source": "./src/client.ts",
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./gateway": {
+      "streamotter-source": "./src/gateway.ts",
+      "types": "./dist/gateway.d.ts",
+      "default": "./dist/gateway.js"
+    },
+    "./gateway/management": {
+      "streamotter-source": "./src/management.ts",
+      "types": "./dist/management.d.ts",
+      "default": "./dist/management.js"
+    },
+    "./contracts": {
+      "streamotter-source": "./src/contracts.ts",
+      "types": "./dist/contracts.d.ts",
+      "default": "./dist/contracts.js"
+    },
+    "./cli": {
+      "streamotter-source": "./src/cli.ts",
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./client": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
+      },
+      "./gateway": {
+        "types": "./dist/gateway.d.ts",
+        "default": "./dist/gateway.js"
+      },
+      "./gateway/management": {
+        "types": "./dist/management.d.ts",
+        "default": "./dist/management.js"
+      },
+      "./contracts": {
+        "types": "./dist/contracts.d.ts",
+        "default": "./dist/contracts.js"
+      },
+      "./cli": {
+        "types": "./dist/cli.d.ts",
+        "default": "./dist/cli.js"
+      },
+      "./package.json": "./package.json"
+    }
+  },
+  "dependencies": {
+    "@streamotter/cli": "workspace:*",
+    "@streamotter/client": "workspace:*",
+    "@streamotter/contracts": "workspace:*",
+    "@streamotter/gateway": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6"
+  }
+}

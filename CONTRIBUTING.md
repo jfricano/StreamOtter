@@ -46,6 +46,7 @@ The setup scripts download pinned, checksum-verified tools into the gitignored `
 | `packages/gateway` | `createGateway`, `defineProject`, the fixture and KafkaJS sources, synchronization, the Socket.IO transport, and the development management API |
 | `packages/client` | The `createClient` browser SDK |
 | `packages/cli` | `streamotter init`, `validate`, `generate`, `dev`, and `start`, plus the TypeScript generator |
+| `packages/streamotter` | The all-in-one `streamotter` package: the `streamotter` command and re-exports (`streamotter/client`, `streamotter/gateway`, …); no code of its own |
 | `apps/workbench` | The local workbench UI (Connect, Define, Preview, Inspect, Export), served by `streamotter dev` |
 | `examples/order-dashboard` | The reference application: fixture and Kafka modes, and vanilla TypeScript and React views |
 | `contracts/v1` | The V1 contract surface, re-exporting the implementation, with the compile-time example and negative checks |

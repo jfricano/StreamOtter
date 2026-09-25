@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-StreamOtter is pre-1.0. Security fixes go into the most recent release only: currently the `0.1.x` line, including its release candidates. All five `@streamotter/*` packages are released together, so update them together.
+StreamOtter is pre-1.0. Security fixes go into the most recent release only: currently the `0.1.x` line, including its release candidates. All six packages (`streamotter` and the five `@streamotter/*` packages) are released together, so update them together.
 
 ## Reporting a vulnerability
 

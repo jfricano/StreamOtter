@@ -11,7 +11,7 @@ import {
 import { createGateway, type Gateway, type GatewayLogger } from "@streamotter/gateway";
 import { startManagementServer } from "@streamotter/gateway/management";
 import { getGatewayInternals } from "@streamotter/gateway/internals";
-import { fingerprint, generateFiles, GENERATED_MARKER } from "./generate.ts";
+import { detectPackageStyle, fingerprint, generateFiles, GENERATED_MARKER } from "./generate.ts";
 import { scaffoldFiles } from "./templates.ts";
 
 export const EXIT = { ok: 0, runtime: 1, invalid: 2 } as const;
@@ -135,7 +135,7 @@ async function commandInit(positionals: string[], io: CliIO): Promise<number> {
   const target = resolve(directory);
   if (existsSync(target) && !(await stat(target)).isDirectory()) throw new CliError(EXIT.invalid, `${directory} exists and is not a directory.`);
   const projectId = basename(target).replace(/[^A-Za-z0-9_-]/g, "-").replace(/^[^A-Za-z]+/, "") || "streamotter-app";
-  const files = scaffoldFiles(projectId.slice(0, 64));
+  const files = scaffoldFiles(projectId.slice(0, 64), { packages: detectPackageStyle(target) });
   const conflicts = files.filter(file => existsSync(join(target, file.path))).map(file => file.path);
   if (conflicts.length > 0) throw new CliError(EXIT.invalid, `Refusing to overwrite existing files: ${conflicts.join(", ")}`);
   for (const file of files) {
@@ -162,7 +162,7 @@ async function commandGenerate(values: Record<string, unknown>, io: CliIO): Prom
   const out = values["out"] as string | undefined;
   if (out === undefined) throw new CliError(EXIT.invalid, "--out <directory> is required.");
   const target = resolve(out);
-  const files = generateFiles(config);
+  const files = generateFiles(config, { packages: detectPackageStyle(target) });
   const blocked: string[] = [];
   for (const file of files) {
     const path = join(target, file.path);
@@ -242,6 +242,26 @@ async function commandStart(values: Record<string, unknown>, io: CliIO): Promise
   }
   io.out(`StreamOtter gateway (production) listening on ${address.origin} path ${address.path}. No management or development endpoints are exposed.`);
   return runUntilSignal(io, gateway);
+}
+
+/**
+ * Runs the CLI as this process: stdio, SIGINT/SIGTERM as the shutdown signal, and the exit code.
+ * The `streamotter` bins of @streamotter/cli and of the all-in-one streamotter package both call it.
+ */
+export async function runProcess(argv: readonly string[] = process.argv.slice(2)): Promise<never> {
+  const shutdownSignal = new Promise<string>(resolveSignal => {
+    process.once("SIGINT", () => resolveSignal("SIGINT"));
+    process.once("SIGTERM", () => resolveSignal("SIGTERM"));
+  });
+  const code = await runCli(argv, {
+    out: line => { process.stdout.write(`${line}\n`); },
+    err: line => { process.stderr.write(`${line}\n`); },
+    shutdownSignal
+  });
+  // Flush output, then exit even if a dependency left a handle open.
+  return new Promise<never>(() => {
+    process.stdout.write("", () => process.stderr.write("", () => process.exit(code)));
+  });
 }
 
 /** Runs the CLI and returns its exit code: 0 success, 2 invalid input/configuration, 1 startup/runtime failure. */

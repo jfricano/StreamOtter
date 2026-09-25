@@ -1,6 +1,6 @@
 # StreamOtter release checklist
 
-Applies to every release, starting with `0.1.0-rc.1`. The five public packages (`@streamotter/contracts`, `client`, `gateway`, `cli`, `workbench`) are always released together with one version. Steps marked **owner** need the owner's credentials or go-ahead; Claude never handles npm tokens or logins and never pushes or publishes without explicit approval.
+Applies to every release, starting with `0.1.0-rc.1`. The six public packages (`streamotter`, and `@streamotter/contracts`, `client`, `gateway`, `cli`, `workbench`) are always released together with one version. Steps marked **owner** need the owner's credentials or go-ahead; Claude never handles npm tokens or logins and never pushes or publishes without explicit approval.
 
 `pnpm` below means pnpm 11.19.0, the version in `packageManager` (`npx pnpm@11.19.0` works without a global install).
 
@@ -13,7 +13,7 @@ Applies to every release, starting with `0.1.0-rc.1`. The five public packages (
 
 ## 1. Prepare the release commit
 
-- [ ] `node scripts/release/set-version.mjs <version>` sets the version in all five manifests. The install test fails if they differ.
+- [ ] `node scripts/release/set-version.mjs <version>` sets the version in all six manifests. The install test fails if they differ.
 - [ ] `CHANGELOG.md`: complete the entry and replace "not yet published" with the date.
 - [ ] Package READMEs (`packages/*/README.md`, `apps/workbench/README.md`): the status line must match the release. Remove the release-candidate notice for a stable release. npm shows the README of the version tagged `latest`, so README changes reach npm only with a new version.
 - [ ] `README.md` and `docs/IMPLEMENTATION_STATUS.md` state accurately what is published.
@@ -43,10 +43,10 @@ pnpm kafka:stop
 
 ```bash
 pnpm -r --filter @streamotter/contracts --filter @streamotter/client --filter @streamotter/gateway \
-  --filter @streamotter/workbench --filter @streamotter/cli publish --dry-run --no-git-checks --tag next --access public
+  --filter @streamotter/workbench --filter @streamotter/cli --filter streamotter publish --dry-run --no-git-checks --tag latest --access public
 ```
 
-- [ ] Five packages are listed with the expected version and file lists (`dist`, `src`, `bin` for the CLI, `README.md`, `LICENSE`, `package.json`).
+- [ ] Six packages are listed with the expected version and file lists (`dist`, `src`, `bin` for the CLI and `streamotter`, `README.md`, `LICENSE`, `package.json`).
 
 ## 4. Tag
 
@@ -62,23 +62,23 @@ npm requires two-factor authentication to publish. With an authenticator app, pa
 ```bash
 npm login
 pnpm -r --filter @streamotter/contracts --filter @streamotter/client --filter @streamotter/gateway \
-  --filter @streamotter/workbench --filter @streamotter/cli publish --tag <tag> --access public --otp <code>
+  --filter @streamotter/workbench --filter @streamotter/cli --filter streamotter publish --tag <tag> --access public --otp <code>
 ```
 
 **Which tag.** npm pointed `latest` at `0.1.0-rc.1` when the packages were first published. So until the first stable version, publish each release candidate with `--tag latest`, then point `next` at it too:
 
 ```bash
-for p in contracts client gateway workbench cli; do npm dist-tag add @streamotter/$p@<version> next --otp <code>; done
+for p in @streamotter/contracts @streamotter/client @streamotter/gateway @streamotter/workbench @streamotter/cli streamotter; do npm dist-tag add $p@<version> next --otp <code>; done
 ```
 
-With a passkey, every `npm dist-tag add` needs its own browser sign-in ("Authenticate your account at …"). On September 25, running the five in a quick loop hit npm's rate limit (`E429 Too Many Requests`), so `next` still points to `0.1.0-rc.1`. The step is optional: `latest` is what `npm install` uses and what the npm pages show. To run it with a passkey, do one package at a time: run the command, approve in the browser, and wait for its `+next: …` line before starting the next. After an `E429`, wait before retrying. An authenticator app added alongside the passkey lets you pass `--otp` instead.
+With a passkey, every `npm dist-tag add` needs its own browser sign-in ("Authenticate your account at …"). On September 25, running five in a quick loop hit npm's rate limit (`E429 Too Many Requests`), so `next` still points to `0.1.0-rc.1`. The step is optional: `latest` is what `npm install` uses and what the npm pages show. To run it with a passkey, do one package at a time: run the command, approve in the browser, and wait for its `+next: …` line before starting the next. After an `E429`, wait before retrying. An authenticator app added alongside the passkey lets you pass `--otp` instead.
 
 From the first stable version on, publish stable versions with `--tag latest`, and prereleases with `--tag next` only.
 
 - The real publish keeps pnpm's git checks: a clean tree on the publish branch, in sync with the remote. That's why the push in step 4 comes first.
 - Always pass `--tag` explicitly.
 - pnpm publishes in dependency order and skips versions already on the registry. If a one-time password expires or the network fails partway, rerun the same command.
-- A **brand-new** package gets `latest` on its first publish, whatever `--tag` says (this happened for `0.1.0-rc.1`). Check with `npm dist-tag ls` in step 6. `latest` can be moved but not removed.
+- A **brand-new** package gets `latest` on its first publish, whatever `--tag` says (this happened for `0.1.0-rc.1`, and for `streamotter` in `0.1.0-rc.3`). The unscoped `streamotter` belongs to the publishing account rather than the organization (`npm owner ls streamotter`). Check with `npm dist-tag ls` in step 6. `latest` can be moved but not removed.
 
 ## 6. Verify from the registry
 
@@ -98,10 +98,10 @@ STREAMOTTER_INSTALL_FROM=registry pnpm test:install
 
 ## Promotion at launch
 
-The recommended path is to publish a stable version (for example `0.1.0`) through this checklist with `--tag latest`, after removing the release-candidate notices from the READMEs. The alternative, `npm dist-tag add @streamotter/<package>@<rc-version> latest` for all five, keeps the release-candidate README on the npm pages, because a README can only change with a new version.
+The recommended path is to publish a stable version (for example `0.1.0`) through this checklist with `--tag latest`, after removing the release-candidate notices from the READMEs. The alternative, `npm dist-tag add <package>@<rc-version> latest` for all six, keeps the release-candidate README on the npm pages, because a README can only change with a new version.
 
 ## Corrections
 
 - **Don't unpublish.** npm restricts unpublishing after 72 hours, and a version number can never be reused, even after unpublishing.
-- **A broken version:** `npm deprecate @streamotter/<package>@<version> "<what is wrong>; use <fixed version>"` for each affected package, then release a fixed version through this checklist (for example the next `-rc.N`, or a patch). Deprecate and republish all five together to keep them in step.
-- **A wrong dist-tag:** `npm dist-tag add @streamotter/<package>@<good version> <tag>`.
+- **A broken version:** `npm deprecate <package>@<version> "<what is wrong>; use <fixed version>"` for each affected package, then release a fixed version through this checklist (for example the next `-rc.N`, or a patch). Deprecate and republish all six together to keep them in step.
+- **A wrong dist-tag:** `npm dist-tag add <package>@<good version> <tag>`.
