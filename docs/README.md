@@ -24,6 +24,6 @@ Package guides, also shown on npm: [`streamotter`](../packages/streamotter/READM
 - [Research brief](./RESEARCH.md): developer reports, technical constraints, alternatives, and assumptions.
 - [API and feature roadmap](./API_AND_FEATURE_ROADMAP.md): V1, V2, V3, and the compatibility rules.
 - [Release plan](./RELEASE_PLAN.md) and [release checklist](./RELEASE_CHECKLIST.md): how releases are prepared, verified, and published.
-- [Home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md): the public site and integrated demo (not started).
+- [Home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md): the public site and live demo, a separate project that uses the published packages.
 - [Implementation handoff](./IMPLEMENTATION_HANDOFF.md): the original build sequence and acceptance checks.
 - [Contributing](../CONTRIBUTING.md) and the [security policy](../SECURITY.md).

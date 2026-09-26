@@ -63,7 +63,7 @@ Every feature should serve one of these developer jobs:
 | Configuration | Core: file-based, validate and export | Extend: migration tooling and deployment checks | Extend: revisions, promotion, rollback | Fleet management |
 | Browser-to-backend commands | Use existing application API | Use existing application API | Core: named command API | Specialized workflows |
 | Documentation generation | Core: types and examples | Extend: AsyncAPI export | Extend: catalog and change reports | Broader generators |
-| Public home site and integrated demo | Launch milestone after tested V1: home site, docs, live order-status demo | Extend only for shipped recovery/scale increments | Extend only for shipped command/team increments | Additional examples as needed |
+| Public home site and live demo | Launch milestone after tested V1: home site, docs links, live demo (a separate project using the published packages) | Extend only for shipped recovery/scale increments | Extend only for shipped command/team increments | Additional examples as needed |
 
 Multiple brokers within one Kafka cluster are part of ordinary connectivity in V1. Multiple independently configured clusters are the later feature; we do not equate a cluster with one broker.
 
@@ -365,7 +365,7 @@ These are ordered increments, not calendar estimates. Each adds working behavior
 | V1.0-b | Kafka adapter, application authentication, JSON mapping and parameter validation. | Stable source and channel interfaces. |
 | V1.0-c | Snapshot synchronization, overload behavior, revocation, and staged diagnostics. | V1.0-b plus the application snapshot contract. |
 | V1.0 | Usable workbench, generated TypeScript example, CLI/export, deployment recipe, engineering checks. | The complete V1 workflow. |
-| V1 public launch | First-class home site, public docs, integrated live demo, reproducible local example, and verified demo operations. | Tested V1.0 release candidate; website/demo launch gate. |
+| V1 public launch | First-class home site, public docs, live demo, reproducible local example, and verified demo operations. | Tested V1.0 release candidate; website/demo launch gate. |
 | V1.x | KafkaSocks migration guide, configuration polish, fixture improvements, compatibility fixes. | V1 API; no durable replay required. |
 | V2.0 | Retained event channels, delivery store, cursors, paged history, SDK checkpoints. | Stable event identity and a storage handoff design. |
 | V2.1 | Multiple gateways, ownership/fanout, shared revocation, topology and metrics. | Durable recovery independent of process memory. |
@@ -378,9 +378,9 @@ The V2 and V3 visions are complete across their listed increments. Documentation
 
 ### Public experience sequencing
 
-The home site and integrated `/demo` are first-class launch deliverables, specified in the [home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md). Build the reusable order-status application and scenario checks during V1. Begin the polished site and hosted demo after V1 passes its engineering acceptance gate, then finish them before the broad public launch and before V1.x/V2 feature expansion unless explicitly reprioritized. This launch milestone is separate from runtime completion and does not introduce a new API version.
+The home site and live demo are first-class launch deliverables, built as a separate project that uses the published packages; see the [home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md). The order-status reference application and its scenario checks were built during V1. Begin the polished site and hosted demo after V1 passes its engineering acceptance gate, then finish them before the broad public launch and before V1.x/V2 feature expansion unless explicitly reprioritized. This launch milestone is separate from runtime completion and does not introduce a new API version.
 
-The hosted demo uses the real V1 SDK and production gateway with isolated Kafka and synthetic application data. Public demo controls belong to the example application's API; management/development endpoints remain private. Hosting an example does not add a managed StreamOtter service or V3 team workspaces to V1. Timing is gate-based; no calendar estimate is committed before the runtime is verified.
+The hosted demo uses the real V1 SDK and production gateway with isolated Kafka and synthetic application data. Public demo controls belong to the demo application's API; management/development endpoints remain private. Hosting an example does not add a managed StreamOtter service or V3 team workspaces to V1. Timing is gate-based; no calendar estimate is committed before the runtime is verified.
 
 ## 9. Compatibility decisions to make in V1
 

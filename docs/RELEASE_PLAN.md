@@ -1,10 +1,10 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site goes to the owner (Codex); the article has its own chat
+September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat
 
 ## Goal
 
-Make StreamOtter V1 publicly usable and discoverable: installable npm packages, public source on GitHub, practical guides, the home site with the integrated `/demo`, and an announcement article. V1 itself is complete and has passed Gate A ([implementation status](./IMPLEMENTATION_STATUS.md)). This plan covers releasing it; it adds no runtime features.
+Make StreamOtter V1 publicly usable and discoverable: installable npm packages, public source on GitHub, practical guides, the home site with its live demo, and an announcement article. V1 itself is complete and has passed Gate A ([implementation status](./IMPLEMENTATION_STATUS.md)). This plan covers releasing it; it adds no runtime features.
 
 Every public claim must match verified behavior: no invented adoption, performance, or capacity numbers, and nothing presented as shipped before it is ([founding document](./FOUNDING.md), [home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
@@ -17,7 +17,7 @@ Every public claim must match verified behavior: no invented adoption, performan
 | License | MIT, © 2026 Orca Solutions: a root `LICENSE`, a copy in each package, and `license` fields. The workbench also ships the notices of the Socket.IO client code it bundles. |
 | Source control | Public at [github.com/jfricano/StreamOtter](https://github.com/jfricano/StreamOtter) since September 25, 2026 (`main` only; commits authored with a GitHub no-reply address). The pre-push scan found no secrets, keys, certificates, `.local/`, or build output in the tree or history. Both CI workflows pass: `ci.yml` on Node 24 and 26, and `extended.yml` (Kafka, install, browser, and deployment on Linux). |
 | Version fields | Every public package is `0.1.0-rc.1` (`scripts/release/set-version.mjs` keeps them together); nothing is tagged. |
-| Site and demo | Planned in the home site and demo plan; not started. |
+| Site and demo | A separate project, Lontra Creek, planned for `streamotter.app`; in progress. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md). |
 | Guides and article | Not started. The README, [deployment guide](./DEPLOYMENT.md), and the [example README](../examples/order-dashboard/README.md) are the starting material. |
 
 ## Decisions for the owner
@@ -87,11 +87,9 @@ Preparation (no remote needed):
 
 Pushing publishes code and is done only with the owner's explicit go-ahead. The repository is public, so the npm pages' links resolve.
 
-### 4. Home site and `/demo` (separate chat)
+### 4. Home site and live demo (separate project)
 
-The owner will build the home site with ChatGPT Codex. The guides in `docs/guides/` are plain Markdown, so the site can publish them.
-
-Part of this release and its Gate B, planned in detail in its own chat per [the home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md). Dependencies on this plan: the demo runs the **published** release candidate, and the site's install instructions and links point at the real npm packages and GitHub repository.
+Built as its own project, Lontra Creek, with its own repository and plan; see [the home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md). It links to the guides in `docs/guides/` rather than copying them. Dependencies on this plan: the demo runs a **published** release, and the site's install instructions and links point at the real npm packages and GitHub repository.
 
 ### 5. Announcement article (Medium)
 
@@ -113,6 +111,6 @@ No competitor disparagement, invented metrics, or claims beyond the implementati
 2. **Release chat:** packaging work and the install test, then `LICENSE`, repository hygiene, CI, and the npm-page guides.
 3. **GitHub:** the owner creates the repository; push with the owner's go-ahead (public or private per decision 1).
 4. **Release candidate:** the owner publishes (or CI publishes) under `next`; verify installation from the registry in a clean project. *Done September 25.*
-5. **Site and demo chat:** build on the published release candidate; complete Gate B.
+5. **Site and demo project:** build on the published release candidate; complete Gate B.
 6. **Article:** draft, then review against the implementation status and working links.
 7. **Launch:** promote packages to `latest` (or publish the stable version), make the repository public if not already, bring the site and demo live, publish the article, and smoke-test every public link.

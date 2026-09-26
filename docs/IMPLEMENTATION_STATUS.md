@@ -2,7 +2,7 @@
 
 September 25, 2026 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter` package
 
-V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and hosted demo (Gate B milestone) are **not started**.
+V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
 This document records what exists, the commands that verify it, the results observed, and the limitations that remain. The [V1 specification](./V1_API.md) governs behavior; its [section 13](./V1_API.md#13-implementation-refinements-contract-revision-02) lists refinements made during implementation.
 
@@ -168,4 +168,4 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 | Auth, revocation, synchronization, cleanup, overload/resource limits, broker authentication paths have results and explicit limitations | Met |
 | No unresolved failure contradicts a promised V1 behavior | No known contradiction; limitations are listed above |
 
-Gate A is met. The next milestone is the public home site and integrated `/demo` (Gate B), which needs product decisions first: domain, site framework, hosting provider, operating budget, and the demo's operator.
+Gate A is met. The home site and live demo are a separate project, Lontra Creek, planned for `streamotter.app`; it uses the published packages, and its launch criteria (Gate B) are maintained with it. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md).

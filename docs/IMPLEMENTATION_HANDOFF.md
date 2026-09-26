@@ -8,7 +8,7 @@ Implement the V1 defined in [V1_API.md](./V1_API.md), retaining the product inte
 
 ## What is here today
 
-V1 slices 1–4 are implemented and tested; the public home site and hosted demo (the next milestone) are not started. [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) is the current record of what exists, the commands that verify it, the actual results, and the known limitations. In brief:
+V1 slices 1–4 are implemented and tested; the public home site and live demo are a separate project that uses the published packages. [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) is the current record of what exists, the commands that verify it, the actual results, and the known limitations. In brief:
 
 - `packages/contracts`, `packages/gateway`, `packages/client`, `packages/cli`: the shared contracts, gateway (fixture and KafkaJS sources, synchronization, Socket.IO transport, development management API), browser SDK, and CLI with the TypeScript generator.
 - `apps/workbench`: the local workbench served by `streamotter dev`.
@@ -25,7 +25,7 @@ Implementation decisions that refine the specification are recorded in [V1_API.m
 3. [V1 API specification](./V1_API.md).
 4. [Typed contracts](../contracts/v1/api.ts), [example](../contracts/v1/example.ts), and [type checks](../contracts/v1/type-tests.ts).
 5. [Research](./RESEARCH.md) when the reason behind a design decision matters.
-6. [Home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md) for example reuse, public launch scope, and the gates after V1.
+6. [Home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md) for how the separate site project relates to this repository, and the gates after V1.
 
 The detailed V1 specification and its types take precedence over earlier roadmap sketches. If the specification and types conflict, resolve the conflict explicitly and update both. Make routine implementation decisions independently. Ask the owner only for a material product decision that cannot be resolved from this scope.
 
@@ -75,11 +75,11 @@ Add the CLI, schema-to-TypeScript generation, vanilla TypeScript example, and Re
 
 Run the specification’s acceptance scenarios. Fix failures. Check the production build, cleanup, resource bounds, and absence of development/management endpoints in production. Record commands and actual results in `docs/IMPLEMENTATION_STATUS.md`, including limitations. Do not claim all V1 behavior works merely because the happy-path example runs.
 
-### After tested V1: home site and integrated demo
+### After tested V1: home site and live demo
 
-Once [Gate A](./WEBSITE_AND_DEMO_PLAN.md#gate-a-ready-to-implement-the-public-experience) passes, build the first-class home site, public documentation, and integrated `/demo` as a dedicated public-launch milestone. Reuse the tested order-status application and released contracts. The public demo requires a production-mode gateway, isolated Kafka, synthetic data, and application-owned bounded scenario actions; do not expose the local workbench or development/management endpoints.
+[Gate A](./WEBSITE_AND_DEMO_PLAN.md#gate-a-ready-to-implement-the-public-experience) has passed. The home site and live demo are built as a separate project that installs the published packages from npm; nothing in this repository builds, tests, or deploys them. This repository's part is listed in the [plan](./WEBSITE_AND_DEMO_PLAN.md#what-this-repository-owes-the-site): accurate docs, releases that match them, and fixes shipped through releases.
 
-Complete [Gate B](./WEBSITE_AND_DEMO_PLAN.md#gate-b-ready-for-the-public-launch) before broad public launch. Prioritize this milestone before V1.x/V2 feature expansion unless explicitly reprioritized. Website completion does not redefine V1 runtime acceptance, and a runtime-only implementation request ends at slice 4 unless launch work is also requested.
+[Gate B](./WEBSITE_AND_DEMO_PLAN.md#gate-b-ready-for-the-public-launch) belongs to the site project. Prioritize the launch before V1.x/V2 feature expansion unless explicitly reprioritized. Website completion does not redefine V1 runtime acceptance.
 
 ## Tests that matter
 
