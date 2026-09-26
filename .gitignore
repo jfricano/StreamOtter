@@ -8,3 +8,5 @@ dist/
 .local/
 coverage/
 tests/.generated-contracts/
+# Local instructions for Claude Code; not part of the published repository.
+CLAUDE.md
