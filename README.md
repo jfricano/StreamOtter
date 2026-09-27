@@ -1,4 +1,9 @@
-<p align="center"><img src="docs/assets/streamotter-logo.png" alt="StreamOtter" width="480"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/streamotter-logo-dark.png">
+    <img src="docs/assets/streamotter-logo.png" alt="StreamOtter" width="480">
+  </picture>
+</p>
 
 # StreamOtter
 
