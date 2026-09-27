@@ -22,7 +22,7 @@ const result = await build({
   metafile: true,
   logLevel: "warning"
 });
-for (const file of ["index.html", "styles.css"]) {
+for (const file of ["index.html", "styles.css", "favicon.svg"]) {
   await copyFile(new URL(`./src/${file}`, import.meta.url), new URL(file, dist));
 }
 await writeFile(new URL("THIRD_PARTY_LICENSES.txt", dist), await thirdPartyNotices(Object.keys(result.metafile.inputs)));
