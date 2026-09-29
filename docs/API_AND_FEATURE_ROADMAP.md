@@ -23,6 +23,8 @@ We are making these decisions from public research and product judgment. Intervi
 | **V3 — Act and operate together** | Send authorized application commands and manage integrations across teams and environments. | A governed application event interface with shared operational workflows. | Named commands, scoped access, versioned configuration, and controlled deployment. |
 | **Beyond V3 — Extend the reach** | Apply the same model to more ecosystems and operating environments. | Additional adapters, SDKs, and optional managed services. | Added only as separately scoped increments. |
 
+V1.5 (Contain, explain, recover) is an increment inside V1, not a fourth version. It gives source failures explicit policies, protected quarantine evidence, and controlled recovery for state channels; see the [V1.5 specification](./releases/v1.5/README.md). Its consequences for V2 and V3 are noted in those sections.
+
 The progression is cumulative. V1 state channels continue working in V2 and V3. A developer should not need durable history, multiple servers, or team administration merely to receive an order-status update.
 
 These are product milestones, not a promise of three breaking API releases. A product release called V2 may still use protocol version 1 and the same compatible SDK major version.
@@ -47,9 +49,9 @@ Every feature should serve one of these developer jobs:
 
 | Feature | V1 | V2 | V3 | Beyond |
 | --- | --- | --- | --- | --- |
-| Local web workbench | Core: connect, define, integrate, inspect | Extend: replay and topology | Extend: shared environment operations | Optional hosted workbench |
+| Local web workbench | Core: connect, define, integrate, inspect. V1.5: Failures view | Extend: replay and topology | Extend: shared environment operations | Optional hosted workbench |
 | Kafka connectivity | Core: configured profiles; documented TLS/SASL support | Extend: multiple independently configured clusters | Extend: environment-scoped profiles | Additional messaging systems |
-| Local fixtures | Core: deterministic data and failure scenarios | Extend: recovery/rebalance scenarios | Extend: command scenarios | Shared fixture packs |
+| Local fixtures | Core: deterministic data and failure scenarios. V1.5: quarantine and recovery scenarios | Extend: recovery/rebalance scenarios | Extend: command scenarios | Shared fixture packs |
 | Payload contracts | Core: JSON validation and TypeScript generation | Extend: Schema Registry, then Avro decoding | Extend: compatibility checks in deployment | Protobuf and additional codecs |
 | Application channels | Core: named, parameterized, authorized state channels | Extend: retained event channels | Extend: governed channel catalog | More specialized channel types |
 | Mapping and filtering | Core: server-side mapping and exact parameter matching | Extend: declared, bounded filtering | Extend: shared reusable policies | Advanced transformations |
@@ -57,12 +59,13 @@ Every feature should serve one of these developer jobs:
 | Framework integration | Core: vanilla TypeScript and React example | Extend: supported React hooks | Maintain | Other framework bindings |
 | Socket.IO | Core | Maintain | Maintain | Maintain |
 | Plain WebSocket / SSE | Deferred | Deferred | Extend: plain WebSocket adapter | SSE and other adapters |
-| Recovery | Core: snapshot and explicit resynchronization | Extend: retained replay and durable checkpoints | Maintain | Long-term archival recovery |
+| Recovery | Core: snapshot and explicit resynchronization. V1.5: guarded snapshot recovery after a quarantined record | Extend: retained replay and durable checkpoints | Maintain | Long-term archival recovery |
 | Flow control | Core: bounded queues and explicit overload | Extend: replay quotas and shared budgets | Extend: per-workspace quotas | Adaptive policies |
 | Gateway deployment | Core: one gateway | Extend: multiple gateways and coordinated delivery | Extend: environment operations | Multi-region deployment |
-| Access control | Core: application identity and subscription policy | Extend: history authorization and cross-node revocation | Extend: workbench roles and workspace isolation | Enterprise identity options |
-| Observability | Core: health, structured errors, local event trace | Extend: persistent metadata, metrics export, topology | Extend: audit history and shared diagnostics | Broader integrations |
-| Configuration | Core: file-based, validate and export | Extend: migration tooling and deployment checks | Extend: revisions, promotion, rollback | Fleet management |
+| Access control | Core: application identity and subscription policy. V1.5: one trusted local operator boundary | Extend: history authorization and cross-node revocation | Extend: workbench roles and workspace isolation, including role-scoped failure operations | Enterprise identity options |
+| Observability | Core: health, structured errors, local event trace. V1.5: production health probes, incident diagnostics, redacted reproduction bundles | Extend: persistent metadata, metrics export, topology, incident state across gateways | Extend: audit history (including failure operations) and shared diagnostics | Broader integrations |
+| Configuration | Core: file-based, validate and export. V1.5: per-source failure policies | Extend: migration tooling and deployment checks | Extend: revisions, promotion, rollback | Fleet management |
+| Source-failure handling | Core: pause and retry the same record. V1.5: quarantine, guarded continuation, single-record redrive for state channels | Extend: failure policy for event channels (hold only by default), shared incident state, registry decode failures | Extend: role-scoped operator actions and audited failure operations | Bulk or scheduled redrive; repaired-record republishing |
 | Browser-to-backend commands | Use existing application API | Use existing application API | Core: named command API | Specialized workflows |
 | Documentation generation | Core: types and examples | Extend: AsyncAPI export | Extend: catalog and change reports | Broader generators |
 | Public home site and live demo | Launch milestone after tested V1: home site, docs links, live demo (a separate project using the published packages) | Extend only for shipped recovery/scale increments | Extend only for shipped command/team increments | Additional examples as needed |
@@ -294,6 +297,10 @@ Use shared history and coordinated ownership before enabling multiple gateways. 
 
 The chosen storage engine and ownership algorithm need a focused architecture decision before V2 implementation. This does not delay the V1 API; its channel, identity, and cursor boundaries are designed for this extension.
 
+### Source failures in V2 (from V1.5)
+
+A snapshot can stand in for a skipped record on a state channel, but not for a missing event. So event-channel sources default to holding on a bad record. Any advance past one must leave a visible gap in history, never a silent skip. The V1.5 failure journal is not the V2 delivery store, and V2.1 must share incident and recovery-boundary state across gateways. Details belong in the V2 design decisions, not here.
+
 ### Other V2 additions
 
 Add replay progress and cursor inspection to the workbench; node/source topology; queue and source-lag metrics; bounded diagnostic history; and metrics export. Payload capture remains separate from metadata retention.
@@ -313,6 +320,8 @@ Demonstrate recovery with duplicate-tolerant handlers across client and gateway 
 ### Outcome and scope
 
 Applications can submit approved commands through StreamOtter, and teams can manage the same integration across development, staging, and production with clear access and configuration history.
+
+V3 is two independent adoption decisions, not one package. Application developers may want commands; platform teams may want environments and governance. Each increment ships and is adopted on its own, and neither is a prerequisite for the other or for V1/V2 users.
 
 ### Forecast command API
 
@@ -345,6 +354,8 @@ The command handoff must account for crashes between idempotency storage and bro
 
 Introduce workspaces, environment-scoped profiles, operator/viewer/deployer roles, shared revocation, and auditable configuration revisions. Versioned deployments refer to immutable artifacts and secret references. Reject concurrent writes using revision preconditions. Rollback creates a deployment of a previous compatible artifact; it does not undo Kafka records or reverse application side effects.
 
+V1.5's local operator actions become role-scoped permissions with audit history; operator-mode boundary retirement gets its own permission.
+
 The management API gains resources for workspaces, environments, configuration revisions, deployments, command receipts, and audit events. Long-running operations return job IDs with status and cancellation where safe. Workbench actions and CLI actions use the same API and authorization rules.
 
 ### Transport extension
@@ -370,12 +381,14 @@ These are ordered increments, not calendar estimates. Each adds working behavior
 | V1 public launch | First-class home site, public docs, live demo, reproducible local example, and verified demo operations. | Tested V1.0 release candidate; website/demo launch gate. |
 | V1.x | KafkaSocks migration guide, configuration polish, fixture improvements, compatibility fixes. | V1 API; no durable replay required. |
 | V1.5 — Contain, explain, recover | Native source-failure policy, protected Kafka quarantine, persistent local incident state, guarded snapshot recovery, controlled single-record reprocessing, failure console, local operator tooling and minimal health probes. Quarantine retains failed source-record evidence, not an event feed or browser history. [Specification](./releases/v1.5/README.md). | V1 state contract; V1 public launch; the V1.5 ADRs. |
-| V2.0 | Retained event channels, delivery store, cursors, paged history, SDK checkpoints. | Stable event identity and a storage handoff design. |
-| V2.1 | Multiple gateways, ownership/fanout, shared revocation, topology and metrics. | Durable recovery independent of process memory. |
-| V2.2 | Schema Registry/Avro integration, React hooks, AsyncAPI export. | Public channel contracts and compatible generation tooling. |
+| V2.0 | Retained event channels, delivery store, cursors, paged history, SDK checkpoints, replay diagnostics, configuration migration checks for the first store schema. | Stable event identity and a storage handoff design, including how quarantine dispositions and any gaps appear in history. |
+| V2.1 | Multiple gateways, ownership/fanout, shared revocation, topology and metrics. | Durable recovery independent of process memory; incident and recovery-boundary state shared beyond one node. |
+| V2.2 | Schema Registry/Avro integration, React hooks, AsyncAPI export, independently configured Kafka clusters, declared bounded filtering. | Public channel contracts and compatible generation tooling. |
 | V3.0 | Named commands, durable idempotency, receipt lookup and outcome correlation. | Durable storage primitives and scoped application identity. |
-| V3.1 | Team workspaces, environments, configuration revisions, promotion/rollback, audits. | Management authorization and immutable deployment artifacts. |
+| V3.1 | Team workspaces, environments, configuration revisions, promotion/rollback, audits. | Management authorization and immutable deployment artifacts; V1.5 operator actions mapped to roles. |
 | V3.2 | Plain WebSocket adapter with SDK capability negotiation. | Stable logical protocol and a shared behavior test suite. |
+
+Before each dependency-heavy increment, a short design decision settles the question its correctness depends on: the delivery store and crash boundaries for V2.0 (evaluate PostgreSQL and at most one alternative), ingestion versus connection ownership for V2.1, durable command acceptance for V3.0, environment isolation for V3.1, and a transport-independent test suite before V3.2. These are design gates for the increment they serve, not a freeze on other work. State-only regression tests come first, so that a V1 user never picks up a database, coordinator, or workspace just by upgrading.
 
 The V2 and V3 visions are complete across their listed increments. Documentation must state which increment actually contains a feature; the broader version label cannot imply that all planned features already shipped.
 
@@ -411,17 +424,18 @@ Stable source record identity includes the source/cluster incarnation and record
 | Multi-region delivery | Regional latency and resilience. | Explicit cross-region consistency, recovery, and cost policies. |
 | Stream transformations and joins | Build derived feeds inside the product. | A distinct processing model; avoid hiding a new stream processor inside mapping hooks. |
 | Long-term archive/replay | Recover beyond the hot history window. | Storage cost, indexing, privacy, and replay throughput design. |
-| AI-assisted configuration and diagnosis | Help explain errors and draft configuration. | Reliable deterministic diagnostics and reviewable output first. |
+| AI-assisted configuration and diagnosis | Help explain errors and draft configuration. | Reliable deterministic diagnostics and reviewable output first. V1.5's incident records and reproduction bundles are the natural input. |
+| Bulk redrive and repaired-record republishing | Resolve many quarantined records at once, or publish a corrected record. | V1.5 deliberately allows one record at a time and never publishes to business topics; both need their own ordering, approval, and identity rules. |
 
-These are options, not release promises. None changes V1’s dependency footprint.
+These are options, not release promises. None changes V1’s dependency footprint. Each becomes an increment only with an owner decision naming the job it does, the dependency and support cost it adds, and what it excludes. Interesting technology or a competitor's feature list alone is not enough.
 
 ## 11. What is settled and what needs a specification
 
-**Settled:** the audience; local workbench plus SDK plus owned gateway; Kafka and Socket.IO first; state channels before retained event channels; single gateway before distributed delivery; commands and shared operations in V3; incremental compatibility.
+**Settled:** the audience; local workbench plus SDK plus owned gateway; Kafka and Socket.IO first; state channels before retained event channels; source-failure containment (V1.5) before retained events; single gateway before distributed delivery; commands and shared operations in V3; incremental compatibility.
 
 **Before V1 implementation:** specify exact handler signatures, the state snapshot handshake, source commit/error policy, finite default limits, authentication/revocation hooks, event/error unions, management-session protection, and generated types. Select and pin a Kafka client through its internal adapter and declare the initially supported connection/authentication paths. These are bounded implementation decisions within the chosen scope.
 
-**Before later increments:** document the V2 delivery store and ownership mechanism, schema compatibility rules, V3 command handoff/idempotency, and environment isolation. Do not implement placeholder storage, commands, or team-management systems merely to reserve their names.
+**Before later increments:** document the V2 delivery store and ownership mechanism (including event-channel failure policy and shared incident state), schema compatibility rules, V3 command handoff/idempotency, and environment isolation. Do not implement placeholder storage, commands, or team-management systems merely to reserve their names.
 
 The [V1 API specification](./V1_API.md) now makes the server configuration, SDK subscription, snapshot lifecycle, and errors concrete. Its detailed contracts supersede this roadmap’s illustrative sketches. The [implementation handoff](./IMPLEMENTATION_HANDOFF.md) defines the build sequence.
 
