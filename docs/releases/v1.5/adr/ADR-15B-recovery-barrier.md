@@ -1,6 +1,6 @@
 # ADR-15B: Application recovery barrier and failure classification
 
-**Status:** Proposed · September 29, 2026 · Decides spec §4, §7 and the snapshot handler change
+**Status:** Accepted · September 29, 2026 · Decides spec §4, §7 and the snapshot handler change
 **Baseline read:** `packages/gateway/src/runtime/gateway.ts` (`#process`, `#buildOutput`), `runtime/subscription.ts` (`#beginAttempt`, `onSourceReady`), `packages/contracts/src/types.ts` (`ChannelHandlers`, `HandlerRegistry`) at `7b40678`.
 
 ## Context
@@ -70,7 +70,7 @@ The draft never says when a boundary stops being required. Without a rule, every
 - an operator runs `sources retire-boundary` with the boundary ID and its expected revision. That's recorded in the journal and doesn't apply to held incidents;
 - the source's `generation` changes, which is already V1's rebaseline mechanism.
 
-**Proposed, awaiting owner confirmation: the developer picks per source.**
+**Accepted by the owner on September 29, 2026: the developer picks per source.**
 
 ```json
 "failureHandling": { "sources": { "orders": { "boundaryRetirement": "generation" } } }
@@ -83,6 +83,17 @@ The draft never says when a boundary stops being required. Without a rule, every
 | `operator` | `sources retire-boundary <boundaryId> --expected-revision N --reason "…"` | Most convenient. The reason is required and audited. It's a human assertion, the "looks safe" override §7.2 warns about, so it's opt-in only. |
 
 A generation change always retires every boundary, whichever mode is set. No mode ever retires a boundary while its incident is still held.
+
+**Operator mode is the unsafe option, and the documentation must say so.** Retiring a boundary tells the gateway that every future snapshot already reflects the quarantined record. StreamOtter can't check that. If the claim is wrong, subscribers can reach `live` while showing state that's missing the change the quarantined record carried, and nothing downstream will flag it. The configuration reference, the CLI help for `sources retire-boundary`, and the runbook all carry that warning. The CLI prints it and asks for confirmation before sending the command.
+
+Suggested uses, all where a person can actually verify the claim:
+
+- **Development and fixtures**, where the data is synthetic and a wrong call costs nothing.
+- **The record provably had no state effect**, for example a duplicate, a test message published to the wrong topic, or an entity that has since been deleted and whose snapshot handler returns the deletion.
+- **A verified manual repair**: someone corrected the authoritative store by hand, confirmed that snapshots reflect the fix, and records what they checked in `--reason`.
+- **A bridge before `application` mode exists**, used rarely and reviewed, while the team writes a real `retire` handler.
+
+Not a use: clearing a boundary so snapshot handlers can drop the acknowledgment code, or to make an alert go away. When operator retirement becomes routine on a source, that source needs `application` mode.
 
 ### 5. Reference implementation
 

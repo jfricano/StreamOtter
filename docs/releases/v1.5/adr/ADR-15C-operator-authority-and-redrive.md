@@ -1,6 +1,6 @@
 # ADR-15C: Local operator authority and what redrive means
 
-**Status:** Proposed · September 29, 2026 · Decides spec §8, §9, §11.1 and §12. The redrive simplification (§5) was accepted by the owner on September 29, 2026.
+**Status:** Accepted · September 29, 2026 · Decides spec §8, §9, §11.1 and §12. The redrive simplification (§5) was accepted by the owner on September 29, 2026.
 **Baseline read:** `packages/gateway/src/management/index.ts`, `runtime/gateway.ts` (`GatewayInternals`, `resumeSource`, `validateProduction`), `packages/cli/src/cli.ts`, `packages/contracts/src/config.ts` at `7b40678`.
 
 ## Context

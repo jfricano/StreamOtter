@@ -4,7 +4,7 @@
 
 **Prepared for:** Jason Fricano / StreamOtter  
 **Date:** September 28, 2026 · revised September 29, 2026  
-**Document revision:** 0.3: owner accepted the redrive and journal-engine decisions; boundary retirement proposed as a per-source choice. Not yet approved as 1.0.  
+**Document revision:** 1.0: approved by the owner, September 29, 2026. Not yet implemented.  
 **Inspected baseline:** `jfricano/StreamOtter@7b406780dd52c921cf88a98834e81e1677fc4a8d`  
 **Headline feature:** Native source-failure policies, durable quarantine, and controlled single-record reprocessing.  
 **Companions:** `V1_5_ACCEPTANCE_PLAN.md`, `V1_5_IMPLEMENTATION_HANDOFF.md`, and [`adr/`](./adr/).
@@ -17,7 +17,7 @@ This document proposes the V1.5 increment requested by the product owner. It doe
 
 Repository facts are marked **Baseline** and linked to inspected sources. Requirements, defaults, interface sketches, and acceptance criteria below are **proposed design**, not existing APIs. The final Future Strategy research package remains advisory background; this specification supplements it rather than replacing it. Sources and review limits appear in §18.
 
-### Revision 0.2: what changed after checking the code
+### Revisions 0.2–1.0: what changed after checking the code
 
 Revision 0.1 was written from the repository's documents. Revision 0.2 checks its baseline claims against the source at the same commit (`7b40678`, which is still `main`). Every "Baseline" statement in §2 holds. The three ADRs change or pin down the following. Where an ADR departs from the 0.1 text, the ADR's decision is proposed and the text below is annotated, not silently rewritten.
 
@@ -29,7 +29,7 @@ Revision 0.1 was written from the repository's documents. Revision 0.2 checks it
 | Quarantine record format / 2 MiB envelope | Byte-safe envelope up to 2 MiB | Original key and value bytes verbatim, metadata in headers; the default broker limit (~1 MiB) can't hold a 2 MiB envelope, so startup checks the topic's `max.message.bytes` | ADR-15A §4, amends §13 |
 | Failure classification | Policy per failure class | The code reports all of these as `INVALID_PAYLOAD`; add an internal `FailureClass` so integrity failures can't be quarantined and skipped | [ADR-15B](./adr/ADR-15B-recovery-barrier.md) §1 |
 | Recovery guard and barrier | `sourceRecoveryRef` + snapshot acknowledgment | `handlers.sources[id].recover`; snapshot input `recovery`, output `recoveryBoundaryId`; additive types | ADR-15B §2–3 |
-| Retiring a barrier | Not specified | Proposed: per-source `boundaryRetirement` of `generation` (default), `application` or `operator`. Awaiting confirmation. | ADR-15B §4 |
+| Retiring a barrier | Not specified | **Accepted:** per-source `boundaryRetirement` of `generation` (default), `application` or `operator`; operator mode is documented as unsafe, with limited uses | ADR-15B §4 |
 | `operations` / `health` settings | Top-level project config | `GatewayOptions` and `streamotter start` flags; only `failureHandling` stays in project config | [ADR-15C](./adr/ADR-15C-operator-authority-and-redrive.md) §2, amends §9 |
 | Operator caller identity | "local caller/session identity as available" | Node can't read peer credentials; the boundary is filesystem permissions plus a token | ADR-15C §3 |
 | Redrive | Invalidate live epochs and resynchronize | **Accepted:** re-evaluate through the normal pipeline and admit at a record boundary; `admit` already filters older revisions | ADR-15C §5, replaces §8.3 mechanism |

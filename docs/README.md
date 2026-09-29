@@ -26,5 +26,5 @@ Package guides, also shown on npm: [`streamotter`](../packages/streamotter/READM
 - [Release plan](./RELEASE_PLAN.md) and [release checklist](./RELEASE_CHECKLIST.md): how releases are prepared, verified, and published.
 - [Home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md): the public site and live demo, a separate project that uses the published packages.
 - [Implementation handoff](./IMPLEMENTATION_HANDOFF.md): the original build sequence and acceptance checks.
-- [V1.5 proposal](./releases/v1.5/README.md): source-failure quarantine and recovery. Proposed, not approved.
+- [V1.5 specification](./releases/v1.5/README.md): source-failure quarantine and recovery. Approved, not implemented.
 - [Contributing](../CONTRIBUTING.md) and the [security policy](../SECURITY.md).

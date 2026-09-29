@@ -1,6 +1,6 @@
 # V1.5 "Contain, explain, recover" (proposal)
 
-**Status:** proposed, revision 0.3. Not yet approved as 1.0, not implemented, not on the roadmap yet.
+**Status:** approved, revision 1.0 (September 29, 2026). Not implemented. On the roadmap between the V1 launch and V2.0.
 
 | Document | What it is |
 | --- | --- |
@@ -11,7 +11,7 @@
 | [V1_5_ACCEPTANCE_PLAN.md](./V1_5_ACCEPTANCE_PLAN.md) | Scenario families F01–F48 and release gates (unchanged from 0.1) |
 | [V1_5_IMPLEMENTATION_HANDOFF.md](./V1_5_IMPLEMENTATION_HANDOFF.md) | Slices, ownership, and the proposed roadmap row (unchanged from 0.1) |
 
-The V1 specification and the roadmap stay authoritative until the owner approves this as revision 1.0. The roadmap row goes in at that point.
+The V1 specification still governs shipped behavior. This specification governs V1.5 work; the ADRs refine it where they say so.
 
 ## Decisions
 
@@ -19,5 +19,5 @@ The V1 specification and the roadmap stay authoritative until the owner approves
 | --- | --- |
 | Simpler redrive (ADR-15C §5) | Accepted, September 29, 2026 |
 | Journal engine: `node:sqlite`, else `better-sqlite3` (ADR-15A §2) | Accepted, September 29, 2026 |
-| Boundary retirement as a per-source choice, default `generation` (ADR-15B §4) | Proposed, awaiting confirmation |
-| Adopt V1.5 between the V1 launch and V2.0, and add the roadmap row | Open; done at revision 1.0 |
+| Boundary retirement as a per-source choice, default `generation`; operator mode documented as unsafe (ADR-15B §4) | Accepted, September 29, 2026 |
+| Adopt V1.5 between the V1 launch and V2.0 | Accepted, September 29, 2026 |

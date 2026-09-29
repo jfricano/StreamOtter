@@ -1,6 +1,6 @@
 # ADR-15A: Failure journal and acknowledged quarantine handoff
 
-**Status:** Proposed · September 29, 2026 · Decides spec §5 and §6. The journal engine choice (§2) was accepted by the owner on September 29, 2026.
+**Status:** Accepted · September 29, 2026 · Decides spec §5 and §6. The journal engine choice (§2) was accepted by the owner on September 29, 2026.
 **Baseline read:** `packages/gateway/src/sources/kafka.ts`, `sources/types.ts`, `runtime/gateway.ts` (`#process`, `resumeSource`), `runtime/identity.ts` at `7b40678`.
 
 ## Context
