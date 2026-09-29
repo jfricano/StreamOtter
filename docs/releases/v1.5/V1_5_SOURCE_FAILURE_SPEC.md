@@ -4,7 +4,7 @@
 
 **Prepared for:** Jason Fricano / StreamOtter  
 **Date:** September 28, 2026 · revised September 29, 2026  
-**Document revision:** 0.2: baseline checked against the code; ADR-15A/B/C proposed. Not yet approved.  
+**Document revision:** 1.0: approved by the owner, September 29, 2026. Not yet implemented.  
 **Inspected baseline:** `jfricano/StreamOtter@7b406780dd52c921cf88a98834e81e1677fc4a8d`  
 **Headline feature:** Native source-failure policies, durable quarantine, and controlled single-record reprocessing.  
 **Companions:** `V1_5_ACCEPTANCE_PLAN.md`, `V1_5_IMPLEMENTATION_HANDOFF.md`, and [`adr/`](./adr/).
@@ -17,22 +17,22 @@ This document proposes the V1.5 increment requested by the product owner. It doe
 
 Repository facts are marked **Baseline** and linked to inspected sources. Requirements, defaults, interface sketches, and acceptance criteria below are **proposed design**, not existing APIs. The final Future Strategy research package remains advisory background; this specification supplements it rather than replacing it. Sources and review limits appear in §18.
 
-### Revision 0.2: what changed after checking the code
+### Revisions 0.2–1.0: what changed after checking the code
 
 Revision 0.1 was written from the repository's documents. Revision 0.2 checks its baseline claims against the source at the same commit (`7b40678`, which is still `main`). Every "Baseline" statement in §2 holds. The three ADRs change or pin down the following. Where an ADR departs from the 0.1 text, the ADR's decision is proposed and the text below is annotated, not silently rewritten.
 
 | Topic | 0.1 text | 0.2 decision | Where |
 | --- | --- | --- | --- |
 | Where disposition work runs | Implied inside record processing | Every failure pauses through the existing V1 path first; quarantine and the guard run after the fetch loop returns; a new `advancePast` adapter call moves the offset | [ADR-15A](./adr/ADR-15A-failure-journal-and-handoff.md) §1 |
-| Journal engine | "embedded SQLite, driver TBD" | Built-in `node:sqlite` (no new dependency), `better-sqlite3` as the fallback if it's still experimental on Node 24 | ADR-15A §2 |
+| Journal engine | "embedded SQLite, driver TBD" | **Accepted:** built-in `node:sqlite` if usable on Node 24 without an experimental warning, otherwise `better-sqlite3` | ADR-15A §2 |
 | `failureId` | New versioned hash including cluster identity | Reuse V1 `sourceRecordId`; record the Kafka `clusterId` and refuse to advance on mismatch | ADR-15A §3 |
 | Quarantine record format / 2 MiB envelope | Byte-safe envelope up to 2 MiB | Original key and value bytes verbatim, metadata in headers; the default broker limit (~1 MiB) can't hold a 2 MiB envelope, so startup checks the topic's `max.message.bytes` | ADR-15A §4, amends §13 |
 | Failure classification | Policy per failure class | The code reports all of these as `INVALID_PAYLOAD`; add an internal `FailureClass` so integrity failures can't be quarantined and skipped | [ADR-15B](./adr/ADR-15B-recovery-barrier.md) §1 |
 | Recovery guard and barrier | `sourceRecoveryRef` + snapshot acknowledgment | `handlers.sources[id].recover`; snapshot input `recovery`, output `recoveryBoundaryId`; additive types | ADR-15B §2–3 |
-| Retiring a barrier | Not specified | **Owner decision:** operator retirement vs. generation change only | ADR-15B §4 |
+| Retiring a barrier | Not specified | **Accepted:** per-source `boundaryRetirement` of `generation` (default), `application` or `operator`; operator mode is documented as unsafe, with limited uses | ADR-15B §4 |
 | `operations` / `health` settings | Top-level project config | `GatewayOptions` and `streamotter start` flags; only `failureHandling` stays in project config | [ADR-15C](./adr/ADR-15C-operator-authority-and-redrive.md) §2, amends §9 |
 | Operator caller identity | "local caller/session identity as available" | Node can't read peer credentials; the boundary is filesystem permissions plus a token | ADR-15C §3 |
-| Redrive | Invalidate live epochs and resynchronize | Re-evaluate through the normal pipeline and admit at a record boundary; `admit` already filters older revisions | ADR-15C §5, amends §8.3 |
+| Redrive | Invalidate live epochs and resynchronize | **Accepted:** re-evaluate through the normal pipeline and admit at a record boundary; `admit` already filters older revisions | ADR-15C §5, replaces §8.3 mechanism |
 
 ## 1. Outcome, user, and release boundary
 
@@ -219,7 +219,7 @@ The result reports current validation, possible routing identities as privileged
 
 ### 8.3 Single-record gateway-local redrive
 
-*(0.2: ADR-15C §5 proposes a simpler mechanism for this section: re-evaluate and admit at a record boundary, without invalidating live epochs. Under review.)*
+*(0.3: the mechanism in this section is replaced by ADR-15C §5, accepted by the owner: re-evaluate the original bytes and admit at a record boundary through the normal revision filter, without invalidating live epochs. Where the paragraphs below mention invalidating epochs or a fresh synchronization, ADR-15C §5 governs.)*
 
 For an already-advanced quarantined record, an operator may approve the exact dry-run plan. V1.5 redrive means **re-evaluating the original bytes through StreamOtter's current mapping and state-delivery rules**, not publishing them back into the application's original Kafka topic. This avoids triggering unrelated consumer business effects or inserting an old event behind newer source records.
 

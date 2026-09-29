@@ -2,7 +2,9 @@
 
 **Plan the whole experience. Build it in useful increments.**
 
-September 24, 2026 · Planning revision 0.2 · No implementation released
+September 24, 2026 · Planning revision 0.2
+
+> **Current status (September 29, 2026):** V1 release candidates are published on npm; see [implementation status](./IMPLEMENTATION_STATUS.md). V1.5 is approved and specified in [releases/v1.5](./releases/v1.5/README.md). The rest of this document is the original plan.
 
 ## Purpose and authority
 
@@ -367,6 +369,7 @@ These are ordered increments, not calendar estimates. Each adds working behavior
 | V1.0 | Usable workbench, generated TypeScript example, CLI/export, deployment recipe, engineering checks. | The complete V1 workflow. |
 | V1 public launch | First-class home site, public docs, live demo, reproducible local example, and verified demo operations. | Tested V1.0 release candidate; website/demo launch gate. |
 | V1.x | KafkaSocks migration guide, configuration polish, fixture improvements, compatibility fixes. | V1 API; no durable replay required. |
+| V1.5 — Contain, explain, recover | Native source-failure policy, protected Kafka quarantine, persistent local incident state, guarded snapshot recovery, controlled single-record reprocessing, failure console, local operator tooling and minimal health probes. Quarantine retains failed source-record evidence, not an event feed or browser history. [Specification](./releases/v1.5/README.md). | V1 state contract; V1 public launch; the V1.5 ADRs. |
 | V2.0 | Retained event channels, delivery store, cursors, paged history, SDK checkpoints. | Stable event identity and a storage handoff design. |
 | V2.1 | Multiple gateways, ownership/fanout, shared revocation, topology and metrics. | Durable recovery independent of process memory. |
 | V2.2 | Schema Registry/Avro integration, React hooks, AsyncAPI export. | Public channel contracts and compatible generation tooling. |

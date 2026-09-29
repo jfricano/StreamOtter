@@ -1,6 +1,6 @@
 # ADR-15C: Local operator authority and what redrive means
 
-**Status:** Proposed · September 29, 2026 · Decides spec §8, §9, §11.1 and §12
+**Status:** Accepted · September 29, 2026 · Decides spec §8, §9, §11.1 and §12. The redrive simplification (§5) was accepted by the owner on September 29, 2026.
 **Baseline read:** `packages/gateway/src/management/index.ts`, `runtime/gateway.ts` (`GatewayInternals`, `resumeSource`, `validateProduction`), `packages/cli/src/cli.ts`, `packages/contracts/src/config.ts` at `7b40678`.
 
 ## Context
@@ -44,7 +44,7 @@ This is safe for full-state channels because `admit` already filters a revision 
 
 The recorded outcome is `reprocessed` (at least one output admitted), `superseded` (every output at or below current state), `failed` (the mapping still fails), or `unknown` (a crash between intent and result, which then needs new approval). `evaluate` runs the same pipeline without admitting and issues a plan that expires after 5 minutes, fingerprinted by config, handler build ID, evidence hash, and mapped-output hash.
 
-This departs from the draft's text, so it is flagged for review rather than silently adopted.
+This replaces the 0.1 text of spec §8.3, as accepted by the owner.
 
 ### 6. Legacy `resumeSource` respects holds
 
