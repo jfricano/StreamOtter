@@ -299,17 +299,7 @@ The chosen storage engine and ownership algorithm need a focused architecture de
 
 ### Source failures in V2 (from V1.5)
 
-V1.5's failure policies were designed for state channels, where a fresh snapshot can supersede an excluded record once the application proves it (the recovery boundary). That argument does not hold for retained event channels: a snapshot cannot stand in for a missing event, and a consumer resuming from a checkpoint would silently skip it. So:
-
-- Sources that feed event channels support `pause` and `quarantine-hold`. `quarantine-resync` is rejected for them by default.
-- Advancing past a record on an event-channel source, if V2.0 allows it at all, must write an explicit, durable gap into delivery history that resuming clients observe (for example as `HISTORY_UNAVAILABLE` for that range), never a silent skip. The V2.0 storage decision owns this.
-- A quarantined record has no delivery-history entry. The source-to-store handoff must record the quarantine disposition as source progress, so replay and diagnostics can tell a quarantined position from a lost one.
-- V1.5 redrive is state-only. Redriving into an event channel would append an old event after newer ones, so it needs its own V2 decision on ordering and identity before it's offered.
-- The V1.5 incident journal stays a local failure journal. It is not the V2 delivery store, and the V2 store decision must not assume it.
-
-For multiple gateways (V2.1), the V1.5 journal is a single-owner local file, which V2.1 must replace or extend. Incident state belongs with Kafka ingestion ownership. Recovery-boundary state must be readable by every node that serves snapshots, because the barrier is enforced where a connection is synchronized, which may not be the node consuming the partition. Operator actions must reach the owning node. Moving ingestion ownership must carry held incidents and boundaries with it, not reset them.
-
-Schema Registry and Avro (V2.2) add decode failures to the V1.5 taxonomy. An unknown schema ID or an undecodable record is a record failure, eligible for evidence and hold. An unreachable registry is an infrastructure outage and never a reason to quarantine records.
+A snapshot can stand in for a skipped record on a state channel, but not for a missing event. So event-channel sources default to holding on a bad record. Any advance past one must leave a visible gap in history, never a silent skip. The V1.5 failure journal is not the V2 delivery store, and V2.1 must share incident and recovery-boundary state across gateways. Details belong in the V2 design decisions, not here.
 
 ### Other V2 additions
 
@@ -330,6 +320,8 @@ Demonstrate recovery with duplicate-tolerant handlers across client and gateway 
 ### Outcome and scope
 
 Applications can submit approved commands through StreamOtter, and teams can manage the same integration across development, staging, and production with clear access and configuration history.
+
+V3 is two independent adoption decisions, not one package. Application developers may want commands; platform teams may want environments and governance. Each increment ships and is adopted on its own, and neither is a prerequisite for the other or for V1/V2 users.
 
 ### Forecast command API
 
@@ -362,7 +354,7 @@ The command handoff must account for crashes between idempotency storage and bro
 
 Introduce workspaces, environment-scoped profiles, operator/viewer/deployer roles, shared revocation, and auditable configuration revisions. Versioned deployments refer to immutable artifacts and secret references. Reject concurrent writes using revision preconditions. Rollback creates a deployment of a previous compatible artifact; it does not undo Kafka records or reverse application side effects.
 
-V1.5's local operator actions (`retry-current`, `reassess`, `evaluate`, `redrive`, `reopen-circuit`, `retire-boundary`) become role-scoped permissions. The failure operations are recorded in V3 audit history, not only the local journal. Operator-mode boundary retirement is the riskiest of them, because it asserts snapshot coverage StreamOtter can't check, so it gets its own permission, separate from ordinary retry and redrive. Per-source failure policies and `boundaryRetirement` are part of the reviewed configuration revision, so changing them goes through promotion like any other semantic change. Redrive is not a command: V3 commands never republish quarantine evidence to business topics.
+V1.5's local operator actions become role-scoped permissions with audit history; operator-mode boundary retirement gets its own permission.
 
 The management API gains resources for workspaces, environments, configuration revisions, deployments, command receipts, and audit events. Long-running operations return job IDs with status and cancellation where safe. Workbench actions and CLI actions use the same API and authorization rules.
 
@@ -389,12 +381,14 @@ These are ordered increments, not calendar estimates. Each adds working behavior
 | V1 public launch | First-class home site, public docs, live demo, reproducible local example, and verified demo operations. | Tested V1.0 release candidate; website/demo launch gate. |
 | V1.x | KafkaSocks migration guide, configuration polish, fixture improvements, compatibility fixes. | V1 API; no durable replay required. |
 | V1.5 — Contain, explain, recover | Native source-failure policy, protected Kafka quarantine, persistent local incident state, guarded snapshot recovery, controlled single-record reprocessing, failure console, local operator tooling and minimal health probes. Quarantine retains failed source-record evidence, not an event feed or browser history. [Specification](./releases/v1.5/README.md). | V1 state contract; V1 public launch; the V1.5 ADRs. |
-| V2.0 | Retained event channels, delivery store, cursors, paged history, SDK checkpoints. | Stable event identity and a storage handoff design, including how quarantine dispositions and any gaps appear in history. |
+| V2.0 | Retained event channels, delivery store, cursors, paged history, SDK checkpoints, replay diagnostics, configuration migration checks for the first store schema. | Stable event identity and a storage handoff design, including how quarantine dispositions and any gaps appear in history. |
 | V2.1 | Multiple gateways, ownership/fanout, shared revocation, topology and metrics. | Durable recovery independent of process memory; incident and recovery-boundary state shared beyond one node. |
-| V2.2 | Schema Registry/Avro integration, React hooks, AsyncAPI export. | Public channel contracts and compatible generation tooling. |
+| V2.2 | Schema Registry/Avro integration, React hooks, AsyncAPI export, independently configured Kafka clusters, declared bounded filtering. | Public channel contracts and compatible generation tooling. |
 | V3.0 | Named commands, durable idempotency, receipt lookup and outcome correlation. | Durable storage primitives and scoped application identity. |
 | V3.1 | Team workspaces, environments, configuration revisions, promotion/rollback, audits. | Management authorization and immutable deployment artifacts; V1.5 operator actions mapped to roles. |
 | V3.2 | Plain WebSocket adapter with SDK capability negotiation. | Stable logical protocol and a shared behavior test suite. |
+
+Before each dependency-heavy increment, a short design decision settles the question its correctness depends on: the delivery store and crash boundaries for V2.0 (evaluate PostgreSQL and at most one alternative), ingestion versus connection ownership for V2.1, durable command acceptance for V3.0, environment isolation for V3.1, and a transport-independent test suite before V3.2. These are design gates for the increment they serve, not a freeze on other work. State-only regression tests come first, so that a V1 user never picks up a database, coordinator, or workspace just by upgrading.
 
 The V2 and V3 visions are complete across their listed increments. Documentation must state which increment actually contains a feature; the broader version label cannot imply that all planned features already shipped.
 
@@ -433,7 +427,7 @@ Stable source record identity includes the source/cluster incarnation and record
 | AI-assisted configuration and diagnosis | Help explain errors and draft configuration. | Reliable deterministic diagnostics and reviewable output first. V1.5's incident records and reproduction bundles are the natural input. |
 | Bulk redrive and repaired-record republishing | Resolve many quarantined records at once, or publish a corrected record. | V1.5 deliberately allows one record at a time and never publishes to business topics; both need their own ordering, approval, and identity rules. |
 
-These are options, not release promises. None changes V1’s dependency footprint.
+These are options, not release promises. None changes V1’s dependency footprint. Each becomes an increment only with an owner decision naming the job it does, the dependency and support cost it adds, and what it excludes. Interesting technology or a competitor's feature list alone is not enough.
 
 ## 11. What is settled and what needs a specification
 
