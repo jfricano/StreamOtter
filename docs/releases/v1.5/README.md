@@ -1,6 +1,6 @@
 # V1.5 "Contain, explain, recover" (proposal)
 
-**Status:** proposed, revision 0.2. Not approved, not implemented, not on the roadmap yet.
+**Status:** proposed, revision 0.3. Not yet approved as 1.0, not implemented, not on the roadmap yet.
 
 | Document | What it is |
 | --- | --- |
@@ -13,9 +13,11 @@
 
 The V1 specification and the roadmap stay authoritative until the owner approves this as revision 1.0. The roadmap row goes in at that point.
 
-## Decisions for the owner
+## Decisions
 
-1. Adopt V1.5 as the increment between the V1 launch and V2.0.
-2. When a recovery boundary can be retired: by operator action, or only by a source generation change (ADR-15B §4).
-3. Accept the simpler redrive in ADR-15C §5 instead of the 0.1 resynchronize-on-redrive text.
-4. Journal engine: accept `node:sqlite` if it's usable on Node 24; otherwise `better-sqlite3`, a new native dependency (ADR-15A §2).
+| Decision | Status |
+| --- | --- |
+| Simpler redrive (ADR-15C §5) | Accepted, September 29, 2026 |
+| Journal engine: `node:sqlite`, else `better-sqlite3` (ADR-15A §2) | Accepted, September 29, 2026 |
+| Boundary retirement as a per-source choice, default `generation` (ADR-15B §4) | Proposed, awaiting confirmation |
+| Adopt V1.5 between the V1 launch and V2.0, and add the roadmap row | Open; done at revision 1.0 |

@@ -1,6 +1,6 @@
 # ADR-15A: Failure journal and acknowledged quarantine handoff
 
-**Status:** Proposed · September 29, 2026 · Decides spec §5 and §6
+**Status:** Proposed · September 29, 2026 · Decides spec §5 and §6. The journal engine choice (§2) was accepted by the owner on September 29, 2026.
 **Baseline read:** `packages/gateway/src/sources/kafka.ts`, `sources/types.ts`, `runtime/gateway.ts` (`#process`, `resumeSource`), `runtime/identity.ts` at `7b40678`.
 
 ## Context
@@ -35,7 +35,7 @@ interface SourceAdapter {
 
 Use Node's built-in `node:sqlite` (`DatabaseSync`) so enabling quarantine adds no npm dependency. Settings: `journal_mode=WAL`, `synchronous=FULL`, a schema-version table, and forward-only migrations run by `streamotter init --failures`. The gateway takes an exclusive lock (a `journal.lock` file opened `wx` holding pid, projectId and start time, plus a row in the journal naming the project and each source's generation) and refuses to start on any mismatch. A missing journal is never recreated by `start`.
 
-**Open risk:** `node:sqlite` still prints an `ExperimentalWarning` (observed on Node 22.22; the Node 24 status must be checked). If it's still experimental on Node 24, the fallback is `better-sqlite3`, a native addon with prebuilt binaries. Either choice sits behind one small `Journal` interface so the swap is local.
+**Accepted rule:** use `node:sqlite` if it is usable without an experimental flag or warning on the lowest supported Node (24). Otherwise use `better-sqlite3`, a native addon with prebuilt binaries, as a dependency of `@streamotter/gateway` that is loaded only when failure handling is enabled. `node:sqlite` still printed an `ExperimentalWarning` on Node 22.22; the Node 24 check is the first task of slice B. Either engine sits behind one small `Journal` interface so the swap is local.
 
 ### 3. Incident identity reuses the V1 source-record ID
 

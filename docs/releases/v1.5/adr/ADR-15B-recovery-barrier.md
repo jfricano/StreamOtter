@@ -70,7 +70,19 @@ The draft never says when a boundary stops being required. Without a rule, every
 - an operator runs `sources retire-boundary` with the boundary ID and its expected revision. That's recorded in the journal and doesn't apply to held incidents;
 - the source's `generation` changes, which is already V1's rebaseline mechanism.
 
-**This needs the owner's decision.** Operator retirement is convenient but it is exactly the "looks safe" override §7.2 warns against. The alternative is "never retire except by generation change", which is safer but costs every snapshot handler on that source a permanent acknowledgment.
+**Proposed, awaiting owner confirmation: the developer picks per source.**
+
+```json
+"failureHandling": { "sources": { "orders": { "boundaryRetirement": "generation" } } }
+```
+
+| Mode | How a boundary is retired | Tradeoff |
+| --- | --- | --- |
+| `generation` (default) | Only by changing the source `generation` | Safest: nobody can clear a boundary on a hunch. Every snapshot on the source must keep acknowledging it until a rebaseline. |
+| `application` | After each acknowledged snapshot, the gateway calls an optional `retire({ boundary })` on the source's recovery handlers. `true` retires it, recorded in the journal. | Automatic and evidence-backed, for example a database watermark permanently past the boundary. The application owns the truth of that answer, as it already owns snapshot consistency. Startup fails if `retire` is missing. |
+| `operator` | `sources retire-boundary <boundaryId> --expected-revision N --reason "…"` | Most convenient. The reason is required and audited. It's a human assertion, the "looks safe" override §7.2 warns about, so it's opt-in only. |
+
+A generation change always retires every boundary, whichever mode is set. No mode ever retires a boundary while its incident is still held.
 
 ### 5. Reference implementation
 
