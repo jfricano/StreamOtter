@@ -1,0 +1,256 @@
+{
+  "report_date": "2026-09-28",
+  "repository": "jfricano/StreamOtter",
+  "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "Founding direction",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/FOUNDING.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/FOUNDING.md",
+      "scope": "Full document; mission, audience, owned-gateway decision, research posture."
+    },
+    {
+      "id": "S02",
+      "title": "Product versions and API roadmap",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/API_AND_FEATURE_ROADMAP.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/API_AND_FEATURE_ROADMAP.md",
+      "scope": "Full roadmap through V3 and beyond; illustrative APIs, sequencing and compatibility."
+    },
+    {
+      "id": "S03",
+      "title": "V1 API specification",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/V1_API.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/V1_API.md",
+      "scope": "Sections 5\u20138 and 11\u201313 inspected; state consistency, progress, access, limits and implementation refinements."
+    },
+    {
+      "id": "S04",
+      "title": "V1 implementation status",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/IMPLEMENTATION_STATUS.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/IMPLEMENTATION_STATUS.md",
+      "scope": "Implementation tables, reported verification, support matrix, limitations and Gate A. Reported results not rerun."
+    },
+    {
+      "id": "S05",
+      "title": "Production deployment guide",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/DEPLOYMENT.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/DEPLOYMENT.md",
+      "scope": "Full document; single-gateway boundary, production surface, proxy and restart behavior."
+    },
+    {
+      "id": "S06",
+      "title": "Existing research brief",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/RESEARCH.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/RESEARCH.md",
+      "scope": "Executive assessment and sections 1\u20135 plus beginning of section 6 inspected; not every linked historical discussion independently rechecked."
+    },
+    {
+      "id": "S07",
+      "title": "Home site and live demo plan",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/WEBSITE_AND_DEMO_PLAN.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/WEBSITE_AND_DEMO_PLAN.md",
+      "scope": "Full document; separate Lontra Creek project, dependency direction, Gate A/B, generator request."
+    },
+    {
+      "id": "S08",
+      "title": "Synchronization acceptance-test source",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/tests/integration/sync.test.ts",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "tests/integration/sync.test.ts",
+      "scope": "Lines 1\u2013130 inspected; snapshot/update race, revision deduplication and invalidation. Not executed."
+    },
+    {
+      "id": "S09",
+      "title": "Documentation index",
+      "url": "https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/README.md",
+      "kind": "Repository document / source",
+      "accessed": "2026-09-28",
+      "ref": "7b406780dd52c921cf88a98834e81e1677fc4a8d",
+      "path": "docs/README.md",
+      "scope": "Full document; document hierarchy and package/guide locations."
+    },
+    {
+      "id": "S10",
+      "title": "Centrifugo: app-owned state with stream subscriptions",
+      "url": "https://centrifugal.dev/blog/2026/07/27/app-owned-state-stream-subscriptions",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Vendor technical explanation; July 27, 2026. getState and Kafka example; not an independent benchmark."
+    },
+    {
+      "id": "S11",
+      "title": "Centrifugo: stream history and recovery",
+      "url": "https://centrifugal.dev/docs/server/history_and_recovery",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Current documentation; bounded cache, positioning, replay, fallback. Deployment/edition/version must be pinned for tests."
+    },
+    {
+      "id": "S12",
+      "title": "Centrifugo: asynchronous consumers",
+      "url": "https://centrifugal.dev/docs/server/consumers",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Kafka ingestion and server API command consumers; not equivalent to StreamOtter V3 application commands."
+    },
+    {
+      "id": "S13",
+      "title": "Ably: Kafka connector",
+      "url": "https://ably.com/docs/platform/integrations/inbound/kafka-connector",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Kafka Connect ingestion into Ably channels; not proof of complete snapshot/checkpoint composition."
+    },
+    {
+      "id": "S14",
+      "title": "Ably LiveSync: frontend data models",
+      "url": "https://ably.com/docs/livesync/postgres/models",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Models lifecycle, initial-state synchronization and recovery; separate surface from Kafka connector."
+    },
+    {
+      "id": "S15",
+      "title": "Lightstreamer: Kafka connector",
+      "url": "https://lightstreamer.com/products/kafka-connector/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Vendor feature description; routing, adaptive delivery, schema support and auth. Promotional performance claims not adopted."
+    },
+    {
+      "id": "S16",
+      "title": "Lightstreamer Kafka connector README",
+      "url": "https://github.com/Lightstreamer/Lightstreamer-kafka-connector/blob/main/README.md",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Vendor-maintained technical reference; mutable branch, pin release before comparative execution."
+    },
+    {
+      "id": "S17",
+      "title": "Aklivity documentation and edition overview",
+      "url": "https://docs.aklivity.io/latest/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Protocol and edition descriptions; distinguish community gateway from governed console offerings."
+    },
+    {
+      "id": "S18",
+      "title": "Zilla: SSE proxy",
+      "url": "https://docs.aklivity.io/latest/concepts/proxy/sse/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Protocol mediation comparator; not assumed identical to SDK state semantics."
+    },
+    {
+      "id": "S19",
+      "title": "Zilla: HTTP proxy",
+      "url": "https://docs.aklivity.io/latest/concepts/proxy/http/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "HTTP/Kafka interaction comparator for later command investigation."
+    },
+    {
+      "id": "S20",
+      "title": "Socket.IO: delivery guarantees",
+      "url": "https://socket.io/docs/v4/delivery-guarantees/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Ordered delivery and application work needed beyond default at-most-once delivery."
+    },
+    {
+      "id": "S21",
+      "title": "Socket.IO: connection-state recovery",
+      "url": "https://socket.io/docs/v4/connection-state-recovery/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Recovery can fail and adapter support varies; use a competent, version-pinned baseline."
+    },
+    {
+      "id": "S22",
+      "title": "Apache Kafka 4.1 design",
+      "url": "https://kafka.apache.org/41/design/design/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Versioned reference aligned with repository-tested broker family; ordering, commits and delivery boundaries."
+    },
+    {
+      "id": "S23",
+      "title": "PostgreSQL: transaction isolation",
+      "url": "https://www.postgresql.org/docs/current/transaction-iso.html",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Current documentation resolved to PostgreSQL 18; concurrency and snapshot semantics, not a chosen StreamOtter store."
+    },
+    {
+      "id": "S24",
+      "title": "Redis: persistence",
+      "url": "https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Persistence configuration and failure tradeoffs; default settings not presumed adequate for a delivery contract."
+    },
+    {
+      "id": "S25",
+      "title": "Debezium: outbox event router",
+      "url": "https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Reference for application-owned transactional outbox integration; not a required new dependency."
+    },
+    {
+      "id": "S26",
+      "title": "Confluent: schema evolution and compatibility",
+      "url": "https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Format-specific and configured compatibility rules; distinguish upstream schemas from public channel compatibility."
+    },
+    {
+      "id": "S27",
+      "title": "AsyncAPI: adding messages",
+      "url": "https://www.asyncapi.com/docs/concepts/asyncapi-document/adding-messages",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Messages/channel documentation model; export must describe actual implementation."
+    },
+    {
+      "id": "S28",
+      "title": "OWASP: WebSocket security",
+      "url": "https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html",
+      "kind": "Primary external documentation",
+      "accessed": "2026-09-28",
+      "scope": "Access, origin, lifecycle, validation and resource-control guidance; no security certification implied."
+    }
+  ],
+  "retrieval_limits": [
+    {
+      "url": "https://kaleidoscopesharts.medium.com/introducing-streamotter-07b26a132f81",
+      "status": "Article body not retrievable in this research pass. Earlier conversation is context, not fresh evidence."
+    }
+  ],
+  "execution_status": "No code, load tests, comparative prototypes, customer interviews, pricing surveys or security audit executed."
+}
