@@ -28,5 +28,6 @@ Package guides, also shown on npm: [`streamotter`](../packages/streamotter/READM
 - [Implementation handoff](./IMPLEMENTATION_HANDOFF.md): the original build sequence and acceptance checks.
 - [V1.5 specification](./releases/v1.5/README.md): source-failure quarantine and recovery. Approved, not implemented.
 - [V2.0 delivery store outline](./releases/v2.0/STORE_DESIGN_OUTLINE.md): what the V2.0 storage decision must settle. An outline only.
+- [V2.3 event journey verification](./v2/V2_3_EVENT_JOURNEY_VERIFICATION.md): verifying that an event survived its declared downstream journey. A proposal, not approved.
 - [Future strategy research](./research/2026-09-future-strategy/README.md): the September 2026 advisory package, with [research status](./research/2026-09-future-strategy/STATUS.md).
 - [Contributing](../CONTRIBUTING.md) and the [security policy](../SECURITY.md).
