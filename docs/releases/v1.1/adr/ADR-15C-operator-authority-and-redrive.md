@@ -5,7 +5,7 @@
 
 ## Context
 
-V1 has one privileged surface, the development management server (`/management/v1/*`, including `GET /health`). `validateProduction` keeps it out of production. The only production-safe operation is `gateway.resumeSource(sourceId)`, which retries the same record. The project config rejects unknown top-level keys (`c.keys(... ["limits"])`), so an older gateway given a V1.5 config already fails validation instead of silently ignoring the policy, which is what spec §14 requires.
+V1 has one privileged surface, the development management server (`/management/v1/*`, including `GET /health`). `validateProduction` keeps it out of production. The only production-safe operation is `gateway.resumeSource(sourceId)`, which retries the same record. The project config rejects unknown top-level keys (`c.keys(... ["limits"])`), so an older gateway given a V1.1 config already fails validation instead of silently ignoring the policy, which is what spec §14 requires.
 
 ## Decision
 

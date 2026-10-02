@@ -13,7 +13,7 @@ Retained event channels need history that a resuming client can trust. An accept
 3. **Ordering scope:** per channel instance. How a multi-partition source becomes one cursor order without pretending unrelated offsets share one sequence.
 4. **Cursors:** opaque, scoped to principal, channel version, parameters and source generation. Invalidated on a definition or history change.
 5. **Retention and unavailable history:** when events may be deleted, and what `HISTORY_UNAVAILABLE` or `CURSOR_EXPIRED` look like to a client.
-6. **Source failures (from V1.5):** event-channel sources default to holding on a bad record. If advancing past one is ever allowed, it writes a durable, visible gap. A quarantined position is recorded as source progress so it can't be confused with loss.
+6. **Source failures (from V1.1):** event-channel sources default to holding on a bad record. If advancing past one is ever allowed, it writes a durable, visible gap. A quarantined position is recorded as source progress so it can't be confused with loss.
 7. **Replay budgets:** replay competes with live delivery, so there are per-client and shared limits. Fresh clients must not be starved by catch-up.
 8. **Authorization on replay:** re-check on each page and during long handler work. Define what a client sees when an event it could read before is no longer readable.
 9. **Operations:** backup and restore, schema migrations, and what happens when notifications are lost (they only wake workers; history is the authority).
@@ -26,7 +26,7 @@ Retained event channels need history that a resuming client can trust. An accept
 | Redis Streams (the one alternative) | Simple ordered append and range reads | That its persistence and failover settings actually meet the accepted-event guarantee. The default asynchronous persistence doesn't. |
 | Kafka-backed history | No new service | Only if per-channel-instance indexing and replay fit without disproportionate complexity. Otherwise dropped. |
 
-At most two spikes, local only, with no paid infrastructure. There is no universal store abstraction until one supported deployment works. The V1.5 incident journal is not a candidate.
+At most two spikes, local only, with no paid infrastructure. There is no universal store abstraction until one supported deployment works. The V1.1 incident journal is not a candidate.
 
 ## Tests to write before implementation
 

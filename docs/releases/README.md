@@ -1,0 +1,10 @@
+# StreamOtter library release plans
+
+This directory owns native package behavior, APIs/configuration, CLI/workbench tooling, compatibility, acceptance evidence, and npm release gates. It does not own Lontra Creek hosting or visitor sessions.
+
+- [V1.1 — Contain, explain, recover](v1.1/README.md): the approved source-failure increment, renamed from V1.5, plus the planned published workbench frontend/integration contract.
+- [V2.0 delivery-store outline](v2.0/STORE_DESIGN_OUTLINE.md): a separate future design.
+- [Release process](../RELEASE_PLAN.md) and [checklist](../RELEASE_CHECKLIST.md).
+- [Future-strategy research](../research/2026-09-future-strategy/README.md): advisory background and historical evidence.
+
+Lontra Creek maintains its [site/demo plan](https://github.com/jfricano/lontra-creek/tree/main/docs/releases/v1.1) separately. Matching milestone labels do not require simultaneous releases; the site consumes an exact published npm package.
