@@ -288,7 +288,9 @@ In development, the local management session can perform these operations agains
 
 ### Published frontend integration for a synthetic demo
 
-The library owns a documented, version-pinned way to consume the actual published workbench frontend and adapt supported validation, preview, inspection, export, and Failures operations. Define and verify that integration contract before the site enables its sandbox; it is planned work, not an existing export. Lontra Creek owns visitor sessions, constrained synthetic bindings, resource limits, hosting, and cleanup. This does not expose production management, operator sockets, native management credentials, arbitrary code/broker/offset/file operations, or protected evidence to visitors. Library publication has its own acceptance gate and does not wait for hosted site launch. See the separate [site plan](https://github.com/jfricano/lontra-creek/tree/main/docs/releases/v1.1).
+The library owns a documented, version-pinned way to consume the actual published workbench frontend and adapt supported validation, preview, inspection, export, and Failures operations. Define and verify that integration contract before the site enables its sandbox; it is planned work, not an existing export. Lontra Creek owns visitor sessions, constrained synthetic bindings, resource limits, hosting, and cleanup. This does not expose production management, operator sockets, native management credentials, arbitrary code/broker/offset/file operations, or protected evidence to visitors. See the separate [site planning PR](https://github.com/jfricano/lontra-creek/pull/26).
+
+Shipping the frontend/integration seam in a supported published package is a prerequisite for the site's actual sandbox. Verify it within native F44/F46 using synthetic integration fixtures and the packed/published artifact; hosted LC11 results are site-owned and do not gate library publication. Library and site milestones may release on different dates and versions. Publishing a compatible seam before the full source-failure increment is permitted, but does not establish completion of native V1.1 or its mandatory failure scenarios.
 
 The guided fixture exercises a valid update, a malformed record, quarantine-and-hold, a repair/retry or guarded continuation, an old redrive that is superseded, and a revision conflict that remains held. Show the connection state next to subscription state so a connected socket is never the success indicator.
 
@@ -365,7 +367,7 @@ Use an expected-results ledger independent of the production mapper and state ma
 | A — Contract and threat model | New config/types, taxonomy, guard/barrier contract, journal crash model, and test IDs. No public behavior change until the contract is settled. |
 | B — Containment and quarantine-hold | Byte-preserving adapter input, complete output staging, stable incidents, protected journal/topic writer, legacy/default tests, and write-failure/crash evidence. |
 | C — Guarded continuation | Cumulative barrier persistence, snapshot acknowledgment, exact offset reconciliation, circuit breaker, restart/late-result tests. |
-| D — Operator workflow | Local IPC/in-process service, CLI, protected development Failures view, dry-run and single-record reprocessing, redacted exports. |
+| D — Operator workflow | Local IPC/in-process service, CLI, protected development Failures view, published frontend/integration seam (§10), dry-run and single-record reprocessing, redacted exports. |
 | E — Operations and release | Health probes, diagnostics/runbooks, browser/proxy/package tests, reference scenario, independent verification, migration and release notes. |
 
 Quarantine-hold may be merged and demonstrated before guarded continuation, but do not call V1.1 complete while its required continuation and controlled reprocessing paths remain unverified. A safety blocker narrows or defers the affected capability only through an explicit product decision.

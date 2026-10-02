@@ -28,7 +28,7 @@ Use the final Future Strategy package's R01–R14 IDs for traceability. Do not m
 >
 > Build one shared operator service used by local IPC/CLI, in-process callers, and development-only management. Production does not expose the development workbench. Read-only health probes are separate and minimal. Raw evidence is sensitive and untrusted; default diagnostics/exports are redacted.
 >
-> Deliver the published frontend/integration contract described in specification §10. Keep native development/production authority intact. Lontra Creek owns the synthetic hosted sandbox and its own LC11 acceptance; do not implement visitor hosting in this library repository.
+> Deliver and publish the frontend/integration contract described in specification §10, with native synthetic-fixture and packed/published-install evidence under F44/F46. Keep native development/production authority intact. Lontra Creek owns the synthetic hosted sandbox and its own LC11 acceptance; do not implement visitor hosting in this library repository or wait for site launch to publish the library. Coordinate supported capabilities rather than matching milestone labels or release dates.
 >
 > Keep repository type declarations, validation, CLI examples, docs, and tests synchronized. Use independent expected-result data for fault tests. Record failed runs and actual environments. Do not declare success from screenshots, typechecking alone, agent agreement, or test files that have not run.
 >

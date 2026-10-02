@@ -7,4 +7,4 @@ This directory owns native package behavior, APIs/configuration, CLI/workbench t
 - [Release process](../RELEASE_PLAN.md) and [checklist](../RELEASE_CHECKLIST.md).
 - [Future-strategy research](../research/2026-09-future-strategy/README.md): advisory background and historical evidence.
 
-Lontra Creek maintains its [site/demo plan](https://github.com/jfricano/lontra-creek/tree/main/docs/releases/v1.1) separately. Matching milestone labels do not require simultaneous releases; the site consumes an exact published npm package.
+Lontra Creek maintains its [site/demo planning PR](https://github.com/jfricano/lontra-creek/pull/26) separately, with canonical documents under its own `docs/releases/v1.1/`. Matching milestone labels do not require simultaneous releases; the site consumes an exact published npm package with the capabilities required by each enabled feature.
