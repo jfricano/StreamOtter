@@ -12,7 +12,7 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`;
 - slice D, the operator workflow (`feat/v1.1-operator`, on #16), PR #17, which merges PR #14 and the helper branches `feat/v1.1-operation-store`, `feat/v1.1-operator-ipc`, `feat/v1.1-failures-view` and `feat/v1.1-quarantine-reader`.
 
-**Next step:** finish slice D with WHC-1 revision 0.3 on PR #14, then slice E (PR 7): the health listener, the reference guard in the order-dashboard example, the runbook, the remaining evidence rows and the acceptance packet. Tell the Lontra Creek thread when PR #14 changes or merges and when a release is published.
+**Next step:** slice E (PR 7): the health listener, the reference guard in the order-dashboard example, the runbook, the remaining evidence rows and the acceptance packet. Tell the Lontra Creek thread when PR #14 changes or merges and when a release is published.
 
 **Open owner decisions:**
 
@@ -173,7 +173,6 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - Operators therefore need Read on the quarantine topic and Read and Delete on groups with that prefix. Without them the read is `unavailable` (or the group deletion is logged at warn).
   - Known limits from the helper: KafkaJS keeps retrying a lost initial connection for about 24 s after the read has returned `unavailable` (the next read waits at most about 2 s); a read takes at least the broker's `group.initial.rebalance.delay.ms` (3 s by default); a record deleted between the watermark check and the fetch ends as a timeout `unavailable`, not `expired`.
 - **Not done here:**
-  - WHC-1 revision 0.3 (cross-origin `apiOrigin` and scoped host styles for Lontra Creek) goes to PR #14 and is merged here when done.
   - A child-process crash test for F35; the health listener (F37's health part) is slice E.
 - **Verification on Node 24.21.0** with the quarantine reader merged and wired:
   - `pnpm build && pnpm verify`: 314 tests, all pass (11 more in `packages/gateway/test/quarantine-reader.test.ts`).
@@ -185,6 +184,18 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - The first operator test run failed four ways, all in the tests: a client resynchronizes to the authoritative snapshot after a hold, so it never sees the intermediate revision; `advanceFixture(2)` stops at a pause; status was read before the failure service settled; trace counts included subscription traces. Each test now waits for the right condition.
   - The first socket end-to-end run expected the wrong wording for a stopped gateway; the gateway behaved as designed.
   - The browser tier failed to launch until the Chromium link above was rebuilt with the headless-shell directory layout Playwright 1.63 expects.
+### October 3, 2026 — PR 2, WHC-1 revision 0.3 (cross-origin API, scoped styles), branch `feat/v1.1-workbench-host`
+
+- Lontra Creek's real topology needs two things WHC-1 0.2 refused or lacked: a static site on `https://streamotter.app` whose API and `HttpOnly`, `SameSite=Strict` session cookie live on `https://demo.streamotter.app`, and a `/workbench/` page that keeps the site's header and footer around the mount. [WHC-1](./WORKBENCH_HOST_CONTRACT.md) is now revision 0.3 (§2.1, §3.4, §10); `hostContract` stays `1`.
+- Contracts: optional `apiOrigin` in `WorkbenchHostConfig` (an exact canonical origin; `https:`, or `http:` for `localhost`, `127.0.0.1` and `[::1]` only), allowed only with `auth.mode` `session` and refused at `/apiOrigin` otherwise; `isWorkbenchApiOrigin`; `WorkbenchHostManifest.entry.hostStyle`. The mode coupling is enforced at runtime, not in the type (§10).
+- Workbench: with `apiOrigin`, requests go to `apiOrigin + apiBase` with `mode: "cors"`, `credentials: "include"`, `redirect: "error"`, `X-StreamOtter-Workbench: 1` and never `Authorization`; the client refuses any URL whose origin is not the one fixed from the boot block. Same-origin session mode is unchanged. In session mode a `401` or `UNAUTHENTICATED` answer shows "Session ended" with Reload and stops all requests (including Inspect's polling). With a boot block present the mount carries `data-streamotter-workbench`; the build generates `dist/workbench-host.css` from `styles.css` with `apps/workbench/scope-css.ts` (dependency-free; anything it cannot scope, such as `@keyframes`, fails the build), and the manifest gains `entry.hostStyle`, its integrity value and the `"<api origin>"` `connect-src` placeholder. The native page still links `styles.css`. Reading the boot block at module start was confirmed for a host script that writes the block and then imports `app.js`.
+- No gateway change: hosts add CORS themselves, and `createManagementHandler` still adds no CORS headers.
+- Commands, on Node 24.21.0 and pnpm 11.19.0:
+  - `pnpm build && pnpm verify`: 132 tests, 132 pass, 0 fail (130 before, plus 2 contract tests for `apiOrigin` and the mode coupling).
+  - `pnpm test:browser`: 38 tests, 38 pass (order-dashboard 6, `workbench.test.ts` 7, `workbench-host.test.ts` 13, new `workbench-cross-origin.test.ts` 6 and `workbench-host-styles.test.ts` 6). The existing host test now links `workbench-host.css`; the native test now also checks that the mount is unmarked and only `styles.css` is loaded.
+  - `pnpm test:install`: 21 tests, 21 pass; the packed tarball contains `workbench-host.css` with a matching integrity value, and `entry.hostStyle` resolves through the package exports.
+- Failed or adjusted runs: the first `pnpm test:install` failed its TLS Kafka case only because a local broker was running but this worktree had no `.local/kafka-certs/ca.pem`; with the broker's CA copied into the gitignored `.local/`, it passed. The first run of the transformer's own test failed because the nested-rule check saw a `{` inside a quoted `content` value; the check now ignores strings. Browser tests ran on the preinstalled headless Chromium 141 as in the entry above. Both new browser files were checked against deliberate breakage (linking the unscoped `styles.css`; sending `credentials: "same-origin"` and following redirects) and failed as expected.
+- Not done here: `EVIDENCE.md` still cites the revision 0.2 counts.
 
 ## 3. Handoff checklist for each slice
 

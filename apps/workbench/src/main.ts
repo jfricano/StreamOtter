@@ -28,6 +28,8 @@ const TAB_OPERATIONS: Readonly<Record<Tab, readonly WorkbenchOperation[]>> = {
 };
 
 const app = document.getElementById(WORKBENCH_MOUNT_ELEMENT_ID) as HTMLElement;
+/** Set on the mount element when a boot block is present; workbench-host.css scopes every rule under it (WHC-1 §2.1). */
+const HOSTED_ATTRIBUTE = "data-streamotter-workbench";
 
 /** A full-page message shown instead of the workbench; makes no requests. */
 function renderNotice(title: string, ...body: (Node | string | null)[]): void {
@@ -68,6 +70,15 @@ function renderSessionFailure(settings: HostSettings, message: string): void {
   renderNotice("StreamOtter Workbench", h("div", { class: "banner bad" }, message), h("div", { class: "row" }, retry));
 }
 
+/** Session mode: the host answered 401 or UNAUTHENTICATED. Nothing to retry until the visitor has a new session. */
+function renderSessionEnded(): void {
+  const reload = h("button", { class: "primary", type: "button" }, "Reload");
+  reload.addEventListener("click", () => location.reload());
+  renderNotice("Session ended",
+    h("p", {}, "Your session with this environment has ended, so the workbench stopped. Reload the page to continue, or start a new session on the hosting site."),
+    h("div", { class: "row" }, reload));
+}
+
 /** Learns the offered operations (WHC-1 §4). A 404 means a pre-WHC-1 native server. */
 async function discover(api: ManagementApi): Promise<{ operations: Set<WorkbenchOperation>; maxRequestBytes: number | null } | "unsupported"> {
   try {
@@ -91,7 +102,12 @@ function environmentPill(settings: HostSettings): HTMLSpanElement {
 }
 
 async function open(settings: HostSettings, auth: ApiAuth): Promise<void> {
-  const api = new ManagementApi(settings.apiBase, auth);
+  let cleanup: (() => void) | null = null;
+  const api = new ManagementApi({ apiBase: settings.apiBase, apiOrigin: settings.apiOrigin }, auth, () => {
+    cleanup?.();
+    cleanup = null;
+    renderSessionEnded();
+  });
   try {
     const discovered = await discover(api);
     if (discovered === "unsupported") {
@@ -130,7 +146,6 @@ async function open(settings: HostSettings, auth: ApiAuth): Promise<void> {
     const tabs = h("nav", { class: "tabs", role: "tablist", "aria-label": "Workbench sections" });
     const main = h("main", { id: "view", role: "tabpanel" });
     let current: Tab = "connect";
-    let cleanup: (() => void) | null = null;
 
     const drawTopbar = () => replace(topbar,
       h("div", { class: "brand" }, h("h1", {}, "StreamOtter Workbench"), h("small", {}, config.config.projectId)),
@@ -193,15 +208,17 @@ async function open(settings: HostSettings, auth: ApiAuth): Promise<void> {
       renderGate(settings, error instanceof ApiError && error.status === 401
         ? "That token was not accepted. Copy it again from the streamotter dev output."
         : `The management API is unavailable: ${(error as Error).message}`);
+    } else if (error instanceof ApiError && error.error.code === "UNAUTHENTICATED") {
+      renderSessionEnded();
     } else {
-      renderSessionFailure(settings, error instanceof ApiError && error.status === 401
-        ? "This environment did not accept your session. Reload the page, or start a new session on the hosting site."
-        : `The workbench API is unavailable: ${(error as Error).message}`);
+      renderSessionFailure(settings, `The workbench API is unavailable: ${(error as Error).message}`);
     }
   }
 }
 
+// Runs while app.js is evaluated: the boot block must already be in the document (host.ts, readBoot).
 const boot = readBoot();
+if (boot.kind !== "ok" || boot.settings.hosted) app.setAttribute(HOSTED_ATTRIBUTE, "");
 switch (boot.kind) {
   case "invalid": renderConfigError(boot.issues); break;
   case "unsupported": renderUnsupported(`This page asks for workbench host contract ${boot.hostContract}.`); break;

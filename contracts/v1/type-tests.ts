@@ -2,7 +2,7 @@
 import {
   createClient, TransientMappingError,
   type HandlerRegistry, type ManagementOperations, type ProjectConfig, type SocketAuth, type SourceRecoveryHandlers, type StreamEvent,
-  type WorkbenchHostConfig, type WorkbenchOperation
+  type WorkbenchHostConfig, type WorkbenchHostManifest, type WorkbenchOperation
 } from "./api";
 import { project, type AppChannels, type OrderState } from "./example";
 
@@ -118,6 +118,20 @@ const hosted: WorkbenchHostConfig = {
   environment: { kind: "sandbox", label: "Synthetic fixture" }
 };
 void hosted;
+// Revision 0.3: a cross-origin API in session mode. That apiOrigin requires session mode is checked
+// at runtime by validateWorkbenchHostConfig (packages/contracts/test/workbench.test.ts), not here.
+const splitOrigin: WorkbenchHostConfig = {
+  hostContract: 1, apiOrigin: "https://demo.streamotter.app", apiBase: "/workbench/api/v1", auth: { mode: "session" }
+};
+void splitOrigin;
+// @ts-expect-error apiOrigin is one origin string, never a list or a URL object.
+const originList: WorkbenchHostConfig = { hostContract: 1, apiOrigin: ["https://a.example"], auth: { mode: "session" } };
+void originList;
+const entry: WorkbenchHostManifest["entry"] = { script: "app.js", style: "styles.css", hostStyle: "workbench-host.css", icon: "favicon.svg" };
+void entry;
+// @ts-expect-error Revision 0.3 manifests always name the scoped stylesheet for hosts.
+const unscopedOnly: WorkbenchHostManifest["entry"] = { script: "app.js", style: "styles.css", icon: "favicon.svg" };
+void unscopedOnly;
 // @ts-expect-error Only host contract 1 exists.
 const futureContract: WorkbenchHostConfig = { hostContract: 2 };
 void futureContract;

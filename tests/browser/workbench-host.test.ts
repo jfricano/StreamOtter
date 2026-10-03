@@ -67,7 +67,7 @@ describe("workbench hosted under a site route (WHC-1)", { skip: existsSync(resol
   <meta charset="utf-8">
   <title>Hosted workbench</title>
   <link rel="icon" href="${PREFIX}/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="${PREFIX}/assets/styles.css" integrity="${manifest.integrity["styles.css"]}">
+  <link rel="stylesheet" href="${PREFIX}/assets/${manifest.entry.hostStyle}" integrity="${manifest.integrity[manifest.entry.hostStyle]}">
 </head>
 <body>
   <script type="application/json" id="${manifest.bootElementId}">
@@ -131,9 +131,9 @@ ${json}
         response.end(hostPage(boots[pageName[1] ?? "main"]));
         return;
       }
-      const asset = /^\/workbench\/assets\/(app\.js|styles\.css|favicon\.svg)$/.exec(url.pathname)?.[1];
+      const asset = /^\/workbench\/assets\/(app\.js|workbench-host\.css|favicon\.svg)$/.exec(url.pathname)?.[1];
       if (asset !== undefined) {
-        const types: Record<string, string> = { "app.js": "text/javascript", "styles.css": "text/css", "favicon.svg": "image/svg+xml" };
+        const types: Record<string, string> = { "app.js": "text/javascript", "workbench-host.css": "text/css", "favicon.svg": "image/svg+xml" };
         response.setHeader("Content-Type", types[asset]!);
         response.end(readFileSync(resolve(WORKBENCH, asset)));
         return;
@@ -187,6 +187,8 @@ ${json}
     assert.equal(await banner.locator("b").count(), 0, "detail is rendered as text, never markup");
     assert.equal(await page.locator(".version-mismatch").count(), 0, "the pinned version matches the bundle");
     assert.equal(apiCalls()[0]?.path, `${API_BASE}/workbench`, "capability discovery is the first request");
+    assert.equal(await page.locator(`#${manifest.mountElementId}`).getAttribute("data-streamotter-workbench"), "", "the mount is marked for workbench-host.css");
+    assert.equal(await page.locator(".panel").first().evaluate(element => getComputedStyle(element).borderTopLeftRadius), "8px", "the scoped stylesheet applies");
   });
 
   it("Connect checks a source and offers fixture advancement, which is listed", async () => {

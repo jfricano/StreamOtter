@@ -58,13 +58,35 @@ const VERSION = /^[0-9A-Za-z.+-]+$/;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 /**
- * An absolute path on the page's own origin: starts with one `/`, has no empty, `.` or `..`
- * segment, no trailing slash, no query or fragment, and no backslash. `//host` (a
- * protocol-relative URL, which is cross-origin) is refused.
+ * An absolute path: starts with one `/`, has no empty, `.` or `..` segment, no trailing slash, no
+ * query or fragment, and no backslash. `//host` (a protocol-relative URL, which would name another
+ * origin) is refused. The path is resolved against the page's own origin, or against `apiOrigin`
+ * when a boot block sets one; a path alone can never change the origin.
  */
 export function isSameOriginApiPath(value: unknown): value is string {
   if (typeof value !== "string" || value.length < 2 || value.length > MAX_PATH_LENGTH || !value.startsWith("/")) return false;
   return value.slice(1).split("/").every(segment => segment !== "." && segment !== ".." && SEGMENT.test(segment));
+}
+
+/** The only hosts `apiOrigin` may name over plain `http:`, so native tests can run without TLS. */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * An exact API origin for `apiOrigin` (WHC-1 §3.4): scheme and host, plus a port only when it is
+ * not the scheme's default, with no user information, path, query, fragment or trailing slash, and
+ * already in the canonical form a browser reports as `URL.origin` (a lowercase host, for example).
+ * Must be `https:`; `http:` only for `localhost`, `127.0.0.1` and `[::1]`.
+ */
+export function isWorkbenchApiOrigin(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > MAX_PATH_LENGTH || !ORIGIN.test(value)) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.origin !== value) return false;
+  return url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname));
 }
 
 function codePoints(text: string): number {
@@ -103,10 +125,10 @@ export function validateWorkbenchHostConfig(input: unknown):
   else if (input["hostContract"] !== WORKBENCH_HOST_CONTRACT) {
     return { ok: false, issues: [{ path: "/hostContract", message: `Unsupported host contract ${JSON.stringify(input["hostContract"])?.slice(0, 32) ?? "value"}; this workbench implements 1.` }] };
   }
-  known(input, "", ["hostContract", "apiBase", "auth", "gateway", "environment"]);
+  known(input, "", ["hostContract", "apiBase", "apiOrigin", "auth", "gateway", "environment"]);
 
   if (input["apiBase"] !== undefined && !isSameOriginApiPath(input["apiBase"])) {
-    fail("/apiBase", "Must be an absolute path on this page's origin (starting with one \"/\"), without a trailing slash, query, fragment, or \".\"/\"..\" segments.");
+    fail("/apiBase", "Must be an absolute path (starting with one \"/\") without a trailing slash, query, fragment, or \".\"/\"..\" segments. It is resolved against this page's origin, or apiOrigin when that is set.");
   }
 
   const auth = input["auth"];
@@ -115,6 +137,15 @@ export function validateWorkbenchHostConfig(input: unknown):
     else {
       known(auth, "/auth", ["mode"]);
       if (auth["mode"] !== "token" && auth["mode"] !== "session") fail("/auth/mode", "Must be \"token\" or \"session\".");
+    }
+  }
+
+  const apiOrigin = input["apiOrigin"];
+  if (apiOrigin !== undefined) {
+    if (!isWorkbenchApiOrigin(apiOrigin)) {
+      fail("/apiOrigin", "Must be an exact origin such as \"https://api.example.com\": https (http only for localhost, 127.0.0.1 or [::1]), a lowercase host, a port only when it is not the default, and no path, query, fragment or trailing slash.");
+    } else if (!isPlainObject(auth) || auth["mode"] !== "session") {
+      fail("/apiOrigin", "Allowed only with auth.mode \"session\": a cross-origin API is authenticated by the host's own credential, never by a management token.");
     }
   }
 
