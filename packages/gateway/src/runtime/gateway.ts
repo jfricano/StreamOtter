@@ -17,6 +17,7 @@ import { KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicRepor
 import { FailureService, type AdvanceHooks } from "../failures/service.ts";
 import { MemoryIncidentStore, type IncidentStore, type RawEvidence } from "../failures/store.ts";
 import { assertFailureHandling, usesQuarantine } from "../failures/validate.ts";
+import { startOperatorSocket, type OperatorSocket } from "../operator/ipc.ts";
 import { OperatorService, type OperatorHooks, type OperatorHost } from "../operator/service.ts";
 import { ByteBudget } from "./budget.ts";
 import { Router, routingKey, type ChannelRuntime, type GatewayCore, type SourceRuntime } from "./core.ts";
@@ -271,6 +272,8 @@ export class GatewayRuntime implements SessionOwner {
   readonly #configDir: string;
   readonly #stateDirectory: string | undefined;
   readonly #handlerBuildId: string;
+  readonly #operatorSocketEnabled: boolean;
+  #operatorSocket: OperatorSocket | null = null;
   #failures: FailureService | null = null;
   #operator: OperatorService | null = null;
   #quarantineReport: QuarantineTopicReport | null = null;
@@ -313,6 +316,7 @@ export class GatewayRuntime implements SessionOwner {
     this.#configDir = options.configDir ?? process.cwd();
     this.#stateDirectory = options.stateDirectory;
     this.#handlerBuildId = options.handlerBuildId ?? "unspecified";
+    this.#operatorSocketEnabled = options.operatorSocket === true;
     this.#allowedOrigins = new Set(config.gateway.allowedOrigins);
     const limits = resolveLimits(config.limits);
     this.core = {
@@ -981,6 +985,12 @@ export class GatewayRuntime implements SessionOwner {
         })
       ]).finally(() => clearTimeout(timer));
 
+      // The validator guarantees stateDirectory and failureHandling, so the operator exists here.
+      if (this.#operatorSocketEnabled && this.#operator !== null && this.#stateDirectory !== undefined) {
+        this.#operatorSocket = await startOperatorSocket({ stateDirectory: this.#stateDirectory, operator: this.#operator, logger: this.core.logger });
+        this.core.logger.info("Operator socket listening", { path: this.#operatorSocket.path });
+      }
+
       const address = http.address() as AddressInfo;
       const host = this.config.gateway.host === "0.0.0.0" || this.config.gateway.host === "::" ? "127.0.0.1" : this.config.gateway.host;
       this.#http = http;
@@ -990,6 +1000,8 @@ export class GatewayRuntime implements SessionOwner {
       this.core.logger.info("Gateway started", { origin: this.#address.origin, path: this.#address.path, mode: this.mode });
       return this.#address;
     } catch (error) {
+      await this.#operatorSocket?.close().catch(() => undefined);
+      this.#operatorSocket = null;
       await Promise.allSettled(started.map(adapter => adapter.stop(Date.now() + 5_000)));
       await this.#failures?.stop().catch(() => undefined);
       this.#failures = null;
@@ -1018,6 +1030,11 @@ export class GatewayRuntime implements SessionOwner {
     for (const session of [...this.#sessions]) session.close();
     const deadline = Date.now() + timeoutMs;
     const work = (async () => {
+      // Close the operator socket first so no mutation starts while sources drain.
+      await this.#operatorSocket?.close().catch(error => {
+        this.core.logger.error("The operator socket did not close cleanly", { error: (error as Error).message.slice(0, 200) });
+      });
+      this.#operatorSocket = null;
       await Promise.allSettled([...this.#sources.values()].map(async source => {
         await source.adapter?.stop(deadline);
         source.status = "stopped";

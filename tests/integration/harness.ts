@@ -175,6 +175,8 @@ export async function startHarness(options: {
   logger?: GatewayLogger;
   failureHandling?: FailureHandlingConfig;
   stateDirectory?: string;
+  /** Serve the operator API on the state directory's local socket. */
+  operatorSocket?: boolean;
   /** handlers.sources recovery guards (V1.1 quarantine-resync). */
   recovery?: Record<string, SourceRecoveryHandlers>;
   /** Test-only gateway internals (fault and crash hooks). */
@@ -185,6 +187,7 @@ export async function startHarness(options: {
   const gateway = createGatewayRuntime<TestChannels>({
     config: { ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) },
     ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
+    ...(options.operatorSocket === undefined ? {} : { operatorSocket: options.operatorSocket }),
     handlers: options.recovery === undefined ? handlers : { ...handlers, sources: options.recovery },
     mode: "development",
     development: { principals: options.principals ?? {}, fixtures: { orders: options.fixtures ?? [] } },
