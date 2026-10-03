@@ -6,3 +6,4 @@ export * from "./limits.ts";
 export * from "./protocol.ts";
 export * from "./config.ts";
 export * from "./failures.ts";
+export * from "./workbench.ts";

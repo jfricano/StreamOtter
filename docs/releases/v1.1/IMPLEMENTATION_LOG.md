@@ -9,7 +9,7 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - the workbench seam, PR #14 (`feat/v1.1-workbench-host`, on #12);
 - slice A, PR #13 (`feat/v1.1-contracts`, on #12);
 - slice B, PR #15 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`;
-- slice C, PR 5 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`.
+- slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`.
 
 **Next step:** slice D, the operator workflow (PR 6, `feat/v1.1-operator`). It is stacked on slice C, needs PR #14's workbench seam, and must merge both. It adds the `OperatorService` over the incident store, local IPC, the CLI groups (`failures`, `sources retry-current|reassess|retire-boundary|reopen-circuit`, `status`), development routes, the workbench Failures view, evaluate and redrive, and reproduction bundles. When the Failures operations land, tell the Lontra Creek thread.
 
@@ -141,6 +141,17 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - `pnpm build && pnpm verify`: 220 tests, all passed. 26 are new since slice B: 14 conformance cases and 12 in `tests/integration/guarded-continuation.test.ts`.
   - `pnpm test:kafka`: 30 tests, all passed, including the 4 in `tests/kafka/09-guarded-continuation.test.ts`. The two crash tests SIGKILL a child gateway at each side of the commit and check reconciliation on restart.
   - Every new test passed on its first run.
+
+### October 3, 2026 — PR 2, workbench host contract (WHC-1), branch `feat/v1.1-workbench-host`
+
+- Implemented [WHC-1](./WORKBENCH_HOST_CONTRACT.md) §§2–6 and the library-side §8 checks. Contracts: `WorkbenchHostConfig`, `WorkbenchOperation`, `WorkbenchDiscovery`, `WorkbenchHostManifest`, `WORKBENCH_OPERATIONS`, `validateWorkbenchHostConfig`, and `GET /management/v1/workbench` in `ManagementOperations`. Gateway: one router (`packages/gateway/src/management/router.ts`) shared by `startManagementServer` and the new `createManagementHandler`. Workbench: boot block, capability discovery, `session` auth, per-surface gating, environment label, sandbox banner, version-mismatch warning, `dist/workbench-host.json`, and `exports` for `./host`, `./dist/*` and `./package.json`. No failure operation is implemented; the vocabulary names them so hosts can list them later.
+- Clarifications recorded in WHC-1 §9 (revision 0.2), none changing a field, path or name: `createManagementHandler` requires `X-StreamOtter-Workbench: 1` on POST (403 otherwise); `maxBodyBytes` applies to every handler route (default 64 KiB, at most 1 MiB, so a host that allows `config.*` for full configurations raises it); discovery is always answered and reports only allowlisted operations the gateway implements; only `hostContract` is required in the boot block; `connect-src` in the manifest carries literal placeholders. One native refinement: an unknown management route now answers 404 before its body is read (also in `docs/V1_API.md` §13 and the changelog).
+- Commands, on Node 24.21.0 and pnpm 11.19.0:
+  - `pnpm build && pnpm verify`: 130 tests, 130 pass, 0 fail (114 before, plus 7 contract tests in `packages/contracts/test/workbench.test.ts` and 9 in `tests/integration/workbench-host.test.ts`). The existing `tests/integration/management.test.ts` passes unchanged (9/9).
+  - `pnpm test:browser`: 26 tests, 26 pass (order-dashboard 6, `workbench.test.ts` 7 unchanged, `workbench-host.test.ts` 13).
+  - `pnpm test:install`: 21 tests, 20 pass, 1 skipped (TLS Kafka: no local broker).
+- Failed or adjusted runs: `pnpm browsers:setup` failed (`Download failure, code=1`; the browser download host is not reachable from this environment). The browser tests ran against the preinstalled headless Chromium 141 (`/opt/pw-browsers/chromium_headless_shell-1194`), linked into the gitignored `.local/ms-playwright/chromium_headless_shell-1243/` where Playwright 1.63 looks, with `PLAYWRIGHT_BROWSERS_PATH` pointing there; Playwright 1.63 pins Chromium 153, so CI's pinned browser has not run these tests yet. The first run of the new browser file failed one case because Chromium logs the deliberate discovery 404 of the pre-WHC-1 fallback case as a console error; the test now expects exactly that message. One integration case asserted a path with `..`, which `fetch` normalizes before it reaches the host; it was replaced by another static path.
+- Not done here: Lontra Creek hosting checks (LC11) are theirs; the Failures tab and failure operations are PR 6; `docs/IMPLEMENTATION_STATUS.md` is left for PR 7 per the plan.
 
 ## 3. Handoff checklist for each slice
 

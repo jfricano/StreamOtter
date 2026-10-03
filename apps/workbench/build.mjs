@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,6 +6,7 @@ import { build } from "esbuild";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const dist = new URL("./dist/", import.meta.url);
+const manifest = JSON.parse(await readFile(new URL("./package.json", import.meta.url), "utf8"));
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 const result = await build({
@@ -16,6 +18,7 @@ const result = await build({
   platform: "browser",
   target: ["es2022"],
   conditions: ["streamotter-source"],
+  define: { __STREAMOTTER_WORKBENCH_VERSION__: JSON.stringify(manifest.version) },
   sourcemap: true,
   minify: true,
   legalComments: "linked",
@@ -26,7 +29,35 @@ for (const file of ["index.html", "styles.css", "favicon.svg"]) {
   await copyFile(new URL(`./src/${file}`, import.meta.url), new URL(file, dist));
 }
 await writeFile(new URL("THIRD_PARTY_LICENSES.txt", dist), await thirdPartyNotices(Object.keys(result.metafile.inputs)));
+await writeFile(new URL("workbench-host.json", dist), `${JSON.stringify(await hostManifest(), null, 2)}\n`);
 console.log("workbench built → apps/workbench/dist");
+
+/**
+ * dist/workbench-host.json, the WHC-1 asset manifest (docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md §2).
+ * Integrity values are computed from the final files, after every other build step.
+ */
+async function hostManifest() {
+  const integrity = {};
+  for (const file of ["app.js", "styles.css"]) {
+    integrity[file] = `sha384-${createHash("sha384").update(await readFile(new URL(file, dist))).digest("base64")}`;
+  }
+  return {
+    hostContract: 1,
+    package: manifest.name,
+    version: manifest.version,
+    entry: { script: "app.js", style: "styles.css", icon: "favicon.svg" },
+    integrity,
+    bootElementId: "streamotter-workbench-host",
+    mountElementId: "app",
+    csp: {
+      "script-src": ["'self'"],
+      "style-src": ["'self'"],
+      "img-src": ["'self'", "data:"],
+      "connect-src": ["'self'", "<gateway origin>", "<gateway websocket origin>"],
+      "frame-ancestors": ["'none'"]
+    }
+  };
+}
 
 /** License texts of the npm packages bundled into app.js, which their licenses require to accompany it. */
 async function thirdPartyNotices(inputs) {

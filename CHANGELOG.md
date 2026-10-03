@@ -23,6 +23,15 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
     - At startup, prepared advances are reconciled against the consumer group's committed offset.
 - Gateway operator logs for a paused source now include `failureClass`, the trusted classification of why the record could not be processed.
 - `@streamotter/workbench`: a favicon (the StreamOtter brandmark reduced for a browser tab) in place of the blank one.
+- Workbench host contract, version 1 ([WHC-1](./docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md)), for running the published workbench under a route of your own site:
+  - `@streamotter/workbench` reads an optional `<script type="application/json" id="streamotter-workbench-host">` boot block (API base path, `token` or `session` authentication, gateway, environment label), discovers the offered operations, and shows anything else as "Not available in this environment". Without the block it behaves as before. The package ships `dist/workbench-host.json` (entry files, `sha384` integrity values, required CSP) and exports `@streamotter/workbench/host`, `@streamotter/workbench/dist/*` and `@streamotter/workbench/package.json`.
+  - `@streamotter/gateway/management`: `createManagementHandler`, a mountable handler for a development-mode gateway with an operation allowlist and a host `authorize` callback. The development management API gains `GET /management/v1/workbench`.
+  - `@streamotter/contracts`: `WorkbenchHostConfig`, `WorkbenchOperation`, `WorkbenchDiscovery`, `WorkbenchHostManifest`, `WORKBENCH_OPERATIONS` and `validateWorkbenchHostConfig`.
+- `@streamotter/workbench`: the top bar shows the environment (`Development` under `streamotter dev`).
+
+### Changed
+
+- Development management API: an unknown route answers 404 before its request body is read (it could previously answer 400 or 413 for a malformed body first).
 
 ## [0.1.0-rc.3] — 2026-09-25
 
