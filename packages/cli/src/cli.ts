@@ -12,6 +12,7 @@ import { createGateway, type Gateway, type GatewayLogger } from "@streamotter/ga
 import { startManagementServer } from "@streamotter/gateway/management";
 import { getGatewayInternals, initJournal } from "@streamotter/gateway/internals";
 import { detectPackageStyle, fingerprint, generateFiles, GENERATED_MARKER } from "./generate.ts";
+import { isOperatorCommand, OPERATOR_USAGE, runOperatorCommand } from "./operator.ts";
 import { scaffoldFiles } from "./templates.ts";
 
 export const EXIT = { ok: 0, runtime: 1, invalid: 2 } as const;
@@ -37,8 +38,13 @@ const USAGE = `Usage:
   streamotter init --failures --config <path> --state-dir <directory>
   streamotter validate --config <path>
   streamotter generate --config <path> --out <directory>
-  streamotter dev --config <path> --handlers <module> [--management-port <port>] [--state-dir <directory>]
-  streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--handler-build-id <id>]`;
+  streamotter dev --config <path> --handlers <module> [--management-port <port>] [--state-dir <directory>] [--operator-socket]
+  streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--operator-socket] [--handler-build-id <id>]
+
+Operator commands, sent to the gateway serving <dir>/run/operator.sock (start it with --operator-socket):
+${OPERATOR_USAGE}
+
+Exit codes: 0 ok, 1 runtime failure or failed operation, 2 invalid usage or request, 3 refused, 4 unknown outcome.`;
 
 function formatIssues(issues: readonly ConfigIssue[]): string {
   return issues.map(issue => `  ${issue.path || "/"}  ${issue.code}: ${issue.message}`).join("\n");
@@ -130,11 +136,12 @@ async function runUntilSignal(io: CliIO, gateway: Gateway): Promise<number> {
   return EXIT.ok;
 }
 
-/** Gateway options shared by dev and start: the failure journal directory and the handler build ID. */
-function failureOptions(values: Record<string, unknown>): { stateDirectory?: string; handlerBuildId?: string } {
-  const options: { stateDirectory?: string; handlerBuildId?: string } = {};
+/** Gateway options shared by dev and start: the failure journal directory, the handler build ID and the operator socket. */
+function failureOptions(values: Record<string, unknown>): { stateDirectory?: string; handlerBuildId?: string; operatorSocket?: boolean } {
+  const options: { stateDirectory?: string; handlerBuildId?: string; operatorSocket?: boolean } = {};
   if (typeof values["state-dir"] === "string") options.stateDirectory = resolve(values["state-dir"]);
   if (typeof values["handler-build-id"] === "string") options.handlerBuildId = values["handler-build-id"];
+  if (values["operator-socket"] === true) options.operatorSocket = true;
   return options;
 }
 
@@ -298,7 +305,10 @@ export async function runProcess(argv: readonly string[] = process.argv.slice(2)
   });
 }
 
-/** Runs the CLI and returns its exit code: 0 success, 2 invalid input/configuration, 1 startup/runtime failure. */
+/**
+ * Runs the CLI and returns its exit code: 0 success, 2 invalid input/configuration, 1 startup/runtime failure;
+ * operator commands add 3 (refused) and 4 (unknown outcome).
+ */
 export async function runCli(argv: readonly string[], io: CliIO): Promise<number> {
   const [command, ...rest] = argv;
   if (command === undefined || command === "--help" || command === "-h" || command === "help") {
@@ -318,7 +328,24 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
         "management-port": { type: "string" },
         "state-dir": { type: "string" },
         "handler-build-id": { type: "string" },
-        failures: { type: "boolean" }
+        "operator-socket": { type: "boolean" },
+        failures: { type: "boolean" },
+        json: { type: "boolean" },
+        source: { type: "string" },
+        failure: { type: "string" },
+        "expected-revision": { type: "string" },
+        "expected-circuit-revision": { type: "string" },
+        boundary: { type: "string" },
+        plan: { type: "string" },
+        "plan-fingerprint": { type: "string" },
+        "operation-id": { type: "string" },
+        reason: { type: "string" },
+        state: { type: "string" },
+        limit: { type: "string" },
+        cursor: { type: "string" },
+        raw: { type: "boolean" },
+        "include-raw": { type: "boolean" },
+        confirm: { type: "string" }
       }
     });
   } catch (error) {
@@ -326,12 +353,13 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
     return EXIT.invalid;
   }
   const { values, positionals } = parsed;
+  if (isOperatorCommand(command)) return runOperatorCommand(command, positionals, values, io, USAGE);
   const allowed: Record<string, readonly string[]> = {
     init: values["failures"] === true ? ["failures", "config", "state-dir"] : [],
     validate: ["config"],
     generate: ["config", "out"],
-    dev: ["config", "handlers", "management-port", "state-dir"],
-    start: ["config", "handlers", "state-dir", "handler-build-id"]
+    dev: ["config", "handlers", "management-port", "state-dir", "operator-socket"],
+    start: ["config", "handlers", "state-dir", "handler-build-id", "operator-socket"]
   };
   const permitted = allowed[command];
   if (permitted === undefined) {
@@ -342,6 +370,10 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
   const takesPositionals = command === "init" && values["failures"] !== true;
   if (extra.length > 0 || (!takesPositionals && positionals.length > 0)) {
     io.err(`Unexpected arguments for ${command}: ${[...extra.map(key => `--${key}`), ...(takesPositionals ? [] : positionals)].join(" ")}\n\n${USAGE}`);
+    return EXIT.invalid;
+  }
+  if (values["operator-socket"] === true && typeof values["state-dir"] !== "string") {
+    io.err("--operator-socket requires --state-dir <directory>: the socket lives in <directory>/run/.");
     return EXIT.invalid;
   }
   try {

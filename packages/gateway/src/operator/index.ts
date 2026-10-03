@@ -9,3 +9,7 @@ export type {
   ReproductionBundle, RetireBoundaryRequest, RetryCurrentRequest, ShowFailureRequest
 } from "@streamotter/contracts";
 export { getGatewayOperator } from "./service.ts";
+export {
+  callOperator, connectOperator, startOperatorSocket,
+  type OperatorClientOptions, type OperatorResult, type OperatorSocket, type OperatorSocketOptions
+} from "./ipc.ts";
