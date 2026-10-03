@@ -4,6 +4,8 @@ September 25, 2026 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), inclu
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
+V1.1 source-failure handling is implemented but unreleased; its status is in [its own section](#v11-source-failure-handling-unreleased) and does not change anything recorded for V1 below.
+
 This document records what exists, the commands that verify it, the results observed, and the limitations that remain. The [V1 specification](./V1_API.md) governs behavior; its [section 13](./V1_API.md#13-implementation-refinements-contract-revision-02) lists refinements made during implementation.
 
 ## Environment used for the results below
@@ -157,6 +159,71 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 - **The Kafka crash test (fixed).** On September 25, `tests/kafka/03-crash.test.ts` failed once and then hung its suite for 22 minutes. It started the replacement gateway right after SIGKILLing the first one, so the replacement's 30-second startup deadline raced the dead member's 30-second session; after the failure, an unclosed SDK client's reconnect timers kept the process alive. The test now waits until the consumer group is empty before restarting, and cleans up in `finally`. Every test script runs with `--test-force-exit`, and topic creation tolerates a broker that has only just started. Afterwards: three `pnpm test:kafka` runs (one with eight CPU-bound processes competing) passed 20 / 20, the crash test taking a steady 31.6 s; a run right after a cold broker start passed 20 / 20; and a deliberately failing copy of the crash test exited at once with no leftover process. Operators face the same race after a real crash, so the [production guide](./DEPLOYMENT.md#keep-it-running) recommends restarting after a short delay.
 - **Timing-sensitive tests (fixed).** On September 25, one of twelve `pnpm test` runs failed a single test. Twenty runs with eight CPU-bound processes competing did not reproduce it. With the local broker also running and `--test-concurrency=10`, runs failed in three places, and all three were test races rather than product faults. `cli.test.ts` parsed the `dev` banner after its `Token` line arrived but before the later lines did (the CLI writes the banner line by line); `install.test.ts` had the same wait. `lifecycle.test.ts` polled for a `stale` state that lasts only until reconnection (0–500 ms of jitter). It, and the example's "Disconnect, change while away" scenario (`example.test.ts`), assumed the change would happen before the client reconnected. The tests now wait for the banner's last line and read `stale` from the state listener. The lifecycle test updates the store before the disconnect, and the scenario holds back the reconnection token until the change is made. After the fixes, forty runs under the same conditions passed.
 - **CI:** on September 25, `.github/workflows/ci.yml` passed on GitHub (Ubuntu 24.04, Node 24 and 26: install, build, `check:contracts`, `typecheck`, `test`, `test:load`, `test:install`). `extended.yml` also passed on its first run (Ubuntu 24.04, Node 24, Temurin 21 from `actions/setup-java`, Kafka 4.1.2): `test:kafka` 20 / 20, `test:install` 14 / 14, `test:browser` 13 / 13, `test:deploy` 4 / 4, none skipped. So the Linux setup paths are verified as well.
+
+## V1.1 source-failure handling (unreleased)
+
+October 3, 2026 · Opt-in source-failure policies, durable quarantine, guarded continuation, the operator workflow, and the health listener ([specification](./releases/v1.1/V1_1_SOURCE_FAILURE_SPEC.md), [API draft](./releases/v1.1/V1_1_API.md), [runbook](./guides/source-failures.md)). Not published to npm.
+
+This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) and adds nothing to it. Scenario IDs (F01–F48) are those of the [acceptance plan](./releases/v1.1/V1_1_ACCEPTANCE_PLAN.md). The matrix marks a row *implemented* when code and tests are in, *partial* when some named tiers or cases are missing, and *verified* only with a recorded run per its rules; no row is marked verified yet. The commands, results and failed runs are in the [implementation log](./releases/v1.1/IMPLEMENTATION_LOG.md). <!-- lead: re-sync this section with EVIDENCE.md after the slice E rows land -->
+
+### Status by area
+
+| Area | Rows | Status | What is missing |
+| --- | --- | --- | --- |
+| Legacy behavior and configuration | F01, F02 | Implemented | |
+| Classification, pause and quarantine-hold | F03–F08, F10–F12, F14 | Implemented | F14's lost broker acknowledgment is scripted; it can't be reproduced on one local broker. |
+| Outage, token denial and stalled browser with failure handling on | F09 | Partial | No V1.1-specific test; the unchanged V1 tests pass. |
+| Quarantine topic failures | F13 | Partial | A denied ACL and an unavailable quarantine broker are not tested. A write refused as too large, and a missing or undersized topic, are. |
+| Crash after quarantine, before commit | F15 | Partial | No gateway crash-tier test; graceful restarts and the journal's SIGKILL test cover it. |
+| Crash around the advance | F16, F17 | Implemented | |
+| Stop or rebalance during write, guard or commit | F18 | Partial | No rebalance-during-advance test. |
+| Recovery guard, boundary and snapshot acknowledgment | F20–F24 | Implemented | |
+| Late results after epoch change, revoke or stop | F25 | Partial | Revoke and new-incident races are not separately tested. |
+| Circuit breaker | F26 | Implemented | |
+| Moved or expired source position; journal identity; second gateway | F27, F29, F30 | Implemented | F29: topic re-creation without a generation change is not detected. |
+| Operator retry, evaluate, redrive, plans and refusals | F19, F28, F31–F34, F36 | Implemented | |
+| Redrive interrupted by a crash | F35 | Partial | Uses an in-process crash hook; no child-process crash test. |
+| Operator and raw-evidence boundary | F37 | Partial | The failure routes and the socket are covered; the health listener part of F37 is slice E. <!-- lead: confirm after the health tests land --> |
+| Socket permissions, raw payload handling, exports | F38–F40 | Implemented | |
+| Budgets and limits | F41 | Partial | Repeated-failure limits on the operator surfaces are not tested. |
+| Independent sources | F42 | Implemented | |
+| Workbench Failures tab and host contract | F44 | Implemented | Chromium only (see below). |
+| Health and lifecycle states | F43 | Planned | |
+| Firefox and WebKit | F45 | Planned | |
+| Packed install | F46 | Implemented (seam part) | The workbench host assets are covered; clean configuration and production proxy are not. |
+| Replicated Kafka under broker failure | F47 | Planned | |
+| Upgrade, then downgrade, with open incidents | F48 | Planned | |
+
+### Runs recorded in the implementation log
+
+All on Node 24.21.0 and pnpm 11.19.0, on the V1.1 branches:
+
+| Command | Result |
+| --- | --- |
+| `pnpm build && pnpm verify` | 316 tests, all pass (slice D after merging WHC-1 revision 0.3) |
+| `pnpm test:kafka` | 39 tests, all pass, against the local single-node Kafka 4.1.2 broker (slice D with the quarantine reader) |
+| `pnpm test:browser` | 52 tests, all pass, in headless **Chromium 141** linked in place of Playwright 1.63's pinned Chrome Headless Shell 153, which could not be downloaded in that environment; CI's pinned browser has not run these tests yet |
+| `pnpm test:install` | 21 tests, all pass |
+
+The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.10.0. On Node 24.14.0 the journal refuses to open (`node-version`) and its SQLite suites skip.
+
+### What this does not establish
+
+- **Broker-failure durability.** Every Kafka run used one local broker. Nothing here shows that quarantine evidence survives a broker or leader failure (F47).
+- **ACL-enabled brokers.** The ACL list in the [runbook](./guides/source-failures.md#61-credentials-and-acls) follows from the client calls; no run used a broker with authorization enabled.
+- **Browsers other than Chromium** (F45).
+- **Downgrade** (F48), and restart of a production deployment behind a proxy with failure handling on (F46).
+- **The truth of an application's recovery guard and snapshot acknowledgment.** The gateway checks boundary identity and lifecycle only.
+- **Security beyond the listed checks.** Passing F37–F40 is not a security audit.
+
+### Known limitations of the implementation
+
+- No command prunes resolved incidents; the journal stops at 256 MiB and then refuses writes, keeping the source held.
+- No command closes an incident whose record can no longer be processed or advanced (for example, deleted by source-topic retention); that needs the runbook's rebaseline procedure.
+- Quarantine writes and reads use the quarantining sources' connection profile; separate quarantine credentials are not supported.
+- Evidence read-back takes at least the broker's `group.initial.rebalance.delay.ms` (3 s by default). After a lost connection, KafkaJS keeps retrying for about 24 s after the read has reported `unavailable`.
+- The journal engine is `node:sqlite` with a Node 24.15 floor, pending the owner's decision D1 in the [API draft](./releases/v1.1/V1_1_API.md#11-decisions-this-draft-adds).
+- The operator socket is not available on Windows.
 
 ## Gate A status (home site and demo plan)
 

@@ -75,6 +75,10 @@ Every failure is a `StreamError`: `{ code, message, retryable, requestId, detail
 
 A listener that throws, or returns a rejected promise, fails its subscription with `HANDLER_FAILED`. Keep listeners cheap: state replacement, not heavy processing.
 
+## Source failures on the server (V1.1)
+
+The unreleased V1.1 source-failure handling changes nothing in the browser: no new state, error code, or protocol message. A source held at a bad record looks like any unavailable source: views go `stale` and recover by themselves once it is repaired. The [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) is for whoever runs the gateway.
+
 ## Clean up
 
 ```ts

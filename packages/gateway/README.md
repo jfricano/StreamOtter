@@ -118,7 +118,7 @@ StreamOtter can only be as correct as the state your handlers describe:
 - **One instance, one partition.** Changes to one channel instance must arrive in revision order from one Kafka partition (key your records by entity).
 - **Full state, not deltas.** Each update replaces the previous state. Represent deletion as explicit state. A Kafka tombstone (null value) has no delete meaning; it pauses the source like any other invalid record.
 - **Same public state for every authorized reader.** The routing identity is channel, version, the mapper's `tenantId`, and canonical parameters. Don't redact per user in `snapshot`; use separate channels or parameters for different views.
-- **Invalid records pause, never skip.** Invalid JSON, an invalid mapped payload or revision, or a handler failure pauses the source at that record, and its subscriptions go `stale`. Fix the cause, then call `gateway.resumeSource(sourceId)` to retry the same record.
+- **Invalid records pause, never skip.** Invalid JSON, an invalid mapped payload or revision, or a handler failure pauses the source at that record, and its subscriptions go `stale`. Fix the cause, then call `gateway.resumeSource(sourceId)` to retry the same record. V1.1 adds opt-in quarantine and guarded continuation, below; they never skip silently either.
 
 ## Run it
 
@@ -140,6 +140,83 @@ process.once("SIGTERM", () => void gateway.stop({ timeoutMs: 10_000 }));
 - `start()` rolls back and rejects if startup fails or takes longer than 30 seconds. A stopped gateway cannot restart; create a new one.
 - `mode: "production"` refuses fixture sources, plaintext Kafka, and the `development` option, and requires an exact browser `Origin` on every connection. `mode: "development"` accepts `development: { principals, fixtures }` for local work.
 - `configDir` (optional) is where relative CA paths resolve; it defaults to the working directory (the CLI uses the configuration file's directory). `logger` (optional) receives redacted operator diagnostics: never credentials or payloads.
+- `health` (optional) serves read-only `GET /health/live` and `GET /health/ready` on a separate listener: `{ port, host? }`, `host` defaulting to `127.0.0.1`, port `0` for a free one. Liveness is 200 while the listener answers, broker outages included; readiness is 503 with reason categories (`starting`, `source-held`, `source-unavailable`, `journal`, `quarantine`) when the gateway can't serve. No CORS headers, and never topic names or incident IDs. Unreleased (V1.1); see [health checks](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md#health-checks).
+- `stateDirectory`, `handlerBuildId` and `operatorSocket` (optional) are for source-failure handling, below.
+
+## Source-failure handling (V1.1, unreleased)
+
+Opt-in. Without a `failureHandling` section in the configuration, the gateway pauses on a bad record exactly as described above, and none of this applies. The [runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) covers setup, policies and incident procedures.
+
+```json
+"failureHandling": {
+  "quarantine": { "topic": "orders-app.streamotter.quarantine", "capture": "full-record" },
+  "sources": { "orders": { "invalidJson": "quarantine-hold", "invalidPublicPayload": "quarantine-hold" } }
+}
+```
+
+Each source gets `pause` (default), `quarantine-hold` or `quarantine-resync` for invalid JSON (`invalidJson`) and for mapped data that fails its payload schema (`invalidPublicPayload`). Every other failure class pauses and is never skipped. Each failure is recorded as an incident; under a quarantine policy the original record is also written, byte for byte, to a quarantine topic you provision. Options: `transientMapperRetries` (0–2, with `replaySafeMapping: true`), `automaticAdvanceLimit` and `boundaryRetirement`.
+
+Gateway options:
+
+| Option | |
+| --- | --- |
+| `stateDirectory` | Directory of the durable failure journal, created beforehand with `streamotter init --failures`. Required in production when a source uses a quarantine policy. Needs Node.js 24.15 or later. Without it, `development` mode keeps incidents in memory. |
+| `handlerBuildId` | 1 to 128 characters naming your handler build, recorded in incidents and redrive plans. Default `"unspecified"`. |
+| `operatorSocket` | `true` serves the operator API on `<stateDirectory>/run/operator.sock` for the `streamotter status`, `failures` and `sources` commands. Requires `stateDirectory` and `failureHandling`. Not on Windows. |
+
+Handler additions. A `quarantine-resync` source requires `sources[id].recover`, and startup refuses a guard for any other source:
+
+```ts
+import { TransientMappingError, type HandlerRegistry } from "@streamotter/gateway";
+
+export const handlers: HandlerRegistry<AppChannels> = {
+  authenticate,
+  channels: {
+    orderStatus: {
+      authorize,
+      map({ record }) {
+        if (!rates.available()) throw new TransientMappingError("rates unavailable"); // retried if transientMapperRetries > 0, then held
+        return [/* … */];
+      },
+      async snapshot({ principal, params, recovery, signal }) {
+        const { row, appliedSeq } = await orders.readWithWatermark(principal.tenantId, params.orderId, signal);
+        const result = { revision: String(row.version), data: row.order };
+        // Echo the boundary only when your read covers it; otherwise the attempt retries and the view stays stale.
+        return recovery !== undefined && appliedSeq >= (recovery.context as { outboxSeq: number }).outboxSeq
+          ? { ...result, recoveryBoundaryId: recovery.boundaryId } : result;
+      }
+    }
+  },
+  sources: {
+    orders: {   // required for a quarantine-resync source
+      async recover({ incident, prior, signal }) {
+        const row = await outbox.findByPosition(incident.position, signal);
+        if (row === null) return { decision: "hold", reason: "effect of this record is unknown" };
+        const previous = (prior?.context as { outboxSeq?: number } | undefined)?.outboxSeq ?? 0;
+        return { decision: "recoverable", context: { outboxSeq: Math.max(previous, row.seq) }, evidenceRef: `outbox ${row.seq}` };
+      }
+    }
+  }
+};
+```
+
+`recover` decides whether the source may move past a quarantined record; return `hold` whenever you can't prove that your snapshots already reflect it. After it approves, every snapshot on the source receives `recovery` and must return its `recoveryBoundaryId` before a subscription can be `live`. See [write an honest recovery guard](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md#4-write-an-honest-recovery-guard).
+
+`gateway.resumeSource(sourceId)` still retries the held record and never skips it. With failure handling it goes through the operator's retry, so it is refused while an advance is unresolved or the source's circuit is open.
+
+The operator API, in-process:
+
+```ts
+import { getGatewayOperator } from "@streamotter/gateway/operator";
+
+const operator = getGatewayOperator(gateway);          // throws UNSUPPORTED_CAPABILITY without failureHandling
+const { items } = await operator.listFailures({ state: "open" });
+const incident = await operator.showFailure({ failureId: items[0].failureId });
+const result = await operator.retryCurrent({ sourceId: incident.sourceId, failureId: incident.failureId, expectedRevision: incident.revision });
+// result.result: "completed" | "refused" | "failed" | "unknown"; refusals are results with an outcome, not exceptions
+```
+
+It offers `status`, `listFailures`, `showFailure`, `exportFailure`, `retryCurrent`, `reassess`, `reopenCircuit`, `retireBoundary`, `evaluate` and `redrive`, the same as the CLI. `callOperator` and `connectOperator` reach a gateway's operator socket from another process. Shapes and refusal outcomes are in the [V1.1 API draft](https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/V1_1_API.md#6-operator-service-slices-c-d).
 
 ## Revoke access
 
@@ -156,9 +233,9 @@ Revocation takes effect immediately, including while `authorize` or `snapshot` i
 
 ## Production boundary
 
-Run **exactly one gateway per project** (V1 has no multi-gateway coordination), behind a TLS-terminating proxy that forwards WebSocket upgrades and the browser's `Origin`. There is no management or health endpoint in production. See [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md) for the verified reverse-proxy recipe and the [Kafka support matrix](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md#kafka-support-matrix-kafkajs-224--apache-kafka-412): TLS, and TLS with SASL PLAIN and SCRAM-SHA-256/512, are verified against Apache Kafka 4.1.2. Other broker versions and managed services are unverified.
+Run **exactly one gateway per project** (V1 has no multi-gateway coordination), behind a TLS-terminating proxy that forwards WebSocket upgrades and the browser's `Origin`. There is no management endpoint in production; the optional `health` listener is the only extra one, and it belongs on loopback or a private interface. See [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md) for the verified reverse-proxy recipe and the [Kafka support matrix](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md#kafka-support-matrix-kafkajs-224--apache-kafka-412): TLS, and TLS with SASL PLAIN and SCRAM-SHA-256/512, are verified against Apache Kafka 4.1.2. Other broker versions and managed services are unverified.
 
-`@streamotter/gateway/management` is the development-only management API used by `streamotter dev`; it refuses production gateways. `@streamotter/gateway/internals` exists for StreamOtter's own CLI and is not a stable API.
+`@streamotter/gateway/management` is the development-only management API used by `streamotter dev`; it refuses production gateways. `@streamotter/gateway/operator` is the V1.1 operator API (above), for local operators only, never for browsers. `@streamotter/gateway/internals` exists for StreamOtter's own CLI and is not a stable API.
 
 ### Host the workbench API under your own route
 
@@ -186,6 +263,7 @@ The handler serves API routes only (never static files), answers `GET /workbench
 - [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md): handlers, revisions, the outbox, and revocation, step by step
 - [Connect to Kafka](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/kafka.md): topic shape, TLS and SASL, bad records, crashes, and diagnostics
 - [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md): `streamotter start`, supervision, and the reverse-proxy recipe
+- [Handle bad records](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md): V1.1 failure policies, quarantine, recovery guards, and the operator runbook (unreleased)
 - [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md)
 - [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): handlers and lifecycle (§3), synchronization (§5), source progress and limits (§6), and access (§7)
 - [Reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard): fixture and Kafka handlers for a real app
