@@ -14,7 +14,7 @@ import {
 } from "@streamotter/contracts";
 import { openJournal } from "../failures/journal.ts";
 import { KafkaQuarantineWriter } from "../failures/quarantine.ts";
-import { FailureService } from "../failures/service.ts";
+import { FailureService, type AdvanceHooks } from "../failures/service.ts";
 import { MemoryIncidentStore, type IncidentStore } from "../failures/store.ts";
 import { assertFailureHandling, usesQuarantine } from "../failures/validate.ts";
 import { ByteBudget } from "./budget.ts";
@@ -27,7 +27,7 @@ import { FRAME_OVERHEAD_BYTES, type PendingFrame, type ServerSubscription } from
 import { TraceBuffer, type TraceQuery } from "./traces.ts";
 import { consoleLogger, describeError, invokeHandler, newId, nowIso, Semaphore, sha256Hex } from "./util.ts";
 import { FixtureSourceAdapter, type FixtureRecord } from "../sources/fixture.ts";
-import { createKafkaSourceAdapter, resolveKafkaConnection, runKafkaDiagnostics, type ResolvedKafkaConnection } from "../sources/kafka.ts";
+import { createKafkaSourceAdapter, readCommittedOffset, resolveKafkaConnection, runKafkaDiagnostics, type ResolvedKafkaConnection } from "../sources/kafka.ts";
 import type { ProcessOutcome, SourceAdapter, SourceInput, SourceSink } from "../sources/types.ts";
 import { attachSocketIo, type HandshakeResult } from "../transport/socketio.ts";
 import type { ConnectionTransport } from "../transport/types.ts";
@@ -43,6 +43,7 @@ class SourceRuntimeImpl implements SourceRuntime {
   reason: ErrorCode | undefined = undefined;
   /** Extra attempts at the whole mapping after a TransientMappingError (V1.1 policy). */
   readonly transientRetries: 0 | 1 | 2;
+  boundary: SourceRuntime["boundary"] = null;
 
   constructor(id: string, config: ProjectConfig["sources"][string], transientRetries: 0 | 1 | 2) {
     this.id = id;
@@ -86,6 +87,8 @@ export interface InternalGatewayOptions {
   beforeCommit?: (sourceId: string, position: SourceRecord["position"]) => Promise<void>;
   /** Replaces the incident store the gateway would open, to inject faults. */
   incidentStore?: IncidentStore;
+  /** Crash points around a guarded advance (slice C crash tests). */
+  advanceHooks?: AdvanceHooks;
 }
 
 /** Development and management access to a running gateway; never exposed to browsers. */
@@ -269,7 +272,8 @@ export class GatewayRuntime implements SessionOwner {
       snapshots: new Semaphore(limits.maxConcurrentSnapshots),
       revocations: new RevocationLog(Math.max(60_000, limits.snapshotTimeoutMs + limits.handlerTimeoutMs * 3)),
       logger: options.logger ?? consoleLogger(),
-      gatewayBudget: new ByteBudget(limits.maxPendingBytesGateway)
+      gatewayBudget: new ByteBudget(limits.maxPendingBytesGateway),
+      boundaryAcknowledged: (sourceId, boundaryId) => { this.#failures?.acknowledged(sourceId, boundaryId); }
     };
     for (const [id, source] of Object.entries(config.sources)) {
       const retries = config.failureHandling === undefined ? 0 : resolveSourcePolicy(config.failureHandling, id).transientMapperRetries;
@@ -733,11 +737,22 @@ export class GatewayRuntime implements SessionOwner {
         quarantine,
         configFingerprint: this.fingerprint,
         handlerBuildId: this.#handlerBuildId,
-        maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes
+        maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes,
+        guards: this.#handlers.sources ?? {},
+        onBoundary: (sourceId, boundary) => {
+          const source = this.#sources.get(sourceId);
+          if (source !== undefined) source.boundary = boundary === null ? null : Object.freeze({ id: boundary.id, context: boundary.context });
+        },
+        stopSignal: this.#stopController.signal,
+        ...(this.#internal.advanceHooks === undefined ? {} : { hooks: this.#internal.advanceHooks })
       });
       const clusterId = quarantine?.report?.clusterId;
       if (clusterId !== undefined) for (const source of quarantined) failures.setClusterId(source.id, clusterId);
-      failures.start(this.#sources.values());
+      await failures.start(this.#sources.values(), async (source, topic, partition) => {
+        if (source.config.kind !== "kafka") return null;
+        return readCommittedOffset(connections.get(source.config.connectionRef) as ResolvedKafkaConnection,
+          `streamotter-${this.config.projectId}-reconcile`, source.config.consumerGroup, topic, partition, this.core.logger);
+      });
       this.#failures = failures;
     } catch (error) {
       await quarantine?.stop().catch(() => undefined);

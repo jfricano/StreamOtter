@@ -15,7 +15,7 @@ export interface FailureCapabilities {
  * refused at construction, never accepted and quietly treated as pause (spec §14).
  */
 export const FAILURE_CAPABILITIES: FailureCapabilities = Object.freeze({
-  policies: Object.freeze(["pause", "quarantine-hold"] as const),
+  policies: Object.freeze(["pause", "quarantine-hold", "quarantine-resync"] as const),
   transientRetries: true
 });
 

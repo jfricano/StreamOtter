@@ -1,15 +1,39 @@
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
-  policyFor, resolveSourcePolicy, StreamOtterError,
+  canonicalJson, isJsonValue, isPlainObject, MAX_RECOVERY_CONTEXT_BYTES, policyFor, resolveSourcePolicy, StreamOtterError,
   type ErrorCode, type FailureClass, type FailurePolicy, type GatewayLogger, type Json, type ProjectConfig,
-  type ResolvedSourcePolicy, type SourceRecord
+  type ResolvedSourcePolicy, type SourceRecord, type SourceRecoveryHandlers
 } from "@streamotter/contracts";
 import { sourceRecordId } from "../runtime/identity.ts";
-import { nowIso, sha256Hex } from "../runtime/util.ts";
+import { describeError, invokeHandler, newId, nowIso, sha256Hex } from "../runtime/util.ts";
 import type { ProcessOutcome, SourceAdapter, SourceInput } from "../sources/types.ts";
 import { evidenceHash, keyAndHeaderBytes, MAX_CAPTURED_KEY_AND_HEADER_BYTES } from "./evidence.ts";
 import type { QuarantineOutcome, QuarantineWriter } from "./quarantine.ts";
-import type { EvidenceSummary, IncidentEventName, IncidentRecord, IncidentStore, RawEvidence } from "./store.ts";
+import type { EvidenceSummary, GuardResult, IncidentEventName, IncidentRecord, IncidentStore, RawEvidence, StoredBoundary } from "./store.ts";
+
+/** Spec §13: the recovery guard's budget, independent of handlerTimeoutMs. */
+export const GUARD_TIMEOUT_MS = 10_000;
+const MAX_GUARD_TEXT = 512;
+
+/** The boundary a source's snapshots must acknowledge, as the runtime holds it. */
+export type BoundaryInForce = { id: string; context: Json } | null;
+
+/** Reads a consumer group's committed offset for one partition ("-1" or null when none). */
+export type CommittedOffsetReader = (source: FailureSource, topic: string, partition: number) => Promise<string | null>;
+
+/** Test-only instrumentation: awaited just before advancePast and just after it reports "advanced". */
+export interface AdvanceHooks {
+  beforeAdvance?: (failureId: string) => Promise<void>;
+  afterAdvance?: (failureId: string) => Promise<void>;
+}
+
+/** Progress states that mean the record is still held at its position. */
+const WATCHED_PROGRESS = new Set<IncidentRecord["progress"]>(["held", "retrying", "uncertain"]);
+
+type GuardOutcome =
+  | { decision: "recoverable"; context: Json; result: GuardResult }
+  | { decision: "hold" | "error" | "timeout"; result: GuardResult };
 
 /** What the failure service needs to know about one source. */
 export interface FailureSource {
@@ -53,6 +77,12 @@ export class FailureService {
   readonly #clusterIds = new Map<string, string>();
   /** Set when a journal write failed; readiness reports it until a later write succeeds. */
   #journalError: string | null = null;
+  readonly #guards: Readonly<Record<string, SourceRecoveryHandlers>>;
+  readonly #onBoundary: (sourceId: string, boundary: BoundaryInForce) => void;
+  readonly #stopSignal: AbortSignal;
+  /** Sources with an application retire() call running, so acknowledgments don't pile up. */
+  readonly #retiring = new Set<string>();
+  readonly #hooks: AdvanceHooks;
 
   constructor(options: {
     config: ProjectConfig;
@@ -62,7 +92,18 @@ export class FailureService {
     configFingerprint: string;
     handlerBuildId: string;
     maxSourceRecordBytes: number;
+    /** handlers.sources: recovery guards for quarantine-resync sources. */
+    guards?: Readonly<Record<string, SourceRecoveryHandlers>>;
+    /** Applies the boundary in force to the source runtime, so every later snapshot must acknowledge it. */
+    onBoundary?: (sourceId: string, boundary: BoundaryInForce) => void;
+    stopSignal?: AbortSignal;
+    /** Test-only crash points around the offset advance. */
+    hooks?: AdvanceHooks;
   }) {
+    this.#hooks = options.hooks ?? {};
+    this.#guards = options.guards ?? {};
+    this.#onBoundary = options.onBoundary ?? (() => undefined);
+    this.#stopSignal = options.stopSignal ?? new AbortController().signal;
     this.store = options.store;
     this.#config = options.config;
     this.#logger = options.logger;
@@ -93,7 +134,7 @@ export class FailureService {
    * generation refuses startup, because its positions no longer name the same
    * records (ADR-15A §3). Rebaselining is an operator command (slice D).
    */
-  start(sources: Iterable<FailureSource>): void {
+  async start(sources: Iterable<FailureSource>, committedOffset?: CommittedOffsetReader): Promise<void> {
     for (const source of sources) {
       const open = this.store.open(source.id);
       const stale = open.find(incident => incident.generation !== source.config.generation);
@@ -102,7 +143,45 @@ export class FailureService {
           message: `Source "${source.id}" has an open incident (${stale.failureId}) from generation "${stale.generation}", but the configuration names generation "${source.config.generation}". Resolve or rebaseline the open incidents before changing the generation.`
         });
       }
-      if (open.some(incident => incident.progress === "held" || incident.progress === "retrying")) this.#watched.add(source.id);
+      // Restore the boundary before the source can become ready, so no snapshot after a restart skips it (spec §6, F23).
+      const boundary = this.store.boundary(source.id);
+      if (boundary !== null && boundary.generation === source.config.generation) this.#onBoundary(source.id, { id: boundary.boundaryId, context: boundary.context });
+      for (const incident of open) {
+        if (incident.progress === "advance-pending" || incident.progress === "uncertain") await this.#reconcile(source, incident, committedOffset);
+      }
+      if (this.store.open(source.id).some(incident => WATCHED_PROGRESS.has(incident.progress))) this.#watched.add(source.id);
+    }
+  }
+
+  /**
+   * An advance was prepared (or could not be confirmed) before the last stop.
+   * The group's committed offset decides what happened; a missing barrier is
+   * never inferred and an unexplained position holds (spec §6, F16, F17).
+   */
+  async #reconcile(source: FailureSource, incident: IncidentRecord, committedOffset: CommittedOffsetReader | undefined): Promise<void> {
+    const position = incident.position;
+    if (position.kind !== "kafka") {
+      this.#update(incident, { progress: "held" }, "held", "the fixture restarted from its first record, so the advance is evaluated again when the record is reached");
+      return;
+    }
+    let committed: string | null;
+    try {
+      committed = committedOffset === undefined ? null : await committedOffset(source, position.topic, position.partition);
+    } catch (error) {
+      this.#update(incident, { progress: "uncertain" }, "held", `the committed offset could not be read at startup (${(error as Error).name}); the source stays held`);
+      return;
+    }
+    const next = (BigInt(position.offset) + 1n).toString();
+    if (committed === next) {
+      this.#update(incident, { progress: "advanced", state: "resolved", resolution: `advanced past under recovery boundary ${incident.boundaryId ?? "(none)"}; confirmed at startup` },
+        "advance-confirmed", "the group's committed offset shows the advance happened before the restart");
+    } else if (committed === null || committed === "-1" || BigInt(committed) <= BigInt(position.offset)) {
+      this.#update(incident, { progress: "held" }, "held", "the advance was never committed; the record is evaluated again when it is redelivered");
+    } else {
+      this.#update(incident, {
+        progress: "uncertain",
+        diagnosis: `Source progress moved: the group's committed offset ${committed} is past ${next}, which this gateway did not record. The source stays held.`
+      }, "held", "unexplained group position at startup");
     }
   }
 
@@ -167,7 +246,7 @@ export class FailureService {
     for (const incident of open) {
       const held = incident.position;
       if (held.kind !== "kafka" || held.topic !== position.topic || held.partition !== position.partition) continue;
-      if (incident.progress !== "held" && incident.progress !== "retrying") continue;
+      if (!WATCHED_PROGRESS.has(incident.progress)) continue;
       if (BigInt(position.offset) <= BigInt(held.offset)) continue;
       const reason = `partition ${held.topic}/${held.partition} is at offset ${position.offset}, past the held record at offset ${held.offset}, with no recorded advance`;
       if (!incident.diagnosis.startsWith("Source progress moved")) {
@@ -255,8 +334,9 @@ export class FailureService {
       return;
     }
 
-    // quarantine-hold (quarantine-resync continues in slice C; until then construction refuses it).
-    if (record.quarantine === "acknowledged") {
+    // quarantine-hold stops at acknowledged evidence. quarantine-resync always writes a fresh acknowledged copy
+    // before it may advance: an older acknowledgment may have expired (spec §6 step 4).
+    if (record.quarantine === "acknowledged" && policy === "quarantine-hold") {
       this.#emit(record, "held", "evidence already quarantined");
       return;
     }
@@ -267,12 +347,14 @@ export class FailureService {
     record = this.#update(record, { quarantine: "pending", recovery: "held" }, "captured", summary.location === "local" ? "local evidence" : "writing to the quarantine topic");
     const outcomeOfWrite = await this.#write(source, record, raw);
     switch (outcomeOfWrite.kind) {
-      case "acknowledged":
-        this.#update(record, {
+      case "acknowledged": {
+        const quarantined = this.#update(record, {
           quarantine: "acknowledged",
           quarantineCoordinates: outcomeOfWrite.partition < 0 ? null : { partition: outcomeOfWrite.partition, offset: outcomeOfWrite.offset }
         }, "quarantined", summary.location === "local" ? "stored as local fixture evidence, not Kafka" : `acknowledged at partition ${outcomeOfWrite.partition}`);
+        if (policy === "quarantine-resync" && quarantined !== record) await this.#continue(source, quarantined);
         return;
+      }
       case "unknown":
         this.#update(record, { quarantine: "unknown" }, "quarantine-unknown", outcomeOfWrite.reason);
         return;
@@ -280,6 +362,194 @@ export class FailureService {
         this.#update(record, { quarantine: "failed" }, "held", `quarantine write refused: ${outcomeOfWrite.reason}`);
         return;
     }
+  }
+
+  // --- guarded continuation (quarantine-resync, ADR-15B) ----------------------------
+
+  /**
+   * After an acknowledged quarantine write: check the circuit, ask the recovery
+   * guard, persist the cumulative boundary and the intent to advance in one
+   * journal transaction, apply the boundary to the runtime, and only then move
+   * the source offset past the record. Every failure leaves the record held.
+   */
+  async #continue(source: FailureSource, record: IncidentRecord): Promise<void> {
+    const sourceId = source.id;
+    const limit = this.policy(sourceId).automaticAdvanceLimit;
+    let circuit;
+    try {
+      circuit = this.store.circuit(sourceId);
+      const now = Date.now();
+      const recent = circuit.advances.filter(at => now - Date.parse(at) < limit.windowMs);
+      if (circuit.state === "open" || recent.length >= limit.incidents) {
+        if (circuit.state !== "open") {
+          circuit = this.store.updateCircuit(sourceId, circuit.revision, {
+            state: "open", advances: recent, openedAt: nowIso(),
+            reason: `${recent.length} distinct automatic advances within ${limit.windowMs} ms`
+          });
+          this.#logger.error("Automatic continuation stopped: the circuit breaker opened", { sourceId, advances: recent.length, windowMs: limit.windowMs });
+        }
+        this.#update(record, { recovery: "held" }, "held", "the automatic continuation circuit is open; reopen it after correcting the cause");
+        return;
+      }
+    } catch (error) {
+      this.#journalError = (error as Error).message;
+      this.#update(record, { recovery: "held" }, "held", "the circuit state could not be read; the record stays held");
+      return;
+    }
+
+    const guard = this.#guards[sourceId];
+    if (guard === undefined) {
+      this.#update(record, { recovery: "held" }, "held", "no recovery guard is registered for this source");
+      return;
+    }
+    let prior: StoredBoundary | null;
+    try {
+      prior = this.store.boundary(sourceId);
+    } catch (error) {
+      this.#journalError = (error as Error).message;
+      return;
+    }
+    if (prior !== null && prior.generation !== source.config.generation) prior = null;
+    const pending = this.#update(record, { recovery: "guard-pending" }, "held", "running the recovery guard");
+    if (pending === record) return;
+    const outcome = await this.#runGuard(guard, source, pending, prior);
+    if (this.#stopSignal.aborted) return;
+
+    // Recheck after the await: a stop, a newer observation or an operator action wins over this result (F18, F25).
+    const current = this.store.get(pending.failureId);
+    if (current === null || current.revision !== pending.revision || current.state !== "open" || current.progress !== "held") {
+      this.#logger.warn("A recovery guard result arrived for an incident that changed meanwhile; it was ignored", { failureId: pending.failureId });
+      return;
+    }
+    if (outcome.decision !== "recoverable") {
+      const why = outcome.decision === "hold" ? `the recovery guard decided to hold: ${outcome.result.reason ?? ""}` : `the recovery guard ${outcome.decision === "timeout" ? "timed out" : "failed"}: ${outcome.result.reason ?? ""}`;
+      this.#update(current, { recovery: outcome.decision === "hold" ? "denied" : "held", guard: outcome.result }, "held", why);
+      return;
+    }
+
+    const boundaryId = `rb1:${randomBytes(16).toString("hex")}`;
+    let prepared: IncidentRecord;
+    try {
+      prepared = this.store.prepareAdvance({
+        failureId: current.failureId,
+        expectedRevision: current.revision,
+        boundary: { boundaryId, context: outcome.context, expectedPrior: prior?.boundaryId ?? null },
+        guard: outcome.result,
+        at: nowIso()
+      }).record;
+      this.#journalError = null;
+    } catch (error) {
+      this.#journalError = (error as Error).message;
+      this.#logger.error("The recovery boundary could not be persisted; the record stays held and the offset does not move", {
+        failureId: current.failureId, error: (error as Error).message.slice(0, 200)
+      });
+      return;
+    }
+    this.#emit(prepared, "advance-pending", boundaryId);
+    // Every snapshot from here on must acknowledge the new boundary, before any later record can be delivered.
+    this.#onBoundary(sourceId, { id: boundaryId, context: outcome.context });
+
+    await this.#hooks.beforeAdvance?.(prepared.failureId);
+    const adapter = source.adapter;
+    let result: Awaited<ReturnType<NonNullable<FailureSource["adapter"]>["advancePast"]>>;
+    try {
+      result = adapter === null ? "not-held" : await adapter.advancePast({ position: prepared.position });
+    } catch {
+      result = "uncertain";
+    }
+    if (result === "advanced") await this.#hooks.afterAdvance?.(prepared.failureId);
+    switch (result) {
+      case "advanced":
+        this.#update(prepared, { progress: "advanced", state: "resolved", resolution: `advanced past under recovery boundary ${boundaryId}` },
+          "advance-confirmed", "committed past the record and confirmed by read-back; snapshots must acknowledge the boundary");
+        this.#emit(prepared, "snapshot-recovery-required", boundaryId);
+        return;
+      case "not-held":
+        // Nothing was committed (stop or rebalance). The cumulative boundary stays in force, which only adds obligations.
+        this.#update(prepared, { progress: "held" }, "held", "the source was no longer paused at this record; nothing was committed and it will be evaluated again");
+        return;
+      case "uncertain":
+        this.#watched.add(sourceId);
+        this.#update(prepared, { progress: "uncertain" }, "held", "the advance could not be confirmed; the source stays paused until it is reconciled");
+        return;
+    }
+  }
+
+  async #runGuard(guard: SourceRecoveryHandlers, source: FailureSource, record: IncidentRecord, prior: StoredBoundary | null): Promise<GuardOutcome> {
+    const result = (decision: GuardResult["decision"], reason: string | null, evidenceRef: string | null = null): GuardResult =>
+      ({ decision, reason: reason === null ? null : reason.slice(0, MAX_GUARD_TEXT), evidenceRef, at: nowIso() });
+    const outcome = await invokeHandler(
+      context => guard.recover({
+        ...context,
+        sourceId: source.id,
+        generation: source.config.generation,
+        incident: {
+          failureId: record.failureId,
+          failureClass: record.failureClass as "invalid-json" | "payload-schema",
+          position: { ...record.position },
+          evidenceHash: record.evidence.hash
+        },
+        prior: prior === null ? null : { id: prior.boundaryId, context: prior.context }
+      }),
+      { timeoutMs: GUARD_TIMEOUT_MS, requestId: newId(), parent: this.#stopSignal }
+    );
+    if (outcome.kind === "aborted") return { decision: "error", result: result("error", "cancelled because the gateway is stopping") };
+    if (outcome.kind === "timeout") return { decision: "timeout", result: result("timeout", `no answer within ${GUARD_TIMEOUT_MS} ms`) };
+    if (outcome.kind === "error") return { decision: "error", result: result("error", `recover threw ${JSON.stringify(describeError(outcome.error))}`) };
+    const value: unknown = outcome.value;
+    if (isPlainObject(value) && value["decision"] === "hold" && typeof value["reason"] === "string") {
+      return { decision: "hold", result: result("hold", value["reason"]) };
+    }
+    if (isPlainObject(value) && value["decision"] === "recoverable") {
+      const context = value["context"];
+      const evidenceRef = value["evidenceRef"];
+      if (!isJsonValue(context)) return { decision: "error", result: result("error", "recover returned a context that is not JSON") };
+      if (Buffer.byteLength(canonicalJson(context)) > MAX_RECOVERY_CONTEXT_BYTES) {
+        return { decision: "error", result: result("error", `recover returned a context above ${MAX_RECOVERY_CONTEXT_BYTES} bytes`) };
+      }
+      if (typeof evidenceRef !== "string" || evidenceRef.length === 0 || evidenceRef.length > MAX_GUARD_TEXT) {
+        return { decision: "error", result: result("error", "recover must return an evidenceRef of 1 to 512 characters") };
+      }
+      return { decision: "recoverable", context, result: result("recoverable", null, evidenceRef) };
+    }
+    return { decision: "error", result: result("error", "recover returned neither {decision: \"hold\", reason} nor {decision: \"recoverable\", context, evidenceRef}") };
+  }
+
+  /**
+   * A snapshot acknowledged the source's boundary. With boundaryRetirement
+   * "application", ask the application whether the boundary can retire; the
+   * store refuses while any of its incidents is still held (ADR-15B §4).
+   * Serialized with the source's other failure work.
+   */
+  acknowledged(sourceId: string, boundaryId: string): void {
+    const policy = this.#policies.get(sourceId);
+    const retire = this.#guards[sourceId]?.retire;
+    if (policy?.boundaryRetirement !== "application" || retire === undefined || this.#retiring.has(sourceId)) return;
+    this.#retiring.add(sourceId);
+    const previous = this.#chains.get(sourceId) ?? Promise.resolve();
+    const next = previous.then(async () => {
+      const boundary = this.store.getBoundary(boundaryId);
+      if (boundary === null || boundary.state !== "in-force") return;
+      const outcome = await invokeHandler(
+        context => retire({ ...context, sourceId, boundary: { id: boundary.boundaryId, context: boundary.context } }),
+        { timeoutMs: GUARD_TIMEOUT_MS, requestId: newId(), parent: this.#stopSignal }
+      );
+      if (outcome.kind !== "ok" || outcome.value !== true) {
+        if (outcome.kind === "error" || outcome.kind === "timeout") this.#logger.warn("The boundary retire handler did not answer; the boundary stays in force", { sourceId, boundaryId, outcome: outcome.kind });
+        return;
+      }
+      try {
+        this.store.retireBoundary(boundaryId, boundary.revision, { mode: "application", reason: "retire() returned true after an acknowledged snapshot", operationId: null });
+      } catch (error) {
+        this.#logger.info("The boundary was not retired", { sourceId, boundaryId, reason: (error as Error).message.slice(0, 200) });
+        return;
+      }
+      if (this.store.boundary(sourceId) === null) this.#onBoundary(sourceId, null);
+      this.#logger.info("Recovery boundary retired by the application", { sourceId, boundaryId });
+    }).catch(error => {
+      this.#logger.error("Boundary retirement failed", { sourceId, error: (error as Error).name });
+    }).finally(() => { this.#retiring.delete(sourceId); });
+    this.#chains.set(sourceId, next);
   }
 
   async #write(source: FailureSource, record: IncidentRecord, raw: RawEvidence): Promise<QuarantineOutcome> {

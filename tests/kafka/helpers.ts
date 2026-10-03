@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import kafkajs, { type Admin } from "kafkajs";
 import { createClient, type Client } from "@streamotter/client";
 import {
-  silentLogger, type FailureHandlingConfig, type GatewayLogger, type KafkaConnection, type Limits, type ProjectConfig
+  silentLogger, type FailureHandlingConfig, type GatewayLogger, type KafkaConnection, type Limits, type ProjectConfig,
+  type SourceRecoveryHandlers
 } from "@streamotter/gateway";
 import { createGatewayRuntime, getGatewayInternals, type GatewayInternals, type InternalGatewayOptions } from "@streamotter/gateway/internals";
 import { OrderApp, orderConfig, type TestChannels } from "../integration/harness.ts";
@@ -199,6 +200,7 @@ export async function startKafkaHarness(options: {
   internal?: InternalGatewayOptions;
   failureHandling?: FailureHandlingConfig;
   stateDirectory?: string;
+  recovery?: Record<string, SourceRecoveryHandlers>;
 } = {}): Promise<KafkaHarness> {
   const topic = options.topic ?? await createTopic();
   const group = options.group ?? uniqueName("so-group");
@@ -214,7 +216,7 @@ export async function startKafkaHarness(options: {
       ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling })
     }),
     ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
-    handlers: app.handlers(),
+    handlers: options.recovery === undefined ? app.handlers() : { ...app.handlers(), sources: options.recovery },
     mode,
     ...(mode === "development" ? { development: { principals: {}, fixtures: {} } } : {}),
     logger: options.logger ?? silentLogger,

@@ -293,10 +293,13 @@ export class ServerSubscription {
     }
     const principal = this.#host.principal;
     const handlers = this.channel.handlers;
+    // The boundary in force when the snapshot starts is the one it must acknowledge (ADR-15B §3).
+    const boundary = this.channel.source.boundary;
+    const recovery = boundary === null ? undefined : { boundaryId: boundary.id, context: boundary.context };
     let outcome;
     try {
       outcome = await invokeHandler(
-        context => handlers.snapshot({ ...context, principal, params: this.params }),
+        context => handlers.snapshot({ ...context, principal, params: this.params, ...(recovery === undefined ? {} : { recovery }) }),
         { timeoutMs: Math.max(1, deadline - Date.now()), requestId, parent: signal }
       );
     } finally {
@@ -315,14 +318,28 @@ export class ServerSubscription {
       return;
     }
     const snapshot: unknown = outcome.value;
-    const problem = this.#snapshotProblem(snapshot);
+    const problem = this.#snapshotProblem(snapshot, boundary !== null);
     if (problem !== null) {
       this.#trace("snapshot", "rejected", "INVALID_PAYLOAD");
       this.#core.logger.warn("Snapshot rejected", { channel: this.channel.name, requestId, reason: problem });
       this.fail("INVALID_PAYLOAD", requestId);
       return;
     }
-    const { revision, data } = snapshot as { revision: Revision; data: StreamEvent["data"] };
+    const { revision, data, recoveryBoundaryId } = snapshot as { revision: Revision; data: StreamEvent["data"]; recoveryBoundaryId?: string };
+    if (boundary !== null) {
+      // Without the exact acknowledgment, or if a newer boundary arrived meanwhile, this snapshot may predate the
+      // quarantined change: never live on it. A retryable attempt failure keeps the subscription stale.
+      const current = this.channel.source.boundary;
+      if (recoveryBoundaryId !== boundary.id || current?.id !== boundary.id) {
+        this.#trace("snapshot", "rejected", "SOURCE_UNAVAILABLE");
+        this.#core.logger.warn("Snapshot did not acknowledge the source's recovery boundary", {
+          channel: this.channel.name, requestId, sourceId: this.channel.source.id, boundaryId: current?.id ?? boundary.id,
+          acknowledged: recoveryBoundaryId === undefined ? "none" : recoveryBoundaryId === boundary.id ? "superseded boundary" : "a different boundary"
+        });
+        this.#attemptFailed("SOURCE_UNAVAILABLE", requestId);
+        return;
+      }
+    }
     if (this.#lastDelivered !== null && compareRevisions(revision, this.#lastDelivered) < 0) {
       this.#trace("snapshot", "rejected", "INVALID_PAYLOAD");
       this.#core.logger.warn("Snapshot regressed below delivered state", { channel: this.channel.name, requestId });
@@ -333,6 +350,11 @@ export class ServerSubscription {
 
     // Recheck authorization and token validity immediately before delivery.
     if (!(await this.#authorize(generation, signal, requestId))) return;
+    if ((this.channel.source.boundary?.id ?? null) !== (boundary?.id ?? null)) {
+      this.#trace("snapshot", "rejected", "SOURCE_UNAVAILABLE");
+      this.#attemptFailed("SOURCE_UNAVAILABLE", requestId);
+      return;
+    }
 
     const event: StreamEvent = {
       id: newId(),
@@ -362,6 +384,7 @@ export class ServerSubscription {
     }
     this.#phase = "snapshot-sent";
     this.#transmit({ event, bytes, revision, dataHash });
+    if (boundary !== null) this.#core.boundaryAcknowledged?.(this.channel.source.id, boundary.id);
   }
 
   async #authorize(generation: number, signal: AbortSignal, requestId: string): Promise<boolean> {
@@ -399,9 +422,15 @@ export class ServerSubscription {
     return true;
   }
 
-  #snapshotProblem(snapshot: unknown): string | null {
+  #snapshotProblem(snapshot: unknown, boundaryInForce: boolean): string | null {
     if (!isPlainObject(snapshot)) return "snapshot must return an object";
     for (const key of Object.keys(snapshot)) {
+      if (key === "recoveryBoundaryId") {
+        // Echoing a boundary nobody asked about would let stale acknowledgment code pass silently.
+        if (!boundaryInForce) return "recoveryBoundaryId was returned but no recovery boundary is in force";
+        if (typeof snapshot[key] !== "string") return "recoveryBoundaryId must be a string";
+        continue;
+      }
       if (key !== "revision" && key !== "data") return `unexpected snapshot field "${key}"`;
     }
     if (!isRevision(snapshot["revision"])) return "revision must be a canonical unsigned decimal string";
