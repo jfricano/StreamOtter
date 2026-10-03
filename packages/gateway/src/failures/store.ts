@@ -1,6 +1,6 @@
 import {
   StreamOtterError,
-  type ErrorCode, type FailureClass, type FailurePolicy, type Page, type SourceRecord
+  type ErrorCode, type FailureClass, type FailurePolicy, type Json, type Page, type SourceRecord
 } from "@streamotter/contracts";
 
 /**
@@ -65,7 +65,66 @@ export interface IncidentRecord {
   state: "open" | "resolved";
   resolution: string | null;
   fingerprints: { config: string; handlerBuildId: string; policyRevision: string; gatewayVersion: string };
+  /** The last recovery-guard outcome for this incident (quarantine-resync only). */
+  guard: GuardResult | null;
+  /** The boundary this incident's advance installed, once prepared. */
+  boundaryId: string | null;
   updatedAt: string;
+}
+
+/** One recovery-guard run, recorded on the incident (ADR-15B §2). reason and evidenceRef are at most 512 characters. */
+export interface GuardResult {
+  decision: "hold" | "recoverable" | "error" | "timeout";
+  reason: string | null;
+  evidenceRef: string | null;
+  at: string;
+}
+
+/**
+ * A cumulative recovery boundary (ADR-15B §§2–4). At most one is in force per
+ * source; a new one supersedes the previous one in the same transaction.
+ * Boundaries are decision state: never pruned while in force.
+ */
+export interface StoredBoundary {
+  /** "rb1:" + random, assigned by the gateway. */
+  boundaryId: string;
+  sourceId: string;
+  generation: string;
+  /** The guard's cumulative context, at most 16 KiB of canonical JSON. */
+  context: Json;
+  /** Increments on every change; retirement names the revision it expects. */
+  revision: number;
+  state: "in-force" | "superseded" | "retired";
+  /** Incidents whose advance installed or carried this boundary, oldest first. */
+  failureIds: string[];
+  /** The boundary this one replaced, if any. */
+  supersedes: string | null;
+  createdAt: string;
+  retiredAt: string | null;
+  retirement: { mode: "generation" | "application" | "operator" | "superseded"; reason: string | null; operationId: string | null } | null;
+}
+
+/** Automatic-advance circuit breaker for one source (spec §4: five distinct incidents per rolling 60 s). */
+export interface CircuitState {
+  sourceId: string;
+  state: "closed" | "open";
+  /** ISO times of distinct automatic advances still inside the window, oldest first; at most 20 entries. */
+  advances: string[];
+  openedAt: string | null;
+  /** Why it opened, or the operator's reason for the last reopen. */
+  reason: string | null;
+  revision: number;
+}
+
+/** What prepareAdvance writes, atomically with the incident moving to advance-pending. */
+export interface PrepareAdvance {
+  failureId: string;
+  expectedRevision: number;
+  /** The new cumulative boundary. expectedPrior must name the boundary in force now (or null), or the call throws StaleRevisionError. */
+  boundary: { boundaryId: string; context: Json; expectedPrior: string | null };
+  guard: GuardResult;
+  /** The time this distinct automatic advance is counted at in the circuit. */
+  at: string;
 }
 
 export interface IncidentEvent {
@@ -78,7 +137,7 @@ export interface IncidentEvent {
 /** A new observation of a failing record. */
 export type NewObservation = Omit<IncidentRecord,
   "revision" | "firstObservedAt" | "lastObservedAt" | "observations" | "quarantine" | "quarantineCoordinates"
-  | "progress" | "recovery" | "state" | "resolution" | "updatedAt"> & { observedAt: string };
+  | "progress" | "recovery" | "state" | "resolution" | "updatedAt" | "guard" | "boundaryId"> & { observedAt: string };
 
 export interface ObservationResult {
   record: IncidentRecord;
@@ -90,7 +149,7 @@ export interface ObservationResult {
 
 /** Fields a state transition may change. */
 export type IncidentPatch = Partial<Pick<IncidentRecord,
-  "quarantine" | "quarantineCoordinates" | "progress" | "recovery" | "state" | "resolution" | "evidence" | "diagnosis">>;
+  "quarantine" | "quarantineCoordinates" | "progress" | "recovery" | "state" | "resolution" | "evidence" | "diagnosis" | "guard" | "boundaryId">>;
 
 export interface IncidentQuery {
   sourceId?: string;
@@ -118,7 +177,8 @@ export interface IncidentStore {
    * Checks the store belongs to this project and records the configured sources.
    * Refuses (SOURCE_UNAVAILABLE) a different project, or a source whose generation
    * changed while it still has open incidents. A changed generation with nothing
-   * open is recorded. A new source is added.
+   * open is recorded, and every in-force boundary of the old generation is retired
+   * with mode "generation" (ADR-15B §4). A new source is added.
    */
   claim(projectId: string, sources: readonly SourceIdentity[]): void;
   get(failureId: string): IncidentRecord | null;
@@ -138,6 +198,31 @@ export interface IncidentStore {
   putEvidence(failureId: string, evidence: RawEvidence): void;
   getEvidence(failureId: string): RawEvidence | null;
   deleteEvidence(failureId: string): void;
+
+  // --- recovery state (slice C) ---------------------------------------------------
+
+  /** The boundary in force for a source, or null. */
+  boundary(sourceId: string): StoredBoundary | null;
+  getBoundary(boundaryId: string): StoredBoundary | null;
+  /**
+   * In one transaction (ADR-15A ordering step 5, spec §6 step 6):
+   * - checks the incident is at expectedRevision and open, and that the source's
+   *   in-force boundary is boundary.expectedPrior;
+   * - marks the prior boundary superseded and inserts the new one in force, with
+   *   failureIds = prior.failureIds + this incident;
+   * - sets the incident's progress "advance-pending", recovery "boundary-in-force",
+   *   guard and boundaryId, with an "advance-pending" event;
+   * - appends `at` to the source's circuit advances (dropping entries beyond 20).
+   * Nothing is written when any check fails.
+   */
+  prepareAdvance(input: PrepareAdvance): { record: IncidentRecord; boundary: StoredBoundary };
+  /** Retires an in-force boundary at expectedRevision. Refuses (409) while any incident it lists in failureIds is open with progress "held" or "retrying". */
+  retireBoundary(boundaryId: string, expectedRevision: number, retirement: NonNullable<StoredBoundary["retirement"]>, at?: string): StoredBoundary;
+  /** The source's circuit; a closed circuit with no advances, revision 0, when none is stored. */
+  circuit(sourceId: string): CircuitState;
+  /** Replaces the circuit's state at expectedRevision (StaleRevisionError otherwise). */
+  updateCircuit(sourceId: string, expectedRevision: number, next: Pick<CircuitState, "state" | "advances" | "openedAt" | "reason">): CircuitState;
+
   usage(): StoreUsage;
   close(): void;
 }
