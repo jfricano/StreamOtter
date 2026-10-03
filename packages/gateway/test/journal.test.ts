@@ -9,9 +9,9 @@ import {
   initJournal, JOURNAL_SCHEMA_VERSION, nodeSqliteSupported, openJournal, type JournalLimits, type JournalLock
 } from "../src/failures/journal.ts";
 import {
-  MAX_EVENTS_PER_INCIDENT, MemoryIncidentStore,
-  type GuardResult, type IncidentRecord, type IncidentStore, type NewObservation, type PrepareAdvance, type RawEvidence, type SourceIdentity,
-  type StoredBoundary
+  MAX_EVENTS_PER_INCIDENT, MAX_OPERATIONS, MemoryIncidentStore,
+  type GuardResult, type IncidentRecord, type IncidentStore, type NewObservation, type NewOperation, type PrepareAdvance, type RawEvidence,
+  type SourceIdentity, type StoredBoundary, type StoredOperation
 } from "../src/failures/store.ts";
 import type { Json } from "@streamotter/contracts";
 
@@ -114,6 +114,25 @@ function rejects(reason: string, status?: number): (error: unknown) => boolean {
     if (status !== undefined) assert.equal(actual.details?.status, status, actual.message);
     return true;
   };
+}
+
+const HASH_A = `sha256:${"a".repeat(64)}`;
+const HASH_B = `sha256:${"b".repeat(64)}`;
+
+function operation(operationId: string, overrides: Partial<NewOperation> = {}): NewOperation {
+  return { operationId, kind: "retry-current", sourceId: "orders", failureId: "f1:a", requestHash: HASH_A, at: "2026-10-03T00:10:00.000Z", ...overrides };
+}
+
+/** The stored form of every named operation, for asserting that a refused call wrote nothing. */
+function operationState(store: IncidentStore, operationIds: readonly string[]): (StoredOperation | null)[] {
+  return operationIds.map(id => store.getOperation(id));
+}
+
+function overloaded(error: unknown): boolean {
+  const actual = error as { code?: string; details?: { reason?: string }; message?: string };
+  assert.equal(actual.code, "OVERLOADED", actual.message);
+  assert.equal(actual.details?.reason, "journal-full", actual.message);
+  return true;
 }
 
 function notFound(error: unknown): boolean {
@@ -489,10 +508,148 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       assert.equal(store.prepareAdvance(advance("f1:new", 1, "rb1:g2", null, {})).boundary.generation, "g2");
       store.close();
     });
+
+    it("begins, finishes and reads an operation, and returns a repeated begin unchanged", () => {
+      const store = create();
+      assert.equal(store.getOperation("op1:a"), null);
+      const begun = store.beginOperation(operation("op1:a"));
+      const pending: StoredOperation = {
+        operationId: "op1:a", kind: "retry-current", sourceId: "orders", failureId: "f1:a", requestHash: HASH_A,
+        state: "pending", result: null, startedAt: "2026-10-03T00:10:00.000Z", completedAt: null
+      };
+      assert.deepEqual(begun, { operation: pending, created: true });
+      assert.deepEqual(store.getOperation("op1:a"), pending);
+
+      // A repeat writes nothing and does no comparison: the caller compares the hash and state.
+      const again = store.beginOperation(operation("op1:a", { kind: "redrive", requestHash: HASH_B, failureId: null, at: "2026-10-03T00:11:00.000Z" }));
+      assert.deepEqual(again, { operation: pending, created: false });
+      assert.deepEqual(store.getOperation("op1:a"), pending);
+
+      const at = "2026-10-03T00:10:05.000Z";
+      const finished = store.finishOperation("op1:a", "completed", { status: "applied", detail: { z: 1, a: [-0, "é"] } }, at);
+      const completed: StoredOperation = { ...pending, state: "completed", result: { detail: { a: [0, "é"], z: 1 }, status: "applied" }, completedAt: at };
+      assert.deepEqual(finished, completed);
+      assert.equal(JSON.stringify(finished.result), '{"detail":{"a":[0,"é"],"z":1},"status":"applied"}', "the result is canonical JSON");
+      assert.deepEqual(store.getOperation("op1:a"), completed);
+      assert.deepEqual(store.beginOperation(operation("op1:a")), { operation: completed, created: false }, "a finished operation is returned as recorded");
+
+      const circuit = store.beginOperation(operation("op1:b", { kind: "reopen-circuit", failureId: null, sourceId: "payments" })).operation;
+      assert.equal(circuit.failureId, null);
+      assert.equal(store.finishOperation("op1:b", "unknown", null, at).result, null, "null is a result like any other");
+      const id128 = "o".repeat(128);
+      assert.equal(store.beginOperation(operation(id128)).created, true, "a 128-character ID fits");
+      assert.equal(store.finishOperation(id128, "completed", { pad: "x".repeat(16_384 - 10) }).state, "completed", "exactly 16 KiB of canonical JSON fits");
+      store.close();
+    });
+
+    it("refuses a bad operation request without writing anything", () => {
+      const store = create();
+      store.beginOperation(operation("op1:pending"));
+      store.beginOperation(operation("op1:done"));
+      store.finishOperation("op1:done", "completed", { ok: true }, "2026-10-03T00:10:01.000Z");
+      const ids = ["op1:pending", "op1:done", "op1:new", "", "o".repeat(129), "op1:\u0007bell", "op1:tab\t"];
+      const before = operationState(store, ids);
+
+      const attempts: [string, () => unknown, (error: unknown) => boolean][] = [
+        ["empty ID", () => store.beginOperation(operation("")), rejects("operation-id", 400)],
+        ["129-character ID", () => store.beginOperation(operation("o".repeat(129))), rejects("operation-id", 400)],
+        ["control character in ID", () => store.beginOperation(operation("op1:\u0007bell")), rejects("operation-id", 400)],
+        ["tab in ID", () => store.beginOperation(operation("op1:tab\t")), rejects("operation-id", 400)],
+        ["ID not a string", () => store.beginOperation(operation(42 as unknown as string)), rejects("operation-id", 400)],
+        ["kind outside the set", () => store.beginOperation(operation("op1:new", { kind: "rewind" as "redrive" })), rejects("operation-kind", 400)],
+        ["uppercase hash", () => store.beginOperation(operation("op1:new", { requestHash: `sha256:${"A".repeat(64)}` })), rejects("request-hash", 400)],
+        ["short hash", () => store.beginOperation(operation("op1:new", { requestHash: `sha256:${"a".repeat(63)}` })), rejects("request-hash", 400)],
+        ["other algorithm", () => store.beginOperation(operation("op1:new", { requestHash: `sha1:${"a".repeat(64)}` })), rejects("request-hash", 400)],
+        ["hash with a trailing newline", () => store.beginOperation(operation("op1:new", { requestHash: `${HASH_A}\n` })), rejects("request-hash", 400)],
+        ["empty source", () => store.beginOperation(operation("op1:new", { sourceId: "" })), rejects("source-id", 400)],
+        ["empty failure ID", () => store.beginOperation(operation("op1:new", { failureId: "" })), rejects("failure-id", 400)],
+        ["no start time", () => store.beginOperation(operation("op1:new", { at: "" })), rejects("operation-time", 400)],
+        ["bad input for an existing ID", () => store.beginOperation(operation("op1:pending", { requestHash: "sha256:nope" })), rejects("request-hash", 400)],
+        ["finish an unknown ID", () => store.finishOperation("op1:new", "completed", {}), notFound],
+        ["finish a completed operation", () => store.finishOperation("op1:done", "completed", { ok: false }), rejects("operation-not-pending", 409)],
+        ["finish a completed operation as unknown", () => store.finishOperation("op1:done", "unknown", null), rejects("operation-not-pending", 409)],
+        ["finish with a pending state", () => store.finishOperation("op1:pending", "pending" as "unknown", {}), rejects("operation-state", 400)],
+        ["result over 16 KiB", () => store.finishOperation("op1:pending", "completed", { pad: "x".repeat(16_384) }), rejects("result-too-large", 400)],
+        ["result not JSON", () => store.finishOperation("op1:pending", "completed", { bad: Number.POSITIVE_INFINITY }), rejects("result-not-json", 400)],
+        ["result undefined", () => store.finishOperation("op1:pending", "completed", undefined as unknown as Json), rejects("result-not-json", 400)]
+      ];
+      for (const [label, attempt, match] of attempts) {
+        assert.throws(attempt, match, label);
+        assert.deepEqual(operationState(store, ids), before, `${label}: nothing was written`);
+      }
+      const conflictError = (() => {
+        try { store.finishOperation("op1:done", "completed", {}); } catch (error) { return error as { details?: Record<string, unknown> }; }
+        return assert.fail("finishing a completed operation must throw");
+      })();
+      assert.deepEqual(conflictError.details, { status: 409, reason: "operation-not-pending", operationId: "op1:done", state: "completed" });
+      store.close();
+    });
+
+    it("prunes the oldest finished operations at the limit and never a pending one", () => {
+      const store = create({ maxOperations: 4 });
+      const started = (second: number): string => `2026-10-03T00:10:${String(second).padStart(2, "0")}.000Z`;
+      const t1 = "2026-10-03T00:20:01.000Z";
+      const t2 = "2026-10-03T00:20:02.000Z";
+      store.beginOperation(operation("op1:a", { at: started(0) }));
+      store.beginOperation(operation("op1:b", { at: started(5) }));
+      store.beginOperation(operation("op1:d", { at: started(2) }));
+      store.beginOperation(operation("op1:c", { at: started(1) }));
+      store.finishOperation("op1:b", "completed", { n: "b" }, t1);
+      store.finishOperation("op1:d", "unknown", { n: "d" }, t2);
+      store.finishOperation("op1:c", "completed", { n: "c" }, t2);
+      const all = ["op1:a", "op1:b", "op1:c", "op1:d", "op1:e", "op1:f", "op1:g", "op1:h"];
+      const present = (): string[] => all.filter(id => store.getOperation(id) !== null);
+
+      // Oldest by completedAt, then startedAt (c started before d), not by insertion order.
+      store.beginOperation(operation("op1:e", { at: started(10) }));
+      assert.deepEqual(present(), ["op1:a", "op1:c", "op1:d", "op1:e"]);
+      store.beginOperation(operation("op1:f", { at: started(11) }));
+      assert.deepEqual(present(), ["op1:a", "op1:d", "op1:e", "op1:f"]);
+      store.beginOperation(operation("op1:g", { at: started(12) }));
+      assert.deepEqual(present(), ["op1:a", "op1:e", "op1:f", "op1:g"], "unknown operations are pruned like completed ones");
+
+      // Only pending ones remain: refused whole, and a repeated begin is still answered.
+      const before = operationState(store, all);
+      assert.throws(() => store.beginOperation(operation("op1:h", { at: started(13) })), overloaded);
+      assert.deepEqual(operationState(store, all), before, "a refused begin prunes nothing and inserts nothing");
+      assert.equal(store.beginOperation(operation("op1:a")).created, false, "a known ID is answered even at the limit");
+
+      store.finishOperation("op1:f", "completed", {}, t2);
+      store.beginOperation(operation("op1:h", { at: started(13) }));
+      assert.deepEqual(present(), ["op1:a", "op1:e", "op1:g", "op1:h"]);
+      store.close();
+    });
+
+    it("marks pending operations unknown at startup, once", () => {
+      const store = create();
+      store.beginOperation(operation("op1:a", { at: "2026-10-03T00:10:00.000Z" }));
+      store.beginOperation(operation("op1:b", { at: "2026-10-03T00:10:01.000Z" }));
+      store.beginOperation(operation("op1:c", { at: "2026-10-03T00:10:02.000Z", kind: "redrive" }));
+      const done = store.finishOperation("op1:b", "completed", { ok: true }, "2026-10-03T00:10:03.000Z");
+      const at = "2026-10-03T01:00:00.000Z";
+      const abandoned = store.abandonPendingOperations(at);
+      assert.deepEqual(abandoned.map(item => [item.operationId, item.state, item.result, item.completedAt]), [
+        ["op1:a", "unknown", null, at],
+        ["op1:c", "unknown", null, at]
+      ], "oldest first, with no result");
+      assert.equal(abandoned[1]?.kind, "redrive");
+      assert.equal(abandoned[1]?.startedAt, "2026-10-03T00:10:02.000Z");
+      assert.deepEqual(store.getOperation("op1:a"), abandoned[0]);
+      assert.deepEqual(store.getOperation("op1:c"), abandoned[1]);
+      assert.deepEqual(store.getOperation("op1:b"), done, "a finished operation is untouched");
+      assert.deepEqual(store.abandonPendingOperations("2026-10-03T02:00:00.000Z"), [], "idempotent");
+      assert.deepEqual(store.getOperation("op1:a"), abandoned[0]);
+      assert.throws(() => store.finishOperation("op1:a", "completed", {}), rejects("operation-not-pending", 409), "an abandoned operation is never finished later");
+      assert.deepEqual(store.beginOperation(operation("op1:a")), { operation: abandoned[0], created: false });
+      store.close();
+    });
   });
 }
 
-conformance("memory", limits => new MemoryIncidentStore(limits?.spoolLimitBytes === undefined ? {} : { spoolLimitBytes: limits.spoolLimitBytes }));
+conformance("memory", limits => new MemoryIncidentStore({
+  ...(limits?.spoolLimitBytes === undefined ? {} : { spoolLimitBytes: limits.spoolLimitBytes }),
+  ...(limits?.maxOperations === undefined ? {} : { maxOperations: limits.maxOperations })
+}));
 conformance("sqlite", limits => freshJournal(limits).store, SQLITE_SKIP);
 
 function refusal(reason: string, code?: string): (error: unknown) => boolean {
@@ -758,6 +915,94 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     store.update("f1:0", 1, { state: "resolved", resolution: "done" }, { event: "resolved", detail: null, operationId: null });
     assert.ok(store.usage().sizeBytes <= baseline + 48 * 1024);
     store.close();
+  });
+
+  it("keeps operator operations across close and reopen, and abandons the pending ones", () => {
+    const { directory, store } = freshJournal();
+    store.beginOperation(operation("op1:done", { at: "2026-10-03T00:10:00.000Z" }));
+    store.finishOperation("op1:done", "completed", { status: "applied", nested: { é: "ü" } }, "2026-10-03T00:10:01.000Z");
+    store.beginOperation(operation("op1:lost", { kind: "redrive", failureId: "f1:b", requestHash: HASH_B, at: "2026-10-03T00:10:02.000Z" }));
+    const before = operationState(store, ["op1:done", "op1:lost"]);
+    assert.equal(before[1]?.state, "pending");
+    store.close();
+
+    // The gateway restarts between intent and result.
+    const reopened = openJournal(directory);
+    assert.deepEqual(operationState(reopened, ["op1:done", "op1:lost"]), before);
+    const at = "2026-10-03T01:00:00.000Z";
+    assert.deepEqual(reopened.abandonPendingOperations(at), [{ ...before[1]!, state: "unknown", result: null, completedAt: at }]);
+    reopened.close();
+
+    const third = openJournal(directory);
+    assert.deepEqual(third.getOperation("op1:lost"), { ...before[1]!, state: "unknown", result: null, completedAt: at });
+    assert.deepEqual(third.getOperation("op1:done"), before[0]);
+    assert.deepEqual(third.abandonPendingOperations("2026-10-03T02:00:00.000Z"), []);
+    assert.equal(third.beginOperation(operation("op1:lost")).created, false, "an abandoned ID is not reused");
+    third.close();
+  });
+
+  it("takes the operation limit as an open option, not from the file", () => {
+    const { directory, store } = freshJournal({ maxOperations: 2 });
+    store.beginOperation(operation("op1:a"));
+    store.finishOperation("op1:a", "completed", {}, "2026-10-03T00:10:01.000Z");
+    store.beginOperation(operation("op1:b"));
+    store.beginOperation(operation("op1:c"));
+    assert.equal(store.getOperation("op1:a"), null);
+    assert.throws(() => store.beginOperation(operation("op1:d")), overloaded);
+    store.close();
+    // Reopened with the default (MAX_OPERATIONS), the same journal has room again.
+    const reopened = openJournal(directory);
+    assert.ok(MAX_OPERATIONS > 3);
+    reopened.beginOperation(operation("op1:d"));
+    assert.deepEqual(["op1:b", "op1:c", "op1:d"].map(id => reopened.getOperation(id)?.state), ["pending", "pending", "pending"]);
+    reopened.close();
+  });
+
+  it("refuses a new operation in a full journal, rolls back its prune, and still records results", () => {
+    const directory = stateDirectory();
+    initJournal(directory, PROJECT, SOURCES);
+    const probe = openJournal(directory);
+    const baseline = probe.usage().sizeBytes;
+    probe.close();
+    const limits = { journalLimitBytes: baseline + 48 * 1024 };
+    const store = openJournal(directory, limits);
+    store.beginOperation(operation("op1:early"));
+    let refused: unknown = null;
+    for (let i = 0; i < 1_000 && refused === null; i++) {
+      try {
+        store.observe(observation(`f1:${i}`, { diagnosis: "d".repeat(2_000) }));
+      } catch (error) {
+        refused = error;
+      }
+    }
+    refusal("journal-full", "OVERLOADED")(refused);
+    // An operation row is smaller than an observation, so fill the rest with operations until one is refused.
+    const accepted: string[] = [];
+    let late: string | null = null;
+    for (let i = 0; i < 1_000 && late === null; i++) {
+      try {
+        store.beginOperation(operation(`op1:fill-${i}`, { failureId: `f1:${i}` }));
+        accepted.push(`op1:fill-${i}`);
+      } catch (error) {
+        overloaded(error);
+        late = `op1:fill-${i}`;
+      }
+    }
+    assert.ok(late !== null, "the journal eventually refuses an operation");
+    assert.equal(store.getOperation(late), null, "the refused operation was not written");
+    assert.ok(accepted.every(id => store.getOperation(id)?.state === "pending"), "nothing was evicted");
+    assert.equal(store.beginOperation(operation("op1:early")).created, false, "a known ID is still answered");
+    // The operation already acted, so its outcome is recorded.
+    assert.equal(store.finishOperation("op1:early", "completed", { status: "applied" }, "2026-10-03T00:11:00.000Z").state, "completed");
+    const stored = accepted.length + 1;
+    store.close();
+
+    // At the operation limit, a begin first prunes the finished one; the journal-full refusal then rolls that back too.
+    const atLimit = openJournal(directory, { ...limits, maxOperations: stored });
+    assert.throws(() => atLimit.beginOperation(operation(late)), overloaded);
+    assert.equal(atLimit.getOperation("op1:early")?.state, "completed", "the prune was rolled back with the refused insert");
+    assert.equal(atLimit.getOperation(late), null);
+    atLimit.close();
   });
 
   it("runs with WAL, synchronous=FULL, foreign keys and an exclusive lock", () => {
