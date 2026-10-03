@@ -6,7 +6,7 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ### Added
 
-- V1.1 groundwork (no behavior change for existing configurations): `@streamotter/contracts` types and validation for the optional `failureHandling` configuration section, recovery-guard and snapshot-acknowledgment handler types, the internal `FailureClass` vocabulary, and `TransientMappingError` (also exported by `@streamotter/gateway`). The gateway refuses `quarantine-resync` until the slice that implements it lands. See [docs/releases/v1.1](docs/releases/v1.1/README.md).
+- V1.1 groundwork (no behavior change for existing configurations): `@streamotter/contracts` types and validation for the optional `failureHandling` configuration section, recovery-guard and snapshot-acknowledgment handler types, the internal `FailureClass` vocabulary, and `TransientMappingError` (also exported by `@streamotter/gateway`). Every V1.1 policy is now accepted. See [docs/releases/v1.1](docs/releases/v1.1/README.md).
 - V1.1 containment and quarantine-hold (opt-in through `failureHandling`; configurations without it behave exactly as before):
   - Every unprocessable record opens a source-failure incident with a stable ID (`f1:` plus the source record ID), its trusted failure class, position, evidence summary and provenance. Incidents are kept in a durable SQLite journal under the new `stateDirectory` gateway option (Node 24.15 or later), or in memory under `streamotter dev` without one.
   - `quarantine-hold` writes the original key, value and headers byte for byte to a pre-provisioned quarantine topic (idempotent producer, `acks=all`, no topic creation), with metadata in a `streamotter-envelope` header. The source stays held at the record; nothing is ever committed past it. Fixture sources keep their evidence locally, labeled as fixture evidence.
@@ -15,6 +15,12 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
   - A group position that moved past a held record without a recorded advance (retention, an offset reset, another consumer) holds the source instead of being treated as progress.
   - New CLI forms: `streamotter init --failures --config <path> --state-dir <dir>` creates the journal (ordinary startup never creates one), and `dev` and `start` accept `--state-dir`; `start` also accepts `--handler-build-id`.
   - Fixture records may be `{ key, raw }` to rehearse malformed input in development.
+  - `quarantine-resync` continues past an eligible quarantined record only when the source's recovery guard (`handlers.sources[id].recover`) returns `recoverable`:
+    - The cumulative recovery boundary and the intent to advance are journaled before the offset moves. The commit is confirmed by reading it back.
+    - From then on every snapshot on the source receives `recovery` and must echo `recoveryBoundaryId` before a subscription can be `live`, including after restarts and for new subscriptions.
+    - A circuit breaker (default five advances per 60 s) stops automatic continuation and persists across restarts.
+    - `boundaryRetirement: "application"` calls `retire()` after acknowledged snapshots.
+    - At startup, prepared advances are reconciled against the consumer group's committed offset.
 - Gateway operator logs for a paused source now include `failureClass`, the trusted classification of why the record could not be processed.
 - `@streamotter/workbench`: a favicon (the StreamOtter brandmark reduced for a browser tab) in place of the blank one.
 

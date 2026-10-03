@@ -62,7 +62,7 @@ Validation (F02), all reported as `ConfigIssue`s with path and code:
 
 Validation that needs handlers or the host happens at gateway construction (§4), not in `validateProjectConfig`, which stays pure and browser-safe.
 
-Slice A note: until slices B and C merge, gateway construction also refuses `quarantine-hold`, `quarantine-resync` and transient retries as "not supported by this gateway build yet", so a configuration is never accepted and silently run as `pause`. Slice B note: `quarantine-hold` and transient retries are accepted; `quarantine-resync` is still refused.
+Slice A note: until slices B and C merge, gateway construction also refuses `quarantine-hold`, `quarantine-resync` and transient retries as "not supported by this gateway build yet", so a configuration is never accepted and silently run as `pause`. Slice B note: `quarantine-hold` and transient retries are accepted; `quarantine-resync` is still refused. Slice C note: every policy is accepted.
 
 Fixture sources may use quarantine policies in development. Their evidence goes to the local incident store, labeled "fixture evidence, not Kafka" everywhere it appears (§9). Production rejects fixture sources already.
 
@@ -126,6 +126,17 @@ snapshot(input: HandlerContext & {
 ```
 
 `recovery` is present exactly when the channel's source has a boundary in force. The attempt succeeds only when `recoveryBoundaryId` equals `recovery.boundaryId`. A mismatch or omission is traced as `snapshot`/`rejected`/`SOURCE_UNAVAILABLE` and goes through the existing bounded backoff; the subscription stays `stale`. A `recoveryBoundaryId` returned when no boundary is in force is a snapshot problem (`INVALID_PAYLOAD`), so stale code can't silently pass.
+
+Slice C note (normative for §§3.2–3.3):
+
+- The boundary a snapshot must acknowledge is the one in force when the snapshot starts. If a different boundary is in force when the snapshot would be delivered (checked again after the pre-delivery authorization), the attempt fails as above.
+- An acknowledged snapshot is what triggers `retire()` under `boundaryRetirement: "application"`. The call runs one at a time per source, serialized with that source's other failure work, under the 10-second guard budget. The journal refuses retirement while any incident the boundary covers is still held.
+- A guard answer is invalid, and recorded as an `error` guard result, when:
+  - `decision` is neither `"hold"` with a string `reason` nor `"recoverable"`;
+  - `context` is not JSON or is above 16 KiB of canonical JSON;
+  - `evidenceRef` is missing or longer than 512 characters.
+- A `hold` decision sets the incident's recovery state to `denied`. An error or timeout sets it to `held`.
+- `retire-boundary` for operator mode is a slice D operator command. The journal operation it calls exists in this slice.
 
 ## 4. Gateway options and construction (slices A, B, E)
 
@@ -233,6 +244,21 @@ export interface IncidentEvent {
 The `event` names are spec §11.2's structured lifecycle events. They are emitted to the gateway logger as `{ failureId, sourceId, event }` with metadata only.
 
 Slice B note: these operator-facing shapes ship with slice D. The journal's internal record (`IncidentRecord` in `packages/gateway/src/failures/store.ts`) has the same fields. It differs in two ways: `impact` and `nextAction` are derived rather than stored, and `progress` names the retry states `"retrying"` and `"processed"` (a held record that processed on retry) instead of `"retried"`. Slice D maps the record onto `IncidentSummary`.
+
+Slice C note, continuation order (spec §6; ADR-15A ordering step 5). For an eligible record under `quarantine-resync`:
+
+1. A fresh copy of the evidence is written and acknowledged. An older acknowledgment is never reused for an advance.
+2. The circuit breaker is checked. When it is open, or when the window already holds `automaticAdvanceLimit.incidents` advances, the circuit opens (persisted) and the record holds.
+3. The guard runs with the prior boundary. After the await, the incident must be unchanged: the same revision, open and held. Otherwise the result is ignored.
+4. One journal transaction installs the new boundary (superseding the prior one), sets the incident to `advance-pending`, records the guard result and counts the advance in the circuit.
+5. The boundary is applied to the runtime, so later snapshots must acknowledge it.
+6. `advancePast` commits offset + 1 and reads it back.
+7. The incident is then recorded as `advanced` (and resolved). If the source was no longer paused at the record, it goes back to `held`; if the result could not be confirmed, it becomes `uncertain`.
+
+Startup restores the boundary in force before any source can be ready. It reconciles each `advance-pending` or `uncertain` incident against the group's committed offset:
+- offset + 1 confirms the advance;
+- at or below the record's offset means the advance never happened, and the incident returns to `held`;
+- anything further on is unexplained, and the source holds.
 
 ## 6. Operator service (slices C, D)
 

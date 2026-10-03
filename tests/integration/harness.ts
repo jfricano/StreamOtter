@@ -3,7 +3,7 @@ import {
   createGateway, silentLogger,
   type ChannelContract, type DevelopmentOptions, type FailureHandlingConfig, type FixtureRecord, type Gateway, type GatewayLogger, type HandlerRegistry, type Json,
   type Limits, type Principal, type ProjectConfig, type StateChange, type StreamError, type StreamEvent,
-  type Subscription, type SubscriptionState
+  type SourceRecoveryHandlers, type Subscription, type SubscriptionState
 } from "@streamotter/gateway";
 import { getGatewayInternals, type GatewayInternals } from "@streamotter/gateway/internals";
 
@@ -86,6 +86,10 @@ export class OrderApp {
   authenticateGate: (() => Promise<void>) | null = null;
   authorizeOverride: ((principal: Principal, params: OrderParams) => boolean | Promise<boolean>) | null = null;
   mapOverride: ((value: Json) => unknown) | null = null;
+  /** How snapshots answer a recovery boundary (V1.1): echo its ID, omit it, or return another ID. */
+  recoveryAck: "echo" | "none" | "wrong" | "always" = "echo";
+  /** Recovery boundaries snapshots were asked to acknowledge, in call order. */
+  readonly recoveryInputs: ({ boundaryId: string; context: Json } | null)[] = [];
   revokedSessions = new Set<string>();
   tokenExpiry = new Map<string, string>();
 
@@ -125,12 +129,17 @@ export class OrderApp {
             const value = record.value as { tenantId: string; revision: string; order: OrderState };
             return [{ tenantId: value.tenantId, params: { orderId: value.order.orderId }, revision: value.revision, data: value.order }];
           },
-          snapshot: async ({ principal, params }) => {
+          snapshot: async ({ principal, params, recovery }) => {
             this.snapshotCalls++;
+            this.recoveryInputs.push(recovery === undefined ? null : { ...recovery });
+            // "always" answers with an ID even when no boundary was supplied, like stale acknowledgment code.
+            const ack = this.recoveryAck === "always" ? { recoveryBoundaryId: recovery?.boundaryId ?? "rb1:stale" }
+              : recovery === undefined || this.recoveryAck === "none" ? {}
+                : { recoveryBoundaryId: this.recoveryAck === "echo" ? recovery.boundaryId : "rb1:not-the-boundary" };
             const read = () => {
               const order = this.orders.get(`${principal.tenantId}/${params.orderId}`);
               if (order === undefined) throw new Error("order not found");
-              return { revision: order.revision, data: { ...order.state } };
+              return { revision: order.revision, data: { ...order.state }, ...ack };
             };
             if (this.snapshotReads === "start") {
               const result = read();
@@ -166,12 +175,15 @@ export async function startHarness(options: {
   logger?: GatewayLogger;
   failureHandling?: FailureHandlingConfig;
   stateDirectory?: string;
+  /** handlers.sources recovery guards (V1.1 quarantine-resync). */
+  recovery?: Record<string, SourceRecoveryHandlers>;
 } = {}): Promise<Harness> {
   const app = options.app ?? new OrderApp();
+  const handlers = app.handlers();
   const gateway = createGateway<TestChannels>({
     config: { ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) },
     ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
-    handlers: app.handlers(),
+    handlers: options.recovery === undefined ? handlers : { ...handlers, sources: options.recovery },
     mode: "development",
     development: { principals: options.principals ?? {}, fixtures: { orders: options.fixtures ?? [] } },
     logger: options.logger ?? silentLogger

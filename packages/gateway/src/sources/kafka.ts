@@ -117,6 +117,26 @@ export function createTrackedKafka(clientId: string, connection: ResolvedKafkaCo
   return { kafka: new Kafka(kafkaConfig(clientId, connection, { logger }, sockets)), sockets };
 }
 
+/**
+ * Reads a consumer group's committed offset for one partition with a
+ * short-lived admin client, before the source's consumer starts (startup
+ * reconciliation of prepared advances, spec §6). "-1" means nothing committed.
+ */
+export async function readCommittedOffset(
+  connection: ResolvedKafkaConnection, clientId: string, groupId: string, topic: string, partition: number, logger: GatewayLogger
+): Promise<string | null> {
+  const { kafka, sockets } = createTrackedKafka(clientId, connection, logger);
+  const admin = kafka.admin();
+  try {
+    await admin.connect();
+    const offsets = await admin.fetchOffsets({ groupId, topics: [topic] });
+    return offsets.find(entry => entry.topic === topic)?.partitions.find(entry => entry.partition === partition)?.offset ?? null;
+  } finally {
+    await admin.disconnect().catch(() => undefined);
+    sockets.destroyAll();
+  }
+}
+
 function nextOffset(offset: string): string {
   return (BigInt(offset) + 1n).toString();
 }

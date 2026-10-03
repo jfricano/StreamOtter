@@ -23,21 +23,16 @@ describe("V1.1: failure handling checks at gateway construction", () => {
     }
   });
 
-  it("refuses a policy this build cannot carry out instead of treating it as pause", () => {
-    const { config, handlers } = setup({ sources: { orders: { invalidJson: "quarantine-resync" } } }, { orders: guard });
-    assert.throws(
-      () => createGateway({ config, handlers, mode: "development", development: { principals: {}, fixtures: { orders: [] } }, logger: silentLogger }),
-      (error: { code: string; details: { issues: string[] } }) => {
-        assert.equal(error.code, "CONFIG_INVALID");
-        assert.deepEqual(error.details.issues, [
-          "failureHandling.sources.orders.invalidJson is \"quarantine-resync\", which this gateway build does not support yet"
-        ]);
-        return true;
-      }
-    );
+  it("refuses a policy the build cannot carry out instead of treating it as pause", () => {
+    const { config, handlers } = setup({ sources: { orders: { invalidJson: "quarantine-resync", transientMapperRetries: 1, replaySafeMapping: true } } }, { orders: guard });
+    assert.deepEqual(failureHandlingIssues(config, handlers, { policies: ["pause"], transientRetries: false }), [
+      "failureHandling.sources.orders.invalidJson is \"quarantine-resync\", which this gateway build does not support yet",
+      "failureHandling.sources.orders.transientMapperRetries is not supported by this gateway build yet"
+    ]);
+    assert.deepEqual(failureHandlingIssues(config, handlers), [], "this build supports every V1.1 policy");
   });
 
-  it("accepts quarantine-hold and transient retries from slice B", () => {
+  it("accepts quarantine-hold and transient retries", () => {
     const { config, handlers } = setup({ sources: { orders: { invalidJson: "quarantine-hold", transientMapperRetries: 2, replaySafeMapping: true } } });
     assert.deepEqual(failureHandlingIssues(config, handlers), []);
     assert.doesNotThrow(() => createGateway({ config, handlers, mode: "development", development: { principals: {}, fixtures: { orders: [] } }, logger: silentLogger }));
