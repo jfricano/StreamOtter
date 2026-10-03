@@ -127,3 +127,8 @@ tbody tr:hover { background: var(--panel-2); }
   .grid-2 { grid-template-columns: 1fr; }
   .steps li { grid-template-columns: 24px 90px 1fr; }
 }
+.environment-banner {
+  padding: 8px 20px; background: var(--info-bg); color: var(--info); border-bottom: 1px solid var(--border);
+  font-size: 13px; overflow-wrap: anywhere;
+}
+.unavailable { color: var(--muted); font-style: italic; }
