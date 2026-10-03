@@ -88,6 +88,26 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - `pnpm kafka:start && pnpm test:kafka`: 26 tests, 26 pass. That includes all 6 cases in `tests/kafka/08-quarantine-hold.test.ts`: byte-exact quarantine of a binary key, invalid UTF-8 and repeated headers; a tombstone hold; the same incident after a restart; a moved group offset; refusing a missing or undersized topic; and a 35-second hold with the same group member.
   - The first fixture run had 3 failing tests, all from wrong expectations in the tests: the fixture adapter retries the held record as soon as it resumes, so a following `advance()` is refused while that record still fails. Corrected.
 
+### October 3, 2026 — recovery storage
+
+- Implemented the slice C recovery state of `IncidentStore` (interface in `5e9dcf1`) in both stores (branch `feat/v1.1-recovery-store`): `boundary`, `getBoundary`, `prepareAdvance`, `retireBoundary`, `circuit`, `updateCircuit`, and the incident fields `guard` and `boundaryId` (null on a new incident, patchable through `update`). The checks and record-building are shared helpers in `store.ts`, so the memory store and the journal refuse and write identically.
+- **Journal:** schema version 1 was amended in place (it has not shipped): new STRICT tables `boundaries` (context as canonical JSON text, `failure_ids` as an ordered JSON array, retirement as three columns, a partial unique index allowing one `in-force` boundary per source, `supersedes` referencing the boundary it replaced) and `circuits` (one row per source, `advances` as a JSON array). `guard` and `boundaryId` live in the incident's record JSON. `prepareAdvance` is one `BEGIN IMMEDIATE` transaction: supersede the prior, insert the new boundary, rewrite the incident, add its `advance-pending` event (detail: the boundary ID) and append to the circuit (at most 20 entries, oldest dropped). The new boundary row is admitted against the journal limit like a new incident; retirement and circuit updates rewrite rows and are not pre-admitted, like `update`.
+- **`claim()`** now retires, with mode `generation`, the in-force boundary of a source whose generation changed with nothing open. A refused claim retires nothing. The memory store still never refuses a claim (the gateway's own startup check reports open incidents of another generation); within one run it retires a changed source's boundary when that source has nothing open, and remembers the claimed generations.
+- **Refusals** (nothing written): unknown incident or boundary (404); stale incident, boundary or circuit revision and a wrong `expectedPrior` (`StaleRevisionError`, 409 `stale-revision`; the error now takes an optional message so these name what was stale); `incident-resolved`, `boundary-exists`, `generation-changed`, `incident-held`, `boundary-not-in-force` (409); `context-not-json`, `context-too-large` (16 KiB canonical), `guard-text-too-long` (512 characters), `retirement-mode`, `circuit-state` (400). The journal refuses a circuit for a source never claimed (`source-not-claimed`), as it already does for observations.
+- **Interpretations of the interface comments,** now written into them:
+  - `prepareAdvance` also refuses an incident whose generation is not the source's claimed generation, since its boundary would be retired on install; and a boundary ID that already exists.
+  - An incident already listed in the prior boundary's `failureIds` is not added twice.
+  - `retireBoundary` refuses mode `superseded` (only `prepareAdvance` supersedes) and a boundary no longer in force.
+  - A superseded boundary gets `retiredAt` = the advance's `at` and retirement `{ mode: "superseded", reason: null, operationId: null }`.
+  - `prepareAdvance` does not consult the circuit's state; deciding whether an open circuit blocks an advance is the caller's job.
+  - `updateCircuit` caps `advances` at 20 as well.
+- Journals created by earlier builds of this branch lack the new tables and fail on the first recovery call; recreate them with `streamotter init --failures`. No migration was added because version 1 is unreleased.
+- **Verification:**
+  - `npx tsc -p tsconfig.check.json`: clean.
+  - `node --conditions=streamotter-source --test packages/gateway/test/journal.test.ts` on Node 24.21.0 and 26.10.0: 37 tests, 37 pass, 0 fail (23 before). New: six conformance cases run against both stores (advance happy path, every refusal leaving state unchanged, a supersede chain across incidents and sources, retirement, circuits, claim on a generation change), two journal-only cases (recovery state across close and reopen; a refused claim keeps the boundary), and a full-journal refusal of `prepareAdvance` added to the existing limit test.
+  - `pnpm build && pnpm verify` on Node 24.21.0: 208 tests, 208 pass, 0 fail.
+  - `gateway.ts` and `service.ts` were not changed.
+
 ## 3. Handoff checklist for each slice
 
 When a slice PR is opened, its author updates, in the same PR:
