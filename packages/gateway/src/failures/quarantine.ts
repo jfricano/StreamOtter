@@ -29,6 +29,36 @@ export interface QuarantineWriter {
   stop(): Promise<void>;
 }
 
+/**
+ * Reading one quarantined record back (evaluate, redrive, raw views):
+ * found: the record at the coordinates carries this failure's ID header and its
+ *   reconstructed key, value and src.* headers hash to the incident's evidence hash;
+ * expired: the offset is below the partition's earliest retained offset (retention or deletion);
+ * mismatch: a record is there but it is not this failure's evidence (wrong failure ID or hash);
+ * unavailable: anything else (broker unreachable, authorization, timeout, missing topic).
+ */
+export type QuarantineRead =
+  | { kind: "found"; evidence: RawEvidence }
+  | { kind: "expired"; reason: string }
+  | { kind: "mismatch"; reason: string }
+  | { kind: "unavailable"; reason: string };
+
+export interface QuarantineReadRequest {
+  failureId: string;
+  partition: number;
+  offset: string;
+  /** The incident's "sha256:<hex>" evidence hash, checked against what is read. */
+  evidenceHash: string;
+  /** Bounded scan budget; default 10 s. */
+  timeoutMs?: number;
+}
+
+/** Reads quarantine evidence back from the topic. KafkaQuarantineReader is the only production one. */
+export interface QuarantineReader {
+  read(request: QuarantineReadRequest): Promise<QuarantineRead>;
+  stop(): Promise<void>;
+}
+
 export interface QuarantineTopicReport {
   topic: string;
   clusterId: string;

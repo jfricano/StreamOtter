@@ -8,7 +8,8 @@ import {
   evidenceBytes, generationRetirement, JOURNAL_LIMIT_BYTES, MAX_EVENTS_PER_INCIDENT, nextBoundary, SPOOL_LIMIT_BYTES, StaleRevisionError, storeFull,
   unknownIncident,
   type CircuitState, type HeaderBytes, type IncidentEvent, type IncidentPatch, type IncidentQuery, type IncidentRecord, type IncidentStore,
-  type NewObservation, type ObservationResult, type PrepareAdvance, type RawEvidence, type SourceIdentity, type StoreUsage, type StoredBoundary
+  type NewObservation, type ObservationResult, type PrepareAdvance, type RawEvidence, type SourceIdentity, type StoreUsage, type StoredBoundary,
+  type NewOperation, type StoredOperation
 } from "./store.ts";
 
 /**
@@ -886,6 +887,22 @@ export class SqliteIncidentStore implements IncidentStore {
       this.#saveCircuit(updated);
       return updated;
     });
+  }
+
+  beginOperation(_input: NewOperation): { operation: StoredOperation; created: boolean } {
+    throw new Error("not implemented yet");
+  }
+
+  finishOperation(_operationId: string, _state: "completed" | "unknown", _result: Json, _at?: string): StoredOperation {
+    throw new Error("not implemented yet");
+  }
+
+  getOperation(_operationId: string): StoredOperation | null {
+    throw new Error("not implemented yet");
+  }
+
+  abandonPendingOperations(_at: string): StoredOperation[] {
+    throw new Error("not implemented yet");
   }
 
   usage(): StoreUsage {

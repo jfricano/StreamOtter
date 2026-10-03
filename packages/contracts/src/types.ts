@@ -3,6 +3,10 @@
  * declarations govern public types. contracts/v1/api.ts re-exports them.
  */
 import type { FailureHandlingConfig, SourceRecoveryHandlers } from "./failures.ts";
+import type {
+  EvaluateRequest, EvaluationResult, IncidentDetail, IncidentSummary, ListFailuresRequest, OperationResult, OperatorStatus, ReassessRequest,
+  RedriveRequest, ReopenCircuitRequest, ReproductionBundle, RetryCurrentRequest
+} from "./operator.ts";
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type Params = Readonly<Record<string, string | boolean | number>>;
@@ -238,6 +242,11 @@ export interface GatewayOptions<C extends ChannelMap> {
   stateDirectory?: string;
   /** Declared identity of the handler build, recorded in incidents. Default "unspecified"; at most 128 characters. */
   handlerBuildId?: string;
+  /**
+   * Serve the local operator socket at `<stateDirectory>/run/operator.sock` (ADR-15C §3).
+   * Requires stateDirectory. Default false.
+   */
+  operatorSocket?: boolean;
 }
 
 export interface Capabilities {
@@ -338,6 +347,16 @@ export interface ManagementOperations {
   "POST /management/v1/dev/disconnect": { request: { previewSessionId: string }; response: null };
   /** WHC-1 capability discovery (docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md §4). */
   "GET /management/v1/workbench": { request: null; response: WorkbenchDiscovery };
+  /** V1.1 operator routes (docs/releases/v1.1/V1_1_API.md §9): development only, never raw evidence. */
+  "GET /management/v1/operator/status": { request: null; response: OperatorStatus };
+  "GET /management/v1/failures": { request: ListFailuresRequest; response: Page<IncidentSummary> };
+  "GET /management/v1/failures/{failureId}": { request: null; response: IncidentDetail };
+  "POST /management/v1/failures/export": { request: { failureId: string }; response: ReproductionBundle };
+  "POST /management/v1/failures/evaluate": { request: EvaluateRequest; response: EvaluationResult };
+  "POST /management/v1/failures/redrive": { request: RedriveRequest; response: OperationResult };
+  "POST /management/v1/sources/retry-current": { request: RetryCurrentRequest; response: OperationResult };
+  "POST /management/v1/sources/reassess": { request: ReassessRequest; response: OperationResult };
+  "POST /management/v1/sources/reopen-circuit": { request: ReopenCircuitRequest; response: OperationResult };
 }
 
 /**

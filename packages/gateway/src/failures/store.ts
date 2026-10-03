@@ -232,9 +232,56 @@ export interface IncidentStore {
   /** Replaces the circuit's state at expectedRevision (StaleRevisionError otherwise). */
   updateCircuit(sourceId: string, expectedRevision: number, next: Pick<CircuitState, "state" | "advances" | "openedAt" | "reason">): CircuitState;
 
+  // --- operator operations (slice D) ---------------------------------------------
+
+  /**
+   * Records an operation's intent before it acts (spec §8.3, F35). When
+   * operationId already exists nothing is written and the stored record is
+   * returned with created false; the caller compares requestHash and state.
+   * Admitted against the journal limit like a new incident; when more than
+   * MAX_OPERATIONS are stored, the oldest finished ones (completed or unknown)
+   * are pruned in the same transaction. Pending ones are never pruned.
+   */
+  beginOperation(input: NewOperation): { operation: StoredOperation; created: boolean };
+  /**
+   * Moves a pending operation to completed or unknown with its result. Refuses
+   * (409, "operation-not-pending") anything not pending, and 404 an unknown ID.
+   */
+  finishOperation(operationId: string, state: "completed" | "unknown", result: Json, at?: string): StoredOperation;
+  getOperation(operationId: string): StoredOperation | null;
+  /**
+   * At startup, before any operation runs: every pending operation becomes
+   * unknown (a crash between intent and result), with completedAt = at and
+   * result left null. Returns those operations.
+   */
+  abandonPendingOperations(at: string): StoredOperation[];
+
   usage(): StoreUsage;
   close(): void;
 }
+
+export type OperationKind = "retry-current" | "reassess" | "reopen-circuit" | "retire-boundary" | "redrive";
+
+/** One operator mutation, recorded before it acts and finished with its result (ADR-15C §1, spec §8.3). */
+export interface StoredOperation {
+  /** Caller-supplied (redrive) or generated: "op1:" + random. At most 128 characters. */
+  operationId: string;
+  kind: OperationKind;
+  sourceId: string;
+  failureId: string | null;
+  /** "sha256:<hex>" of the canonical request. A reused operationId with a different request is refused by the caller. */
+  requestHash: string;
+  state: "pending" | "completed" | "unknown";
+  /** The recorded OperationResult once finished; null while pending or when abandoned at startup. At most 16 KiB canonical. */
+  result: Json | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export type NewOperation = Pick<StoredOperation, "operationId" | "kind" | "sourceId" | "failureId" | "requestHash"> & { at: string };
+
+/** Operations retained for idempotency and audit (F41); the oldest finished ones are pruned beyond this. */
+export const MAX_OPERATIONS = 10_000;
 
 /** Spec §13 budgets. */
 export const JOURNAL_LIMIT_BYTES = 256 * 1024 * 1024;
@@ -626,6 +673,22 @@ export class MemoryIncidentStore implements IncidentStore {
     const updated = checkCircuit(sourceId, next, current.revision + 1);
     this.#circuits.set(sourceId, updated);
     return structuredClone(updated);
+  }
+
+  beginOperation(_input: NewOperation): { operation: StoredOperation; created: boolean } {
+    throw new Error("not implemented yet");
+  }
+
+  finishOperation(_operationId: string, _state: "completed" | "unknown", _result: Json, _at?: string): StoredOperation {
+    throw new Error("not implemented yet");
+  }
+
+  getOperation(_operationId: string): StoredOperation | null {
+    throw new Error("not implemented yet");
+  }
+
+  abandonPendingOperations(_at: string): StoredOperation[] {
+    throw new Error("not implemented yet");
   }
 
   usage(): StoreUsage {

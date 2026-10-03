@@ -6,7 +6,7 @@ import {
   assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
   resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
-  type FailureClass,
+  type FailureClass, type OperatorApi,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
   type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry,
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
@@ -120,6 +120,8 @@ export interface GatewayInternals {
   incidentStore(): IncidentStore | null;
   /** Resolves when queued failure dispositions (journal, quarantine writes) have finished. */
   failuresSettled(): Promise<void>;
+  /** The operator service (ADR-15C §1) while the gateway runs with failureHandling; null otherwise. */
+  operator(): OperatorApi | null;
 }
 
 const internalsRegistry = new WeakMap<Gateway, GatewayInternals>();
@@ -1009,7 +1011,8 @@ export class GatewayRuntime implements SessionOwner {
       subscriptionCount: () => [...this.#sessions].reduce((sum, session) => sum + session.subscriptionCount, 0),
       pendingBytes: () => this.core.gatewayBudget.used,
       incidentStore: () => this.#failures?.store ?? null,
-      failuresSettled: async () => { await this.#failures?.settled(); }
+      failuresSettled: async () => { await this.#failures?.settled(); },
+      operator: () => null
     };
   }
 
