@@ -132,3 +132,10 @@ tbody tr:hover { background: var(--panel-2); }
   font-size: 13px; overflow-wrap: anywhere;
 }
 .unavailable { color: var(--muted); font-style: italic; }
+h4 { font-size: 13px; margin: 4px 0 0; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+dl.facts { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 4px 12px; margin: 0; }
+dl.facts dt { color: var(--muted); font-weight: 600; }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+button.link { background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; }
+tbody tr.selected { background: var(--info-bg); }
+.diagnosis { min-height: 0; }

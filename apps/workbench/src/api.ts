@@ -1,8 +1,9 @@
 import {
   utf8ByteLength, WORKBENCH_REQUEST_HEADER,
-  type Capabilities, type ChannelSummary, type ConfigIssue, type DevelopmentPrincipalSummary, type DiagnosticStep, type Json,
-  type Page, type ProjectConfig, type Result, type SourceStatus, type StreamError, type Trace, type WorkbenchDiscovery,
-  type WorkbenchOperation
+  type Capabilities, type ChannelSummary, type ConfigIssue, type DevelopmentPrincipalSummary, type DiagnosticStep, type EvaluateRequest,
+  type EvaluationResult, type IncidentDetail, type IncidentSummary, type Json, type ListFailuresRequest, type OperationResult, type OperatorStatus,
+  type Page, type ProjectConfig, type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle, type Result,
+  type RetryCurrentRequest, type SourceStatus, type StreamError, type Trace, type WorkbenchDiscovery, type WorkbenchOperation
 } from "@streamotter/contracts";
 
 export class ApiError extends Error {
@@ -92,4 +93,19 @@ export class ManagementApi {
     const suffix = params.size === 0 ? "" : `?${params.toString()}`;
     return this.#call<Page<Trace>>("traces", "GET", `/traces${suffix}`);
   }
+  // V1.1 failure operations (V1_1_API.md §9). Never raw evidence: no route offers it.
+  operatorStatus() { return this.#call<OperatorStatus>("operator.status", "GET", "/operator/status"); }
+  failures(query: ListFailuresRequest) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
+    const suffix = params.size === 0 ? "" : `?${params.toString()}`;
+    return this.#call<Page<IncidentSummary>>("failures.list", "GET", `/failures${suffix}`);
+  }
+  failure(failureId: string) { return this.#call<IncidentDetail>("failures.show", "GET", `/failures/${encodeURIComponent(failureId)}`); }
+  exportFailure(failureId: string) { return this.#call<ReproductionBundle>("failures.export", "POST", "/failures/export", { failureId }); }
+  evaluate(request: EvaluateRequest) { return this.#call<EvaluationResult>("failures.evaluate", "POST", "/failures/evaluate", request); }
+  redrive(request: RedriveRequest) { return this.#call<OperationResult>("failures.redrive", "POST", "/failures/redrive", request); }
+  retryCurrent(request: RetryCurrentRequest) { return this.#call<OperationResult>("sources.retry-current", "POST", "/sources/retry-current", request); }
+  reassess(request: ReassessRequest) { return this.#call<OperationResult>("sources.reassess", "POST", "/sources/reassess", request); }
+  reopenCircuit(request: ReopenCircuitRequest) { return this.#call<OperationResult>("sources.reopen-circuit", "POST", "/sources/reopen-circuit", request); }
 }
