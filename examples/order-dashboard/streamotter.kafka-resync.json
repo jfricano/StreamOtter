@@ -10,12 +10,25 @@
       "http://localhost:3000"
     ]
   },
-  "connections": {},
+  "connections": {
+    "local": {
+      "brokers": [
+        "127.0.0.1:19092"
+      ],
+      "tls": false
+    }
+  },
   "sources": {
     "orders": {
-      "kind": "fixture",
-      "generation": "orders-fixture-1",
-      "fixtureRef": "orders"
+      "kind": "kafka",
+      "generation": "orders-local-1",
+      "connectionRef": "local",
+      "topics": [
+        "orders.status"
+      ],
+      "consumerGroup": "streamotter-order-dashboard",
+      "codec": "json",
+      "startFrom": "earliest"
     }
   },
   "schemas": {
@@ -89,6 +102,10 @@
     }
   },
   "failureHandling": {
+    "quarantine": {
+      "topic": "orders.status.quarantine",
+      "capture": "full-record"
+    },
     "sources": {
       "orders": {
         "invalidJson": "quarantine-resync",
