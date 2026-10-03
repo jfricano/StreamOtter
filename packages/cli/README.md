@@ -89,7 +89,7 @@ NODE_ENV=production npx streamotter start --config streamotter.json --handlers d
 - missing secret environment variables or unreadable CA files, without printing their values;
 - browser connections whose `Origin` is missing or not listed in `gateway.allowedOrigins` (no wildcards).
 
-Startup waits until every source has joined its consumer group (30-second deadline). If a source fails, `start` prints staged diagnostics and exits. Supervision, restarts after a crash, and the reverse-proxy recipe are in [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md).
+Startup waits until every source has joined its consumer group (30-second deadline). If a source fails, `start` prints staged diagnostics and exits. `--health 127.0.0.1:7402` adds read-only liveness and readiness probes on their own port (unreleased V1.1; see [health checks](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md#health-checks)). Supervision, restarts after a crash, and the reverse-proxy recipe are in [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md).
 
 ## Operate a running gateway
 
@@ -111,6 +111,8 @@ Every mutation names the incident (or circuit, or boundary) and the revision it 
 
 `--json` prints the gateway's answer verbatim (the data, or the operation result) for scripts; errors go to stderr as `{"error": …}`.
 
+Setting up failure handling (`init --failures`, the quarantine topic, policies, recovery guards) and what to do in each kind of incident are in the [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md). Failure handling is part of the unreleased V1.1.
+
 ## Commands and exit codes
 
 | Command | |
@@ -120,9 +122,9 @@ Every mutation names the incident (or circuit, or boundary) and the revision it 
 | `streamotter generate --config <path> --out <directory>` | Generate TypeScript channel types |
 | `streamotter init --failures --config <path> --state-dir <directory>` | Create the failure journal for an existing project |
 | `streamotter dev --config <path> --handlers <module> [--management-port <port>] [--state-dir <directory>] [--operator-socket]` | Development gateway, workbench, and management API |
-| `streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--operator-socket] [--handler-build-id <id>]` | Production gateway; `--operator-socket` requires `--state-dir` |
+| `streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--operator-socket] [--handler-build-id <id>] [--health <host:port>]` | Production gateway; `--operator-socket` requires `--state-dir`. `--health` takes `host:port`, `[ipv6]:port` or a bare port (127.0.0.1) |
 | `streamotter status --state-dir <dir> [--json]` | Gateway, journal, quarantine and per-source failure status |
-| `streamotter failures list --state-dir <dir> [--source <id>] [--state open\|resolved\|all] [--limit <n>] [--cursor <c>]` | List incidents, newest first |
+| `streamotter failures list --state-dir <dir> [--source <id>] [--state open\|resolved\|all] [--limit <n>] [--cursor <c>]` | List incidents, oldest first; open ones unless `--state` says otherwise |
 | `streamotter failures show --state-dir <dir> --failure <id> [--raw]` | One incident with its explanation and history |
 | `streamotter failures export --state-dir <dir> --failure <id> [--include-raw] [--out <file>]` | Reproduction bundle |
 | `streamotter failures evaluate --state-dir <dir> --failure <id> --expected-revision <n>` | Dry-run the stored record; issue a redrive plan |

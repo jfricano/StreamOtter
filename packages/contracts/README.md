@@ -36,7 +36,7 @@ const digest = await crypto.subtle.digest("SHA-256", bytes);
 const fingerprint = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
 ```
 
-This is the same validator `defineProject()`, the CLI, and the workbench use. Validation is structural: identifiers, references between sources, schemas, and channels, the bounded schema dialect, limits, and deferred V2/V3 fields (which fail with a clear message). It never connects to Kafka or resolves secrets. `assertValidProjectConfig()` throws a `StreamOtterError` with code `CONFIG_INVALID` instead of returning issues.
+This is the same validator `defineProject()`, the CLI, and the workbench use. It also checks the optional V1.1 `failureHandling` section (see the [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md)); rules that need handlers or the host are checked when the gateway is constructed. Validation is structural: identifiers, references between sources, schemas, and channels, the bounded schema dialect, limits, and deferred V2/V3 fields (which fail with a clear message). It never connects to Kafka or resolves secrets. `assertValidProjectConfig()` throws a `StreamOtterError` with code `CONFIG_INVALID` instead of returning issues.
 
 ## What else is exported
 
@@ -47,6 +47,8 @@ This is the same validator `defineProject()`, the CLI, and the workbench use. Va
 | Revisions and identifiers | `isRevision`, `compareRevisions` (numeric, no `number` conversion), `isIdentifier`, `REVISION_PATTERN`, `IDENTIFIER_PATTERN` |
 | Errors | `ERROR_CODES`, `StreamOtterError`, `isStreamError`, `PUBLIC_MESSAGES` |
 | Protocol and limits | `PROTOCOL_VERSION`, `CAPABILITIES`, `EVENTS` (`so:subscribe`, `so:data`, …), `DEFAULT_LIMITS`, default ports and paths, and timeouts |
+| Source failures (V1.1, unreleased) | `FailureHandlingConfig`, `FailurePolicy`, `FailureClass`, `resolveSourcePolicy`, `TransientMappingError`, the recovery-guard types (`SourceRecoveryHandlers`, `RecoveryBoundary`), and the operator types (`IncidentSummary`, `IncidentDetail`, `OperationResult`, `OperatorStatus`, …) with `validateOperatorRequest` |
+| Workbench host contract | `WorkbenchHostConfig`, `validateWorkbenchHostConfig`, `WORKBENCH_OPERATIONS`, `WorkbenchHostManifest` |
 
 The types are the public contract that the [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md) describes. Where the specification and the types differ, this package is authoritative for types (see its §13).
 

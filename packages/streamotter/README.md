@@ -40,6 +40,7 @@ Open the workbench URL that `dev` prints and paste its one-time token. Then prev
 | `streamotter/client` | Browser | The SDK: `createClient`, subscriptions, `live`/`stale` states, and errors. Bundles only the SDK and the Socket.IO client. |
 | `streamotter/gateway` | Node.js | `createGateway`, `defineProject`, and the types for your handlers (`HandlerRegistry`, `Principal`, …) |
 | `streamotter/gateway/management` | Node.js | The development management API that `streamotter dev` uses |
+| `streamotter/gateway/operator` | Node.js | The V1.1 operator API for source failures (`getGatewayOperator`, `callOperator`); unreleased |
 | `streamotter/contracts` | Anywhere | Shared types, protocol constants, and configuration validation |
 | `streamotter/cli` | Node.js | The CLI's programmatic API (`runCli`, `generateFiles`) |
 
@@ -92,6 +93,7 @@ Pick one style per project: import from `streamotter/…` if you installed `stre
 - [Connect to Kafka](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/kafka.md): topic shape, TLS and SASL, bad records, crashes, and diagnostics
 - [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md): `streamotter start`, supervision, and the reverse-proxy recipe
 - [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md)
+- [Handle bad records](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md): V1.1 failure policies, quarantine, operator commands, and the runbook (unreleased)
 - Package guides: [client](https://www.npmjs.com/package/@streamotter/client) (states, errors, cleanup, a React hook), [gateway](https://www.npmjs.com/package/@streamotter/gateway) (handlers, revisions, revocation), and [CLI](https://www.npmjs.com/package/@streamotter/cli) (commands, workbench, exit codes)
 - [Implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md): what is verified, and the V1 limits (one gateway per project, no durable replay)
 - [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues) · [Security policy](https://github.com/jfricano/StreamOtter/blob/main/SECURITY.md)
