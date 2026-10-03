@@ -140,7 +140,7 @@ export class FailureService {
       const stale = open.find(incident => incident.generation !== source.config.generation);
       if (stale !== undefined) {
         throw new StreamOtterError("CONFIG_INVALID", {
-          message: `Source "${source.id}" has an open incident (${stale.failureId}) from generation "${stale.generation}", but the configuration names generation "${source.config.generation}". Resolve or rebaseline the open incidents before changing the generation.`
+          message: `Source "${source.id}" has an open incident (${stale.failureId}) from generation "${stale.generation}", but the configuration names generation "${source.config.generation}". Resolve the open incidents before changing the generation, or close them with "streamotter sources rebaseline" (gateway stopped).`
         });
       }
       // Restore the boundary before the source can become ready, so no snapshot after a restart skips it (spec §6, F23).

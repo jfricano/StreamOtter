@@ -34,7 +34,9 @@ export const OPERATOR_USAGE = `  streamotter status --state-dir <dir> [--json]
   streamotter sources reassess --state-dir <dir> --source <id> --failure <id> --expected-revision <n> [--json]
   streamotter sources reopen-circuit --state-dir <dir> --source <id> --expected-circuit-revision <n> --reason <text> [--json]
   streamotter sources retire-boundary --state-dir <dir> --source <id> --boundary <id> --expected-revision <n> --reason <text> --confirm <boundaryId> [--json]
-    (unsafe: retiring a boundary asserts that every future snapshot already reflects the quarantined record; see the warning it prints)`;
+    (unsafe: retiring a boundary asserts that every future snapshot already reflects the quarantined record; see the warning it prints)
+  streamotter sources rebaseline --config <path> --state-dir <dir> --source <id> --reason <text> --confirm <sourceId> [--json]
+    (run with the gateway stopped, after changing the source's generation: closes the incidents of earlier generations)`;
 
 /** ADR-15B §4: printed before every retire-boundary, which then requires --confirm. */
 export const RETIREMENT_WARNING = [
@@ -138,7 +140,7 @@ function position(incident: IncidentSummary): string {
 
 // --- renderers ---------------------------------------------------------------------------
 
-function renderOperation(io: CliIO, data: unknown, json: boolean): number {
+export function renderOperation(io: CliIO, data: unknown, json: boolean): number {
   const result = data as OperationResult;
   if (json) io.out(jsonText(result));
   else {

@@ -155,6 +155,11 @@ export class OrderApp {
   }
 }
 
+function withSourceGeneration<C extends ProjectConfig<TestChannels>>(config: C, generation: string | undefined): C {
+  if (generation === undefined) return config;
+  return { ...config, sources: { ...config.sources, orders: { ...config.sources["orders"]!, generation } } };
+}
+
 export interface Harness {
   gateway: Gateway;
   internals: GatewayInternals;
@@ -179,6 +184,8 @@ export async function startHarness(options: {
   operatorSocket?: boolean;
   /** The read-only health listener (ADR-15C §4). */
   health?: { host?: string; port: number };
+  /** The orders source's generation. Default "fixture-1". */
+  generation?: string;
   /** handlers.sources recovery guards (V1.1 quarantine-resync). */
   recovery?: Record<string, SourceRecoveryHandlers>;
   /** Test-only gateway internals (fault and crash hooks). */
@@ -187,7 +194,7 @@ export async function startHarness(options: {
   const app = options.app ?? new OrderApp();
   const handlers = app.handlers();
   const gateway = createGatewayRuntime<TestChannels>({
-    config: { ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) },
+    config: withSourceGeneration({ ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) }, options.generation),
     ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
     ...(options.operatorSocket === undefined ? {} : { operatorSocket: options.operatorSocket }),
     ...(options.health === undefined ? {} : { health: options.health }),

@@ -10,9 +10,9 @@ import {
 } from "@streamotter/contracts";
 import { createGateway, type Gateway, type GatewayLogger } from "@streamotter/gateway";
 import { startManagementServer } from "@streamotter/gateway/management";
-import { getGatewayInternals, initJournal } from "@streamotter/gateway/internals";
+import { getGatewayInternals, initJournal, rebaselineSource } from "@streamotter/gateway/internals";
 import { detectPackageStyle, fingerprint, generateFiles, GENERATED_MARKER } from "./generate.ts";
-import { isOperatorCommand, OPERATOR_USAGE, runOperatorCommand } from "./operator.ts";
+import { isOperatorCommand, OPERATOR_USAGE, renderOperation, runOperatorCommand } from "./operator.ts";
 import { scaffoldFiles } from "./templates.ts";
 
 export const EXIT = { ok: 0, runtime: 1, invalid: 2 } as const;
@@ -154,6 +154,42 @@ function parseHealth(value: string): { host: string; port: number } {
   }
   const host = match[1] === undefined ? "127.0.0.1" : match[1].replace(/^\[|\]$/g, "");
   return { host, port };
+}
+
+/**
+ * `sources rebaseline` (spec §14, ADR-15B §4): offline, with the gateway stopped.
+ * After the source's generation changed, closes the incidents of earlier
+ * generations and retires their boundary. It opens the journal itself, so a
+ * running gateway's lock refuses it; it never moves a consumer group.
+ */
+async function commandRebaseline(positionals: readonly string[], values: Record<string, unknown>, io: CliIO): Promise<number> {
+  const permitted = ["config", "state-dir", "source", "reason", "confirm", "json"];
+  const extra = Object.keys(values).filter(key => !permitted.includes(key));
+  if (extra.length > 0 || positionals.length > 1) {
+    io.err(`Unexpected arguments for sources rebaseline: ${[...extra.map(key => `--${key}`), ...positionals.slice(1)].join(" ")}\n\n${USAGE}`);
+    return EXIT.invalid;
+  }
+  const json = values["json"] === true;
+  try {
+    const { config } = await loadConfig(values["config"] as string | undefined);
+    const stateDir = values["state-dir"];
+    const sourceId = values["source"];
+    const reason = values["reason"];
+    if (typeof stateDir !== "string" || stateDir === "") throw new CliError(EXIT.invalid, "--state-dir <directory> is required.");
+    if (typeof sourceId !== "string" || sourceId === "") throw new CliError(EXIT.invalid, "--source <id> is required.");
+    if (typeof reason !== "string" || reason.trim() === "") throw new CliError(EXIT.invalid, "--reason <text> is required: say why the old generation's incidents can be closed.");
+    if (values["confirm"] !== sourceId) throw new CliError(EXIT.invalid, `Not done: repeat the source ID with --confirm ${sourceId} to close its incidents from earlier generations.`);
+    const result = rebaselineSource({ stateDirectory: resolve(stateDir), config, sourceId, reason });
+    return renderOperation(io, result, json);
+  } catch (error) {
+    if (error instanceof CliError) {
+      io.err(error.message);
+      return error.exitCode;
+    }
+    const code = (error as { code?: string }).code;
+    io.err(`${code ?? "ERROR"}: ${(error as Error).message}`);
+    return code === "INVALID_REQUEST" || code === "CONFIG_INVALID" ? EXIT.invalid : EXIT.runtime;
+  }
 }
 
 /**
@@ -368,6 +404,7 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
     return EXIT.invalid;
   }
   const { values, positionals } = parsed;
+  if (command === "sources" && positionals[0] === "rebaseline") return commandRebaseline(positionals, values, io);
   if (isOperatorCommand(command)) return runOperatorCommand(command, positionals, values, io, USAGE);
   const allowed: Record<string, readonly string[]> = {
     init: values["failures"] === true ? ["failures", "config", "state-dir"] : [],

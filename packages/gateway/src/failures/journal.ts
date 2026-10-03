@@ -721,7 +721,7 @@ export class SqliteIncidentStore implements IncidentStore {
         if (open > 0) {
           throw refuse("SOURCE_UNAVAILABLE", "generation-changed-with-open-incidents",
             `Source ${source.sourceId} changed from generation ${previous.generation} (${previous.kind}) to ${source.generation} (${source.kind}) ` +
-            `while ${open} incident(s) are open. Restore the previous generation, or resolve its incidents first.`,
+            `while ${open} incident(s) are open. Restore the previous generation, resolve its incidents first, or close them with "streamotter sources rebaseline" (gateway stopped).`,
             { sourceId: source.sourceId, storedGeneration: previous.generation, generation: source.generation, openIncidents: open });
         }
         this.#statement("UPDATE sources SET generation = ?, kind = ?, recorded_at = ? WHERE source_id = ?").run(source.generation, source.kind, now, source.sourceId);

@@ -10,3 +10,4 @@ export { SqliteIncidentStore, initJournal, openJournal } from "./failures/journa
 export { KafkaQuarantineReader, KafkaQuarantineWriter } from "./failures/quarantine.ts";
 export type { QuarantineRead } from "./failures/quarantine.ts";
 export type { ResolvedKafkaConnection } from "./sources/kafka.ts";
+export { rebaselineSource } from "./failures/rebaseline.ts";
