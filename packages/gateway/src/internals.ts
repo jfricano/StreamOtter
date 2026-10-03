@@ -4,3 +4,4 @@
  */
 export { createGatewayRuntime, getGatewayInternals, type GatewayInternals, type InternalGatewayOptions } from "./runtime/gateway.ts";
 export { FAILURE_CAPABILITIES, failureHandlingIssues, type FailureCapabilities } from "./failures/validate.ts";
+export { SqliteIncidentStore, initJournal, openJournal } from "./failures/journal.ts";
