@@ -9,11 +9,12 @@ import { candidateDiffers, prettyConfig, type WorkbenchState } from "./state.ts"
 import { renderConnect } from "./views/connect.ts";
 import { renderDefine } from "./views/define.ts";
 import { renderExport } from "./views/export.ts";
+import { renderFailures } from "./views/failures.ts";
 import { renderInspect } from "./views/inspect.ts";
 import { renderPreview } from "./views/preview.ts";
 
-type Tab = "connect" | "define" | "preview" | "inspect" | "export";
-const TABS: [Tab, string][] = [["connect", "Connect"], ["define", "Define"], ["preview", "Preview"], ["inspect", "Inspect"], ["export", "Export"]];
+type Tab = "connect" | "define" | "preview" | "inspect" | "failures" | "export";
+const TABS: [Tab, string][] = [["connect", "Connect"], ["define", "Define"], ["preview", "Preview"], ["inspect", "Inspect"], ["failures", "Failures"], ["export", "Export"]];
 
 /** WHC-1 §4: what each surface needs. A tab whose operations are not all offered shows as unavailable. */
 const SHELL_OPERATIONS: readonly WorkbenchOperation[] = ["config", "health", "channels", "sources"];
@@ -22,6 +23,7 @@ const TAB_OPERATIONS: Readonly<Record<Tab, readonly WorkbenchOperation[]>> = {
   define: ["config.validate"],
   preview: ["dev.principals", "preview-sessions"],
   inspect: ["traces"],
+  failures: ["failures.list", "failures.show", "operator.status"],
   export: ["config.export"]
 };
 
@@ -149,7 +151,8 @@ async function open(settings: HostSettings, auth: ApiAuth): Promise<void> {
       cleanup?.();
       cleanup = null;
       current = tab;
-      replace(tabs, TABS.map(([id, label]) => {
+      // The Failures tab exists only where the host offers failures.list (V1.1); other tabs always show.
+      replace(tabs, TABS.filter(([id]) => id !== "failures" || operations.has("failures.list")).map(([id, label]) => {
         const button = h("button", { type: "button", role: "tab", "aria-selected": String(id === current), id: `tab-${id}` }, label);
         button.addEventListener("click", () => show(id));
         return button;
@@ -168,6 +171,7 @@ async function open(settings: HostSettings, auth: ApiAuth): Promise<void> {
         case "define": renderDefine(main, state); break;
         case "preview": renderPreview(main, state); break;
         case "inspect": cleanup = renderInspect(main, state); break;
+        case "failures": renderFailures(main, state); break;
         case "export": renderExport(main, state); break;
       }
     };
