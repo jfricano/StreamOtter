@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ChannelMap, FailureHandlingConfig, HandlerRegistry, ProjectConfig, SourceRecoveryHandlers } from "@streamotter/contracts";
 import { createGateway, silentLogger } from "@streamotter/gateway";
-import { failureHandlingIssues } from "@streamotter/gateway/internals";
+import { failureHandlingIssues, failureOptionIssues, nodeSupportsJournal } from "@streamotter/gateway/internals";
 import { OrderApp, orderConfig } from "./harness.ts";
 
 const ALL = { policies: ["pause", "quarantine-hold", "quarantine-resync"] as const, transientRetries: true };
@@ -14,7 +14,7 @@ function setup(failureHandling: FailureHandlingConfig | undefined, sources?: Rec
   return { config, handlers };
 }
 
-describe("V1.1 slice A: failure handling checks at gateway construction", () => {
+describe("V1.1: failure handling checks at gateway construction", () => {
   it("accepts legacy configurations and explicit pause policies unchanged", () => {
     for (const failureHandling of [undefined, { sources: {} }, { sources: { orders: { invalidJson: "pause" as const } } }]) {
       const { config, handlers } = setup(failureHandling);
@@ -24,18 +24,44 @@ describe("V1.1 slice A: failure handling checks at gateway construction", () => 
   });
 
   it("refuses a policy this build cannot carry out instead of treating it as pause", () => {
-    const { config, handlers } = setup({ sources: { orders: { invalidJson: "quarantine-hold", transientMapperRetries: 1, replaySafeMapping: true } } });
+    const { config, handlers } = setup({ sources: { orders: { invalidJson: "quarantine-resync" } } }, { orders: guard });
     assert.throws(
       () => createGateway({ config, handlers, mode: "development", development: { principals: {}, fixtures: { orders: [] } }, logger: silentLogger }),
       (error: { code: string; details: { issues: string[] } }) => {
         assert.equal(error.code, "CONFIG_INVALID");
         assert.deepEqual(error.details.issues, [
-          "failureHandling.sources.orders.invalidJson is \"quarantine-hold\", which this gateway build does not support yet",
-          "failureHandling.sources.orders.transientMapperRetries is not supported by this gateway build yet"
+          "failureHandling.sources.orders.invalidJson is \"quarantine-resync\", which this gateway build does not support yet"
         ]);
         return true;
       }
     );
+  });
+
+  it("accepts quarantine-hold and transient retries from slice B", () => {
+    const { config, handlers } = setup({ sources: { orders: { invalidJson: "quarantine-hold", transientMapperRetries: 2, replaySafeMapping: true } } });
+    assert.deepEqual(failureHandlingIssues(config, handlers), []);
+    assert.doesNotThrow(() => createGateway({ config, handlers, mode: "development", development: { principals: {}, fixtures: { orders: [] } }, logger: silentLogger }));
+  });
+
+  it("checks the gateway options the failure features need", () => {
+    const { config } = setup({ sources: { orders: { invalidJson: "quarantine-hold" } } });
+    assert.deepEqual(failureOptionIssues(config, { mode: "development" }), []);
+    assert.deepEqual(failureOptionIssues(config, { mode: "production" }), [
+      "source orders uses a quarantine policy, which requires stateDirectory in production so incidents survive a restart"
+    ]);
+    assert.deepEqual(failureOptionIssues(config, { mode: "production", stateDirectory: "/var/lib/streamotter" }), []);
+    assert.deepEqual(failureOptionIssues(config, { mode: "development", stateDirectory: "", handlerBuildId: "x".repeat(129) }), [
+      "stateDirectory must be a non-empty path",
+      "handlerBuildId must be a string of 1 to 128 characters"
+    ]);
+    assert.deepEqual(failureOptionIssues(config, { mode: "development", stateDirectory: "/tmp/state" }, "24.14.0"), [
+      "the failure journal needs Node 24.15 or newer; this is Node 24.14.0"
+    ]);
+    assert.equal(nodeSupportsJournal("24.15.0"), true);
+    assert.equal(nodeSupportsJournal("26.0.0"), true);
+    assert.equal(nodeSupportsJournal("22.20.0"), false);
+    const pauseOnly = setup({ sources: { orders: { invalidJson: "pause" } } });
+    assert.deepEqual(failureOptionIssues(pauseOnly.config, { mode: "production" }), []);
   });
 
   it("requires a recovery guard for quarantine-resync (F02 missing guard)", () => {

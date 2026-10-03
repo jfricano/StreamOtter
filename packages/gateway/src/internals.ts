@@ -3,4 +3,7 @@
  * Not a stable public API; applications should use createGateway().
  */
 export { createGatewayRuntime, getGatewayInternals, type GatewayInternals, type InternalGatewayOptions } from "./runtime/gateway.ts";
-export { FAILURE_CAPABILITIES, failureHandlingIssues, type FailureCapabilities } from "./failures/validate.ts";
+export { FAILURE_CAPABILITIES, failureHandlingIssues, failureOptionIssues, nodeSupportsJournal, type FailureCapabilities } from "./failures/validate.ts";
+export { MemoryIncidentStore, type IncidentRecord, type IncidentStore, type RawEvidence } from "./failures/store.ts";
+export { evidenceHash } from "./failures/evidence.ts";
+export { SqliteIncidentStore, initJournal, openJournal } from "./failures/journal.ts";

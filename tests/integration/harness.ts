@@ -1,7 +1,7 @@
 import { createClient, type Client } from "@streamotter/client";
 import {
   createGateway, silentLogger,
-  type ChannelContract, type DevelopmentOptions, type Gateway, type GatewayLogger, type HandlerRegistry, type Json,
+  type ChannelContract, type DevelopmentOptions, type FailureHandlingConfig, type FixtureRecord, type Gateway, type GatewayLogger, type HandlerRegistry, type Json,
   type Limits, type Principal, type ProjectConfig, type StateChange, type StreamError, type StreamEvent,
   type Subscription, type SubscriptionState
 } from "@streamotter/gateway";
@@ -160,14 +160,17 @@ export interface Harness {
 
 export async function startHarness(options: {
   app?: OrderApp;
-  fixtures?: { key: string | null; value: Json }[];
+  fixtures?: FixtureRecord[];
   limits?: Partial<Limits>;
   principals?: DevelopmentOptions["principals"];
   logger?: GatewayLogger;
+  failureHandling?: FailureHandlingConfig;
+  stateDirectory?: string;
 } = {}): Promise<Harness> {
   const app = options.app ?? new OrderApp();
   const gateway = createGateway<TestChannels>({
-    config: orderConfig(options.limits),
+    config: { ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) },
+    ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
     handlers: app.handlers(),
     mode: "development",
     development: { principals: options.principals ?? {}, fixtures: { orders: options.fixtures ?? [] } },

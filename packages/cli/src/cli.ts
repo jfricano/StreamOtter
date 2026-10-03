@@ -10,7 +10,7 @@ import {
 } from "@streamotter/contracts";
 import { createGateway, type Gateway, type GatewayLogger } from "@streamotter/gateway";
 import { startManagementServer } from "@streamotter/gateway/management";
-import { getGatewayInternals } from "@streamotter/gateway/internals";
+import { getGatewayInternals, initJournal } from "@streamotter/gateway/internals";
 import { detectPackageStyle, fingerprint, generateFiles, GENERATED_MARKER } from "./generate.ts";
 import { scaffoldFiles } from "./templates.ts";
 
@@ -34,10 +34,11 @@ class CliError extends Error {
 
 const USAGE = `Usage:
   streamotter init <directory>
+  streamotter init --failures --config <path> --state-dir <directory>
   streamotter validate --config <path>
   streamotter generate --config <path> --out <directory>
-  streamotter dev --config <path> --handlers <module> [--management-port <port>]
-  streamotter start --config <path> --handlers <module>`;
+  streamotter dev --config <path> --handlers <module> [--management-port <port>] [--state-dir <directory>]
+  streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--handler-build-id <id>]`;
 
 function formatIssues(issues: readonly ConfigIssue[]): string {
   return issues.map(issue => `  ${issue.path || "/"}  ${issue.code}: ${issue.message}`).join("\n");
@@ -129,6 +130,38 @@ async function runUntilSignal(io: CliIO, gateway: Gateway): Promise<number> {
   return EXIT.ok;
 }
 
+/** Gateway options shared by dev and start: the failure journal directory and the handler build ID. */
+function failureOptions(values: Record<string, unknown>): { stateDirectory?: string; handlerBuildId?: string } {
+  const options: { stateDirectory?: string; handlerBuildId?: string } = {};
+  if (typeof values["state-dir"] === "string") options.stateDirectory = resolve(values["state-dir"]);
+  if (typeof values["handler-build-id"] === "string") options.handlerBuildId = values["handler-build-id"];
+  return options;
+}
+
+/**
+ * Creates the failure journal for an existing project (ADR-15A §2). Ordinary
+ * startup never creates one, so a missing journal is always a visible error.
+ */
+async function commandInitFailures(values: Record<string, unknown>, io: CliIO): Promise<number> {
+  const { config } = await loadConfig(values["config"] as string | undefined);
+  const stateDir = values["state-dir"];
+  if (typeof stateDir !== "string" || stateDir === "") throw new CliError(EXIT.invalid, "--state-dir <directory> is required with --failures.");
+  if (config.failureHandling === undefined) {
+    throw new CliError(EXIT.invalid, "The configuration has no failureHandling section; add one before creating a failure journal.");
+  }
+  let path: string;
+  try {
+    path = initJournal(resolve(stateDir), config.projectId, Object.entries(config.sources).map(([sourceId, source]) => ({
+      sourceId, generation: source.generation, kind: source.kind
+    })));
+  } catch (error) {
+    throw new CliError(EXIT.invalid, (error as Error).message);
+  }
+  io.out(`Created the failure journal at ${path}`);
+  io.out("It holds incident decisions for this project. Keep it out of version control and back it up with the gateway stopped.");
+  return EXIT.ok;
+}
+
 async function commandInit(positionals: string[], io: CliIO): Promise<number> {
   const directory = positionals[0];
   if (directory === undefined || positionals.length > 1) throw new CliError(EXIT.invalid, "Usage: streamotter init <directory>");
@@ -188,7 +221,8 @@ async function commandDev(values: Record<string, unknown>, io: CliIO): Promise<n
   try {
     gateway = createGateway({
       config, handlers, mode: "development", configDir: dirname(path), logger: cliLogger(io),
-      ...(development === undefined ? {} : { development })
+      ...(development === undefined ? {} : { development }),
+      ...failureOptions(values)
     });
   } catch (error) {
     throw new CliError(EXIT.invalid, (error as Error).message);
@@ -230,7 +264,7 @@ async function commandStart(values: Record<string, unknown>, io: CliIO): Promise
   let gateway: Gateway;
   try {
     // The module's development export is deliberately ignored in production.
-    gateway = createGateway({ config, handlers, mode: "production", configDir: dirname(path), logger: cliLogger(io) });
+    gateway = createGateway({ config, handlers, mode: "production", configDir: dirname(path), logger: cliLogger(io), ...failureOptions(values) });
   } catch (error) {
     throw new CliError(EXIT.invalid, (error as Error).message);
   }
@@ -281,7 +315,10 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
         config: { type: "string" },
         handlers: { type: "string" },
         out: { type: "string" },
-        "management-port": { type: "string" }
+        "management-port": { type: "string" },
+        "state-dir": { type: "string" },
+        "handler-build-id": { type: "string" },
+        failures: { type: "boolean" }
       }
     });
   } catch (error) {
@@ -290,7 +327,11 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
   }
   const { values, positionals } = parsed;
   const allowed: Record<string, readonly string[]> = {
-    init: [], validate: ["config"], generate: ["config", "out"], dev: ["config", "handlers", "management-port"], start: ["config", "handlers"]
+    init: values["failures"] === true ? ["failures", "config", "state-dir"] : [],
+    validate: ["config"],
+    generate: ["config", "out"],
+    dev: ["config", "handlers", "management-port", "state-dir"],
+    start: ["config", "handlers", "state-dir", "handler-build-id"]
   };
   const permitted = allowed[command];
   if (permitted === undefined) {
@@ -298,13 +339,14 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
     return EXIT.invalid;
   }
   const extra = Object.keys(values).filter(key => !permitted.includes(key));
-  if (extra.length > 0 || (command !== "init" && positionals.length > 0)) {
-    io.err(`Unexpected arguments for ${command}: ${[...extra.map(key => `--${key}`), ...(command === "init" ? [] : positionals)].join(" ")}\n\n${USAGE}`);
+  const takesPositionals = command === "init" && values["failures"] !== true;
+  if (extra.length > 0 || (!takesPositionals && positionals.length > 0)) {
+    io.err(`Unexpected arguments for ${command}: ${[...extra.map(key => `--${key}`), ...(takesPositionals ? [] : positionals)].join(" ")}\n\n${USAGE}`);
     return EXIT.invalid;
   }
   try {
     switch (command) {
-      case "init": return await commandInit(positionals, io);
+      case "init": return values["failures"] === true ? await commandInitFailures(values, io) : await commandInit(positionals, io);
       case "validate": return await commandValidate(values, io);
       case "generate": return await commandGenerate(values, io);
       case "dev": return await commandDev(values, io);

@@ -5,14 +5,18 @@ import type { Server as IoServer } from "socket.io";
 import {
   assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
-  resolveLimits, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
+  resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
   type FailureClass,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
   type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry,
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
   type SourceStatus, type StreamError, type StreamEvent, type Trace
 } from "@streamotter/contracts";
-import { assertFailureHandling } from "../failures/validate.ts";
+import { openJournal } from "../failures/journal.ts";
+import { KafkaQuarantineWriter } from "../failures/quarantine.ts";
+import { FailureService } from "../failures/service.ts";
+import { MemoryIncidentStore, type IncidentStore } from "../failures/store.ts";
+import { assertFailureHandling, usesQuarantine } from "../failures/validate.ts";
 import { ByteBudget } from "./budget.ts";
 import { Router, routingKey, type ChannelRuntime, type GatewayCore, type SourceRuntime } from "./core.ts";
 import {
@@ -37,10 +41,13 @@ class SourceRuntimeImpl implements SourceRuntime {
   adapter: SourceAdapter | null = null;
   status: SourceStatus["status"] = "starting";
   reason: ErrorCode | undefined = undefined;
+  /** Extra attempts at the whole mapping after a TransientMappingError (V1.1 policy). */
+  readonly transientRetries: 0 | 1 | 2;
 
-  constructor(id: string, config: ProjectConfig["sources"][string]) {
+  constructor(id: string, config: ProjectConfig["sources"][string], transientRetries: 0 | 1 | 2) {
     this.id = id;
     this.config = config;
+    this.transientRetries = transientRetries;
   }
 
   get ready(): boolean {
@@ -61,10 +68,24 @@ interface OutputProblem { failureClass: FailureClass; message: string }
 
 interface PreviewSession { principal: Principal; expiresAtMs: number }
 
+/** Waits before re-running a mapping that threw TransientMappingError (spec §6). */
+const TRANSIENT_RETRY_DELAYS_MS = [250, 1_000] as const;
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { signal.removeEventListener("abort", onAbort); resolve(true); }, ms);
+    const onAbort = () => { clearTimeout(timer); resolve(false); };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /** Test-only instrumentation; not reachable through the public createGateway(). */
 export interface InternalGatewayOptions {
   /** Awaited after a Kafka record is processed and before its offset is committed. */
   beforeCommit?: (sourceId: string, position: SourceRecord["position"]) => Promise<void>;
+  /** Replaces the incident store the gateway would open, to inject faults. */
+  incidentStore?: IncidentStore;
 }
 
 /** Development and management access to a running gateway; never exposed to browsers. */
@@ -92,6 +113,10 @@ export interface GatewayInternals {
   connectionCount(): number;
   subscriptionCount(): number;
   pendingBytes(): number;
+  /** The source-failure incident store while the gateway runs with failureHandling; null otherwise. */
+  incidentStore(): IncidentStore | null;
+  /** Resolves when queued failure dispositions (journal, quarantine writes) have finished. */
+  failuresSettled(): Promise<void>;
 }
 
 const internalsRegistry = new WeakMap<Gateway, GatewayInternals>();
@@ -151,8 +176,12 @@ function validateDevelopment(config: ProjectConfig, development: DevelopmentOpti
       continue;
     }
     records.forEach((record: unknown, index) => {
-      if (!isPlainObject(record) || !(record["key"] === null || typeof record["key"] === "string") || !isJsonValue(record["value"])) {
-        issues.push(`development.fixtures.${source.fixtureRef}[${index}] must be {key: string | null, value: JSON}`);
+      const keyOk = isPlainObject(record) && (record["key"] === null || typeof record["key"] === "string");
+      const valueOk = isPlainObject(record) && (Object.hasOwn(record, "raw")
+        ? typeof record["raw"] === "string" && !Object.hasOwn(record, "value")
+        : isJsonValue(record["value"]));
+      if (!keyOk || !valueOk) {
+        issues.push(`development.fixtures.${source.fixtureRef}[${index}] must be {key: string | null, value: JSON} or {key: string | null, raw: string}`);
       }
     });
   }
@@ -188,6 +217,9 @@ export class GatewayRuntime implements SessionOwner {
   readonly #handlers: HandlerRegistry<ChannelMap>;
   readonly #development: DevelopmentOptions | undefined;
   readonly #configDir: string;
+  readonly #stateDirectory: string | undefined;
+  readonly #handlerBuildId: string;
+  #failures: FailureService | null = null;
   readonly #sources = new Map<string, SourceRuntimeImpl>();
   readonly #channels = new Map<string, ChannelRuntime>();
   readonly #sessions = new Set<ClientSession>();
@@ -214,7 +246,7 @@ export class GatewayRuntime implements SessionOwner {
     assertValidProjectConfig(options.config);
     const config = options.config;
     validateHandlers(config, options.handlers);
-    assertFailureHandling(config, options.handlers);
+    assertFailureHandling(config, options.handlers, options);
     if (options.mode === "production") validateProduction(config, options);
     else validateDevelopment(config, options.development);
 
@@ -224,6 +256,8 @@ export class GatewayRuntime implements SessionOwner {
     this.#handlers = options.handlers;
     this.#development = options.development;
     this.#configDir = options.configDir ?? process.cwd();
+    this.#stateDirectory = options.stateDirectory;
+    this.#handlerBuildId = options.handlerBuildId ?? "unspecified";
     this.#allowedOrigins = new Set(config.gateway.allowedOrigins);
     const limits = resolveLimits(config.limits);
     this.core = {
@@ -237,7 +271,10 @@ export class GatewayRuntime implements SessionOwner {
       logger: options.logger ?? consoleLogger(),
       gatewayBudget: new ByteBudget(limits.maxPendingBytesGateway)
     };
-    for (const [id, source] of Object.entries(config.sources)) this.#sources.set(id, new SourceRuntimeImpl(id, source));
+    for (const [id, source] of Object.entries(config.sources)) {
+      const retries = config.failureHandling === undefined ? 0 : resolveSourcePolicy(config.failureHandling, id).transientMapperRetries;
+      this.#sources.set(id, new SourceRuntimeImpl(id, source, retries));
+    }
     for (const [name, channel] of Object.entries(config.channels)) {
       const source = this.#sources.get(channel.source);
       const handlers = this.#handlers.channels[channel.handlersRef];
@@ -314,6 +351,8 @@ export class GatewayRuntime implements SessionOwner {
     if (this.#state !== "running" || source.adapter === null) throw conflict("The gateway is not running.");
     if (source.status === "healthy") return source.summary();
     if (source.status !== "paused") throw conflict(`Source "${sourceId}" is ${source.status}; only paused sources can be resumed.`);
+    // With failure handling, a resume is a retry of the held record and is refused while an advance is unresolved (ADR-15C §6).
+    this.#failures?.beforeRetry(sourceId, "operator retry of the held record");
     this.core.logger.info("Resuming source at its uncommitted position", { sourceId });
     await source.adapter.resume();
     return source.summary();
@@ -422,6 +461,7 @@ export class GatewayRuntime implements SessionOwner {
     return {
       process: input => this.#process(source, input),
       setStatus: (status, reason) => this.#setSourceStatus(source, status, reason),
+      held: (input, outcome) => { void this.#failures?.held(source, input, outcome); },
       logger: this.core.logger,
       stopSignal: this.#stopController.signal
     };
@@ -455,7 +495,7 @@ export class GatewayRuntime implements SessionOwner {
     const { limits, traces } = this.core;
     const trace = (stage: Trace["stage"], outcome: Trace["outcome"], extra: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">> = {}) =>
       traces.record({ requestId, stage, outcome, sourceId: source.id, ...extra });
-    const pause = (stage: Trace["stage"], code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string): ProcessOutcome => {
+    const pause = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string): ProcessOutcome => {
       trace(stage, stage === "map" ? "failed" : "rejected", channel === undefined ? { errorCode: code } : { errorCode: code, channel });
       this.core.logger.warn("Source paused on an unprocessable record; it will not be committed or skipped", {
         sourceId: source.id,
@@ -466,9 +506,19 @@ export class GatewayRuntime implements SessionOwner {
         ...(channel === undefined ? {} : { channel })
       });
       this.#setSourceStatus(source, "paused", code);
-      return { kind: "pause", code, failureClass };
+      return { kind: "pause", code, failureClass, stage, channel: channel ?? null, diagnosis: reason.slice(0, 512) };
     };
     trace("source", "ok");
+
+    const moved = this.#failures?.positionProblem(source.id, input.position) ?? null;
+    if (moved !== null) {
+      trace("source", "rejected", { errorCode: "SOURCE_UNAVAILABLE" });
+      this.core.logger.error("Source progress moved past a held record without a recorded advance; the source is held", {
+        sourceId: source.id, position: input.position as unknown as Json, reason: moved
+      });
+      this.#setSourceStatus(source, "paused", "SOURCE_UNAVAILABLE");
+      return { kind: "hold", code: "SOURCE_UNAVAILABLE", reason: moved };
+    }
 
     let value: Json;
     if (input.value !== undefined) {
@@ -500,27 +550,42 @@ export class GatewayRuntime implements SessionOwner {
     });
 
     // Map for every channel and validate every output before admitting any of them.
+    // A TransientMappingError re-runs the whole mapping, up to the source's retry budget.
     const outputs: RoutedOutput[] = [];
-    for (const channel of source.channels) {
-      const outcome = await invokeHandler(
-        context => channel.handlers.map({ ...context, record }),
-        { timeoutMs: limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
-      );
-      if (outcome.kind === "aborted" || this.#halting()) return { kind: "abandon" };
-      if (outcome.kind === "timeout") return pause("map", "TIMEOUT", "mapper-timeout", "map handler timed out", channel.name);
-      if (outcome.kind === "error") {
-        const failureClass = TransientMappingError.is(outcome.error) ? "mapper-transient" : "mapper-error";
-        return pause("map", "HANDLER_FAILED", failureClass, `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
+    attempts: for (let attempt = 0; ; attempt++) {
+      outputs.length = 0;
+      for (const channel of source.channels) {
+        const outcome = await invokeHandler(
+          context => channel.handlers.map({ ...context, record }),
+          { timeoutMs: limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
+        );
+        if (outcome.kind === "aborted" || this.#halting()) return { kind: "abandon" };
+        if (outcome.kind === "timeout") return pause("map", "TIMEOUT", "mapper-timeout", "map handler timed out", channel.name);
+        if (outcome.kind === "error") {
+          const transient = TransientMappingError.is(outcome.error);
+          if (transient && attempt < source.transientRetries) {
+            trace("map", "failed", { channel: channel.name, errorCode: "HANDLER_FAILED" });
+            this.core.logger.info("Retrying a transient mapping failure", { sourceId: source.id, channel: channel.name, attempt: attempt + 1 });
+            if (!await abortableDelay(TRANSIENT_RETRY_DELAYS_MS[attempt] ?? 1_000, this.#stopController.signal) || this.#halting()) {
+              return { kind: "abandon" };
+            }
+            await input.heartbeat?.().catch(() => undefined);
+            continue attempts;
+          }
+          const failureClass = transient ? "mapper-transient" : "mapper-error";
+          return pause("map", "HANDLER_FAILED", failureClass, `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
+        }
+        const mapped: unknown = outcome.value;
+        if (!Array.isArray(mapped)) return pause("map", "INVALID_PAYLOAD", "routing-invalid", "map must return an array", channel.name);
+        if (mapped.length > limits.maxMapOutputs) return pause("map", "INVALID_PAYLOAD", "routing-invalid", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
+        for (let index = 0; index < mapped.length; index++) {
+          const built = this.#buildOutput(channel, record, mapped[index]);
+          if ("failureClass" in built) return pause("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.message}`, channel.name);
+          outputs.push(built);
+        }
+        trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
       }
-      const mapped: unknown = outcome.value;
-      if (!Array.isArray(mapped)) return pause("map", "INVALID_PAYLOAD", "routing-invalid", "map must return an array", channel.name);
-      if (mapped.length > limits.maxMapOutputs) return pause("map", "INVALID_PAYLOAD", "routing-invalid", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
-      for (let index = 0; index < mapped.length; index++) {
-        const built = this.#buildOutput(channel, record, mapped[index]);
-        if ("failureClass" in built) return pause("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.message}`, channel.name);
-        outputs.push(built);
-      }
-      trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
+      break;
     }
 
     // Equal revisions with different canonical data conflict with current state.
@@ -621,6 +686,66 @@ export class GatewayRuntime implements SessionOwner {
     return results;
   }
 
+  #committed(source: SourceRuntimeImpl, position: SourceRecord["position"]): void {
+    this.recordCommit(source.id);
+    this.#failures?.committed(source.id, position);
+  }
+
+  /**
+   * Opens the incident store and, when a Kafka source can quarantine, checks the
+   * quarantine topic and connects its producer. Any refusal fails startup.
+   */
+  async #startFailures(connections: Map<string, ResolvedKafkaConnection>): Promise<void> {
+    const store: IncidentStore = this.#internal.incidentStore ?? (this.#stateDirectory === undefined
+      ? new MemoryIncidentStore()
+      : openJournal(this.#stateDirectory, { projectId: this.config.projectId }));
+    try {
+      store.claim(this.config.projectId, [...this.#sources.values()].map(source => ({
+        sourceId: source.id, generation: source.config.generation, kind: source.config.kind
+      })));
+    } catch (error) {
+      store.close();
+      throw error;
+    }
+    if (store.kind === "memory") {
+      this.core.logger.warn("Source-failure incidents are kept in memory only; set stateDirectory to keep them across restarts", {});
+    }
+    let quarantine: KafkaQuarantineWriter | null = null;
+    try {
+      const quarantined = [...this.#sources.values()].filter(source => source.config.kind === "kafka" && usesQuarantine(this.config, source.id));
+      const first = quarantined[0]?.config;
+      const topic = this.config.failureHandling?.quarantine?.topic;
+      if (first?.kind === "kafka" && topic !== undefined) {
+        quarantine = new KafkaQuarantineWriter({
+          topic,
+          connection: connections.get(first.connectionRef) as ResolvedKafkaConnection,
+          logger: this.core.logger,
+          maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes,
+          clientId: `streamotter-${this.config.projectId}-quarantine`
+        });
+        const report = await quarantine.start();
+        this.core.logger.info("Quarantine topic checked", { ...report });
+      }
+      const failures = new FailureService({
+        config: this.config,
+        store,
+        logger: this.core.logger,
+        quarantine,
+        configFingerprint: this.fingerprint,
+        handlerBuildId: this.#handlerBuildId,
+        maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes
+      });
+      const clusterId = quarantine?.report?.clusterId;
+      if (clusterId !== undefined) for (const source of quarantined) failures.setClusterId(source.id, clusterId);
+      failures.start(this.#sources.values());
+      this.#failures = failures;
+    } catch (error) {
+      await quarantine?.stop().catch(() => undefined);
+      store.close();
+      throw error;
+    }
+  }
+
   /** Called by adapters after a commit so the trace reflects actual source progress. */
   recordCommit(sourceId: string): void {
     this.core.traces.record({ requestId: newId(), stage: "commit", outcome: "ok", sourceId });
@@ -641,6 +766,7 @@ export class GatewayRuntime implements SessionOwner {
         if (profile === undefined) throw new StreamOtterError("CONFIG_INVALID", { message: `Unknown connection profile ${source.config.connectionRef}.` });
         connections.set(source.config.connectionRef, await resolveKafkaConnection(profile, this.#configDir));
       }
+      if (this.config.failureHandling !== undefined) await this.#startFailures(connections);
 
       http = createServer((_request, response) => {
         response.statusCode = 404;
@@ -670,7 +796,7 @@ export class GatewayRuntime implements SessionOwner {
           ? new FixtureSourceAdapter(
             (this.#development?.fixtures[source.config.fixtureRef] ?? []) as readonly FixtureRecord[],
             this.#sink(source),
-            () => this.recordCommit(source.id)
+            position => this.#committed(source, position)
           )
           : createKafkaSourceAdapter({
             projectId: this.config.projectId,
@@ -678,7 +804,7 @@ export class GatewayRuntime implements SessionOwner {
             source: source.config,
             connection: connections.get(source.config.connectionRef) as ResolvedKafkaConnection,
             sink: this.#sink(source),
-            onCommit: () => this.recordCommit(source.id),
+            onCommit: position => this.#committed(source, position),
             ...(this.#internal.beforeCommit === undefined ? {} : { beforeCommit: this.#internal.beforeCommit })
           });
         source.adapter = adapter;
@@ -705,6 +831,8 @@ export class GatewayRuntime implements SessionOwner {
       return this.#address;
     } catch (error) {
       await Promise.allSettled(started.map(adapter => adapter.stop(Date.now() + 5_000)));
+      await this.#failures?.stop().catch(() => undefined);
+      this.#failures = null;
       for (const source of this.#sources.values()) {
         source.adapter = null;
         source.status = "starting";
@@ -733,6 +861,9 @@ export class GatewayRuntime implements SessionOwner {
         await source.adapter?.stop(deadline);
         source.status = "stopped";
       }));
+      await this.#failures?.stop().catch(error => {
+        this.core.logger.error("The failure journal did not close cleanly", { error: (error as Error).message.slice(0, 200) });
+      });
       await Promise.allSettled(this.#stopCallbacks.map(callback => callback()));
       const io = this.#io;
       if (io !== null) await new Promise<void>(resolve => io.close(() => resolve()));
@@ -861,7 +992,9 @@ export class GatewayRuntime implements SessionOwner {
       onStop: callback => { this.#stopCallbacks.push(callback); },
       connectionCount: () => this.#sessions.size,
       subscriptionCount: () => [...this.#sessions].reduce((sum, session) => sum + session.subscriptionCount, 0),
-      pendingBytes: () => this.core.gatewayBudget.used
+      pendingBytes: () => this.core.gatewayBudget.used,
+      incidentStore: () => this.#failures?.store ?? null,
+      failuresSettled: async () => { await this.#failures?.settled(); }
     };
   }
 

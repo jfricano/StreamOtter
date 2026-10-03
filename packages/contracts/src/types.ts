@@ -211,9 +211,15 @@ export interface GatewayLogger {
   warn(message: string, fields?: Readonly<Record<string, Json>>): void;
   error(message: string, fields?: Readonly<Record<string, Json>>): void;
 }
+/**
+ * One fixture record: a JSON value, or raw text the gateway decodes exactly as it
+ * decodes broker bytes, so malformed input can be rehearsed in development (V1.1).
+ */
+export type FixtureRecord = { key: string | null; value: Json } | { key: string | null; raw: string };
+
 export interface DevelopmentOptions {
   principals: Readonly<Record<string, Principal>>;
-  fixtures: Readonly<Record<string, readonly { key: string | null; value: Json }[]>>;
+  fixtures: Readonly<Record<string, readonly FixtureRecord[]>>;
 }
 export interface GatewayOptions<C extends ChannelMap> {
   config: ProjectConfig<C>;
@@ -224,6 +230,14 @@ export interface GatewayOptions<C extends ChannelMap> {
   configDir?: string;
   /** Operator diagnostics sink; defaults to structured console output. */
   logger?: GatewayLogger;
+  /**
+   * Persistent directory for the failure journal (V1.1). Required in production
+   * when any source uses a quarantine policy; development without it uses a
+   * non-durable in-memory incident store.
+   */
+  stateDirectory?: string;
+  /** Declared identity of the handler build, recorded in incidents. Default "unspecified"; at most 128 characters. */
+  handlerBuildId?: string;
 }
 
 export interface Capabilities {

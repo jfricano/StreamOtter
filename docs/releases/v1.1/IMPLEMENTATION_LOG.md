@@ -4,9 +4,13 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 
 ## 1. Resume here
 
-**Current state (October 3, 2026):** planning PR #12 open; slice A (PR 3, `feat/v1.1-contracts`) open; the workbench seam (PR 2) in progress.
+**Current state (October 3, 2026):** these PRs are open and stacked:
+- planning, PR #12;
+- the workbench seam, PR #14 (`feat/v1.1-workbench-host`, on #12);
+- slice A, PR #13 (`feat/v1.1-contracts`, on #12);
+- slice B, PR 4 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`.
 
-**Next step:** slice B (quarantine-hold) on `feat/v1.1-quarantine-hold`, stacked on slice A; finish PR 2.
+**Next step:** slice C (guarded continuation and `quarantine-resync`) on `feat/v1.1-guarded-continuation`, stacked on slice B. It builds on `FailureService`, `KafkaSourceAdapter.advancePast`, and the `advance-pending`/`uncertain` progress states that slice B already defines.
 
 **Open owner decisions:**
 
@@ -38,6 +42,51 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - Added construction checks (`packages/gateway/src/failures/validate.ts`). Deviation from the draft, recorded in API §2: until slices B and C land, construction refuses non-pause policies and transient retries rather than accepting them, so no configuration is silently run as pause.
 - Dropped one planned test case: a mapped output can't exceed `maxDataFrameBytes` in the test harness because that limit has a 1,024-byte floor and the harness schema bounds every field. The classification of that path is covered by code review only.
 - `pnpm build && pnpm verify` on Node 24.21.0: 146 tests, 146 pass, 0 fail (114 before; 32 new across `packages/contracts/test/failures.test.ts`, `tests/integration/failure-classes.test.ts`, `tests/integration/failure-config.test.ts`). `contracts/v1/type-tests.ts` compiles with the new `@ts-expect-error` cases all firing.
+
+### October 3, 2026 — journal
+
+- Added `packages/gateway/src/failures/journal.ts` (branch `feat/v1.1-journal`): `SqliteIncidentStore` on `node:sqlite` with WAL, `synchronous=FULL`, `foreign_keys=ON`, `locking_mode=EXCLUSIVE`, STRICT tables (`meta`, `sources`, `incidents`, `incident_events`, `evidence`), `application_id` "SOJ1", and forward-only migrations keyed by `meta.schema_version` (v1). Every mutation is one `BEGIN IMMEDIATE` transaction. Evidence headers are stored as a length-prefixed binary list, so order, duplicate names and non-UTF-8 values survive. Writes past the 256 MiB journal or 16 MiB spool budget throw `OVERLOADED` (`journal-full`); nothing is evicted, and `max_page_count` backs the admission check. `initJournal` creates the state directory, `run/` (0700) and the journal (0600, `wx`, never overwritten). `openJournal` refuses, with a `details.reason`, Node below 24.15, a missing directory or journal (it never creates one), a symlinked, group/world-writable or foreign-owned directory or file, a non-journal or corrupt file, and a newer schema; it takes `journal.lock` (`wx`, pid/project/start/hostname) and replaces only a dead owner's lock on the same host. `claim()` enforces project identity and pins a source's generation while it has open incidents. `node:sqlite` is loaded lazily, so importing `@streamotter/gateway/internals` on Node 24.0–24.14 prints no warning (checked on 24.14.0: `openJournal` refuses with `node-version`).
+- `MemoryIncidentStore` gained an injectable `spoolLimitBytes`, and replacing a failure's evidence no longer counts the old copy against the spool. The `IncidentStore` interface is unchanged.
+- One difference from the memory store, by design: the journal refuses `observe` for a source never passed to `claim()` (`source-not-claimed`), because incidents reference `sources`.
+- `node --conditions=streamotter-source --test packages/gateway/test/journal.test.ts` on Node 24.21.0 and 26.10.0: 23 tests, 23 pass, 0 fail. On 24.14.0 the SQLite suites skip and the other 7 pass. `pnpm build && pnpm verify` on Node 24.21.0: 169 tests, 169 pass, 0 fail.
+- Not testable yet: an older-schema journal migrating forward (v1 is the only version).
+
+### October 3, 2026 — slice B (containment and quarantine-hold)
+
+- Merged `feat/v1.1-journal` into `feat/v1.1-quarantine-hold`. A parallel helper built it against the `IncidentStore` interface; see the journal entry above.
+- **Adapters:** both report a held record through `SourceSink.held()` after pausing. Kafka defers the call with `setImmediate`, so disposition never runs inside `eachBatch` (ADR-15A §1). They pass the key bytes, ordered headers and broker timestamp for evidence, and both implement `advancePast()`, which slice C will drive. The Kafka version commits offset + 1, reads it back through the admin client, checks the assignment epoch, and only then seeks and resumes. Any doubt returns `uncertain`.
+- **`FailureService`** (`packages/gateway/src/failures/service.ts`) handles every held record, one at a time per source:
+  - it observes the incident under `f1:` + `sourceRecordId`;
+  - pause-class failures are recorded and held;
+  - eligible classes under `quarantine-hold` are captured and written: Kafka through `KafkaQuarantineWriter`, a fixture into local store evidence;
+  - the result is recorded as `quarantined`, `quarantine-unknown` or `failed`;
+  - nothing is committed.
+- **Writer settings:** idempotent, `acks=-1`, one request in flight, no topic creation, a 10-second deadline and two retries. Only a definite broker refusal counts as `failed`; anything else uncertain is `unknown`.
+- **Restart and moved positions:**
+  - A record redelivered with different bytes is an evidence conflict and stays held.
+  - A held record that later processes resolves its incident as `processed`.
+  - A Kafka record at a later offset on a held partition holds the source with `SOURCE_UNAVAILABLE` instead of being processed (F27, F30). This uses a new internal `hold` outcome that opens no incident.
+- **Gateway wiring:** the journal opens at start; development without `stateDirectory` uses the memory store and logs that it is not durable. Kafka sources with a quarantine policy check the quarantine topic and its `max.message.bytes` at start. `resumeSource` goes through `beforeRetry`. Transient retries re-run the whole mapping after 250 ms, then 1 s, sending a Kafka heartbeat between attempts.
+- **Construction checks:** `stateDirectory` is required in production when a quarantine policy is set. `handlerBuildId` is at most 128 characters. Quarantining sources must use one connection profile. The Node 24.15 floor applies when a journal is used. `FAILURE_CAPABILITIES` now includes `quarantine-hold` and transient retries.
+- **CLI and fixtures:** new `streamotter init --failures --config --state-dir`; `dev` and `start` accept `--state-dir`, and `start` also accepts `--handler-build-id`. Fixture records may be `{ key, raw }`. `.gitignore` excludes `journal.sqlite*` and `journal.lock` (spec §12).
+- **Deviations from the API draft:**
+  - The internal `progress` vocabulary is `retrying`/`processed` rather than `retried` (noted in API §5).
+  - The single-connection rule for quarantine writes is new (API §4 note).
+  - A quarantine write that ended `unknown` is retried only when the record is redelivered (operator retry or restart), never in the background.
+- **Not done in this slice:**
+  - F09 has no V1.1-specific test; the existing V1 outage tests still pass.
+  - F15 has no gateway crash-tier test; graceful restarts and the journal's SIGKILL test cover it.
+  - Recreating a topic is not detected (F29, partial).
+  - Journal-health readiness reporting is slice E.
+- **Verification on Node 24.21.0:**
+  - `pnpm build && pnpm verify`: 194 tests, 194 pass, 0 fail. New since slice A:
+    - `tests/integration/quarantine-hold.test.ts` (13);
+    - `tests/integration/failure-journal.test.ts` (4);
+    - `packages/gateway/test/failure-service.test.ts` (6);
+    - `packages/gateway/test/journal.test.ts` (23);
+    - two cases in `failure-config.test.ts`.
+  - `pnpm kafka:start && pnpm test:kafka`: 26 tests, 26 pass. That includes all 6 cases in `tests/kafka/08-quarantine-hold.test.ts`: byte-exact quarantine of a binary key, invalid UTF-8 and repeated headers; a tombstone hold; the same incident after a restart; a moved group offset; refusing a missing or undersized topic; and a 35-second hold with the same group member.
+  - The first fixture run had 3 failing tests, all from wrong expectations in the tests: the fixture adapter retries the held record as soon as it resumes, so a following `advance()` is refused while that record still fails. Corrected.
 
 ## 3. Handoff checklist for each slice
 
