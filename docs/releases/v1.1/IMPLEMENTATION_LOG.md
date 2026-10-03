@@ -39,6 +39,14 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - Dropped one planned test case: a mapped output can't exceed `maxDataFrameBytes` in the test harness because that limit has a 1,024-byte floor and the harness schema bounds every field. The classification of that path is covered by code review only.
 - `pnpm build && pnpm verify` on Node 24.21.0: 146 tests, 146 pass, 0 fail (114 before; 32 new across `packages/contracts/test/failures.test.ts`, `tests/integration/failure-classes.test.ts`, `tests/integration/failure-config.test.ts`). `contracts/v1/type-tests.ts` compiles with the new `@ts-expect-error` cases all firing.
 
+### October 3, 2026 — journal
+
+- Added `packages/gateway/src/failures/journal.ts` (branch `feat/v1.1-journal`): `SqliteIncidentStore` on `node:sqlite` with WAL, `synchronous=FULL`, `foreign_keys=ON`, `locking_mode=EXCLUSIVE`, STRICT tables (`meta`, `sources`, `incidents`, `incident_events`, `evidence`), `application_id` "SOJ1", and forward-only migrations keyed by `meta.schema_version` (v1). Every mutation is one `BEGIN IMMEDIATE` transaction. Evidence headers are stored as a length-prefixed binary list, so order, duplicate names and non-UTF-8 values survive. Writes past the 256 MiB journal or 16 MiB spool budget throw `OVERLOADED` (`journal-full`); nothing is evicted, and `max_page_count` backs the admission check. `initJournal` creates the state directory, `run/` (0700) and the journal (0600, `wx`, never overwritten). `openJournal` refuses, with a `details.reason`, Node below 24.15, a missing directory or journal (it never creates one), a symlinked, group/world-writable or foreign-owned directory or file, a non-journal or corrupt file, and a newer schema; it takes `journal.lock` (`wx`, pid/project/start/hostname) and replaces only a dead owner's lock on the same host. `claim()` enforces project identity and pins a source's generation while it has open incidents. `node:sqlite` is loaded lazily, so importing `@streamotter/gateway/internals` on Node 24.0–24.14 prints no warning (checked on 24.14.0: `openJournal` refuses with `node-version`).
+- `MemoryIncidentStore` gained an injectable `spoolLimitBytes`, and replacing a failure's evidence no longer counts the old copy against the spool. The `IncidentStore` interface is unchanged.
+- One difference from the memory store, by design: the journal refuses `observe` for a source never passed to `claim()` (`source-not-claimed`), because incidents reference `sources`.
+- `node --conditions=streamotter-source --test packages/gateway/test/journal.test.ts` on Node 24.21.0 and 26.10.0: 23 tests, 23 pass, 0 fail. On 24.14.0 the SQLite suites skip and the other 7 pass. `pnpm build && pnpm verify` on Node 24.21.0: 169 tests, 169 pass, 0 fail.
+- Not testable yet: an older-schema journal migrating forward (v1 is the only version).
+
 ## 3. Handoff checklist for each slice
 
 When a slice PR is opened, its author updates, in the same PR:
