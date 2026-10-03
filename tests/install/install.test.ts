@@ -365,6 +365,42 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     }
   });
 
+  it("CLI: the operator socket survives a crash and restart of the installed gateway (V1.1 API §7, §10)", { skip: process.platform === "win32" ? "Unix-domain sockets only" : false }, async () => {
+    const config = JSON.parse(await readFile(join(consumer, "app/streamotter.json"), "utf8")) as { gateway: { port: number }; sources: Record<string, unknown> };
+    config.gateway.port = 0;
+    const sourceId = Object.keys(config.sources)[0]!;
+    await writeFile(join(consumer, "app/streamotter.failures.json"), `${JSON.stringify({ ...config, failureHandling: { sources: { [sourceId]: { invalidJson: "quarantine-hold" } } } }, null, 2)}\n`);
+    const state = join(consumer, "state");
+    const init = await run(bin("streamotter"), ["init", "--failures", "--config", "app/streamotter.failures.json", "--state-dir", state], { cwd: consumer });
+    assert.equal(init.code, 0, init.stderr);
+    const args = ["dev", "--config", "app/streamotter.failures.json", "--handlers", "app/server/handlers.mjs", "--management-port", "0", "--state-dir", state, "--operator-socket"];
+    const status = async () => {
+      const result = await run(bin("streamotter"), ["status", "--state-dir", state, "--json"], { cwd: consumer, timeoutMs: 30_000 });
+      assert.equal(result.code, 0, result.stderr);
+      return JSON.parse(result.stdout) as { store: { kind: string }; sources: { sourceId: string }[] };
+    };
+
+    const first = startProcess(bin("streamotter"), args, consumer);
+    await waitFor(() => /Press Ctrl\+C to stop/.test(first.output()), 30_000, `dev banner\n${first.output()}`);
+    const before = await status();
+    assert.equal(before.store.kind, "sqlite");
+    assert.deepEqual(before.sources.map(source => source.sourceId), [sourceId]);
+    // A crash leaves the socket, the token and the journal lock behind.
+    await first.stop("SIGKILL");
+    assert.ok(existsSync(join(state, "run", "operator.sock")), "the crashed gateway left its socket");
+
+    const second = startProcess(bin("streamotter"), args, consumer);
+    try {
+      await waitFor(() => /Press Ctrl\+C to stop/.test(second.output()), 30_000, `dev banner after the crash\n${second.output()}`);
+      assert.deepEqual((await status()).sources.map(source => source.sourceId), [sourceId]);
+    } finally {
+      assert.equal(await second.stop("SIGINT"), 0, `graceful shutdown on SIGINT\n${second.output()}`);
+    }
+    assert.equal(existsSync(join(state, "run", "operator.sock")), false, "a graceful stop removes the socket");
+    const stopped = await run(bin("streamotter"), ["status", "--state-dir", state], { cwd: consumer });
+    assert.equal(stopped.code, 1);
+  });
+
   it("CLI: start refuses the development scaffold in production", async () => {
     const start = await run(bin("streamotter"), ["start", "--config", "app/streamotter.json", "--handlers", "app/server/handlers.mjs"], { cwd: consumer, env: userEnv({ NODE_ENV: "production" }) });
     assert.equal(start.code, 2, start.stderr);
