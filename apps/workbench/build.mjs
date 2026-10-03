@@ -3,6 +3,7 @@ import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promi
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { scopeStylesheet } from "./scope-css.ts";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const dist = new URL("./dist/", import.meta.url);
@@ -28,6 +29,11 @@ const result = await build({
 for (const file of ["index.html", "styles.css", "favicon.svg"]) {
   await copyFile(new URL(`./src/${file}`, import.meta.url), new URL(file, dist));
 }
+// WHC-1 §2.1: hosts link this instead of styles.css. Generated, never hand-maintained; a selector
+// the transformer cannot scope safely fails the build here.
+const hostStyles = scopeStylesheet(await readFile(new URL("./src/styles.css", import.meta.url), "utf8"));
+await writeFile(new URL("workbench-host.css", dist),
+  `/* Generated from styles.css by build.mjs: every rule is scoped under [data-streamotter-workbench], the workbench's mount element in hosted mode. */\n${hostStyles}`);
 await writeFile(new URL("THIRD_PARTY_LICENSES.txt", dist), await thirdPartyNotices(Object.keys(result.metafile.inputs)));
 await writeFile(new URL("workbench-host.json", dist), `${JSON.stringify(await hostManifest(), null, 2)}\n`);
 console.log("workbench built → apps/workbench/dist");
@@ -38,14 +44,14 @@ console.log("workbench built → apps/workbench/dist");
  */
 async function hostManifest() {
   const integrity = {};
-  for (const file of ["app.js", "styles.css"]) {
+  for (const file of ["app.js", "styles.css", "workbench-host.css"]) {
     integrity[file] = `sha384-${createHash("sha384").update(await readFile(new URL(file, dist))).digest("base64")}`;
   }
   return {
     hostContract: 1,
     package: manifest.name,
     version: manifest.version,
-    entry: { script: "app.js", style: "styles.css", icon: "favicon.svg" },
+    entry: { script: "app.js", style: "styles.css", hostStyle: "workbench-host.css", icon: "favicon.svg" },
     integrity,
     bootElementId: "streamotter-workbench-host",
     mountElementId: "app",
@@ -53,7 +59,7 @@ async function hostManifest() {
       "script-src": ["'self'"],
       "style-src": ["'self'"],
       "img-src": ["'self'", "data:"],
-      "connect-src": ["'self'", "<gateway origin>", "<gateway websocket origin>"],
+      "connect-src": ["'self'", "<api origin>", "<gateway origin>", "<gateway websocket origin>"],
       "frame-ancestors": ["'none'"]
     }
   };

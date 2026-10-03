@@ -256,7 +256,7 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
           assert.ok(entries.includes("dist/index.js") && entries.includes("dist/index.d.ts"), "main and types files exist");
         }
       } else {
-        for (const asset of ["index.html", "app.js", "styles.css", "THIRD_PARTY_LICENSES.txt", "workbench-host.json"]) assert.ok(entries.includes(`dist/${asset}`), `workbench ${asset}`);
+        for (const asset of ["index.html", "app.js", "styles.css", "workbench-host.css", "THIRD_PARTY_LICENSES.txt", "workbench-host.json"]) assert.ok(entries.includes(`dist/${asset}`), `workbench ${asset}`);
         // WHC-1 §2: the host manifest names the packed files with matching Subresource Integrity values.
         const host = JSON.parse(await tar(["-xOzf", file, "package/dist/workbench-host.json"])) as {
           hostContract: number; package: string; version: string; integrity: Record<string, string>; entry: Record<string, string>;
@@ -264,7 +264,8 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
         assert.equal(host.hostContract, 1);
         assert.equal(host.package, "@streamotter/workbench");
         assert.equal(host.version, VERSION, "the manifest reports the exact packed version");
-        assert.deepEqual(Object.keys(host.integrity).sort(), ["app.js", "styles.css"]);
+        assert.deepEqual(Object.keys(host.integrity).sort(), ["app.js", "styles.css", "workbench-host.css"]);
+        assert.equal(host.entry["hostStyle"], "workbench-host.css", "hosts link the scoped stylesheet (WHC-1 §2.1)");
         for (const asset of Object.values(host.entry)) assert.ok(entries.includes(`dist/${asset}`), `manifest entry ${asset} is packed`);
         for (const [asset, value] of Object.entries(host.integrity)) {
           const bytes = await tarBytes(file, `package/dist/${asset}`);
@@ -295,10 +296,11 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     await writeFile(join(consumer, "workbench-host-check.mjs"), WORKBENCH_HOST_CHECK);
     const checked = await run(process.execPath, ["workbench-host-check.mjs"], { cwd: consumer });
     assert.equal(checked.code, 0, `${checked.stdout}\n${checked.stderr}`);
-    const result = JSON.parse(checked.stdout) as { manifest: string; script: string; packageJson: string; version: string; imported: string; integrity: boolean };
+    const result = JSON.parse(checked.stdout) as { manifest: string; script: string; hostStyle: string; packageJson: string; version: string; imported: string; integrity: boolean };
     const directory = join(await realpath(consumer), "node_modules/@streamotter/workbench");
     assert.equal(result.manifest, join(directory, "dist/workbench-host.json"));
     assert.equal(result.script, join(directory, "dist/app.js"));
+    assert.equal(result.hostStyle, join(directory, "dist/workbench-host.css"));
     assert.equal(result.packageJson, join(directory, "package.json"), "the CLI's require.resolve of package.json keeps working");
     assert.equal(result.version, VERSION);
     assert.equal(result.imported, VERSION, "import ... with { type: \"json\" } works too");
@@ -698,6 +700,7 @@ const integrity = Object.entries(manifest.integrity).every(([file, value]) =>
 console.log(JSON.stringify({
   manifest: manifestPath,
   script: require.resolve("@streamotter/workbench/dist/" + manifest.entry.script),
+  hostStyle: require.resolve("@streamotter/workbench/dist/" + manifest.entry.hostStyle),
   packageJson: require.resolve("@streamotter/workbench/package.json"),
   version: manifest.version,
   imported: imported.version,
