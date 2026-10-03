@@ -9,9 +9,10 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - the workbench seam, PR #14 (`feat/v1.1-workbench-host`, on #12);
 - slice A, PR #13 (`feat/v1.1-contracts`, on #12);
 - slice B, PR #15 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`;
-- slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`.
+- slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`;
+- slice D, the operator workflow (`feat/v1.1-operator`, on #16), which merges PR #14 and the helper branches `feat/v1.1-operation-store`, `feat/v1.1-operator-ipc` and `feat/v1.1-failures-view`.
 
-**Next step:** slice D, the operator workflow (PR 6, `feat/v1.1-operator`). It is stacked on slice C, needs PR #14's workbench seam, and must merge both. It adds the `OperatorService` over the incident store, local IPC, the CLI groups (`failures`, `sources retry-current|reassess|retire-boundary|reopen-circuit`, `status`), development routes, the workbench Failures view, evaluate and redrive, and reproduction bundles. When the Failures operations land, tell the Lontra Creek thread.
+**Next step:** finish slice D with the Kafka quarantine reader (`feat/v1.1-quarantine-reader`) and WHC-1 revision 0.3 on PR #14, then slice E (PR 7): the health listener, the reference guard in the order-dashboard example, the runbook, the remaining evidence rows and the acceptance packet. Tell the Lontra Creek thread when PR #14 changes or merges and when a release is published.
 
 **Open owner decisions:**
 
@@ -152,6 +153,33 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - `pnpm test:install`: 21 tests, 20 pass, 1 skipped (TLS Kafka: no local broker).
 - Failed or adjusted runs: `pnpm browsers:setup` failed (`Download failure, code=1`; the browser download host is not reachable from this environment). The browser tests ran against the preinstalled headless Chromium 141 (`/opt/pw-browsers/chromium_headless_shell-1194`), linked into the gitignored `.local/ms-playwright/chromium_headless_shell-1243/` where Playwright 1.63 looks, with `PLAYWRIGHT_BROWSERS_PATH` pointing there; Playwright 1.63 pins Chromium 153, so CI's pinned browser has not run these tests yet. The first run of the new browser file failed one case because Chromium logs the deliberate discovery 404 of the pre-WHC-1 fallback case as a console error; the test now expects exactly that message. One integration case asserted a path with `..`, which `fetch` normalizes before it reaches the host; it was replaced by another static path.
 - Not done here: Lontra Creek hosting checks (LC11) are theirs; the Failures tab and failure operations are PR 6; `docs/IMPLEMENTATION_STATUS.md` is left for PR 7 per the plan.
+
+### October 3, 2026 — slice D (operator workflow), branch `feat/v1.1-operator`
+
+- **Shape.** The contracts came first (`e80816b`: `packages/contracts/src/operator.ts`, the IPC framing and the `IncidentStore` operation interface). Three helpers then worked in parallel on branches cut from that commit, each limited to its own files, while the operator service was written here; every branch was reviewed and merged. PR #14 (the workbench seam) is merged into this branch, so the slice PR also carries it.
+  - `feat/v1.1-operation-store` (`377c4f6`): operations in both incident stores. The journal gains a STRICT `operations` table (schema version 1 amended in place, since no journal has shipped), each mutation one `BEGIN IMMEDIATE` transaction, and a `maxOperations` open option. Completed operations are pruned oldest first; when every stored operation is pending, a new one is refused as `journal-full`.
+  - `feat/v1.1-operator-ipc` (`768d75f`, `394485d`): the local socket server and client (`packages/gateway/src/operator/ipc.ts`) and the CLI groups `status`, `failures` and `sources` (`packages/cli/src/operator.ts`).
+  - `feat/v1.1-failures-view` (`c04ed75`, `7d01411`): the nine development management routes and the workbench Failures tab.
+- **Operator service** (`6a0237c`, `b422320`; `packages/gateway/src/operator/service.ts`) as recorded in the API draft §6 slice D notes: every mutation journals intent then result; retry and reassess redeliver the held record and wait up to 15 s for it to settle; evaluate runs the live preparation path without admitting or tracing; plans are in memory (64, five minutes, single use); redrive re-evaluates under the source's processing lock and admits through the revision filter. To share one path with live processing, `GatewayRuntime.#process` was split into `#prepare` and `#admit`, and the sink now runs under a per-source exclusive lock.
+- **Gateway wiring** (`e235d6c`, `0a5aa96`): `operatorSocket` is validated at construction (boolean; `true` needs `stateDirectory` and `failureHandling`). The socket starts once sources are ready and closes first on stop and on a failed start.
+- **Deviations and decisions:**
+  - The circuit also refuses retries. ADR-15C §6 says an open circuit stops automatic continuation; a manual retry on a `quarantine-resync` source would run the same continuation, so `retryCurrent`, `reassess` and the legacy `resumeSource` are refused with `circuit-open` until `reopenCircuit`.
+  - A redrive revision conflict ends `failed` with outcome `revision-conflict` and does not pause the source, because the conflicting record came from the operator, not the stream.
+  - An unreachable gateway is `UNSUPPORTED_CAPABILITY` with `details.reason: "operator-not-running"`, the code `getGatewayOperator` already uses; the CLI exits 1.
+  - The socket and CLI are stricter than the draft: unknown top-level request fields, a non-object `args` and a request without a newline are refused, and each CLI subcommand accepts only its own flags.
+  - Reaching the operation-count limit reports the same reason as a full journal (`journal-full`); only the message tells them apart.
+  - Without failure handling the failure routes answer 404 and discovery omits them, so discovery is now computed per request.
+- **Not done here:**
+  - Kafka read-back of quarantined evidence (`KafkaQuarantineReader`), so evaluate and redrive work at the fixture tier only until it merges, with F28 and the topic-scan part of F41.
+  - WHC-1 revision 0.3 (cross-origin `apiOrigin` and scoped host styles for Lontra Creek) goes to PR #14 and is merged here when done.
+  - A child-process crash test for F35; the health listener (F37's health part) is slice E.
+- **Verification on Node 24.21.0** at `0a5aa96`:
+  - `pnpm build && pnpm verify`: 303 tests, all pass. New in this slice: 12 in `tests/integration/operator.test.ts`, 2 in `tests/integration/operator-socket.test.ts`, 13 in `tests/integration/operator-routes.test.ts`, 12 in `tests/integration/operator-cli.test.ts`, 17 in `packages/gateway/test/operator-ipc.test.ts`, 7 operation cases in `packages/gateway/test/journal.test.ts`, plus the PR #14 tests.
+  - `pnpm test:browser`: 40 tests, all pass, including 14 in `tests/browser/failures.test.ts`. As before, against the preinstalled headless Chromium 141 linked under the gitignored `.local/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/` (link each file of `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/`, and create `INSTALLATION_COMPLETE`), with `PLAYWRIGHT_BROWSERS_PATH` pointing at `.local/ms-playwright`.
+- **Failed or adjusted runs:**
+  - The first operator test run failed four ways, all in the tests: a client resynchronizes to the authoritative snapshot after a hold, so it never sees the intermediate revision; `advanceFixture(2)` stops at a pause; status was read before the failure service settled; trace counts included subscription traces. Each test now waits for the right condition.
+  - The first socket end-to-end run expected the wrong wording for a stopped gateway; the gateway behaved as designed.
+  - The browser tier failed to launch until the Chromium link above was rebuilt with the headless-shell directory layout Playwright 1.63 expects.
 
 ## 3. Handoff checklist for each slice
 

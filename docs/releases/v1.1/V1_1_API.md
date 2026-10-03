@@ -174,6 +174,12 @@ Slice B note (normative for `stateDirectory`, `handlerBuildId` and the checks ab
 - Startup opens the journal (`openJournal`) and claims the configured sources. It refuses a missing journal (pointing at `streamotter init --failures`), a journal another gateway holds, and an open incident from another source generation.
 - With a quarantining Kafka source, startup also checks that the quarantine topic exists and that its `max.message.bytes` is at least `maxSourceRecordBytes` plus 80 KiB.
 
+Slice D note (normative for `operatorSocket`, as implemented in `packages/gateway/src/runtime/gateway.ts`):
+
+- `operatorSocket` must be a boolean. `true` requires both `stateDirectory` and `failureHandling`, because the socket lives in the state directory and serves the failure operator API.
+- The socket starts after every source is ready, just before `start()` resolves. If it cannot start (§7 lists the refusals), `start()` rolls back and rejects like any other startup failure.
+- `stop()` closes the socket first, before sources drain, so no operation starts during shutdown. Closing removes the socket and the token file.
+
 ## 5. Incidents (slices A, B)
 
 ### 5.1 Failure classes (ADR-15B §1; normative in slice A)
@@ -344,6 +350,16 @@ ADR-15C §3 fixes the socket location and permissions. The wire format:
 - The token is compared in constant time. Ten requests per second per gateway, burst twenty; excess gets `OVERLOADED`. Connections idle for 5 seconds are closed.
 - The CLI reads the token from `<stateDirectory>/run/operator.token` and refuses to read it if the file or directory is group- or world-accessible or not owned by the current user.
 
+Slice D notes (normative, as implemented in `packages/gateway/src/operator/ipc.ts`):
+
+- **Startup refusals** are `CONFIG_INVALID` with `details.reason`: `state-dir-missing` or `state-dir-insecure` (the journal's rule), `run-dir-missing` or `run-dir-insecure` (`run/` must have no group or world access, must not be a symlink, and must be owned by the gateway's user), `socket-path-too-long` (over 103 bytes), `socket-in-use` (another gateway answers on it), and `socket-path-occupied` (something other than a socket, including a symlink). A stale socket nobody answers is replaced.
+- **The token** is 32 random bytes in base64url, fresh on every start. It is written to a new 0600 file and renamed over `operator.token`, so a symlink planted there is replaced, never written through. It is written only after the live-socket check, so a refused second gateway leaves the running one's token alone. The socket is 0600. Close removes the socket and token only if they are still the files this gateway created.
+- **Request checks run in this order:** size (65,536 bytes including the newline), strict UTF-8, a JSON object, `id` (a string of at most 128 characters; otherwise the answer carries `id: ""`), the rate limit, unknown top-level fields, `v`, the token, a known `op`, `args` is an object, then the shared `validateOperatorRequest`. A request without a terminating newline is refused.
+- **Errors:** a `StreamOtterError` from the operator passes through unchanged; anything else is `INTERNAL` with no details. More than 16 concurrent connections get `OVERLOADED`. The idle timer is absolute, so trickled bytes do not extend it.
+- **Logs** carry the operation name and outcome only, never the token or any payload.
+- **The client** (`callOperator`, `connectOperator` in `@streamotter/gateway/operator`) validates arguments before connecting, re-checks the token file after opening it, times out after 30 s (`TIMEOUT`), and caps responses at 64 MiB. When no gateway serves the directory it raises `UNSUPPORTED_CAPABILITY` with `details.reason: "operator-not-running"`.
+- Windows is not supported; both sides refuse with `UNSUPPORTED_CAPABILITY`.
+
 ## 8. Health listener (slice E)
 
 As ADR-15C §4. Response body `{ "status": "ok" | "unavailable", "reasons": ("starting" | "source-held" | "source-unavailable" | "journal" | "quarantine")[] }`, `Cache-Control: no-store`, no CORS headers, any other path or method 404. `streamotter start --health 127.0.0.1:7402`.
@@ -367,6 +383,16 @@ Added to `ManagementOperations`, all behind the existing development token and o
 
 The workbench gains a Failures tab built only on these, and runs anywhere the [workbench host contract](./WORKBENCH_HOST_CONTRACT.md) is honored.
 
+Slice D notes (normative, as implemented in `packages/gateway/src/management/router.ts` and `apps/workbench/src/views/failures.ts`):
+
+- The routes exist only while the gateway has an operator service, that is, when `failureHandling` is configured. Otherwise they answer 404 and discovery omits them. With an operator but an allowlist that excludes them, `createManagementHandler` answers 403.
+- Every argument goes through `validateOperatorRequest`. `GET /failures` accepts only `sourceId`, `state`, `limit` and `cursor`, each at most once. The failure ID in `GET /failures/{failureId}` is URL-decoded exactly once.
+- No route returns raw evidence. `showFailure` and `exportFailure` are called without `includeRaw`, an export body carrying `includeRaw` is refused, and a `raw` field is removed from any answer (F37).
+- Bodies are capped at 64 KiB on these routes, whatever `maxBodyBytes` allows.
+- A refused `OperationResult` is a normal 200 response.
+- There is no route for `retireBoundary`; it is reachable only in-process and over the local socket.
+- The Failures tab appears when discovery lists `failures.list`. Each action sends the revision shown on screen and displays the result exactly as returned. An action the host does not offer reads "Not available in this environment".
+
 ## 10. CLI (slices B, D, E)
 
 | Command | Behavior |
@@ -378,6 +404,15 @@ The workbench gains a Failures tab built only on these, and runs anywhere the [w
 | `streamotter sources retry-current\|reassess\|reopen-circuit\|retire-boundary --state-dir <dir> ...` | §6 over IPC. `retire-boundary` prints the ADR-15B §4 warning and requires `--confirm <boundaryId>`. |
 
 Exit codes extend the existing `0` ok, `1` runtime, `2` invalid: `3` refused (the operation was understood and declined), `4` unknown outcome. `--json` prints the `OperationResult` or data verbatim.
+
+Slice D notes (normative, as implemented in `packages/cli/src/operator.ts`):
+
+- `INVALID_REQUEST` from the gateway exits 2; a gateway that is not running exits 1. With `--json`, errors go to stderr as `{"error": StreamError}` and stdout stays empty.
+- Each subcommand accepts only its own flags; `--force` does not exist.
+- Raw bytes appear in human output only as base64 with a 64-byte hex preview. Every printed string, `--json` included, has control and bidirectional-override characters escaped as `\uXXXX` (F39).
+- `failures export --out <file>` creates the file with mode 0600, refuses an existing file before contacting the gateway, and removes a partial file if the write fails. With `--json` it prints `{ path, bundleVersion, rawIncluded }` rather than the bundle.
+- `sources retire-boundary` exits 2 before connecting unless `--confirm` equals `--boundary`.
+- `start` and `dev` accept `--operator-socket`, which requires `--state-dir`.
 
 ## 11. Decisions this draft adds
 
