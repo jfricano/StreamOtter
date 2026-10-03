@@ -160,6 +160,27 @@ Run **exactly one gateway per project** (V1 has no multi-gateway coordination), 
 
 `@streamotter/gateway/management` is the development-only management API used by `streamotter dev`; it refuses production gateways. `@streamotter/gateway/internals` exists for StreamOtter's own CLI and is not a stable API.
 
+### Host the workbench API under your own route
+
+To run the published workbench on your own site (the [workbench host contract](https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md)), mount `createManagementHandler` under your API path, after your own session, lease and rate checks:
+
+```ts
+import { createManagementHandler } from "@streamotter/gateway/management";
+
+const workbenchApi = createManagementHandler({
+  gateway,                                  // a development-mode gateway; production gateways are refused
+  operations: ["health", "sources", "channels", "config", "config.validate", "source-checks",
+               "preview-sessions", "dev.principals", "dev.fixtures.advance"],  // everything else answers 403
+  authorize: request => sessions.isValid(request),   // your same-origin session; called first, false → 401
+  maxBodyBytes: 65_536                      // the default; at most 1 MiB, for every route
+});
+
+// In your HTTP server, for requests under /workbench/api/v1:
+await workbenchApi(request, response, pathname.slice("/workbench/api/v1".length));
+```
+
+The handler serves API routes only (never static files), answers `GET /workbench` with the operations it offers, ignores `Authorization` headers (your `authorize` is the only credential check, so no management token reaches the browser), and requires `X-StreamOtter-Workbench: 1` on every POST. It validates requests with the same router as `streamotter dev`. List your site's origin in the gateway's `allowedOrigins` so Preview can connect.
+
 ## Documentation
 
 - [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md): handlers, revisions, the outbox, and revocation, step by step

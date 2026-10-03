@@ -10,7 +10,8 @@ export type {
   HandlerContext, HandlerRegistry, Hello, Json, KafkaConnection, Limits, ManagementOperations, MappedState, Page,
   Params, Principal, ProjectConfig, Receipt, Result, Revision, Revocation, Schema, SecretRef, ServerToClientEvents,
   SocketAuth, Source, SourceRecord, SourceStatus, StateChange, StreamError, StreamEvent, SubscribeRequest,
-  Subscription, SubscriptionFrame, SubscriptionState, Trace, TraceStage, Unlisten, WaitOptions
+  Subscription, SubscriptionFrame, SubscriptionState, Trace, TraceStage, Unlisten, WaitOptions,
+  WorkbenchDiscovery, WorkbenchHostConfig, WorkbenchHostManifest, WorkbenchOperation
 } from "@streamotter/contracts";
 export { createClient } from "@streamotter/client";
 export { createGateway, defineProject } from "@streamotter/gateway";

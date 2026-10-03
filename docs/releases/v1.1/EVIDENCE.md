@@ -49,9 +49,9 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 | F41 | Journal capacity, topic-scan budget, audit limit, or repeated … | D (PRs 2, 6) | fixture | planned | |
 | F42 | Unaffected independent source while another is held/quarantining | C (PR 5) | fixture | planned | |
 | F43 | Healthy source, paused source, broker outage, startup, shutdown, … | E (PR 7) | fixture, kafka | planned | |
-| F44 | Workbench failure lifecycle and old-state display | D (PRs 2, 6) | browser | planned | |
+| F44 | Workbench failure lifecycle and old-state display | D (PRs 2, 6) | browser | implemented (seam part) | PR 2 (`feat/v1.1-workbench-host`), October 3, 2026: `pnpm test:browser` 26/26 pass, including `tests/browser/workbench-host.test.ts` 13/13 (host under `/workbench/`, `session` boot block, `createManagementHandler` behind a fake cookie session, strict CSP and SRI, unlisted operations unavailable and never requested, no `Authorization` header, no cross-origin API request) and the unchanged `tests/browser/workbench.test.ts` 7/7. Server side: `tests/integration/workbench-host.test.ts` 9/9 within `pnpm verify` 130/130. Headless Chromium 141 (local fallback, see the log). The failure lifecycle itself lands with PR 6. |
 | F45 | Chromium, Firefox and WebKit failure/reconnect/cleanup path | E (PR 7) | browser (3 engines) | planned | |
-| F46 | Published/packed install, clean config, production proxy, local … | E (PR 7) | install | planned | |
+| F46 | Published/packed install, clean config, production proxy, local … | E (PR 7) | install | implemented (seam part) | PR 2 (`feat/v1.1-workbench-host`), October 3, 2026: `pnpm test:install` 21 tests, 20 pass, 1 skipped (TLS Kafka; no local broker). The packed `@streamotter/workbench` contains `dist/workbench-host.json`, its `sha384` values match the packed `app.js` and `styles.css`, and `@streamotter/workbench/host`, `/dist/*` and `/package.json` resolve after `npm install` outside the workspace. The rest of F46 (clean config, production proxy) is PR 7. |
 | F47 | Replicated Kafka evidence write under leader/ISR failure | E (PR 7) | replicated | planned | |
 | F48 | Upgrade then downgrade with unresolved/advanced incidents | E (PR 7) | crash | planned | |
 

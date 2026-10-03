@@ -309,4 +309,65 @@ export interface ManagementOperations {
   "GET /management/v1/dev/principals": { request: null; response: { items: readonly DevelopmentPrincipalSummary[] } };
   "POST /management/v1/dev/fixtures/advance": { request: { sourceId: string; count: number }; response: { advanced: number } };
   "POST /management/v1/dev/disconnect": { request: { previewSessionId: string }; response: null };
+  /** WHC-1 capability discovery (docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md §4). */
+  "GET /management/v1/workbench": { request: null; response: WorkbenchDiscovery };
+}
+
+/**
+ * Workbench host contract, version 1 (WHC-1): the closed vocabulary of operations a workbench
+ * host can offer. `WORKBENCH_OPERATIONS` lists the same names at runtime. The failure and
+ * operator names are V1.1 operations; a host lists them only when it implements them.
+ * `sources.retire-boundary` is deliberately absent: it is a CLI-only action.
+ */
+export type WorkbenchOperation =
+  | "capabilities" | "health" | "sources" | "channels" | "config" | "config.validate" | "config.export"
+  | "traces" | "source-checks" | "sources.resume" | "preview-sessions" | "dev.principals"
+  | "dev.fixtures.advance" | "dev.disconnect" | "workbench"
+  | "operator.status" | "failures.list" | "failures.show" | "failures.export" | "failures.evaluate"
+  | "failures.redrive" | "sources.retry-current" | "sources.reassess" | "sources.reopen-circuit";
+
+/** Response of `GET {apiBase}/workbench` (WHC-1 §4). */
+export interface WorkbenchDiscovery {
+  hostContract: 1;
+  /** The operations this host answers. Anything absent is shown as unavailable and never called. */
+  operations: readonly WorkbenchOperation[];
+  limits: { maxRequestBytes: number };
+}
+
+/**
+ * The boot block a host page embeds as `<script type="application/json" id="streamotter-workbench-host">`
+ * (WHC-1 §3). Unknown fields are refused; see `validateWorkbenchHostConfig`.
+ */
+export interface WorkbenchHostConfig {
+  hostContract: 1;
+  /** Absolute path on the page's own origin, no trailing slash. Default `/management/v1`. */
+  apiBase?: string;
+  /** Default `{ mode: "token" }`, the native behavior. */
+  auth?: { mode: "token" | "session" };
+  /** The gateway the Preview tab connects to. When absent, Preview is unavailable. */
+  gateway?: { origin: string; path?: string };
+  /** Default `{ kind: "development" }`. `label` is required for `sandbox`. */
+  environment?: {
+    kind: "development" | "sandbox";
+    label?: string;
+    detail?: string;
+    packageVersion?: string;
+  };
+}
+
+/** One problem found in a boot block, with a JSON Pointer to the offending value. */
+export interface WorkbenchHostConfigIssue { path: string; message: string }
+
+/** `dist/workbench-host.json` in `@streamotter/workbench`, also exported as `@streamotter/workbench/host` (WHC-1 §2). */
+export interface WorkbenchHostManifest {
+  hostContract: 1;
+  package: "@streamotter/workbench";
+  version: string;
+  entry: { script: string; style: string; icon: string };
+  /** Subresource Integrity values (`sha384-…`) keyed by file name. */
+  integrity: Readonly<Record<string, string>>;
+  bootElementId: string;
+  mountElementId: string;
+  /** Directive name to source list. `<gateway origin>` and `<gateway websocket origin>` are placeholders the host replaces. */
+  csp: Readonly<Record<string, readonly string[]>>;
 }
