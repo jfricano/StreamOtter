@@ -14,6 +14,12 @@ npm install streamotter
 
 Node.js 24 or later for the gateway and CLI; current evergreen browsers for the SDK. ESM only, with TypeScript declarations included.
 
+## Runtime requirement
+
+Live browser subscriptions need a **running compatible StreamOtter gateway**. Installing this package makes the SDK and server tooling available; start the gateway with the CLI or `createGateway`. The gateway consumes Kafka, runs your application-owned state handlers, and synchronizes delivery. The SDK implements browser subscriptions, receipts, recovery, and `live` / `stale` states; your frontend renders the state.
+
+A separate frontend can install only `@streamotter/client`; it needs gateway access over the network, rather than a gateway npm dependency. Contracts can be used without a running gateway, and Workbench is development tooling. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements) for the package relationships and application responsibilities.
+
 ## Try it
 
 In a new folder; no Kafka needed, because the scaffold uses a built-in fixture source:

@@ -16,6 +16,10 @@ The all-in-one [`streamotter`](https://www.npmjs.com/package/streamotter) packag
 
 ESM only, with TypeScript declarations included. It has no dependencies and runs in browsers and Node.js.
 
+## Independent of a running gateway
+
+Types, protocol constants, and validation can be used without a running gateway or Kafka connection. Neither the gateway nor the browser SDK is a dependency or peer dependency of this package; those packages depend on contracts. Contracts does not consume or deliver a stream. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements).
+
 ## Validate a configuration
 
 ```ts

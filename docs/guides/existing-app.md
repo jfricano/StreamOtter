@@ -13,6 +13,27 @@ Who owns what:
 | The authoritative state (`snapshot`) and how records map to it (`map`) | Explicit `live` / `stale` states, recovery, and reconnection |
 | Publishing every change to Kafka | Bounded queues, slow-client handling, and source progress |
 
+## Runtime and package requirements
+
+For Kafka-backed channels, data flows from a Kafka source into the **gateway**, through your application handlers, over Socket.IO/WebSocket to the **browser SDK**, and into your frontend's rendering code. The gateway is the Kafka consumer; you do not need a separate consumer just to feed it. Source providers, gateway operators, and frontend developers can be different organizations, and these components can run on different hosts.
+
+The gateway runs your `map` handlers to turn records into full application state, then validates and delivers that state with snapshots, revision ordering, and bounded queues. StreamOtter provides the synchronization and delivery layer. Your application still defines business meaning, aggregation, authentication, authorization, and the authoritative current state returned by `snapshot`. If a source supplies only events, provide a current-state store or API consistent with the updates; StreamOtter does not create that store automatically.
+
+The SDK implements the browser side of the protocol: subscriptions, frame receipts, reconnection, resynchronization, and `live` / `stale` states. Your frontend renders the delivered state. The SDK therefore needs a **running compatible StreamOtter gateway** for live subscriptions. This is a network/deployment requirement, not a gateway npm dependency or peer dependency in the frontend. The SDK is not a general-purpose WebSocket or Kafka client.
+
+| Component | Package relationship | Runtime requirement |
+| --- | --- | --- |
+| Browser SDK (`@streamotter/client`) | Depends on `@streamotter/contracts` and `socket.io-client`; does not depend on the gateway package | Connects to a compatible running gateway for live subscriptions |
+| Gateway (`@streamotter/gateway`) | Uses contracts and server-side Kafka/Socket.IO libraries | Runs in Node.js with your configuration and handlers; Kafka-backed sources need broker access |
+| Contracts (`@streamotter/contracts`) | Has no package dependencies; does not depend on the SDK or gateway | Types, protocol constants, and validation work without a running gateway or Kafka |
+| CLI (`@streamotter/cli`) | Includes contracts, gateway, and Workbench packages | Scaffolds, validates, generates types, and launches the gateway; the gateway it launches delivers the data |
+| Workbench (`@streamotter/workbench`) | Assets served by the CLI in development | Configuration, preview, and inspection tooling; not required for production subscriptions |
+| All-in-one (`streamotter`) | Includes the CLI, SDK, contracts, and gateway, with Workbench through the CLI | Browser and server imports use separate subpaths; installing the package does not start a gateway |
+
+A separate frontend can install only `@streamotter/client`. Run the gateway as a service with the CLI, or embed it in an existing Node.js process with `createGateway` (see [programmatic deployment](../DEPLOYMENT.md#programmatic-use)). Neither arrangement requires the source and gateway to share a host. V1 supports one gateway instance per project; multiple frontend applications can connect to it when their exact origins appear in `gateway.allowedOrigins` and their users pass your authentication and authorization handlers.
+
+Other processing tools can consume the same Kafka feed independently using their own consumer groups. They do not need StreamOtter unless they choose StreamOtter's browser state-delivery protocol.
+
 ## 1. Choose the view
 
 A **channel** is one kind of live view, such as `orderStatus`. Its **parameters** pick one instance (`{ "orderId": "ord_1001" }`), and the principal's **tenant** scopes it, so two customers' `ord_1001` are different instances. Everyone allowed to see an instance receives exactly the same state, so if two audiences need different data (a customer view and an internal view), make them two channels.

@@ -14,6 +14,12 @@ Using the all-in-one [`streamotter`](https://www.npmjs.com/package/streamotter) 
 
 Transport: Socket.IO 4.8.3 over WebSocket only. Targets current evergreen browsers. ESM only, with TypeScript declarations included.
 
+## Runtime requirement
+
+Live subscriptions require a **running compatible StreamOtter gateway** on the server. This is a network/deployment requirement: the frontend does not need to install `@streamotter/gateway` as a dependency or peer dependency. This package depends on `@streamotter/contracts` and `socket.io-client`.
+
+The SDK implements subscriptions, frame receipts, reconnection, resynchronization, and `live` / `stale` states; your application renders the delivered state. It connects using StreamOtter's protocol, rather than directly consuming Kafka or acting as a general-purpose WebSocket client. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements) for the component boundaries and deployment choices.
+
 ## Subscribe
 
 Generate your channel types from the project configuration (`streamotter generate`, from [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli)), then:
