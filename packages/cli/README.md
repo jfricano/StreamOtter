@@ -91,6 +91,26 @@ NODE_ENV=production npx streamotter start --config streamotter.json --handlers d
 
 Startup waits until every source has joined its consumer group (30-second deadline). If a source fails, `start` prints staged diagnostics and exits. Supervision, restarts after a crash, and the reverse-proxy recipe are in [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md).
 
+## Operate a running gateway
+
+With failure handling configured, a gateway started with `--state-dir <dir> --operator-socket` serves the operator API on a local Unix-domain socket, `<dir>/run/operator.sock`. Each start writes a fresh token to `<dir>/run/operator.token` (mode 0600); a token from an earlier start stops working. The operator commands read the token from there, never from the command line, and refuse to read it if the file or `run/` is a symlink, is accessible to other users, or is owned by someone else. Anyone who can read the state directory is an operator, so keep it owned by the gateway's user with mode 0700.
+
+```bash
+npx streamotter status --state-dir /var/lib/streamotter
+npx streamotter failures list --state-dir /var/lib/streamotter --state open
+npx streamotter failures show --state-dir /var/lib/streamotter --failure <failureId>
+npx streamotter sources retry-current --state-dir /var/lib/streamotter --source orders --failure <failureId> --expected-revision 3
+```
+
+Every mutation names the incident (or circuit, or boundary) and the revision it expects, so a command based on stale information is refused rather than applied. There is no `--force`, no wildcard, and no bulk form.
+
+- `failures show` never prints the original record bytes unless you pass `--raw`, and then only as base64 and a hex preview, never as text a terminal could interpret.
+- `failures export` writes a versioned reproduction bundle. With `--out <file>` it creates the file with mode 0600 and refuses to overwrite an existing one; without `--out` it prints the bundle. Raw bytes are included only with `--include-raw`.
+- `failures evaluate` runs the stored record through the current handlers without delivering anything and, when a redrive is possible, prints a plan that expires after five minutes. `failures redrive` takes that plan's ID and fingerprint.
+- `sources retire-boundary` is the unsafe option. Retiring a boundary tells the gateway that every future snapshot already reflects the quarantined record, and StreamOtter can't check that. If the claim is wrong, subscribers can reach `live` while showing state that's missing the change the quarantined record carried, and nothing downstream will flag it. The command prints this warning and does nothing unless `--confirm` repeats the boundary ID.
+
+`--json` prints the gateway's answer verbatim (the data, or the operation result) for scripts; errors go to stderr as `{"error": …}`.
+
 ## Commands and exit codes
 
 | Command | |
@@ -98,10 +118,23 @@ Startup waits until every source has joined its consumer group (30-second deadli
 | `streamotter init <directory>` | Scaffold a fixture-only project |
 | `streamotter validate --config <path>` | Validate; print the fingerprint |
 | `streamotter generate --config <path> --out <directory>` | Generate TypeScript channel types |
-| `streamotter dev --config <path> --handlers <module> [--management-port <port>]` | Development gateway, workbench, and management API |
-| `streamotter start --config <path> --handlers <module>` | Production gateway |
+| `streamotter init --failures --config <path> --state-dir <directory>` | Create the failure journal for an existing project |
+| `streamotter dev --config <path> --handlers <module> [--management-port <port>] [--state-dir <directory>] [--operator-socket]` | Development gateway, workbench, and management API |
+| `streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--operator-socket] [--handler-build-id <id>]` | Production gateway; `--operator-socket` requires `--state-dir` |
+| `streamotter status --state-dir <dir> [--json]` | Gateway, journal, quarantine and per-source failure status |
+| `streamotter failures list --state-dir <dir> [--source <id>] [--state open\|resolved\|all] [--limit <n>] [--cursor <c>]` | List incidents, newest first |
+| `streamotter failures show --state-dir <dir> --failure <id> [--raw]` | One incident with its explanation and history |
+| `streamotter failures export --state-dir <dir> --failure <id> [--include-raw] [--out <file>]` | Reproduction bundle |
+| `streamotter failures evaluate --state-dir <dir> --failure <id> --expected-revision <n>` | Dry-run the stored record; issue a redrive plan |
+| `streamotter failures redrive --state-dir <dir> --failure <id> --plan <planId> --plan-fingerprint <fp> --expected-revision <n> [--operation-id <id>]` | Run an evaluated plan |
+| `streamotter sources retry-current --state-dir <dir> --source <id> --failure <id> --expected-revision <n> [--reason <text>]` | Retry the held record |
+| `streamotter sources reassess --state-dir <dir> --source <id> --failure <id> --expected-revision <n>` | Re-run the recovery guard for a held, eligible incident; never overrides an integrity failure |
+| `streamotter sources reopen-circuit --state-dir <dir> --source <id> --expected-circuit-revision <n> --reason <text>` | Reset a stopped automatic-continuation circuit after repair; approves no record |
+| `streamotter sources retire-boundary --state-dir <dir> --source <id> --boundary <id> --expected-revision <n> --reason <text> --confirm <boundaryId>` | Retire a recovery boundary (unsafe; see above) |
 
-Exit codes: `0` success, `2` invalid input or configuration, `1` startup or runtime failure. `SIGINT` and `SIGTERM` shut down gracefully (10-second deadline) and exit 0.
+Every operator command accepts `--json`.
+
+Exit codes: `0` success, `2` invalid input, configuration or request, `1` startup or runtime failure (including a gateway that isn't running and an operation that `failed`), `3` the operation was refused, `4` its outcome is unknown. `SIGINT` and `SIGTERM` shut down gracefully (10-second deadline) and exit 0.
 
 ## Documentation
 
