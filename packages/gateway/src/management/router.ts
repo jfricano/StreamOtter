@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-  canonicalJsonPretty, CAPABILITIES, isPlainObject, streamError, StreamOtterError, validateProjectConfig,
-  WORKBENCH_HOST_CONTRACT, WORKBENCH_OPERATIONS, WORKBENCH_REQUEST_HEADER, type ErrorCode, type Json, type Result,
-  type StreamError, type Trace, type WorkbenchDiscovery, type WorkbenchOperation
+  canonicalJsonPretty, CAPABILITIES, isPlainObject, streamError, StreamOtterError, validateOperatorRequest, validateProjectConfig,
+  WORKBENCH_HOST_CONTRACT, WORKBENCH_OPERATIONS, WORKBENCH_REQUEST_HEADER, type ErrorCode, type Json, type OperatorApi,
+  type ReproductionBundle, type Result, type StreamError, type Trace, type WorkbenchDiscovery, type WorkbenchOperation
 } from "@streamotter/contracts";
 import type { GatewayInternals } from "../runtime/gateway.ts";
 import { sha256Hex } from "../runtime/util.ts";
@@ -15,6 +15,8 @@ import { sha256Hex } from "../runtime/util.ts";
 
 /** Largest request body any management route accepts. */
 export const MAX_MANAGEMENT_BODY_BYTES = 1_048_576;
+/** Largest body of a failure or operator route, whatever the router's own limit (WHC-1 §5). */
+export const MAX_OPERATOR_BODY_BYTES = 65_536;
 
 const STATUS_BY_CODE: Partial<Record<ErrorCode, number>> = {
   INVALID_REQUEST: 400, INVALID_PARAMS: 400, CONFIG_INVALID: 400, UNSUPPORTED_CAPABILITY: 400,
@@ -123,6 +125,10 @@ interface RouteContext {
   internals: GatewayInternals;
   query: Record<string, string>;
   body: unknown;
+  /** The path parameter of a pattern route, still URL-encoded. */
+  param: string | null;
+  /** The gateway's operator service; never null for an operator route. */
+  operator: OperatorApi | null;
   discovery: () => WorkbenchDiscovery;
 }
 
@@ -131,10 +137,93 @@ interface Route {
   method: "GET" | "POST";
   /** Path relative to the API base (for the native server, `/management/v1`). */
   path: string;
+  /** When set, the route also matches `path` followed by one non-empty segment, passed as `param`. */
+  param?: true;
+  /** Operator routes exist only while the gateway has an operator service (V1.1 failure handling). */
+  operator?: true;
   /** Allowed query parameters (GET only). */
   query?: readonly string[];
   run(context: RouteContext): unknown;
 }
+
+function operatorOf(context: RouteContext): OperatorApi {
+  if (context.operator === null) throw new HttpError(404, "INVALID_REQUEST", "Unknown management route.");
+  return context.operator;
+}
+
+/** Decodes a URL-encoded path segment exactly once. */
+function decodeSegment(segment: string, name: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new HttpError(400, "INVALID_REQUEST", `${name} is not correctly URL-encoded.`);
+  }
+}
+
+/** Removes raw evidence from a bundle: raw bytes never cross a management route (WHC-1 §5). */
+function withoutRaw(bundle: ReproductionBundle): ReproductionBundle {
+  if (!Object.hasOwn(bundle, "raw")) return bundle;
+  const { raw: _raw, ...rest } = bundle;
+  return { ...rest, evidence: { ...rest.evidence, included: false } };
+}
+
+/** The V1.1 operator routes (V1_1_API.md §9). Arguments are validated by validateOperatorRequest, as on every other operator transport. */
+const OPERATOR_ROUTES: readonly Route[] = [
+  { operation: "operator.status", method: "GET", path: "/operator/status", operator: true, run: context => operatorOf(context).status() },
+  {
+    operation: "failures.list", method: "GET", path: "/failures", operator: true, query: ["sourceId", "state", "limit", "cursor"],
+    run: context => {
+      const q = context.query;
+      const args: Record<string, unknown> = {};
+      for (const key of ["sourceId", "state", "cursor"] as const) if (q[key] !== undefined) args[key] = q[key];
+      if (q["limit"] !== undefined) {
+        if (!/^\d{1,3}$/.test(q["limit"])) throw new HttpError(400, "INVALID_REQUEST", "limit must be an integer from 1 to 200.");
+        args["limit"] = Number(q["limit"]);
+      }
+      return operatorOf(context).listFailures(validateOperatorRequest("listFailures", args));
+    }
+  },
+  {
+    operation: "failures.show", method: "GET", path: "/failures/", param: true, operator: true,
+    run: async context => {
+      const request = validateOperatorRequest("showFailure", { failureId: decodeSegment(context.param ?? "", "failureId") });
+      // Never includeRaw here; anything raw the service returns anyway is dropped.
+      const { raw: _raw, ...detail } = await operatorOf(context).showFailure({ failureId: request.failureId });
+      return detail;
+    }
+  },
+  {
+    operation: "failures.export", method: "POST", path: "/failures/export", operator: true,
+    run: async context => {
+      if (isPlainObject(context.body) && Object.hasOwn(context.body, "includeRaw")) {
+        throw new HttpError(400, "INVALID_REQUEST", "Raw evidence is never exported through the management API; use the local CLI.");
+      }
+      const request = validateOperatorRequest("exportFailure", context.body);
+      return withoutRaw(await operatorOf(context).exportFailure({ failureId: request.failureId }));
+    }
+  },
+  {
+    operation: "failures.evaluate", method: "POST", path: "/failures/evaluate", operator: true,
+    run: context => operatorOf(context).evaluate(validateOperatorRequest("evaluate", context.body))
+  },
+  {
+    operation: "failures.redrive", method: "POST", path: "/failures/redrive", operator: true,
+    run: context => operatorOf(context).redrive(validateOperatorRequest("redrive", context.body))
+  },
+  {
+    operation: "sources.retry-current", method: "POST", path: "/sources/retry-current", operator: true,
+    run: context => operatorOf(context).retryCurrent(validateOperatorRequest("retryCurrent", context.body))
+  },
+  {
+    operation: "sources.reassess", method: "POST", path: "/sources/reassess", operator: true,
+    run: context => operatorOf(context).reassess(validateOperatorRequest("reassess", context.body))
+  },
+  {
+    operation: "sources.reopen-circuit", method: "POST", path: "/sources/reopen-circuit", operator: true,
+    run: context => operatorOf(context).reopenCircuit(validateOperatorRequest("reopenCircuit", context.body))
+  }
+  // sources.retire-boundary is deliberately absent: it is a CLI-only action (WHC-1 §4).
+];
 
 const ROUTES: readonly Route[] = [
   { operation: "capabilities", method: "GET", path: "/capabilities", run: () => CAPABILITIES },
@@ -213,10 +302,14 @@ const ROUTES: readonly Route[] = [
       internals.disconnectPreviewSession(requireString(shape(body, ["previewSessionId"])["previewSessionId"], "previewSessionId"));
       return null;
     }
-  }
+  },
+  ...OPERATOR_ROUTES
 ];
 
-/** Every operation this version of the management router implements, in WHC-1 order. */
+/**
+ * Every operation this version of the management router implements, in WHC-1 order. The operator
+ * operations are answered (and reported by discovery) only while the gateway has an operator service.
+ */
 export const IMPLEMENTED_OPERATIONS: readonly WorkbenchOperation[] = Object.freeze(
   WORKBENCH_OPERATIONS.filter(operation => ROUTES.some(route => route.operation === operation))
 );
@@ -232,17 +325,35 @@ export interface RouterOptions {
 
 export type ManagementRouter = (request: IncomingMessage, path: string | null, query: URLSearchParams) => Promise<unknown>;
 
+/** Finds the route for a method and path; exact paths win over pattern routes. */
+function findRoute(method: string | undefined, path: string): { route: Route; param: string | null } | undefined {
+  const exact = ROUTES.find(candidate => candidate.param !== true && candidate.path === path && candidate.method === method);
+  if (exact !== undefined) return { route: exact, param: null };
+  for (const candidate of ROUTES) {
+    if (candidate.param !== true || candidate.method !== method || !path.startsWith(candidate.path)) continue;
+    const segment = path.slice(candidate.path.length);
+    if (segment.length > 0 && !segment.includes("/")) return { route: candidate, param: segment };
+  }
+  return undefined;
+}
+
 /** Builds the router. It returns the operation's data or throws an error for mapError. */
 export function createRouter(options: RouterOptions): ManagementRouter {
   const allowed = new Set<WorkbenchOperation>([...options.operations, "workbench"]);
-  const discovery: WorkbenchDiscovery = Object.freeze({
+  const listed = IMPLEMENTED_OPERATIONS.filter(operation => allowed.has(operation));
+  const operatorOperations = new Set(OPERATOR_ROUTES.map(route => route.operation));
+  // Recomputed per request: the operator operations are reported only while the gateway has an operator.
+  const discovery = (hasOperator: boolean): WorkbenchDiscovery => Object.freeze({
     hostContract: WORKBENCH_HOST_CONTRACT,
-    operations: Object.freeze(IMPLEMENTED_OPERATIONS.filter(operation => allowed.has(operation))),
+    operations: Object.freeze(listed.filter(operation => hasOperator || !operatorOperations.has(operation))),
     limits: Object.freeze({ maxRequestBytes: options.maxBodyBytes })
   });
   return async (request, path, query) => {
-    const route = path === null ? undefined : ROUTES.find(candidate => candidate.path === path && candidate.method === request.method);
-    if (route === undefined) throw new HttpError(404, "INVALID_REQUEST", "Unknown management route.");
+    const found = path === null ? undefined : findRoute(request.method, path);
+    const operator = options.internals.operator();
+    // An operator route without an operator service is not implemented here, the same as an unknown route.
+    if (found === undefined || (found.route.operator === true && operator === null)) throw new HttpError(404, "INVALID_REQUEST", "Unknown management route.");
+    const { route, param } = found;
     if (!allowed.has(route.operation)) throw new HttpError(403, "FORBIDDEN", `The "${route.operation}" operation is not available in this environment.`);
     const values = parseQuery(query, route.query ?? []);
     let body: unknown = null;
@@ -250,8 +361,8 @@ export function createRouter(options: RouterOptions): ManagementRouter {
       if (options.requireWorkbenchHeader && request.headers[WORKBENCH_REQUEST_HEADER.toLowerCase()] !== "1") {
         throw new HttpError(403, "FORBIDDEN", "Requests that change state must carry the X-StreamOtter-Workbench: 1 header.");
       }
-      body = await readJsonBody(request, options.maxBodyBytes);
+      body = await readJsonBody(request, route.operator === true ? Math.min(options.maxBodyBytes, MAX_OPERATOR_BODY_BYTES) : options.maxBodyBytes);
     }
-    return route.run({ internals: options.internals, query: values, body, discovery: () => discovery });
+    return route.run({ internals: options.internals, query: values, body, param, operator, discovery: () => discovery(operator !== null) });
   };
 }
