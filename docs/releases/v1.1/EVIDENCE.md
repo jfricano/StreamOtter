@@ -1,26 +1,26 @@
 # StreamOtter V1.1 — Requirement-to-evidence matrix
 
-**Status:** Tracking table, created October 3, 2026. Every row starts at *planned*. A row moves to *implemented* when code and tests merge, and to *verified* only with a recorded run: the command, environment, commit, and result, linked from [IMPLEMENTATION_LOG.md](./IMPLEMENTATION_LOG.md). Scenario wording is in the [acceptance plan](./V1_1_ACCEPTANCE_PLAN.md); it is not repeated here.
+**Status:** Tracking table, created October 3, 2026. Every row starts at *planned*. A row moves to *implemented* when code and tests merge (*partial* when some of its tiers or cases are still missing, named in the row), and to *verified* only with a recorded run: the command, environment, commit, and result, linked from [IMPLEMENTATION_LOG.md](./IMPLEMENTATION_LOG.md). Scenario wording is in the [acceptance plan](./V1_1_ACCEPTANCE_PLAN.md); it is not repeated here.
 
 Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `pnpm test:kafka`), **crash** (child process killed at a boundary), **browser** (`pnpm test:browser`), **install** (packed artifacts, `pnpm test:install`), **replicated** (multi-broker; required before any broker-failure claim).
 
 | ID | Scenario (short) | Slice | Tiers needed | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| F01 | Existing V1 configuration with no new feature enabled | B (PR 4) | fixture, kafka | planned | |
+| F01 | Existing V1 configuration with no new feature enabled | B (PR 4) | fixture, kafka | implemented | `tests/integration/quarantine-hold.test.ts` (no incident store, V1 pause/resume); the unchanged V1 Kafka suite (`tests/kafka/01`–`07`); run in the log, October 3 |
 | F02 | Unknown action, catch-all skip, integrity-class continuation, … | A (PR 3) | fixture | implemented | `packages/contracts/test/failures.test.ts`, `tests/integration/failure-config.test.ts`, `contracts/v1/type-tests.ts`; run in the log, October 3 |
-| F03 | Invalid JSON under default pause | B (PR 4) | fixture | planned | |
-| F04 | Invalid mapped public payload with valid routing/revision | B (PR 4) | fixture | planned | |
-| F05 | Multi-channel record where one output fails validation | B (PR 4) | fixture | planned | |
-| F06 | Invalid tenant, parameters, revision, output count, or conflicting … | B (PR 4) | fixture | planned | |
-| F07 | Typed transient mapper failure succeeds after retry | B (PR 4) | fixture | planned | |
-| F08 | Arbitrary mapper exception/timeout or transient retry exhausted | B (PR 4) | fixture | planned | |
-| F09 | Broker outage, token denial, or stalled browser | B (PR 4) | fixture, kafka | planned | |
-| F10 | Byte-preserving capture with binary key, invalid UTF-8 value, null … | B (PR 4) | kafka | planned | |
-| F11 | Source record, header, envelope, or local spool exceeds budget | B (PR 4) | fixture, kafka | planned | |
-| F12 | Journal persistence fails before quarantine | B (PR 4) | fixture | planned | |
+| F03 | Invalid JSON under default pause | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
+| F04 | Invalid mapped public payload with valid routing/revision | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
+| F05 | Multi-channel record where one output fails validation | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
+| F06 | Invalid tenant, parameters, revision, output count, or conflicting … | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
+| F07 | Typed transient mapper failure succeeds after retry | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; long-hold membership in `tests/kafka/08-quarantine-hold.test.ts`; run in the log, October 3 |
+| F08 | Arbitrary mapper exception/timeout or transient retry exhausted | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
+| F09 | Broker outage, token denial, or stalled browser | B (PR 4) | fixture, kafka | partial | Unchanged V1 tests (`tests/kafka/02`, `04`, `06`; `tests/integration/access.test.ts`, `flow-control.test.ts`). Infrastructure failures never reach the failure service; no V1.1-specific test yet; run in the log, October 3 |
+| F10 | Byte-preserving capture with binary key, invalid UTF-8 value, null … | B (PR 4) | kafka | implemented | `tests/kafka/08-quarantine-hold.test.ts`; run in the log, October 3 |
+| F11 | Source record, header, envelope, or local spool exceeds budget | B (PR 4) | fixture, kafka | implemented | `tests/integration/quarantine-hold.test.ts`, `packages/gateway/test/failure-service.test.ts`; spool and journal limits in `packages/gateway/test/journal.test.ts`; run in the log, October 3 |
+| F12 | Journal persistence fails before quarantine | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts` (fault-injected store); full and failed journals in `packages/gateway/test/journal.test.ts`; run in the log, October 3 |
 | F13 | Missing topic, denied ACL, oversized broker message, or … | C (PR 5) | kafka | planned | |
-| F14 | Quarantine accepted but acknowledgment lost | B (PR 4) | kafka | planned | |
-| F15 | Crash after evidence acknowledgment, before original commit | B (PR 4) | crash, kafka | planned | |
+| F14 | Quarantine accepted but acknowledgment lost | B (PR 4) | kafka | implemented | `packages/gateway/test/failure-service.test.ts` (scripted unknown, then acknowledged). A lost broker acknowledgment is not reproducible on a single local broker; run in the log, October 3 |
+| F15 | Crash after evidence acknowledgment, before original commit | B (PR 4) | crash, kafka | partial | `tests/integration/failure-journal.test.ts` and `tests/kafka/08-quarantine-hold.test.ts` (graceful restart); journal survival after SIGKILL in `packages/gateway/test/journal.test.ts`. No gateway crash-tier test yet; run in the log, October 3 |
 | F16 | Crash after prepared recovery barrier, before source commit | C (PR 5) | crash, kafka | planned | |
 | F17 | Commit succeeded but response/local final write lost | C (PR 5) | crash, kafka | planned | |
 | F18 | Stop, rebalance, or stale batch during write/guard/commit preparation | C (PR 5) | kafka | planned | |
@@ -32,10 +32,10 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 | F24 | Two incidents affect different unknown entities/audiences | C (PR 5) | fixture | planned | |
 | F25 | Snapshot/mapper/guard completes after epoch change, revoke, stop, … | C (PR 5) | fixture | planned | |
 | F26 | Five distinct automatic advances, sixth within window; duplicate … | C (PR 5) | fixture, crash | planned | |
-| F27 | Held source record expired or group offset is out of range | B (PR 4) | kafka | planned | |
+| F27 | Held source record expired or group offset is out of range | B (PR 4) | kafka | implemented | `tests/kafka/08-quarantine-hold.test.ts` (group offset moved by hand); `packages/gateway/test/failure-service.test.ts`; run in the log, October 3 |
 | F28 | Raw quarantine expired before a later advance or evaluation | D (PRs 2, 6) | fixture | planned | |
-| F29 | Journal missing/corrupt/incompatible, wrong source generation, … | B (PR 4) | fixture | planned | |
-| F30 | Second gateway opens same journal; external group position moved | B (PR 4) | fixture, kafka | planned | |
+| F29 | Journal missing/corrupt/incompatible, wrong source generation, … | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts` (generation), `tests/integration/failure-journal.test.ts` (missing journal); corrupt and incompatible journals in `packages/gateway/test/journal.test.ts`. Topic recreation is not detected yet; run in the log, October 3 |
+| F30 | Second gateway opens same journal; external group position moved | B (PR 4) | fixture, kafka | implemented | `tests/integration/failure-journal.test.ts` (second gateway), `tests/kafka/08-quarantine-hold.test.ts` (external movement); run in the log, October 3 |
 | F31 | Evaluate a retained original | D (PRs 2, 6) | fixture | planned | |
 | F32 | Expired plan, changed config/build/evidence/revision, or changed … | D (PRs 2, 6) | fixture | planned | |
 | F33 | Approved gateway-local reprocessing of one already-skipped valid … | D (PRs 2, 6) | fixture | planned | |

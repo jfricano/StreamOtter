@@ -23,6 +23,12 @@ export type QuarantineOutcome =
   | { kind: "unknown"; reason: string }
   | { kind: "failed"; reason: string };
 
+/** What the failure service needs from a quarantine destination; KafkaQuarantineWriter is the only production one. */
+export interface QuarantineWriter {
+  publish(write: QuarantineWrite): Promise<QuarantineOutcome>;
+  stop(): Promise<void>;
+}
+
 export interface QuarantineTopicReport {
   topic: string;
   clusterId: string;
@@ -55,7 +61,7 @@ function brokerErrorType(error: unknown): string | null {
  * automatic topic creation, a 10-second request deadline and two retries
  * (ADR-15A §5). A timeout is reported as unknown, never as success.
  */
-export class KafkaQuarantineWriter {
+export class KafkaQuarantineWriter implements QuarantineWriter {
   readonly topic: string;
   readonly #connection: ResolvedKafkaConnection;
   readonly #logger: GatewayLogger;

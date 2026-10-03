@@ -8,7 +8,7 @@ import { sourceRecordId } from "../runtime/identity.ts";
 import { nowIso, sha256Hex } from "../runtime/util.ts";
 import type { ProcessOutcome, SourceAdapter, SourceInput } from "../sources/types.ts";
 import { evidenceHash, keyAndHeaderBytes, MAX_CAPTURED_KEY_AND_HEADER_BYTES } from "./evidence.ts";
-import type { KafkaQuarantineWriter, QuarantineOutcome } from "./quarantine.ts";
+import type { QuarantineOutcome, QuarantineWriter } from "./quarantine.ts";
 import type { EvidenceSummary, IncidentEventName, IncidentRecord, IncidentStore, RawEvidence } from "./store.ts";
 
 /** What the failure service needs to know about one source. */
@@ -43,7 +43,7 @@ export class FailureService {
   readonly store: IncidentStore;
   readonly #config: ProjectConfig;
   readonly #logger: GatewayLogger;
-  readonly #quarantine: KafkaQuarantineWriter | null;
+  readonly #quarantine: QuarantineWriter | null;
   readonly #fingerprints: IncidentRecord["fingerprints"];
   readonly #maxSourceRecordBytes: number;
   readonly #chains = new Map<string, Promise<void>>();
@@ -58,7 +58,7 @@ export class FailureService {
     config: ProjectConfig;
     store: IncidentStore;
     logger: GatewayLogger;
-    quarantine: KafkaQuarantineWriter | null;
+    quarantine: QuarantineWriter | null;
     configFingerprint: string;
     handlerBuildId: string;
     maxSourceRecordBytes: number;

@@ -1,6 +1,6 @@
 # StreamOtter V1.1 — API specification (draft)
 
-**Status:** Draft revision 0.1, October 3, 2026. This is the interface contract the V1.1 slices build against. It turns the approved [specification](./V1_1_SOURCE_FAILURE_SPEC.md) and [ADR-15A/B/C](./adr/) into concrete declarations. Each section is marked with the slice that ships it; a section becomes normative when its slice merges, and the declarations in `@streamotter/contracts` then govern over this text. Nothing here is implemented yet.
+**Status:** Draft revision 0.1, October 3, 2026. This is the interface contract the V1.1 slices build against. It turns the approved [specification](./V1_1_SOURCE_FAILURE_SPEC.md) and [ADR-15A/B/C](./adr/) into concrete declarations. Each section is marked with the slice that ships it; a section becomes normative when its slice merges, and the declarations in `@streamotter/contracts` then govern over this text. Slices A and B are implemented on their branches; slice notes below record where the implementation refined this text.
 
 **Rules for this document.** It adds; it does not restate. Behavior the spec or an ADR already decides is linked, not repeated. Where this draft fills a gap the spec and ADRs leave open, the row in §11 says so, so a reviewer can see every new decision in one place.
 
@@ -62,7 +62,7 @@ Validation (F02), all reported as `ConfigIssue`s with path and code:
 
 Validation that needs handlers or the host happens at gateway construction (§4), not in `validateProjectConfig`, which stays pure and browser-safe.
 
-Slice A note: until slices B and C merge, gateway construction also refuses `quarantine-hold`, `quarantine-resync` and transient retries as "not supported by this gateway build yet", so a configuration is never accepted and silently run as `pause`.
+Slice A note: until slices B and C merge, gateway construction also refuses `quarantine-hold`, `quarantine-resync` and transient retries as "not supported by this gateway build yet", so a configuration is never accepted and silently run as `pause`. Slice B note: `quarantine-hold` and transient retries are accepted; `quarantine-resync` is still refused.
 
 Fixture sources may use quarantine policies in development. Their evidence goes to the local incident store, labeled "fixture evidence, not Kafka" everywhere it appears (§9). Production rejects fixture sources already.
 
@@ -154,6 +154,15 @@ Construction-time checks, each a `CONFIG_INVALID` with an `issues` list:
 
 Development mode without `stateDirectory` uses an in-memory incident store, labeled `"memory"` in status. It is never durable and says so.
 
+Slice B note (normative for `stateDirectory`, `handlerBuildId` and the checks above except `operatorSocket` and `health`):
+
+- Quarantining Kafka sources must share one connection profile, because quarantine writes go to one cluster.
+- The Node check applies whenever `stateDirectory` is set with `failureHandling`, since that opens the journal.
+- `handlerBuildId` must be 1 to 128 characters.
+- `DevelopmentOptions.fixtures` records may be `{ key, raw: string }`. Raw text is decoded exactly like broker bytes, so invalid JSON can be rehearsed (spec §10).
+- Startup opens the journal (`openJournal`) and claims the configured sources. It refuses a missing journal (pointing at `streamotter init --failures`), a journal another gateway holds, and an open incident from another source generation.
+- With a quarantining Kafka source, startup also checks that the quarantine topic exists and that its `max.message.bytes` is at least `maxSourceRecordBytes` plus 80 KiB.
+
 ## 5. Incidents (slices A, B)
 
 ### 5.1 Failure classes (ADR-15B §1; normative in slice A)
@@ -167,6 +176,8 @@ export type FailureClass =
 Where each class is raised, as implemented: `invalid-json` for UTF-8 decode, JSON parse or nesting failures (and a fixture value that isn't JSON); `tombstone` and `oversize` at validation; `mapper-error`, `mapper-timeout` and `mapper-transient` (a `TransientMappingError`, matched by brand) from `map`; `routing-invalid` for a non-array result, too many outputs, a non-object output, an unexpected field, an invalid tenant, parameters or revision, data that isn't JSON, and a frame above `maxDataFrameBytes`; `payload-schema` only when routing passed and the data fails the channel's payload schema; `revision-conflict` for an equal revision with different data.
 
 Only `invalid-json` and `payload-schema` can take a quarantine policy. Infrastructure failures (broker outage, rebalance, shutdown, journal or quarantine failure) are not failure classes; they keep V1's outage handling and never create a skippable incident (spec §4).
+
+Slice B note: the pause outcome carries the class, stage, channel and a bounded diagnosis to the failure service. A separate internal outcome holds a source whose Kafka position moved past a held record without opening a new incident (F27, F30).
 
 ### 5.2 Incident model
 
@@ -220,6 +231,8 @@ export interface IncidentEvent {
 ```
 
 The `event` names are spec §11.2's structured lifecycle events. They are emitted to the gateway logger as `{ failureId, sourceId, event }` with metadata only.
+
+Slice B note: these operator-facing shapes ship with slice D. The journal's internal record (`IncidentRecord` in `packages/gateway/src/failures/store.ts`) has the same fields. It differs in two ways: `impact` and `nextAction` are derived rather than stored, and `progress` names the retry states `"retrying"` and `"processed"` (a held record that processed on retry) instead of `"retried"`. Slice D maps the record onto `IncidentSummary`.
 
 ## 6. Operator service (slices C, D)
 
