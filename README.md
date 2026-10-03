@@ -17,6 +17,8 @@ StreamOtter gets state from Kafka to the browser in a way you can trust. Browser
 
 It is a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI with a local workbench, and a TypeScript generator for your channels. It continues KafkaSocks' goal of simpler Kafka-to-frontend integration.
 
+The gateway consumes Kafka and runs your application-owned mapping and snapshot handlers; the SDK handles browser subscriptions, receipts, and recovery while your frontend renders the state. Live subscriptions require a compatible running gateway over the network, even when the frontend installs only `@streamotter/client`. Contracts and local validation work independently. See [runtime and package requirements](./docs/guides/existing-app.md#runtime-and-package-requirements).
+
 > **Status: release candidate.** `0.1.0-rc` versions are [on npm](https://www.npmjs.com/org/streamotter). The API may still change before `0.1.0`. What is verified, how, and the known limitations: [implementation status](./docs/IMPLEMENTATION_STATUS.md).
 
 ## Install

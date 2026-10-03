@@ -5,7 +5,7 @@
 | Guide | |
 | --- | --- |
 | [Getting started](./guides/getting-started.md) | Install from npm, scaffold, use the workbench, and build a live page |
-| [Add live state to an existing app](./guides/existing-app.md) | Channels, schemas, revisions, handlers, the browser SDK, access changes, and local development |
+| [Add live state to an existing app](./guides/existing-app.md) | Component responsibilities and runtime requirements, channels, handlers, the browser SDK, access changes, and local development |
 | [Connect to Kafka](./guides/kafka.md) | Topic requirements, TLS and SASL, progress, bad records, crashes, diagnostics, and what is verified |
 | [Run in production](./DEPLOYMENT.md) | `streamotter start`, supervision, reverse proxies, limits, and programmatic use |
 | [Troubleshooting](./guides/troubleshooting.md) | Symptoms, causes, and fixes |

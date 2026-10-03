@@ -14,6 +14,8 @@ The all-in-one [`streamotter`](https://www.npmjs.com/package/streamotter) packag
 
 Requires Node.js 24 or later. It installs [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) and the workbench assets. Install it as a regular dependency, because `streamotter start` runs in production.
 
+The CLI provides tooling and launches the gateway; data delivery happens in the gateway it launches. Frontend applications use the browser SDK for subscriptions and recovery. The local Workbench provides configuration, preview, and inspection during development and is not required for production subscriptions. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements).
+
 ## From zero to a live channel
 
 ```bash

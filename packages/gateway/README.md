@@ -16,6 +16,12 @@ Requires Node.js 24 or later. ESM only, with TypeScript declarations included. K
 
 Most projects run the gateway through [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) (`streamotter dev` / `streamotter start`), which loads a `streamotter.json` and a handler module. The same pieces work programmatically, as shown below.
 
+## What the gateway owns
+
+The gateway is the Kafka consumer and the server side of StreamOtter's browser protocol. It runs your `map` handlers to produce full application state, then validates and synchronizes delivery through snapshots, revision ordering, and bounded queues. Your application supplies business rules, aggregation, authentication, authorization, and an authoritative `snapshot`; the gateway does not automatically create a current-state store from an arbitrary event feed.
+
+Run it as a service with the CLI, or embed it in an existing Node.js process with `createGateway`. The source and frontend can live on other hosts. Browser subscriptions use the SDK, which requires this running service but does not install the gateway package. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements).
+
 ## Configuration
 
 `streamotter.json` declares sources, JSON schemas, and channels. It never contains code or resolved secrets:
