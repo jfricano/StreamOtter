@@ -39,7 +39,7 @@ export function usesQuarantine(config: ProjectConfig, sourceId: string): boolean
  */
 export function failureOptionIssues(
   config: ProjectConfig,
-  options: { mode: "development" | "production"; stateDirectory?: unknown; handlerBuildId?: unknown },
+  options: { mode: "development" | "production"; stateDirectory?: unknown; handlerBuildId?: unknown; operatorSocket?: unknown },
   nodeVersion: string = process.versions.node
 ): string[] {
   const issues: string[] = [];
@@ -49,6 +49,10 @@ export function failureOptionIssues(
   if (options.handlerBuildId !== undefined
     && (typeof options.handlerBuildId !== "string" || options.handlerBuildId.length === 0 || options.handlerBuildId.length > 128)) {
     issues.push("handlerBuildId must be a string of 1 to 128 characters");
+  }
+  if (options.operatorSocket !== undefined && typeof options.operatorSocket !== "boolean") issues.push("operatorSocket must be true or false");
+  if (options.operatorSocket === true && (options.stateDirectory === undefined || config.failureHandling === undefined)) {
+    issues.push("operatorSocket requires stateDirectory and failureHandling: the socket lives in the state directory and serves the failure operator API");
   }
   const quarantined = Object.keys(config.sources).filter(sourceId => usesQuarantine(config, sourceId));
   if (quarantined.length > 0 && options.mode === "production" && options.stateDirectory === undefined) {
