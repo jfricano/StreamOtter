@@ -5,7 +5,7 @@
 
 ## Context
 
-This is the riskiest part of V1.5. Continuing past a quarantined record is only honest if the application can show that its snapshots already cover whatever that record would have changed. Two things in the current code shape the design.
+This is the riskiest part of V1.1. Continuing past a quarantined record is only honest if the application can show that its snapshots already cover whatever that record would have changed. Two things in the current code shape the design.
 
 **Classification is coarser than the taxonomy.** The spec's policy table distinguishes "invalid JSON" from "public payload violates its schema" from "invalid tenant/params/revision". In code, all of these come back as `INVALID_PAYLOAD`, separated only by the trace stage (`validate` or `map`). A schema violation and a bad `tenantId` both come out of `#buildOutput` as a plain string. A tombstone and an oversize record are also `INVALID_PAYLOAD` at `validate`. A policy keyed on the public error code would therefore let an integrity failure (bad revision, bad tenant) be quarantined and skipped. That is exactly what INV-03 forbids.
 
@@ -103,5 +103,5 @@ The order-dashboard example gets a guard backed by a watermark column that its s
 
 - Slice A grows by the `FailureClass` refactor. Without it the policy table can't be implemented safely.
 - `contracts/v1/api.ts` and the generator gain additive types. `contracts/v1/type-tests.ts` needs cases for them.
-- If the reference guard turns out impractical to write honestly, that's the signal to ship V1.5 as quarantine-hold plus retry only (owner decision D2 in the action plan).
+- If the reference guard turns out impractical to write honestly, that's the signal to ship V1.1 as quarantine-hold plus retry only (owner decision D2 in the action plan).
 - Tests F20–F26 apply, plus: an integrity failure under a resync policy stays held; a snapshot without the acknowledgment never reaches `live`; a subscription created after the incident needs the acknowledgment.

@@ -8,7 +8,7 @@ Revision 0.1 was the submitted planning supplement. Revision 0.2 keeps its produ
 
 - **Mission and audience fit.** The [founding document](../FOUNDING.md) centers Kafka-to-live-application developers and keeps arbitrary stream processing out of the product. Observing warehouses such as BigQuery reaches a different audience. The first increment now verifies boundaries StreamOtter can already observe (Kafka topics and its own delivery leg). A non-Kafka sink is an explicit owner decision, not a default (see [Fit with the product boundary](#fit-with-the-product-boundary)).
 - **Dependencies split.** V2.0 is the only hard dependency. V2.1 and V2.2 constrain or improve the design but don't block a single-gateway, JSON-only first increment.
-- **V1.5 relationship corrected.** V1.5 quarantine covers state channels only. For event channels, V2 holds on a bad record and records a visible history gap. Both are now named as reasons an event may not reach the first boundary.
+- **V1.1 relationship corrected.** V1.1 quarantine covers state channels only. For event channels, V2 holds on a bad record and records a visible history gap. Both are now named as reasons an event may not reach the first boundary.
 - **Authority and security.** Journey evidence is management-plane data under the existing management authorization, never delivered on application channels. Destinations are named connection profiles, never arbitrary URLs, matching `POST /source-checks` in the [V1 API](../V1_API.md).
 - **Observation must be read-only.** Watching a topic or sink must not change the progress of the application's own consumers or StreamOtter's delivery sources.
 - **Numeric comparison.** The example's `scale` by `0.01` would produce floating-point mismatches (for example `1999 * 0.01` is `19.990000000000002`). Numeric conversions now declare exact decimal semantics.
@@ -19,7 +19,7 @@ Revision 0.1 was the submitted planning supplement. Revision 0.2 keeps its produ
 
 Event journey verification belongs in **V2**, provisionally as **V2.3**, after the existing V2.0 to V2.2 increments.
 
-The capability asks a different question from V1 and V1.5:
+The capability asks a different question from V1 and V1.1:
 
 > Given an accepted source event and declared expectations for downstream boundaries, can StreamOtter show whether the corresponding event arrived where expected, within the expected window, with only the transformations the developer declared?
 
@@ -31,7 +31,7 @@ It needs:
 
 It does **not** depend on V3 commands, team workspaces, deployment promotion, or the plain WebSocket adapter. Putting it in V3 would couple a read-only verification workflow to unrelated write and governance features.
 
-It does not belong in V1.5 either. V1.5 is deliberately about source-failure containment and controlled recovery for state channels. Journey verification follows accepted events across several independently observed boundaries and must not grow the V1.5 incident journal into a general event store.
+It does not belong in V1.1 either. V1.1 is deliberately about source-failure containment and controlled recovery for state channels. Journey verification follows accepted events across several independently observed boundaries and must not grow the V1.1 incident journal into a general event store.
 
 ## Product job
 
@@ -48,7 +48,7 @@ This is not a general stream processor, ETL platform, or data-quality warehouse.
 
 ## Fit with the product boundary
 
-The founding audience is a JavaScript or TypeScript developer on a team that already uses Kafka and needs live information in a web application. The founding document also separates the facts an event passes through (read from Kafka, accepted, sent, acknowledged), and V1.5 INV-07 keeps each observation a distinct fact. Journey verification extends that same discipline upstream: each declared boundary is its own observation.
+The founding audience is a JavaScript or TypeScript developer on a team that already uses Kafka and needs live information in a web application. The founding document also separates the facts an event passes through (read from Kafka, accepted, sent, acknowledged), and V1.1 INV-07 keeps each observation a distinct fact. Journey verification extends that same discipline upstream: each declared boundary is its own observation.
 
 So the proposal is staged:
 
@@ -154,7 +154,7 @@ A result is evidence, not a claim of universal pipeline correctness. Proposed st
 
 `inconclusive` is a first-class result. The product prefers uncertainty over false certainty.
 
-A result for an event that never reached the first boundary should say why when StreamOtter knows: a V1.5 quarantine record (state-channel sources) or a V2 history gap (event-channel sources). Neither record becomes journey history.
+A result for an event that never reached the first boundary should say why when StreamOtter knows: a V1.1 quarantine record (state-channel sources) or a V2 history gap (event-channel sources). Neither record becomes journey history.
 
 ## Configuration direction
 
@@ -240,7 +240,7 @@ A verification run is bounded, against:
 
 - one selected event;
 - a small explicit sample;
-- a deterministic fixture scenario (extending the local fixtures, as V1.5 did for quarantine).
+- a deterministic fixture scenario (extending the local fixtures, as V1.1 did for quarantine).
 
 Continuous production-wide auditing is not part of the first increment.
 
@@ -271,17 +271,17 @@ The Beyond V3 candidate "stream transformations and joins" stays separate. V2.3 
 
 ### Authority and evidence
 
-Journey configuration and evidence are management-plane data. They use the existing management authorization (and V1.5 operator authority where it applies) and are never exposed on application channels to browser clients. V3.1 workspaces and roles would later scope who can configure journeys and inspect evidence.
+Journey configuration and evidence are management-plane data. They use the existing management authorization (and V1.1 operator authority where it applies) and are never exposed on application channels to browser clients. V3.1 workspaces and roles would later scope who can configure journeys and inspect evidence.
 
-Evidence retention follows the roadmap's rule that payload capture is separate from metadata retention. By default a result keeps metadata and per-field outcomes. Retaining payload values for comparison is an explicit option, with hashing or redaction per field, as with V1.5 full evidence capture.
+Evidence retention follows the roadmap's rule that payload capture is separate from metadata retention. By default a result keeps metadata and per-field outcomes. Retaining payload values for comparison is an explicit option, with hashing or redaction per field, as with V1.1 full evidence capture.
 
 ## Relationship to existing increments
 
-### V1 and V1.5
+### V1 and V1.1
 
 No dependency changes for state-only users. Journey verification is capability-gated and absent unless configured. A V1 user never picks up a database or sink connector by upgrading.
 
-V1.5 quarantine evidence may explain why an event never became eligible for a journey, but the failure journal is not journey history.
+V1.1 quarantine evidence may explain why an event never became eligible for a journey, but the failure journal is not journey history.
 
 ### V2.0
 

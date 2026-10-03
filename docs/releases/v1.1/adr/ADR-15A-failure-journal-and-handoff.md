@@ -7,7 +7,7 @@
 
 V1 already does most of what the draft calls "hold": any failure in `#process` returns `{ kind: "pause" }`, the adapter pauses every topic of the source and seeks the failing partition back to the record (`kafka.ts` `#pauseAt`), and `#setSourceStatus(paused)` moves every subscription on the source to `waiting-source`/`stale` (`subscription.ts` `onSourceUnavailable`). Nothing can reach `live` again until the source is ready. `resumeSource` resumes without re-seeking and retries the same record.
 
-What V1.5 adds is evidence, a durable record of what happened, and a controlled way to move past the record. The questions are where the slow work runs, what stores it, and how the offset moves.
+What V1.1 adds is evidence, a durable record of what happened, and a controlled way to move past the record. The questions are where the slow work runs, what stores it, and how the offset moves.
 
 ## Decision
 

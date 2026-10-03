@@ -2,13 +2,15 @@
 
 **Status:** evidence ready · September 29, 2026 · Packet R01 of the [research execution plan](./RESEARCH_EXECUTION_PLAN.md)
 
+**Naming update — October 2, 2026:** V1.5 below is the historical label at the recorded baseline; the same planned increment is now V1.1 in `docs/releases/v1.1/`. This does not rewrite the historical evidence.
+
 ## Baseline delta
 
 The report inspected `7b40678` (September 27, 2026). Since then, `main` has changed documentation only:
 
 | Change | Where |
 | --- | --- |
-| V1.5 specification 1.0 with ADR-15A/B/C | `docs/releases/v1.5/` (PRs #4, #5) |
+| V1.5 specification 1.0 with ADR-15A/B/C | `docs/releases/v1.1/` (PRs #4, #5) |
 | Roadmap: current-status note and V1.5 row | `docs/API_AND_FEATURE_ROADMAP.md` (PR #5) |
 | Roadmap: V1.5 consequences and strategy ideas for V2/V3 | PR #6 (open at the time of writing) |
 

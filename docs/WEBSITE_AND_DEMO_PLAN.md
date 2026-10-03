@@ -2,6 +2,8 @@
 
 September 25, 2026 · A separate project, in progress; not part of this repository
 
+**Planning ownership — October 2, 2026:** Active site/demo requirements live in [Lontra Creek](https://github.com/jfricano/lontra-creek), at `docs/PLAN.md` and `docs/releases/v1.1/`. Its V1.1 plan replaces the existing `/workbench/` page with the actual published workbench sandbox, without another page or navigation item; `/playground/` remains the quick validator. This document preserves the original relationship and launch gates. Native package plans live in this repository's [release index](releases/README.md), with independent release decisions.
+
 ## Decision
 
 The home site and live demo are their own project, **Lontra Creek**, to be published at `streamotter.app`. It is a fictional river-otter study: a simulated watershed with gauge stations, tagged otters, camera traps, and protected den sites, whose data moves through real Kafka, a StreamOtter gateway in production mode, and the browser SDK. Its pages cover the product, a guided walkthrough, a Failure Lab where each visitor breaks an isolated setup on purpose, an in-browser configuration playground, the workbench, and failure handling.

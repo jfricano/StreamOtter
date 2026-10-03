@@ -1,19 +1,21 @@
-# StreamOtter V1.5 — Contain, explain, recover
+# StreamOtter V1.1 — Contain, explain, recover
+
+**Owner amendment — October 1, 2026; reconciled October 2:** The next planned increment is **V1.1**, renamed from V1.5. The approved revision 1.0 source-failure specification and September 29 decisions remain in force. ADR-15A/B/C keep their stable decision IDs. This milestone label does not change npm or protocol versions. Lontra Creek separately owns replacing its existing `/workbench/` tour with the actual workbench UI in an isolated synthetic visitor sandbox; no new page is added.
 
 ## Product and behavioral specification
 
-**Prepared for:** Jason Fricano / StreamOtter  
-**Date:** September 28, 2026 · revised September 29, 2026  
-**Document revision:** 1.0: approved by the owner, September 29, 2026. Not yet implemented.  
-**Inspected baseline:** `jfricano/StreamOtter@7b406780dd52c921cf88a98834e81e1677fc4a8d`  
-**Headline feature:** Native source-failure policies, durable quarantine, and controlled single-record reprocessing.  
-**Companions:** `V1_5_ACCEPTANCE_PLAN.md`, `V1_5_IMPLEMENTATION_HANDOFF.md`, and [`adr/`](./adr/).
+**Prepared for:** Jason Fricano / StreamOtter\
+**Date:** September 28, 2026 · revised September 29, 2026\
+**Document revision:** 1.0: approved by the owner, September 29, 2026. Not yet implemented.\
+**Inspected baseline:** `jfricano/StreamOtter@7b406780dd52c921cf88a98834e81e1677fc4a8d`\
+**Headline feature:** Native source-failure policies, durable quarantine, and controlled single-record reprocessing.\
+**Companions:** `V1_1_ACCEPTANCE_PLAN.md`, `V1_1_IMPLEMENTATION_HANDOFF.md`, and [`adr/`](./adr/).
 
 > A bad Kafka record should have an explicit fate, an inspectable explanation, and a safe recovery path. Neither putting it in quarantine nor advancing an offset establishes that a browser view is correct.
 
 ### Authority and evidence
 
-This document proposes the V1.5 increment requested by the product owner. It does not claim implementation, executed tests, release approval, or changes to a repository. Once approved, its explicit additions refine V1 source-failure behavior; all other V1 contracts remain in force. The founding document retains mission authority, the roadmap retains sequencing authority, and public declarations must match the approved behavioral specification. Product milestone **V1.5 is not automatically package version 1.5.0 or protocol version 1.5**.
+This document proposes the V1.1 increment requested by the product owner. It does not claim implementation, executed tests, release approval, or changes to a repository. Once approved, its explicit additions refine V1 source-failure behavior; all other V1 contracts remain in force. The founding document retains mission authority, the roadmap retains sequencing authority, and public declarations must match the approved behavioral specification. Product milestone **V1.1 is not automatically package version 1.1.0 or protocol version 1.1**.
 
 Repository facts are marked **Baseline** and linked to inspected sources. Requirements, defaults, interface sketches, and acceptance criteria below are **proposed design**, not existing APIs. The final Future Strategy research package remains advisory background; this specification supplements it rather than replacing it. Sources and review limits appear in §18.
 
@@ -38,13 +40,13 @@ Revision 0.1 was written from the repository's documents. Revision 0.2 checks it
 
 The primary user remains a JavaScript/TypeScript application team already using Kafka to deliver current-state web views. The operational user is the engineer diagnosing a stalled source, not a business user asking to replay transactions. [P1]
 
-**V1.5 outcome:** The engineer can identify a failing record, distinguish data defects from integrity or infrastructure failures, preserve permitted evidence, choose an allowed response, and verify separately what happened to source progress and application synchronization.
+**V1.1 outcome:** The engineer can identify a failing record, distinguish data defects from integrity or infrastructure failures, preserve permitted evidence, choose an allowed response, and verify separately what happened to source progress and application synchronization.
 
 A representative journey is: a malformed order update pauses intake; the workbench identifies the failing stage; the configured policy saves the record to quarantine; an application recovery guard either permits snapshot-based continuation or keeps the source held; the engineer fixes the integration, evaluates the stored record, and deliberately retries or reprocesses it. The interface never replaces “unknown” with “fixed.”
 
 ### In scope
 
-| Capability | V1.5 commitment |
+| Capability | V1.1 commitment |
 | --- | --- |
 | Failure policy | Per-source, closed-set policies; legacy pause default; bounded retry for explicitly transient mapper failures; quarantine-and-hold; guarded quarantine-and-resynchronize. |
 | Quarantine | One first-class Kafka sink on the existing cluster; protected evidence; stable incident identity; durable write-before-offset rules; bounded local incident journal. |
@@ -58,7 +60,7 @@ A representative journey is: a malformed order update pauses intake; the workben
 
 No silent `ignore`, automatic bulk replay, edited-payload publication, arbitrary Kafka-topic publishing, scheduled retry queues, business-side-effect execution, or general dead-letter processing service. No durable browser event history, SDK checkpoints, multi-gateway coordination, new browser transport, Schema Registry, team permissions, hosted service, or AI-driven remediation. Those capabilities retain their existing later-release boundaries. [P2]
 
-V1.5 retains **one gateway per project, one configured Kafka cluster, JSON full-state channels, and Socket.IO over WebSocket**. A Kafka quarantine topic is failure evidence, not the V2 delivery store. Its existence creates no promise that missed browser events can be replayed.
+V1.1 retains **one gateway per project, one configured Kafka cluster, JSON full-state channels, and Socket.IO over WebSocket**. A Kafka quarantine topic is failure evidence, not the V2 delivery store. Its existence creates no promise that missed browser events can be replayed.
 
 ## 2. Baseline and intentional changes
 
@@ -68,7 +70,7 @@ V1.5 retains **one gateway per project, one configured Kafka cluster, JSON full-
 
 **Baseline:** The internal adapter passes value bytes, a decoded key, and position, but not the full raw key/header/timestamp evidence required here. Extending that capture boundary is implementation work, not an already available feature. [P5]
 
-**Intentional changes:** V1.5 introduces opt-in persistent failure handling, controlled record disposition, narrowly scoped local operations, and optional read-only health probes. It does not enable V1's development management interface in production. Existing configurations without these options retain their source-failure semantics and do not require writable storage, a quarantine topic, or an additional producer.
+**Intentional changes:** V1.1 introduces opt-in persistent failure handling, controlled record disposition, narrowly scoped local operations, and optional read-only health probes. It does not enable V1's development management interface in production. Existing configurations without these options retain their source-failure semantics and do not require writable storage, a quarantine topic, or an additional producer.
 
 ## 3. Non-negotiable invariants
 
@@ -99,7 +101,7 @@ Classification is performed by trusted runtime stages. Do not choose a policy by
 | Mapper explicitly signals a transient dependency failure | Pause | Bounded retry of original record; exhaustion pauses. Evidence capture is allowed. |
 | Arbitrary mapper exception or timeout | Pause | Quarantine evidence may be captured, but no automatic skipping. |
 | Invalid tenant/parameters/revision, inconsistent equal revisions, excess mapping output, or partial admission detected | Pause | Evidence and repair only. No continuation override. |
-| Unsupported tombstone, input too large, unknown decode format | Pause | Bounded metadata/evidence when possible; no automatic skipping in V1.5. |
+| Unsupported tombstone, input too large, unknown decode format | Pause | Bounded metadata/evidence when possible; no automatic skipping in V1.1. |
 | Broker/network/authentication failure, lost assignment, shutdown, journal/disk failure, quarantine unavailable | Existing outage/hold behavior | Bounded infrastructure recovery only; never classify the outage as a bad record to discard. |
 | Authorization failure or slow browser | Existing V1 access/flow-control behavior | Not a source DLQ event. Preserve existing isolation and overload handling. |
 
@@ -221,15 +223,15 @@ The result reports current validation, possible routing identities as privileged
 
 *(0.3: the mechanism in this section is replaced by ADR-15C §5, accepted by the owner: re-evaluate the original bytes and admit at a record boundary through the normal revision filter, without invalidating live epochs. Where the paragraphs below mention invalidating epochs or a fresh synchronization, ADR-15C §5 governs.)*
 
-For an already-advanced quarantined record, an operator may approve the exact dry-run plan. V1.5 redrive means **re-evaluating the original bytes through StreamOtter's current mapping and state-delivery rules**, not publishing them back into the application's original Kafka topic. This avoids triggering unrelated consumer business effects or inserting an old event behind newer source records.
+For an already-advanced quarantined record, an operator may approve the exact dry-run plan. V1.1 redrive means **re-evaluating the original bytes through StreamOtter's current mapping and state-delivery rules**, not publishing them back into the application's original Kafka topic. This avoids triggering unrelated consumer business effects or inserting an old event behind newer source records.
 
-Require an unexpired plan, the same verified source generation, unchanged contract/build fingerprints, complete evidence, replay-safe handlers, and no unresolved source-integrity fault. Re-evaluate on execution; if mapped output changes, invalidate the plan. No editing of payloads or routing destinations is permitted in V1.5.
+Require an unexpired plan, the same verified source generation, unchanged contract/build fingerprints, complete evidence, replay-safe handlers, and no unresolved source-integrity fault. Re-evaluate on execution; if mapped output changes, invalidate the plan. No editing of payloads or routing destinations is permitted in V1.1.
 
 Serialize with the source at a record boundary; invalidate affected live epochs and register bounded capture for the fresh synchronization. Submit validated reprocessed full states through the normal revision/routing/authorization path, using original source identity and current compatible channel identity. Fresh authoritative snapshots, followed by the normal drain, determine the visible result. Never advance or rewind the ingestion consumer for this action, and never insert directly into client state or a diagnostic socket.
 
 Old full states can legitimately be superseded by newer snapshots. Equal-revision conflicts still hard-stop; access remains current; account changes and late results cannot resurrect data. Record `reprocessed`, `superseded`, `failed`, or `unknown`, with admission/synchronization observations separately. Even `reprocessed` does not mean business completion or universal browser delivery.
 
-Persist operation intent before action. The same completed operation ID returns its recorded result. If a crash leaves the action's result ambiguous, report `unknown` and require review/new approval; do not silently rerun it. The state contract tolerates repeats, but V1.5 does not promise exactly-once operator effects.
+Persist operation intent before action. The same completed operation ID returns its recorded result. If a crash leaves the action's result ambiguous, report `unknown` and require review/new approval; do not silently rerun it. The state contract tolerates repeats, but V1.1 does not promise exactly-once operator effects.
 
 **Deliberately deferred:** bulk or scheduled redrive; edited records; destination selection; republishing to the original business topic; durable event replay. For malformed bytes that cannot be decoded, stored reprocessing will still fail; repairing and publishing a new authoritative event belongs to the application, not this tool.
 
@@ -284,6 +286,12 @@ The detail view explains: what failed; evidence availability; why it was held or
 
 In development, the local management session can perform these operations against its own development gateway. In production, use the local CLI/in-process API. The workbench must not silently connect to production operator sockets or reuse application credentials. Production metadata exports can be inspected offline; raw display is opt-in.
 
+### Published frontend integration for a synthetic demo
+
+The library owns a documented, version-pinned way to consume the actual published workbench frontend and adapt supported validation, preview, inspection, export, and Failures operations. Define and verify that integration contract before the site enables its sandbox; it is planned work, not an existing export. Lontra Creek owns visitor sessions, constrained synthetic bindings, resource limits, hosting, and cleanup. This does not expose production management, operator sockets, native management credentials, arbitrary code/broker/offset/file operations, or protected evidence to visitors. See the separate [site planning PR](https://github.com/jfricano/lontra-creek/pull/26).
+
+Shipping the frontend/integration seam in a supported published package is a prerequisite for the site's actual sandbox. Verify it within native F44/F46 using synthetic integration fixtures and the packed/published artifact; hosted LC11 results are site-owned and do not gate library publication. Library and site milestones may release on different dates and versions. Publishing a compatible seam before the full source-failure increment is permitted, but does not establish completion of native V1.1 or its mandatory failure scenarios.
+
 The guided fixture exercises a valid update, a malformed record, quarantine-and-hold, a repair/retry or guarded continuation, an old redrive that is superseded, and a revision conflict that remains held. Show the connection state next to subscription state so a connected socket is never the success indicator.
 
 A reproduction bundle contains version/config fingerprints, sanitized incident metadata, relevant trace stages, a synthetic reproducer where available, expected behavior, and the supported remedy. It excludes resolved secrets and production payloads by default. This implements the research plan's diagnostic-workflow emphasis without adding an AI console. [R1]
@@ -304,13 +312,13 @@ Runbooks must cover credentials/ACLs, quarantine outage, full disk/journal, topi
 
 ### 11.3 Targeted compatibility and packaging
 
-Exercise the failure/recovery view in Chromium, Firefox, and WebKit; keep existing untested combinations labeled unverified until they pass. Test a same-origin production proxy, loopback/local operator boundary, exact published package installation, generated code, cleanup, and shutdown. Do not add framework bindings or new broker services to V1.5 merely to enlarge a support table.
+Exercise the failure/recovery view in Chromium, Firefox, and WebKit; keep existing untested combinations labeled unverified until they pass. Test a same-origin production proxy, loopback/local operator boundary, exact published package installation, generated code, cleanup, and shutdown. Do not add framework bindings or new broker services to V1.1 merely to enlarge a support table.
 
 ## 12. Security and operator boundary
 
 No production development workbench, public remediation HTTP endpoint, public source-offset reset, or application-accessible raw quarantine channel is introduced. The production operator transport is opt-in **local IPC**: a Unix-domain socket for the initially supported macOS/Linux hosts, in a protected directory. Use restrictive directory/socket/token permissions, ownership checks, bounded message size/rate, and a per-start secret stored in an owner-readable file. Do not pass credentials as URL query strings or expose the socket through the browser reverse proxy. A Node in-process API may share the same service implementation.
 
-V1.5 has one trusted local operator boundary, not V3 roles or multi-user governance. Local machine administrators remain trusted. Each mutation records operation ID, time, local caller/session identity as available, incident revision, fingerprints, reason, and observed result. This is an operational audit trail, not tamper-proof compliance logging.
+V1.1 has one trusted local operator boundary, not V3 roles or multi-user governance. Local machine administrators remain trusted. Each mutation records operation ID, time, local caller/session identity as available, incident revision, fingerprints, reason, and observed result. This is an operational audit trail, not tamper-proof compliance logging.
 
 The journal and its tokens must be excluded from Git and generated bundles. Failures to meet filesystem protection or source-identity checks refuse startup. File exports default to restrictive permissions, do not overwrite silently, and clearly mark raw evidence. Raw-record content is untrusted data throughout; it cannot specify actions, executable handlers, topics, or configuration changes.
 
@@ -346,7 +354,7 @@ Downgrading a quarantine-enabled deployment is **not automatically safe**. Stop,
 
 ## 15. Definition of done
 
-V1.5 is a release candidate only when all mandatory scenario families in the acceptance plan have reproducible evidence or an explicitly approved scope change. In particular: legacy behavior passes; quarantine never advances before required evidence/barrier durability; false `live` is prevented across recovery/restart; policy cannot bypass integrity failures; redrive cannot publish business commands, rewind groups, or regress state; protected operations remain private; resource ceilings and retention failures are visible; and packaged artifacts work without the development workbench.
+V1.1 is a release candidate only when all mandatory scenario families in the acceptance plan have reproducible evidence or an explicitly approved scope change. In particular: legacy behavior passes; quarantine never advances before required evidence/barrier durability; false `live` is prevented across recovery/restart; policy cannot bypass integrity failures; redrive cannot publish business commands, rewind groups, or regress state; protected operations remain private; resource ceilings and retention failures are visible; and packaged artifacts work without the development workbench.
 
 The evidence manifest names code and package versions, environment, broker/topic settings, journal durability settings, workload, fault seed, commands, expected/observed behavior, and reviewer. Include crash tests against real Kafka, a persistent volume restart, and a replicated-broker case before claiming tolerance of broker failure. A development-only single-broker pass must be labeled accordingly.
 
@@ -359,26 +367,26 @@ Use an expected-results ledger independent of the production mapper and state ma
 | A — Contract and threat model | New config/types, taxonomy, guard/barrier contract, journal crash model, and test IDs. No public behavior change until the contract is settled. |
 | B — Containment and quarantine-hold | Byte-preserving adapter input, complete output staging, stable incidents, protected journal/topic writer, legacy/default tests, and write-failure/crash evidence. |
 | C — Guarded continuation | Cumulative barrier persistence, snapshot acknowledgment, exact offset reconciliation, circuit breaker, restart/late-result tests. |
-| D — Operator workflow | Local IPC/in-process service, CLI, protected development Failures view, dry-run and single-record reprocessing, redacted exports. |
+| D — Operator workflow | Local IPC/in-process service, CLI, protected development Failures view, published frontend/integration seam (§10), dry-run and single-record reprocessing, redacted exports. |
 | E — Operations and release | Health probes, diagnostics/runbooks, browser/proxy/package tests, reference scenario, independent verification, migration and release notes. |
 
-Quarantine-hold may be merged and demonstrated before guarded continuation, but do not call V1.5 complete while its required continuation and controlled reprocessing paths remain unverified. A safety blocker narrows or defers the affected capability only through an explicit product decision.
+Quarantine-hold may be merged and demonstrated before guarded continuation, but do not call V1.1 complete while its required continuation and controlled reprocessing paths remain unverified. A safety blocker narrows or defers the affected capability only through an explicit product decision.
 
 Resolve three ADRs early: **failure journal and acknowledged handoff**, **application recovery barrier and conservative impact scope**, and **local operator authority and redrive meaning**. These are implementation decisions inside this proposal, not a request to build alternative platforms. Escalate only material changes to guarantees, new external services, public privileges, scope, or release sequencing.
 
 ## 17. Roadmap integration
 
-Insert **V1.5 — Contain, explain, recover** after the existing V1 launch/polish gate and before V2.0, unless the owner explicitly changes launch priority. This draft does not establish whether Lontra Creek's separate launch gate has since completed. Link the specification rather than copying it into multiple roadmap documents.
+Insert **V1.1 — Contain, explain, recover** after the existing V1 launch/polish gate and before V2.0, unless the owner explicitly changes launch priority. This draft does not establish whether Lontra Creek's separate launch gate has since completed. Link the specification rather than copying it into multiple roadmap documents.
 
-The V1.5 increment absorbs the already proposed bounded operational-hardening work and adds native source-failure policies. It supports final research packets **R03** (application consistency), **R04** (single-gateway operations), and **R10** (workflow/diagnostics), while contributing failure-boundary evidence to **R05** without implementing the V2 delivery store. [R1]
+The V1.1 increment absorbs the already proposed bounded operational-hardening work and adds native source-failure policies. It supports final research packets **R03** (application consistency), **R04** (single-gateway operations), and **R10** (workflow/diagnostics), while contributing failure-boundary evidence to **R05** without implementing the V2 delivery store. [R1]
 
-V2.0 remains retained event channels/history/cursors/checkpoints; V2.1 remains coordinated gateways; V2.2 remains schemas/hooks/generated contracts. V3 commands, shared operations, and transport extensions remain separate. The V1.5 local incident journal must not silently become their architecture or an excuse to ship their APIs early.
+V2.0 remains retained event channels/history/cursors/checkpoints; V2.1 remains coordinated gateways; V2.2 remains schemas/hooks/generated contracts. V3 commands, shared operations, and transport extensions remain separate. The V1.1 local incident journal must not silently become their architecture or an excuse to ship their APIs early.
 
 **Release description to use after verification:** “StreamOtter now gives source failures explicit policies, protected quarantine evidence, and controlled recovery—without treating a skipped record as proof of a synchronized application.” Avoid “zero data loss,” “exactly-once recovery,” “safe to ignore bad records,” or a claim that every failure can be isolated automatically.
 
 ## 18. Sources and review limits
 
-Project documents and selected adapter code were read at the baseline commit above on September 28, 2026. No code was changed and no test suite was executed for this specification. Kafka-Penguin is an architectural inspiration, not a dependency; its README documents FailFast, Ignore, and Dead Letter Queue strategies and creation of KafkaJS client objects. [P7] V1.5 instead keeps ownership of StreamOtter's existing source/offset/state boundary.
+Project documents and selected adapter code were read at the baseline commit above on September 28, 2026. No code was changed and no test suite was executed for this specification. Kafka-Penguin is an architectural inspiration, not a dependency; its README documents FailFast, Ignore, and Dead Letter Queue strategies and creation of KafkaJS client objects. [P7] V1.1 instead keeps ownership of StreamOtter's existing source/offset/state boundary.
 
 - **P1 — Founding direction:** [StreamOtter founding document](https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/FOUNDING.md).
 - **P2 — Roadmap:** [Product versions and API roadmap](https://github.com/jfricano/StreamOtter/blob/7b406780dd52c921cf88a98834e81e1677fc4a8d/docs/API_AND_FEATURE_ROADMAP.md).
@@ -390,7 +398,7 @@ Project documents and selected adapter code were read at the baseline commit abo
 - **R1 — Prior final research package:** `StreamOtter_Future_Strategy_Package.zip`, especially `RESEARCH_EXECUTION_PLAN.md` and `RESEARCH_HANDOFF.md`, dated September 28, 2026. This is the final 14-packet package, not the earlier interrupted 15-item backlog.
 - **T1 — KafkaJS consumption:** [Manual offsets, pause/seek, heartbeats, and batch validity](https://kafka.js.org/docs/consuming). These APIs support the implementation; they do not independently guarantee StreamOtter's policy.
 - **T2 — KafkaJS producing:** [Producer acknowledgments and configuration](https://kafka.js.org/docs/producing). An acknowledged write and an idempotent producer setting must not be described as end-to-end exactly-once processing.
-- **T3 — KafkaJS transactions:** [Transactional production and offsets](https://kafka.js.org/docs/transactions). A possible later handoff optimization, not the selected V1.5 algorithm.
+- **T3 — KafkaJS transactions:** [Transactional production and offsets](https://kafka.js.org/docs/transactions). A possible later handoff optimization, not the selected V1.1 algorithm.
 - **T4 — Apache Kafka topic configuration:** [Kafka 4.1 topic settings](https://kafka.apache.org/41/configuration/topic-configs/). Durability and retention depend on the supported topic/broker configuration; recheck versions at implementation.
 
 The selected sources substantiate baseline behavior and implementation primitives. The failure journal, recovery guard, policies, defaults, operator interfaces, and acceptance gates are original proposed design decisions in this document. They must be implemented and tested before being advertised as capabilities.

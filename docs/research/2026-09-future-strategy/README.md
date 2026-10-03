@@ -14,4 +14,4 @@ An advisory package prepared on September 28, 2026 for V2, V3 and later work. It
 | [SOURCES.md](./SOURCES.md), [source_manifest.json](./source_manifest.json) | Source register, pinned to `7b40678` |
 | [PACKAGE_README.md](./PACKAGE_README.md) | The package's original cover note. Its PDF review copy is not checked in. |
 
-The report was written against commit `7b40678`, which was still `main` when it was filed. The V1.5 specification that came out of it lives in [releases/v1.5](../../releases/v1.5/README.md).
+The report was written against commit `7b40678`, which was still `main` when it was filed. The V1.1 specification that came out of it lives in [releases/v1.1](../../releases/v1.1/README.md).

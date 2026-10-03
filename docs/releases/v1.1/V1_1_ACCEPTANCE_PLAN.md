@@ -1,9 +1,11 @@
-# StreamOtter V1.5 — Acceptance and fault-injection plan
+# StreamOtter V1.1 — Acceptance and fault-injection plan
 
-**Date:** September 28, 2026  
-**Status:** Proposed tests; no run is represented as completed.  
-**Governing document:** `V1_5_SOURCE_FAILURE_SPEC.md`, revision 0.1.  
+**Date:** September 28, 2026\
+**Status:** Proposed tests; no run is represented as completed.\
+**Governing document:** `V1_1_SOURCE_FAILURE_SPEC.md`, approved revision 1.0 plus the October 1 owner amendment and ADR-15A/B/C.\
 **Baseline inspected:** `7b406780dd52c921cf88a98834e81e1677fc4a8d`.
+
+**Owner amendment — October 1, 2026; reconciled October 2:** The next planned increment is **V1.1**, renamed from V1.5. The approved revision 1.0 source-failure specification and September 29 decisions remain in force. ADR-15A/B/C keep their stable decision IDs. This milestone label does not change npm or protocol versions. Lontra Creek separately owns replacing its existing `/workbench/` tour with the actual workbench UI in an isolated synthetic visitor sandbox; no new page is added.
 
 ## 1. Verification method
 
@@ -49,7 +51,7 @@ At each awaited boundary, inject process death, response loss, cancellation, or 
 | F30 | Second gateway opens same journal; external group position moved | Exclusive-owner enforcement where observable; unrecognized movement holds; no claim of distributed safety. | INV-03,08 |
 | F31 | Evaluate a retained original | No source commit/seek, Kafka publication, or browser delivery; fingerprints/output hash captured. | INV-01,07 |
 | F32 | Expired plan, changed config/build/evidence/revision, or changed mapped output | Mutation refused; new evaluation/approval required. | INV-03,04 |
-| F33 | Approved gateway-local reprocessing of one already-skipped valid record | Normal preparation, authorization, revision and fresh-sync path; no business-topic publication or offset movement. | INV-04,05,07 |
+| F33 | Approved gateway-local reprocessing of one already-skipped valid record | Normal preparation, authorization, and revision-filtered admission at a record boundary (ADR-15C §5); no forced live-epoch invalidation, business-topic publication, or offset movement. | INV-04,05,07 |
 | F34 | Reprocessed full state is older/equal to current snapshot | Superseded/duplicate outcome; no regression or fabricated revision; equal-data conflict hard-holds. | INV-02,04 |
 | F35 | Redrive loses response or crashes during application admission | Recorded unknown/incomplete result; no automatic rerun; completed operation ID returns recorded result. | INV-04,07 |
 | F36 | Attempt bulk, edited-payload, arbitrary-topic, cross-generation, or unsafe-mapper redrive | Explicit refusal; no hidden escape hatch. | INV-03,04,05 |
@@ -60,7 +62,7 @@ At each awaited boundary, inject process death, response loss, cancellation, or 
 | F41 | Journal capacity, topic-scan budget, audit limit, or repeated poison flood reached | Bounded memory/disk/work; source held or operation refused; necessary barriers never pruned. | INV-03,06 |
 | F42 | Unaffected independent source while another is held/quarantining | Unaffected source continues within declared workload; shared limits remain enforced. | INV-02,06 |
 | F43 | Healthy source, paused source, broker outage, startup, shutdown, unresolved commit | Liveness/readiness/reason states correctly separated; no restart-loop recommendation or payload leak. | INV-02,07 |
-| F44 | Workbench failure lifecycle and old-state display | Captured/quarantined/advanced/recovered remain separate; unsafe actions disabled; connection ≠ subscription health. | INV-02,07 |
+| F44 | Workbench failure lifecycle and old-state display | Captured/quarantined/advanced/recovered remain separate; unsafe actions disabled; connection ≠ subscription health. The published frontend/integration seam exercises supported synthetic development operations without exposing production management or native credentials. Native fixtures and packed/published-install evidence establish this gate; site-owned LC11-A41–A46 do not block library publication. | INV-02,07 |
 | F45 | Chromium, Firefox and WebKit failure/reconnect/cleanup path | Same supported UX and SDK contract; record exact versions; no unsupported coverage claim. | INV-02,05 |
 | F46 | Published/packed install, clean config, production proxy, local IPC, graceful stop/crash restart | Shipped artifacts execute contract; development server absent in production; retries/producers/consumers close. | INV-05,06,08 |
 | F47 | Replicated Kafka evidence write under leader/ISR failure | Measured result matches declared acks/replication/minISR policy; no broker-failure durability claim from single-node tests. | INV-01,07 |
@@ -77,9 +79,10 @@ A run fails its safety gate on unauthorized output, unsafe progress, erased requ
 ## 4. Evidence manifest template
 
 ```yaml
-release_milestone: V1.5
+release_milestone: V1.1
 status: proposed
-spec_revision: '0.1'
+spec_revision: '1.0'
+owner_amendment: '2026-10-01; reconciled 2026-10-02'
 streamotter_commit: null
 package_versions: {}
 node_os_browser_versions: {}
