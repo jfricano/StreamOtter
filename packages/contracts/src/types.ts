@@ -247,6 +247,28 @@ export interface GatewayOptions<C extends ChannelMap> {
    * Requires stateDirectory. Default false.
    */
   operatorSocket?: boolean;
+  /**
+   * Serve a read-only health listener (ADR-15C §4): `GET /health/live` and `GET /health/ready`
+   * on its own port, bound to 127.0.0.1 unless `host` says otherwise. Available with or
+   * without failure handling. Off by default.
+   */
+  health?: HealthListenerOptions;
+}
+
+export interface HealthListenerOptions {
+  /** Interface to bind. Default "127.0.0.1". */
+  host?: string;
+  /** TCP port, 0–65535; 0 picks a free port. */
+  port: number;
+}
+
+/** Why readiness is unavailable. Categories only: never topic names, incident IDs or messages. */
+export type HealthReason = "starting" | "source-held" | "source-unavailable" | "journal" | "quarantine";
+
+/** The body of GET /health/live and GET /health/ready. */
+export interface HealthResponse {
+  status: "ok" | "unavailable";
+  reasons: readonly HealthReason[];
 }
 
 export interface Capabilities {

@@ -177,6 +177,8 @@ export async function startHarness(options: {
   stateDirectory?: string;
   /** Serve the operator API on the state directory's local socket. */
   operatorSocket?: boolean;
+  /** The read-only health listener (ADR-15C §4). */
+  health?: { host?: string; port: number };
   /** handlers.sources recovery guards (V1.1 quarantine-resync). */
   recovery?: Record<string, SourceRecoveryHandlers>;
   /** Test-only gateway internals (fault and crash hooks). */
@@ -188,6 +190,7 @@ export async function startHarness(options: {
     config: { ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) },
     ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
     ...(options.operatorSocket === undefined ? {} : { operatorSocket: options.operatorSocket }),
+    ...(options.health === undefined ? {} : { health: options.health }),
     handlers: options.recovery === undefined ? handlers : { ...handlers, sources: options.recovery },
     mode: "development",
     development: { principals: options.principals ?? {}, fixtures: { orders: options.fixtures ?? [] } },

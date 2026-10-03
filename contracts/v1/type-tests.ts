@@ -2,7 +2,7 @@
 import {
   createClient, TransientMappingError,
   type HandlerRegistry, type ManagementOperations, type ProjectConfig, type SocketAuth, type SourceRecoveryHandlers, type StreamEvent,
-  type WorkbenchHostConfig, type WorkbenchHostManifest, type WorkbenchOperation
+  type HealthListenerOptions, type HealthResponse, type WorkbenchHostConfig, type WorkbenchHostManifest, type WorkbenchOperation
 } from "./api";
 import { project, type AppChannels, type OrderState } from "./example";
 
@@ -145,3 +145,15 @@ const discovered: ManagementOperations["GET /management/v1/workbench"]["response
   hostContract: 1, operations: ["health", "failures.list"], limits: { maxRequestBytes: 65_536 }
 };
 void discovered;
+
+// V1.1 health listener (ADR-15C §4).
+const health: HealthListenerOptions = { port: 7402 };
+void health;
+// @ts-expect-error The health port is a number, not a host:port string.
+const healthString: HealthListenerOptions = { port: "127.0.0.1:7402" };
+void healthString;
+const notReady: HealthResponse = { status: "unavailable", reasons: ["source-held", "journal"] };
+void notReady;
+// @ts-expect-error Readiness reasons are categories, never topic names or incident IDs.
+const leaky: HealthResponse = { status: "unavailable", reasons: ["orders-topic"] };
+void leaky;

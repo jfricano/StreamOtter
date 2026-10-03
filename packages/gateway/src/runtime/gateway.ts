@@ -8,7 +8,7 @@ import {
   resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
   type FailureClass, type OperatorApi,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
-  type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry,
+  type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry, type HealthReason,
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
   type SourceStatus, type StreamError, type StreamEvent, type Trace
 } from "@streamotter/contracts";
@@ -20,6 +20,7 @@ import { assertFailureHandling, usesQuarantine } from "../failures/validate.ts";
 import { startOperatorSocket, type OperatorSocket } from "../operator/ipc.ts";
 import { OperatorService, type OperatorHooks, type OperatorHost } from "../operator/service.ts";
 import { ByteBudget } from "./budget.ts";
+import { healthOptionIssues, startHealthListener, type HealthListener } from "./health.ts";
 import { Router, routingKey, type ChannelRuntime, type GatewayCore, type SourceRuntime } from "./core.ts";
 import {
   freezePrincipal, identityKey, matchesPrincipal, principalProblem, RevocationLog, sourceRecordId, updateEventId
@@ -274,6 +275,8 @@ export class GatewayRuntime implements SessionOwner {
   readonly #handlerBuildId: string;
   readonly #operatorSocketEnabled: boolean;
   #operatorSocket: OperatorSocket | null = null;
+  readonly #healthOptions: { host: string; port: number } | null;
+  #health: HealthListener | null = null;
   #failures: FailureService | null = null;
   #operator: OperatorService | null = null;
   #quarantineReport: QuarantineTopicReport | null = null;
@@ -305,6 +308,10 @@ export class GatewayRuntime implements SessionOwner {
     const config = options.config;
     validateHandlers(config, options.handlers);
     assertFailureHandling(config, options.handlers, options);
+    const healthIssues = healthOptionIssues(options.health);
+    if (healthIssues.length > 0) {
+      throw new StreamOtterError("CONFIG_INVALID", { message: `Invalid health listener: ${healthIssues.join("; ")}.`, details: { issues: healthIssues } });
+    }
     if (options.mode === "production") validateProduction(config, options);
     else validateDevelopment(config, options.development);
 
@@ -317,6 +324,7 @@ export class GatewayRuntime implements SessionOwner {
     this.#stateDirectory = options.stateDirectory;
     this.#handlerBuildId = options.handlerBuildId ?? "unspecified";
     this.#operatorSocketEnabled = options.operatorSocket === true;
+    this.#healthOptions = options.health === undefined ? null : { host: options.health.host ?? "127.0.0.1", port: options.health.port };
     this.#allowedOrigins = new Set(config.gateway.allowedOrigins);
     const limits = resolveLimits(config.limits);
     this.core = {
@@ -898,6 +906,25 @@ export class GatewayRuntime implements SessionOwner {
     }
   }
 
+  /** Readiness reason categories (ADR-15C §4); empty means ready. */
+  #readiness(): HealthReason[] {
+    if (this.#state !== "running") return ["starting"];
+    const reasons: HealthReason[] = [];
+    for (const source of this.#sources.values()) {
+      if (source.status === "paused") reasons.push("source-held");
+      else if (source.status !== "healthy") reasons.push("source-unavailable");
+    }
+    const failures = this.#failures;
+    if (failures !== null) {
+      const usage = failures.store.usage();
+      if (failures.journalError !== null || usage.sizeBytes >= usage.limitBytes) reasons.push("journal");
+      for (const source of this.#sources.values()) {
+        if (failures.store.open(source.id).some(incident => incident.quarantine === "failed" || incident.quarantine === "unknown")) reasons.push("quarantine");
+      }
+    }
+    return reasons;
+  }
+
   #operatorHost(): OperatorHost {
     return {
       mode: this.mode,
@@ -933,6 +960,11 @@ export class GatewayRuntime implements SessionOwner {
     let http: HttpServer | null = null;
     let io: IoServer | null = null;
     try {
+      // First, so readiness reports "starting" for the whole startup.
+      if (this.#healthOptions !== null) {
+        this.#health = await startHealthListener({ ...this.#healthOptions, readiness: () => this.#readiness() });
+        this.core.logger.info("Health listener started", { origin: this.#health.origin });
+      }
       const connections = new Map<string, ResolvedKafkaConnection>();
       for (const source of this.#sources.values()) {
         if (source.config.kind !== "kafka" || connections.has(source.config.connectionRef)) continue;
@@ -1012,6 +1044,8 @@ export class GatewayRuntime implements SessionOwner {
     } catch (error) {
       await this.#operatorSocket?.close().catch(() => undefined);
       this.#operatorSocket = null;
+      await this.#health?.close().catch(() => undefined);
+      this.#health = null;
       await Promise.allSettled(started.map(adapter => adapter.stop(Date.now() + 5_000)));
       await this.#failures?.stop().catch(() => undefined);
       await this.#quarantineReader?.stop().catch(() => undefined);
@@ -1042,6 +1076,9 @@ export class GatewayRuntime implements SessionOwner {
     for (const session of [...this.#sessions]) session.close();
     const deadline = Date.now() + timeoutMs;
     const work = (async () => {
+      // Readiness ends first, so a load balancer stops routing before sessions close.
+      await this.#health?.close().catch(() => undefined);
+      this.#health = null;
       // Close the operator socket first so no mutation starts while sources drain.
       await this.#operatorSocket?.close().catch(error => {
         this.core.logger.error("The operator socket did not close cleanly", { error: (error as Error).message.slice(0, 200) });

@@ -201,6 +201,8 @@ export async function startKafkaHarness(options: {
   failureHandling?: FailureHandlingConfig;
   stateDirectory?: string;
   recovery?: Record<string, SourceRecoveryHandlers>;
+  /** The read-only health listener (ADR-15C §4). */
+  health?: { host?: string; port: number };
 } = {}): Promise<KafkaHarness> {
   const topic = options.topic ?? await createTopic();
   const group = options.group ?? uniqueName("so-group");
@@ -216,6 +218,7 @@ export async function startKafkaHarness(options: {
       ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling })
     }),
     ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
+    ...(options.health === undefined ? {} : { health: options.health }),
     handlers: options.recovery === undefined ? app.handlers() : { ...app.handlers(), sources: options.recovery },
     mode,
     ...(mode === "development" ? { development: { principals: {}, fixtures: {} } } : {}),

@@ -39,7 +39,7 @@ const USAGE = `Usage:
   streamotter validate --config <path>
   streamotter generate --config <path> --out <directory>
   streamotter dev --config <path> --handlers <module> [--management-port <port>] [--state-dir <directory>] [--operator-socket]
-  streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--operator-socket] [--handler-build-id <id>]
+  streamotter start --config <path> --handlers <module> [--state-dir <directory>] [--operator-socket] [--handler-build-id <id>] [--health <host:port>]
 
 Operator commands, sent to the gateway serving <dir>/run/operator.sock (start it with --operator-socket):
 ${OPERATOR_USAGE}
@@ -143,6 +143,17 @@ function failureOptions(values: Record<string, unknown>): { stateDirectory?: str
   if (typeof values["handler-build-id"] === "string") options.handlerBuildId = values["handler-build-id"];
   if (values["operator-socket"] === true) options.operatorSocket = true;
   return options;
+}
+
+/** Parses --health: "host:port", "[ipv6]:port", or a bare port on 127.0.0.1. */
+function parseHealth(value: string): { host: string; port: number } {
+  const match = /^(?:(\[[0-9a-fA-F:.]+\]|[^:\s\[\]]+):)?(\d{1,5})$/.exec(value);
+  const port = Number(match?.[2]);
+  if (match === null || !Number.isInteger(port) || port > 65_535) {
+    throw new CliError(EXIT.invalid, "--health must be host:port, [ipv6]:port or a port, for example 127.0.0.1:7402.");
+  }
+  const host = match[1] === undefined ? "127.0.0.1" : match[1].replace(/^\[|\]$/g, "");
+  return { host, port };
 }
 
 /**
@@ -271,7 +282,10 @@ async function commandStart(values: Record<string, unknown>, io: CliIO): Promise
   let gateway: Gateway;
   try {
     // The module's development export is deliberately ignored in production.
-    gateway = createGateway({ config, handlers, mode: "production", configDir: dirname(path), logger: cliLogger(io), ...failureOptions(values) });
+    gateway = createGateway({
+      config, handlers, mode: "production", configDir: dirname(path), logger: cliLogger(io), ...failureOptions(values),
+      ...(typeof values["health"] === "string" ? { health: parseHealth(values["health"]) } : {})
+    });
   } catch (error) {
     throw new CliError(EXIT.invalid, (error as Error).message);
   }
@@ -329,6 +343,7 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
         "state-dir": { type: "string" },
         "handler-build-id": { type: "string" },
         "operator-socket": { type: "boolean" },
+        health: { type: "string" },
         failures: { type: "boolean" },
         json: { type: "boolean" },
         source: { type: "string" },
@@ -359,7 +374,7 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
     validate: ["config"],
     generate: ["config", "out"],
     dev: ["config", "handlers", "management-port", "state-dir", "operator-socket"],
-    start: ["config", "handlers", "state-dir", "handler-build-id", "operator-socket"]
+    start: ["config", "handlers", "state-dir", "handler-build-id", "operator-socket", "health"]
   };
   const permitted = allowed[command];
   if (permitted === undefined) {

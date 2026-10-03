@@ -360,9 +360,23 @@ Slice D notes (normative, as implemented in `packages/gateway/src/operator/ipc.t
 - **The client** (`callOperator`, `connectOperator` in `@streamotter/gateway/operator`) validates arguments before connecting, re-checks the token file after opening it, times out after 30 s (`TIMEOUT`), and caps responses at 64 MiB. When no gateway serves the directory it raises `UNSUPPORTED_CAPABILITY` with `details.reason: "operator-not-running"`.
 - Windows is not supported; both sides refuse with `UNSUPPORTED_CAPABILITY`.
 
-## 8. Health listener (slice E)
+## 8. Health listener (slice E — normative, implemented in `packages/gateway/src/runtime/health.ts`)
 
 As ADR-15C §4. Response body `{ "status": "ok" | "unavailable", "reasons": ("starting" | "source-held" | "source-unavailable" | "journal" | "quarantine")[] }`, `Cache-Control: no-store`, no CORS headers, any other path or method 404. `streamotter start --health 127.0.0.1:7402`.
+
+Slice E notes (normative, as implemented in `packages/gateway/src/runtime/health.ts` and `GatewayOptions.health`):
+
+- `health: { host?: string; port: number }`. `host` defaults to `127.0.0.1`; `port` is 0–65535 (0 picks a free port). Any other field, or a malformed value, is `CONFIG_INVALID` at construction. It works in both modes, with or without failure handling.
+- Only `GET` (or `HEAD`) of exactly `/health/live` or `/health/ready` is answered. A query string, a trailing slash, any other path and any other method get 404 with no body. Request bodies are never read.
+- `/health/live` is 200 `{ "status": "ok", "reasons": [] }` whenever the listener answers. A broker outage does not change it.
+- `/health/ready` is 200 with no reasons when ready, otherwise 503 with the reasons in this fixed order, each at most once:
+  - `starting`: `start()` has not finished;
+  - `source-held`: a source is paused at a record (a V1 pause or a held incident);
+  - `source-unavailable`: a source is starting, degraded or stopped while the gateway runs (for example, a broker outage);
+  - `journal`: the last incident-store write failed, or the journal is at its size limit;
+  - `quarantine`: an open incident's quarantine write failed or its outcome is unknown.
+- The listener opens first in `start()`, so readiness reports `starting` throughout startup, and closes with a failed start. A port already in use fails startup. `stop()` closes it first, so readiness ends before sessions close.
+- `streamotter start --health <host:port>` accepts `host:port`, `[ipv6]:port` or a bare port (bound to 127.0.0.1).
 
 ## 9. Development management routes and workbench (slice D)
 
@@ -413,6 +427,7 @@ Slice D notes (normative, as implemented in `packages/cli/src/operator.ts`):
 - `failures export --out <file>` creates the file with mode 0600, refuses an existing file before contacting the gateway, and removes a partial file if the write fails. With `--json` it prints `{ path, bundleVersion, rawIncluded }` rather than the bundle.
 - `sources retire-boundary` exits 2 before connecting unless `--confirm` equals `--boundary`.
 - `start` and `dev` accept `--operator-socket`, which requires `--state-dir`.
+- Slice E: `start` accepts `--health <host:port>` (§8). `dev` does not; the development management server already serves `GET /management/v1/health`.
 
 ## 11. Decisions this draft adds
 

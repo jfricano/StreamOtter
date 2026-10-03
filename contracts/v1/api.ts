@@ -8,7 +8,7 @@ export type {
   ClientToServerEvents, ConfigIssue, ConnectionState, ControlRequest, DataFrame, DevelopmentOptions,
   DevelopmentPrincipalSummary, DiagnosticStep, ErrorCode, ErrorFrame, FailureClass, FailureHandlingConfig, FailurePolicy, FixtureRecord,
   Gateway, GatewayLogger, GatewayOptions,
-  HandlerContext, HandlerRegistry, Hello, Json, KafkaConnection, Limits, ManagementOperations, MappedState, Page,
+  HandlerContext, HandlerRegistry, HealthListenerOptions, HealthReason, HealthResponse, Hello, Json, KafkaConnection, Limits, ManagementOperations, MappedState, Page,
   Params, Principal, ProjectConfig, Receipt, RecoveryBoundary, RecoveryDecision, RecoveryIncident, Result, Revision,
   Revocation, Schema, SecretRef, ServerToClientEvents, SourceFailurePolicy, SourceRecoveryHandlers,
   SocketAuth, Source, SourceRecord, SourceStatus, StateChange, StreamError, StreamEvent, SubscribeRequest,
