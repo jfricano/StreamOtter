@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
+import { fork } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { after, afterEach, describe, it } from "node:test";
 import type { FailureHandlingConfig, Json, SourceRecoveryHandlers } from "@streamotter/contracts";
-import { initJournal, nodeSupportsJournal } from "@streamotter/gateway/internals";
+import { initJournal, nodeSupportsJournal, type IncidentStore } from "@streamotter/gateway/internals";
 import { getGatewayOperator } from "@streamotter/gateway/operator";
 import { observe, waitFor } from "../integration/harness.ts";
-import { brokerAvailable, closeKafkaHelpers, createTopic, orderValue, produceRaw, startKafkaHarness, testAdmin, uniqueName, type KafkaHarness } from "./helpers.ts";
+import { brokerAvailable, closeKafkaHelpers, createTopic, orderValue, produceRaw, startKafkaHarness, testAdmin, uniqueName, waitForEmptyGroup, type KafkaHarness } from "./helpers.ts";
 
 /**
  * V1.1 slice D against a real broker: the operator reads the quarantined
@@ -99,5 +100,41 @@ describe("V1.1 slice D: operator read-back against Kafka", { skip }, () => {
     assert.equal(detail.raw?.complete, false);
     assert.equal(detail.raw?.valueBase64, null);
     assert.match(detail.raw?.note ?? "", /expired/);
+  });
+
+  it("F35: a gateway killed between a redrive's intent and its result reports it unknown after restart and never admits it", { timeout: 120_000 }, async () => {
+    const s = await setup();
+    const child = fork(resolve(import.meta.dirname, "operator-crash-child.ts"), [], {
+      execArgv: ["--conditions=streamotter-source", "--no-warnings"],
+      env: { ...process.env, TOPIC: s.topic, GROUP: s.group, QUARANTINE: s.quarantine, STATE: s.state, OPERATION_ID: "op-kafka-crash" },
+      stdio: ["ignore", "inherit", "inherit", "ipc"]
+    });
+    const messages: { type: string; failureId?: string; revision?: number; planId?: string; fingerprint?: string }[] = [];
+    child.on("message", message => messages.push(message as never));
+    const exited = new Promise(done => child.once("exit", done));
+    try {
+      await waitFor(() => messages.some(message => message.type === "ready"), 60_000, "child ready");
+      await produceRaw(s.topic, [{ key: Buffer.from("ord_1"), value: shipped(3) }]);
+      await waitFor(() => messages.some(message => message.type === "intent"), 60_000, "child journaled the redrive intent");
+    } finally {
+      child.kill("SIGKILL");
+      await exited;
+    }
+    const plan = messages.find(message => message.type === "plan")!;
+    await waitForEmptyGroup(s.group);
+
+    k = await startKafkaHarness({ topic: s.topic, group: s.group, failureHandling: s.failureHandling, stateDirectory: s.state, recovery: { orders: recoverable } });
+    k.app.put("acme", "alice", "ord_1", 2, "processing", 20);
+    const seen = observe(k.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }));
+    await waitFor(() => seen.states.includes("live"), 15_000, "live");
+    await k.internals.failuresSettled();
+    const store = k.internals.incidentStore() as IncidentStore;
+    assert.equal(store.getOperation("op-kafka-crash")?.state, "unknown", "the pending intent became unknown at startup");
+    const op = getGatewayOperator(k.gateway);
+    const after = await op.redrive({ failureId: plan.failureId!, planId: plan.planId!, planFingerprint: plan.fingerprint!, expectedRevision: plan.revision!, operationId: "op-kafka-crash" });
+    assert.equal(after.result, "unknown");
+    assert.match(after.message, /not rerun/);
+    await new Promise(done => setTimeout(done, 1_000));
+    assert.ok(!seen.events.some(event => event.revision === "3"), "the interrupted redrive was never admitted");
   });
 });
