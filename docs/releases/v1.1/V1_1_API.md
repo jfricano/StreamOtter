@@ -11,7 +11,7 @@
 - `configVersion` stays `1`. The new `failureHandling` key is additive; an older runtime already rejects it as an unknown key (ADR-15C context), which is the refusal spec §14 asks for.
 - `resumeSource` keeps "retry, never skip" (ADR-15C §6).
 
-## 2. Project configuration: `failureHandling` (slice A)
+## 2. Project configuration: `failureHandling` (slice A — normative, implemented in `packages/contracts/src/failures.ts`)
 
 `ProjectConfig` gains one optional top-level key. Deployment settings (state directory, operator socket, health) are gateway options, not project configuration (ADR-15C §2).
 
@@ -62,11 +62,13 @@ Validation (F02), all reported as `ConfigIssue`s with path and code:
 
 Validation that needs handlers or the host happens at gateway construction (§4), not in `validateProjectConfig`, which stays pure and browser-safe.
 
+Slice A note: until slices B and C merge, gateway construction also refuses `quarantine-hold`, `quarantine-resync` and transient retries as "not supported by this gateway build yet", so a configuration is never accepted and silently run as `pause`.
+
 Fixture sources may use quarantine policies in development. Their evidence goes to the local incident store, labeled "fixture evidence, not Kafka" everywhere it appears (§9). Production rejects fixture sources already.
 
 ## 3. Handler contracts (slice A)
 
-### 3.1 Transient mapping failures
+### 3.1 Transient mapping failures (type normative in slice A; retries ship in slice B)
 
 ```ts
 /** Thrown by a map handler to request a bounded retry. Recognized by brand, not by message text. */
@@ -78,7 +80,7 @@ export class TransientMappingError extends Error {
 
 Exported from `@streamotter/contracts` and re-exported by `@streamotter/gateway`, so a duplicated package copy still recognizes it. Retry waits are 250 ms then 1,000 ms, cancellable, each attempt with the normal handler timeout; exhaustion pauses as `mapper-transient` (spec §4).
 
-### 3.2 Recovery guard (ADR-15B §2)
+### 3.2 Recovery guard (ADR-15B §2; types normative in slice A, behavior in slice C)
 
 ```ts
 export interface RecoveryBoundary { id: string; context: Json } // context ≤ 16 KiB canonical JSON
@@ -113,7 +115,7 @@ export interface HandlerRegistry<C extends ChannelMap> {
 
 The gateway assigns the boundary `id` (`rb1:` + random), so `recover` returns only `context`. `reason` and `evidenceRef` are ≤ 512 characters and stored in the journal as operator metadata. The guard runs with a 10-second timeout regardless of `handlerTimeoutMs` (spec §13).
 
-### 3.3 Snapshot acknowledgment (ADR-15B §3)
+### 3.3 Snapshot acknowledgment (ADR-15B §3; types normative in slice A, behavior in slice C)
 
 ```ts
 snapshot(input: HandlerContext & {
@@ -154,13 +156,15 @@ Development mode without `stateDirectory` uses an in-memory incident store, labe
 
 ## 5. Incidents (slices A, B)
 
-### 5.1 Failure classes (ADR-15B §1)
+### 5.1 Failure classes (ADR-15B §1; normative in slice A)
 
 ```ts
 export type FailureClass =
   | "invalid-json" | "payload-schema" | "mapper-transient" | "mapper-error" | "mapper-timeout"
   | "routing-invalid" | "revision-conflict" | "tombstone" | "oversize";
 ```
+
+Where each class is raised, as implemented: `invalid-json` for UTF-8 decode, JSON parse or nesting failures (and a fixture value that isn't JSON); `tombstone` and `oversize` at validation; `mapper-error`, `mapper-timeout` and `mapper-transient` (a `TransientMappingError`, matched by brand) from `map`; `routing-invalid` for a non-array result, too many outputs, a non-object output, an unexpected field, an invalid tenant, parameters or revision, data that isn't JSON, and a frame above `maxDataFrameBytes`; `payload-schema` only when routing passed and the data fails the channel's payload schema; `revision-conflict` for an equal revision with different data.
 
 Only `invalid-json` and `payload-schema` can take a quarantine policy. Infrastructure failures (broker outage, rebalance, shutdown, journal or quarantine failure) are not failure classes; they keep V1's outage handling and never create a skippable incident (spec §4).
 

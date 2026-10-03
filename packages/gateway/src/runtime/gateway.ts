@@ -5,12 +5,14 @@ import type { Server as IoServer } from "socket.io";
 import {
   assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
-  resolveLimits, STARTUP_DEADLINE_MS, streamError, StreamOtterError, utf8ByteLength, validateValue,
+  resolveLimits, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
+  type FailureClass,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
   type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry,
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
   type SourceStatus, type StreamError, type StreamEvent, type Trace
 } from "@streamotter/contracts";
+import { assertFailureHandling } from "../failures/validate.ts";
 import { ByteBudget } from "./budget.ts";
 import { Router, routingKey, type ChannelRuntime, type GatewayCore, type SourceRuntime } from "./core.ts";
 import {
@@ -53,6 +55,9 @@ class SourceRuntimeImpl implements SourceRuntime {
 }
 
 interface RoutedOutput { channel: ChannelRuntime; key: string; frame: PendingFrame }
+
+/** Why a mapped output was rejected, with its trusted failure class (ADR-15B §1). */
+interface OutputProblem { failureClass: FailureClass; message: string }
 
 interface PreviewSession { principal: Principal; expiresAtMs: number }
 
@@ -209,6 +214,7 @@ export class GatewayRuntime implements SessionOwner {
     assertValidProjectConfig(options.config);
     const config = options.config;
     validateHandlers(config, options.handlers);
+    assertFailureHandling(config, options.handlers);
     if (options.mode === "production") validateProduction(config, options);
     else validateDevelopment(config, options.development);
 
@@ -449,37 +455,38 @@ export class GatewayRuntime implements SessionOwner {
     const { limits, traces } = this.core;
     const trace = (stage: Trace["stage"], outcome: Trace["outcome"], extra: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">> = {}) =>
       traces.record({ requestId, stage, outcome, sourceId: source.id, ...extra });
-    const pause = (stage: Trace["stage"], code: ErrorCode, reason: string, channel?: string): ProcessOutcome => {
+    const pause = (stage: Trace["stage"], code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string): ProcessOutcome => {
       trace(stage, stage === "map" ? "failed" : "rejected", channel === undefined ? { errorCode: code } : { errorCode: code, channel });
       this.core.logger.warn("Source paused on an unprocessable record; it will not be committed or skipped", {
         sourceId: source.id,
         position: input.position as unknown as Json,
         code,
+        failureClass,
         reason,
         ...(channel === undefined ? {} : { channel })
       });
       this.#setSourceStatus(source, "paused", code);
-      return { kind: "pause", code };
+      return { kind: "pause", code, failureClass };
     };
     trace("source", "ok");
 
     let value: Json;
     if (input.value !== undefined) {
-      if (!isJsonValue(input.value)) return pause("validate", "INVALID_PAYLOAD", "fixture value is not JSON data");
+      if (!isJsonValue(input.value)) return pause("validate", "INVALID_PAYLOAD", "invalid-json", "fixture value is not JSON data");
       if (utf8ByteLength(JSON.stringify(input.value)) > limits.maxSourceRecordBytes) {
-        return pause("validate", "INVALID_PAYLOAD", "record exceeds maxSourceRecordBytes");
+        return pause("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
       }
       value = input.value;
     } else {
       const bytes = input.bytes ?? null;
-      if (bytes === null) return pause("validate", "INVALID_PAYLOAD", "tombstone records have no V1 meaning; represent deletion as explicit state");
-      if (bytes.byteLength > limits.maxSourceRecordBytes) return pause("validate", "INVALID_PAYLOAD", "record exceeds maxSourceRecordBytes");
+      if (bytes === null) return pause("validate", "INVALID_PAYLOAD", "tombstone", "tombstone records have no V1 meaning; represent deletion as explicit state");
+      if (bytes.byteLength > limits.maxSourceRecordBytes) return pause("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
       try {
         value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as Json;
       } catch {
-        return pause("validate", "INVALID_PAYLOAD", "record value is not valid UTF-8 JSON");
+        return pause("validate", "INVALID_PAYLOAD", "invalid-json", "record value is not valid UTF-8 JSON");
       }
-      if (!isJsonValue(value)) return pause("validate", "INVALID_PAYLOAD", "record value exceeds the nesting limit");
+      if (!isJsonValue(value)) return pause("validate", "INVALID_PAYLOAD", "invalid-json", "record value exceeds the nesting limit");
     }
     trace("validate", "ok");
 
@@ -500,16 +507,17 @@ export class GatewayRuntime implements SessionOwner {
         { timeoutMs: limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
       );
       if (outcome.kind === "aborted" || this.#halting()) return { kind: "abandon" };
-      if (outcome.kind === "timeout") return pause("map", "TIMEOUT", "map handler timed out", channel.name);
+      if (outcome.kind === "timeout") return pause("map", "TIMEOUT", "mapper-timeout", "map handler timed out", channel.name);
       if (outcome.kind === "error") {
-        return pause("map", "HANDLER_FAILED", `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
+        const failureClass = TransientMappingError.is(outcome.error) ? "mapper-transient" : "mapper-error";
+        return pause("map", "HANDLER_FAILED", failureClass, `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
       }
       const mapped: unknown = outcome.value;
-      if (!Array.isArray(mapped)) return pause("map", "INVALID_PAYLOAD", "map must return an array", channel.name);
-      if (mapped.length > limits.maxMapOutputs) return pause("map", "INVALID_PAYLOAD", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
+      if (!Array.isArray(mapped)) return pause("map", "INVALID_PAYLOAD", "routing-invalid", "map must return an array", channel.name);
+      if (mapped.length > limits.maxMapOutputs) return pause("map", "INVALID_PAYLOAD", "routing-invalid", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
       for (let index = 0; index < mapped.length; index++) {
         const built = this.#buildOutput(channel, record, mapped[index]);
-        if (typeof built === "string") return pause("map", "INVALID_PAYLOAD", `output ${index}: ${built}`, channel.name);
+        if ("failureClass" in built) return pause("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.message}`, channel.name);
         outputs.push(built);
       }
       trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
@@ -525,7 +533,7 @@ export class GatewayRuntime implements SessionOwner {
         if (conflicting) break;
         conflicting = (subscription as ServerSubscription).conflicts(revision, dataHash);
       }
-      if (conflicting) return pause("queue", "REVISION_CONFLICT", "the same revision was mapped to different data", output.channel.name);
+      if (conflicting) return pause("queue", "REVISION_CONFLICT", "revision-conflict", "the same revision was mapped to different data", output.channel.name);
       if (earlier === undefined || compareRevisions(revision, earlier.revision) > 0) seen.set(output.key, { revision, dataHash });
     }
 
@@ -537,19 +545,26 @@ export class GatewayRuntime implements SessionOwner {
     return { kind: "commit" };
   }
 
-  #buildOutput(channel: ChannelRuntime, record: SourceRecord, item: unknown): RoutedOutput | string {
-    if (!isPlainObject(item)) return "must be an object";
+  /**
+   * Builds one routed output. Routing checks (shape, tenant, params, revision) run
+   * before the payload schema, so only a payload that fails its declared schema
+   * after valid routing is classified payload-schema; everything else is an
+   * integrity failure that a quarantine policy can never skip.
+   */
+  #buildOutput(channel: ChannelRuntime, record: SourceRecord, item: unknown): RoutedOutput | OutputProblem {
+    const routing = (message: string): OutputProblem => ({ failureClass: "routing-invalid", message });
+    if (!isPlainObject(item)) return routing("must be an object");
     for (const key of Object.keys(item)) {
-      if (key !== "tenantId" && key !== "params" && key !== "revision" && key !== "data") return `unexpected field "${key}"`;
+      if (key !== "tenantId" && key !== "params" && key !== "revision" && key !== "data") return routing(`unexpected field "${key}"`);
     }
     const { tenantId, params, revision, data } = item;
-    if (typeof tenantId !== "string" || tenantId.length === 0 || tenantId.length > 512) return "tenantId must be a non-empty string";
+    if (typeof tenantId !== "string" || tenantId.length === 0 || tenantId.length > 512) return routing("tenantId must be a non-empty string");
     const canonical = canonicalizeParams(channel.paramsSchema, params);
-    if (!canonical.ok) return `params ${canonical.issue.path}: ${canonical.issue.message}`;
-    if (!isRevision(revision)) return "revision must be a canonical unsigned decimal string";
-    if (!isJsonValue(data)) return "data must be JSON";
+    if (!canonical.ok) return routing(`params ${canonical.issue.path}: ${canonical.issue.message}`);
+    if (!isRevision(revision)) return routing("revision must be a canonical unsigned decimal string");
+    if (!isJsonValue(data)) return routing("data must be JSON");
     const issue = validateValue(channel.payloadSchema, data);
-    if (issue !== null) return `data ${issue.path}: ${issue.message}`;
+    if (issue !== null) return { failureClass: "payload-schema", message: `data ${issue.path}: ${issue.message}` };
     const event: StreamEvent = {
       id: updateEventId(record.id, channel.name, channel.version, tenantId, canonical.canonical, revision),
       channel: channel.name,
@@ -560,7 +575,7 @@ export class GatewayRuntime implements SessionOwner {
       receivedAt: record.receivedAt
     };
     const bytes = Buffer.byteLength(JSON.stringify(event)) + FRAME_OVERHEAD_BYTES;
-    if (bytes > this.core.limits.maxDataFrameBytes) return "the data frame exceeds maxDataFrameBytes";
+    if (bytes > this.core.limits.maxDataFrameBytes) return routing("the data frame exceeds maxDataFrameBytes");
     return {
       channel,
       key: routingKey(channel.name, channel.version, tenantId, canonical.canonical),

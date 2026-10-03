@@ -2,6 +2,8 @@
  * StreamOtter V1 public type contracts. docs/V1_API.md governs behavior; these
  * declarations govern public types. contracts/v1/api.ts re-exports them.
  */
+import type { FailureHandlingConfig, SourceRecoveryHandlers } from "./failures.ts";
+
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type Params = Readonly<Record<string, string | boolean | number>>;
 export type Revision = string; // Canonical unsigned decimal; validated at runtime.
@@ -145,6 +147,8 @@ export type ProjectConfig<C extends ChannelMap = ChannelMap> = {
     }
   };
   limits?: Partial<Limits>;
+  /** V1.1 source-failure policies. Absent means V1 pause-on-failure behavior. */
+  failureHandling?: FailureHandlingConfig;
 };
 
 export interface Principal {
@@ -173,14 +177,23 @@ export interface MappedState<P extends Params, D extends Json> {
 export interface ChannelHandlers<C extends ChannelContract> {
   authorize(input: HandlerContext & { principal: Principal; params: C["params"] }): Awaitable<boolean>;
   map(input: HandlerContext & { record: SourceRecord }): Awaitable<readonly MappedState<C["params"], C["data"]>[]>;
-  snapshot(input: HandlerContext & { principal: Principal; params: C["params"] }): Awaitable<{
+  snapshot(input: HandlerContext & {
+    principal: Principal;
+    params: C["params"];
+    /** Present only while the channel's source has a recovery boundary in force (V1.1). */
+    recovery?: { boundaryId: string; context: Json };
+  }): Awaitable<{
     revision: Revision;
     data: C["data"];
+    /** Must echo recovery.boundaryId when recovery was supplied, and be absent otherwise. */
+    recoveryBoundaryId?: string;
   }>;
 }
 export interface HandlerRegistry<C extends ChannelMap> {
   authenticate(input: HandlerContext & { token: string; origin: string }): Awaitable<Principal | null>;
   channels: { readonly [K in keyof C]: ChannelHandlers<C[K]> };
+  /** V1.1 recovery guards, keyed by the IDs of sources whose policy uses quarantine-resync. */
+  sources?: Readonly<Record<string, SourceRecoveryHandlers>>;
 }
 export type Revocation =
   | { kind: "session"; tenantId: string; sessionId: string }

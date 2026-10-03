@@ -2,7 +2,7 @@ import { assertValidProjectConfig, type ChannelMap, type Gateway, type GatewayOp
 import { createGatewayRuntime } from "./runtime/gateway.ts";
 
 export type * from "@streamotter/contracts";
-export { StreamOtterError, validateProjectConfig } from "@streamotter/contracts";
+export { StreamOtterError, TransientMappingError, validateProjectConfig } from "@streamotter/contracts";
 export { consoleLogger, silentLogger } from "./runtime/util.ts";
 
 /**

@@ -1,4 +1,4 @@
-import type { DiagnosticStep, ErrorCode, GatewayLogger, Json, SourceRecord, SourceStatus } from "@streamotter/contracts";
+import type { DiagnosticStep, ErrorCode, FailureClass, GatewayLogger, Json, SourceRecord, SourceStatus } from "@streamotter/contracts";
 
 /** A record as read by an adapter, before gateway decoding and validation. */
 export interface SourceInput {
@@ -13,9 +13,13 @@ export interface SourceInput {
 /**
  * commit: processing completed; the adapter may commit past this record.
  * pause: the record is poison or unprocessable; do not commit it or anything after it.
+ *   failureClass is the trusted internal classification (ADR-15B §1); code stays the public error code.
  * abandon: the gateway is stopping; do not commit.
  */
-export type ProcessOutcome = { kind: "commit" } | { kind: "pause"; code: ErrorCode } | { kind: "abandon" };
+export type ProcessOutcome =
+  | { kind: "commit" }
+  | { kind: "pause"; code: ErrorCode; failureClass: FailureClass }
+  | { kind: "abandon" };
 
 export interface SourceSink {
   process(input: SourceInput): Promise<ProcessOutcome>;
