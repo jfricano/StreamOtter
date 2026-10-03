@@ -1,7 +1,7 @@
-import { StreamOtterError, type DiagnosticStep, type Json } from "@streamotter/contracts";
-import type { SourceAdapter, SourceSink } from "./types.ts";
+import { StreamOtterError, type DiagnosticStep, type FixtureRecord, type SourceRecord } from "@streamotter/contracts";
+import type { AdvanceResult, HeldPosition, SourceAdapter, SourceInput, SourceSink } from "./types.ts";
 
-export interface FixtureRecord { key: string | null; value: Json }
+export type { FixtureRecord };
 
 /**
  * Deterministic development source. Records advance in array order only when
@@ -11,13 +11,13 @@ export class FixtureSourceAdapter implements SourceAdapter {
   readonly kind = "fixture" as const;
   readonly #records: readonly FixtureRecord[];
   readonly #sink: SourceSink;
-  readonly #onCommit: () => void;
+  readonly #onCommit: (position: SourceRecord["position"]) => void;
   #index = 0;
   #paused = false;
   #stopped = false;
   #chain: Promise<unknown> = Promise.resolve();
 
-  constructor(records: readonly FixtureRecord[], sink: SourceSink, onCommit: () => void) {
+  constructor(records: readonly FixtureRecord[], sink: SourceSink, onCommit: (position: SourceRecord["position"]) => void) {
     this.#records = records;
     this.#sink = sink;
     this.#onCommit = onCommit;
@@ -65,6 +65,21 @@ export class FixtureSourceAdapter implements SourceAdapter {
     await run;
   }
 
+  /** Moves past the held record without processing it, then resumes; later records advance on request as usual. */
+  advancePast(held: HeldPosition): Promise<AdvanceResult> {
+    const run = this.#chain.then((): AdvanceResult => {
+      const position = held.position;
+      if (this.#stopped || !this.#paused || position.kind !== "fixture" || position.index !== String(this.#index)) return "not-held";
+      this.#index++;
+      this.#paused = false;
+      this.#onCommit(position);
+      this.#sink.setStatus("healthy");
+      return "advanced";
+    });
+    this.#chain = run.catch(() => undefined);
+    return run;
+  }
+
   async check(): Promise<DiagnosticStep[]> {
     return [
       { stage: "resolve", outcome: "ok", message: `Fixture with ${this.#records.length} records is registered.` },
@@ -79,17 +94,22 @@ export class FixtureSourceAdapter implements SourceAdapter {
   async #step(): Promise<boolean> {
     const record = this.#records[this.#index];
     if (record === undefined) return false;
-    const outcome = await this.#sink.process({
-      key: record.key,
-      value: record.value,
-      position: { kind: "fixture", index: String(this.#index) }
-    });
+    const position = { kind: "fixture" as const, index: String(this.#index) };
+    const keyBytes = record.key === null ? null : new TextEncoder().encode(record.key);
+    const input: SourceInput = "raw" in record
+      ? { key: record.key, bytes: new TextEncoder().encode(record.raw), keyBytes, headers: [], timestamp: null, position }
+      : { key: record.key, value: record.value, keyBytes, headers: [], timestamp: null, position };
+    const outcome = await this.#sink.process(input);
     if (outcome.kind === "commit") {
       this.#index++;
-      this.#onCommit();
+      this.#onCommit(position);
       return true;
     }
-    if (outcome.kind === "pause") this.#paused = true;
+    if (outcome.kind === "pause") {
+      this.#paused = true;
+      this.#sink.held(input, outcome);
+    }
+    if (outcome.kind === "hold") this.#paused = true;
     return false;
   }
 }

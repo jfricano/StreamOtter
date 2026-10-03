@@ -6,7 +6,7 @@
 export type {
   Awaitable, BoundaryRetirement, Capabilities, ChannelContract, ChannelHandlers, ChannelMap, ChannelSummary, Client, ClientOptions,
   ClientToServerEvents, ConfigIssue, ConnectionState, ControlRequest, DataFrame, DevelopmentOptions,
-  DevelopmentPrincipalSummary, DiagnosticStep, ErrorCode, ErrorFrame, FailureClass, FailureHandlingConfig, FailurePolicy,
+  DevelopmentPrincipalSummary, DiagnosticStep, ErrorCode, ErrorFrame, FailureClass, FailureHandlingConfig, FailurePolicy, FixtureRecord,
   Gateway, GatewayLogger, GatewayOptions,
   HandlerContext, HandlerRegistry, Hello, Json, KafkaConnection, Limits, ManagementOperations, MappedState, Page,
   Params, Principal, ProjectConfig, Receipt, RecoveryBoundary, RecoveryDecision, RecoveryIncident, Result, Revision,
