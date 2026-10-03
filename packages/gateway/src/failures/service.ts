@@ -272,7 +272,7 @@ export class FailureService {
   /**
    * The guarded form of resumeSource for a source with failure handling
    * (ADR-15C §6): it retries the held record and never skips it. Refused while an
-   * advance is pending or uncertain.
+   * advance is pending or uncertain, and while a quarantine-resync source's circuit is open.
    */
   beforeRetry(sourceId: string, reason: string): void {
     const open = this.store.open(sourceId);
@@ -281,6 +281,14 @@ export class FailureService {
       throw new StreamOtterError("SOURCE_UNAVAILABLE", {
         message: `Source "${sourceId}" has an unresolved advance for incident ${blocking.failureId}; it cannot be retried until that is reconciled.`,
         details: { status: 409, reason: "advance-unresolved" }
+      });
+    }
+    const policy = this.policy(sourceId);
+    const resync = policy.invalidJson === "quarantine-resync" || policy.invalidPublicPayload === "quarantine-resync";
+    if (resync && open.length > 0 && this.store.circuit(sourceId).state === "open") {
+      throw new StreamOtterError("SOURCE_UNAVAILABLE", {
+        message: `Source "${sourceId}" has an open automatic-continuation circuit; reopen it after correcting the cause, then retry.`,
+        details: { status: 409, reason: "circuit-open" }
       });
     }
     for (const incident of open) {

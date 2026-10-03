@@ -192,6 +192,8 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     assert.equal(second?.nextAction, "reopen-circuit");
     assert.equal((await op.reassess({ sourceId: "orders", failureId: second!.failureId, expectedRevision: second!.revision })).outcome, "circuit-open");
     assert.equal((await op.retryCurrent({ sourceId: "orders", failureId: second!.failureId, expectedRevision: second!.revision })).outcome, "circuit-open");
+    await assert.rejects(h.internals.resumeSource("orders"), (error: { details?: { reason?: string } }) => error.details?.reason === "circuit-open",
+      "the legacy resume respects the circuit too (ADR-15C §6)");
 
     const stale = await op.reopenCircuit({ sourceId: "orders", expectedCircuitRevision: circuit.revision + 1, reason: "fixed" });
     assert.equal(stale.outcome, "stale-revision");
