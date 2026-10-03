@@ -13,7 +13,7 @@ import {
   type SourceStatus, type StreamError, type StreamEvent, type Trace
 } from "@streamotter/contracts";
 import { openJournal } from "../failures/journal.ts";
-import { KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicReport } from "../failures/quarantine.ts";
+import { KafkaQuarantineReader, KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicReport } from "../failures/quarantine.ts";
 import { FailureService, type AdvanceHooks } from "../failures/service.ts";
 import { MemoryIncidentStore, type IncidentStore, type RawEvidence } from "../failures/store.ts";
 import { assertFailureHandling, usesQuarantine } from "../failures/validate.ts";
@@ -855,6 +855,14 @@ export class GatewayRuntime implements SessionOwner {
         const report = await quarantine.start();
         this.#quarantineReport = report;
         this.core.logger.info("Quarantine topic checked", { ...report });
+        // Connects only when an operator reads evidence back; consumer groups are <clientId>-quarantine-read-<uuid>.
+        this.#quarantineReader = new KafkaQuarantineReader({
+          topic,
+          connection: connections.get(first.connectionRef) as ResolvedKafkaConnection,
+          logger: this.core.logger,
+          maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes,
+          clientId: `streamotter-${this.config.projectId}`
+        });
       }
       const failures = new FailureService({
         config: this.config,
@@ -882,6 +890,8 @@ export class GatewayRuntime implements SessionOwner {
       this.#failures = failures;
       this.#operator = new OperatorService(this.#operatorHost(), failures, this.#internal.operatorHooks);
     } catch (error) {
+      await this.#quarantineReader?.stop().catch(() => undefined);
+      this.#quarantineReader = null;
       await quarantine?.stop().catch(() => undefined);
       store.close();
       throw error;
@@ -1004,6 +1014,8 @@ export class GatewayRuntime implements SessionOwner {
       this.#operatorSocket = null;
       await Promise.allSettled(started.map(adapter => adapter.stop(Date.now() + 5_000)));
       await this.#failures?.stop().catch(() => undefined);
+      await this.#quarantineReader?.stop().catch(() => undefined);
+      this.#quarantineReader = null;
       this.#failures = null;
       this.#operator = null;
       for (const source of this.#sources.values()) {
@@ -1042,6 +1054,7 @@ export class GatewayRuntime implements SessionOwner {
       await this.#failures?.stop().catch(error => {
         this.core.logger.error("The failure journal did not close cleanly", { error: (error as Error).message.slice(0, 200) });
       });
+      await this.#quarantineReader?.stop().catch(() => undefined);
       await Promise.allSettled(this.#stopCallbacks.map(callback => callback()));
       const io = this.#io;
       if (io !== null) await new Promise<void>(resolve => io.close(() => resolve()));

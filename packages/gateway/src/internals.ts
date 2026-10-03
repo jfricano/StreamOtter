@@ -7,3 +7,6 @@ export { FAILURE_CAPABILITIES, failureHandlingIssues, failureOptionIssues, nodeS
 export { MemoryIncidentStore, type IncidentRecord, type IncidentStore, type RawEvidence } from "./failures/store.ts";
 export { evidenceHash } from "./failures/evidence.ts";
 export { SqliteIncidentStore, initJournal, openJournal } from "./failures/journal.ts";
+export { KafkaQuarantineReader, KafkaQuarantineWriter } from "./failures/quarantine.ts";
+export type { QuarantineRead } from "./failures/quarantine.ts";
+export type { ResolvedKafkaConnection } from "./sources/kafka.ts";

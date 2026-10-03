@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import { silentLogger } from "@streamotter/gateway";
-import { evidenceHash, type RawEvidence } from "@streamotter/gateway/internals";
-import { KafkaQuarantineReader, KafkaQuarantineWriter, type QuarantineRead } from "../../packages/gateway/src/failures/quarantine.ts";
-import type { ResolvedKafkaConnection } from "../../packages/gateway/src/sources/kafka.ts";
+import {
+  evidenceHash, KafkaQuarantineReader, KafkaQuarantineWriter,
+  type QuarantineRead, type RawEvidence, type ResolvedKafkaConnection
+} from "@streamotter/gateway/internals";
 import { sleep } from "../integration/harness.ts";
 import {
   brokerAvailable, closeKafkaHelpers, committedOffsets, committedOffsetsOnTopic, createTopic, groupsWithPrefix, PLAINTEXT, testAdmin,

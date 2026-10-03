@@ -10,9 +10,9 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - slice A, PR #13 (`feat/v1.1-contracts`, on #12);
 - slice B, PR #15 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`;
 - slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`;
-- slice D, the operator workflow (`feat/v1.1-operator`, on #16), which merges PR #14 and the helper branches `feat/v1.1-operation-store`, `feat/v1.1-operator-ipc` and `feat/v1.1-failures-view`.
+- slice D, the operator workflow (`feat/v1.1-operator`, on #16), PR #17, which merges PR #14 and the helper branches `feat/v1.1-operation-store`, `feat/v1.1-operator-ipc`, `feat/v1.1-failures-view` and `feat/v1.1-quarantine-reader`.
 
-**Next step:** finish slice D with the Kafka quarantine reader (`feat/v1.1-quarantine-reader`) and WHC-1 revision 0.3 on PR #14, then slice E (PR 7): the health listener, the reference guard in the order-dashboard example, the runbook, the remaining evidence rows and the acceptance packet. Tell the Lontra Creek thread when PR #14 changes or merges and when a release is published.
+**Next step:** finish slice D with WHC-1 revision 0.3 on PR #14, then slice E (PR 7): the health listener, the reference guard in the order-dashboard example, the runbook, the remaining evidence rows and the acceptance packet. Tell the Lontra Creek thread when PR #14 changes or merges and when a release is published.
 
 **Open owner decisions:**
 
@@ -169,11 +169,16 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - The socket and CLI are stricter than the draft: unknown top-level request fields, a non-object `args` and a request without a newline are refused, and each CLI subcommand accepts only its own flags.
   - Reaching the operation-count limit reports the same reason as a full journal (`journal-full`); only the message tells them apart.
   - Without failure handling the failure routes answer 404 and discovery omits them, so discovery is now computed per request.
+- **Kafka read-back** (helper branch `feat/v1.1-quarantine-reader`, `9c1da75`, `482ac62`; wired in here): `KafkaQuarantineReader.read` checks the coordinates against the partition's watermarks (below the low watermark is `expired`, at or past the high one is `mismatch`), fetches the one record with a consumer in a throwaway group `streamotter-<projectId>-quarantine-read-<uuid>` that never commits, checks the `streamotter-failure-id` header and the evidence hash, and deletes the group afterwards. Reads run one at a time under a timeout; `stop()` abandons a read in progress. The gateway constructs the reader next to the writer and stops it on shutdown; it connects only when an operator reads evidence.
+  - Operators therefore need Read on the quarantine topic and Read and Delete on groups with that prefix. Without them the read is `unavailable` (or the group deletion is logged at warn).
+  - Known limits from the helper: KafkaJS keeps retrying a lost initial connection for about 24 s after the read has returned `unavailable` (the next read waits at most about 2 s); a read takes at least the broker's `group.initial.rebalance.delay.ms` (3 s by default); a record deleted between the watermark check and the fetch ends as a timeout `unavailable`, not `expired`.
 - **Not done here:**
-  - Kafka read-back of quarantined evidence (`KafkaQuarantineReader`), so evaluate and redrive work at the fixture tier only until it merges, with F28 and the topic-scan part of F41.
   - WHC-1 revision 0.3 (cross-origin `apiOrigin` and scoped host styles for Lontra Creek) goes to PR #14 and is merged here when done.
   - A child-process crash test for F35; the health listener (F37's health part) is slice E.
-- **Verification on Node 24.21.0** at `0a5aa96`:
+- **Verification on Node 24.21.0** with the quarantine reader merged and wired:
+  - `pnpm build && pnpm verify`: 314 tests, all pass (11 more in `packages/gateway/test/quarantine-reader.test.ts`).
+  - `pnpm test:kafka` against the local broker: 39 tests, all pass, including 7 in `tests/kafka/10-quarantine-reader.test.ts` (byte-for-byte read-back, multiple partitions, concurrent reads, expired, mismatches, a missing topic that is never created, timeouts and stop, no leftover groups or sockets) and 2 in `tests/kafka/11-operator.test.ts` (show, evaluate and redrive against read-back evidence; F28). The helper's run from its worktree failed 9 tests only because a worktree has no `.local` certificates or broker install; from the main checkout all pass.
+- **Verification on Node 24.21.0** at `0a5aa96`, before the reader:
   - `pnpm build && pnpm verify`: 303 tests, all pass. New in this slice: 12 in `tests/integration/operator.test.ts`, 2 in `tests/integration/operator-socket.test.ts`, 13 in `tests/integration/operator-routes.test.ts`, 12 in `tests/integration/operator-cli.test.ts`, 17 in `packages/gateway/test/operator-ipc.test.ts`, 7 operation cases in `packages/gateway/test/journal.test.ts`, plus the PR #14 tests.
   - `pnpm test:browser`: 40 tests, all pass, including 14 in `tests/browser/failures.test.ts`. As before, against the preinstalled headless Chromium 141 linked under the gitignored `.local/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/` (link each file of `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/`, and create `INSTALLATION_COMPLETE`), with `PLAYWRIGHT_BROWSERS_PATH` pointing at `.local/ms-playwright`.
 - **Failed or adjusted runs:**
