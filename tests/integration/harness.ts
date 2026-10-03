@@ -1,11 +1,11 @@
 import { createClient, type Client } from "@streamotter/client";
 import {
-  createGateway, silentLogger,
+  silentLogger,
   type ChannelContract, type DevelopmentOptions, type FailureHandlingConfig, type FixtureRecord, type Gateway, type GatewayLogger, type HandlerRegistry, type Json,
   type Limits, type Principal, type ProjectConfig, type StateChange, type StreamError, type StreamEvent,
   type SourceRecoveryHandlers, type Subscription, type SubscriptionState
 } from "@streamotter/gateway";
-import { getGatewayInternals, type GatewayInternals } from "@streamotter/gateway/internals";
+import { createGatewayRuntime, getGatewayInternals, type GatewayInternals, type InternalGatewayOptions } from "@streamotter/gateway/internals";
 
 export type OrderParams = { orderId: string };
 export type OrderState = { orderId: string; status: "queued" | "processing" | "done"; progress: number };
@@ -177,17 +177,19 @@ export async function startHarness(options: {
   stateDirectory?: string;
   /** handlers.sources recovery guards (V1.1 quarantine-resync). */
   recovery?: Record<string, SourceRecoveryHandlers>;
+  /** Test-only gateway internals (fault and crash hooks). */
+  internal?: InternalGatewayOptions;
 } = {}): Promise<Harness> {
   const app = options.app ?? new OrderApp();
   const handlers = app.handlers();
-  const gateway = createGateway<TestChannels>({
+  const gateway = createGatewayRuntime<TestChannels>({
     config: { ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) },
     ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
     handlers: options.recovery === undefined ? handlers : { ...handlers, sources: options.recovery },
     mode: "development",
     development: { principals: options.principals ?? {}, fixtures: { orders: options.fixtures ?? [] } },
     logger: options.logger ?? silentLogger
-  });
+  }, options.internal ?? {}).gateway;
   const { origin, path } = await gateway.start();
   const internals = getGatewayInternals(gateway);
   const clients: Client<TestChannels>[] = [];
