@@ -174,6 +174,10 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - Known limits from the helper: KafkaJS keeps retrying a lost initial connection for about 24 s after the read has returned `unavailable` (the next read waits at most about 2 s); a read takes at least the broker's `group.initial.rebalance.delay.ms` (3 s by default); a record deleted between the watermark check and the fetch ends as a timeout `unavailable`, not `expired`.
 - **Not done here:**
   - A child-process crash test for F35; the health listener (F37's health part) is slice E.
+- **Verification on Node 24.21.0** after merging WHC-1 revision 0.3 (`a01d9f6`, `cdc4808`):
+  - `pnpm build && pnpm verify`: 316 tests, all pass.
+  - `pnpm test:browser`: 52 tests, all pass (the 40 above plus the 12 revision 0.3 cases), on the local Chromium link described below.
+  - `pnpm test:install`: 21 tests, all pass. The first run failed one case: the `streamotter` tarball now contains `dist/operator.js` for the new `streamotter/gateway/operator` subpath, which the expected file list did not include. The list was updated, and the installed-package check now imports `getGatewayOperator` through both `@streamotter/gateway/operator` and `streamotter/gateway/operator`.
 - **Verification on Node 24.21.0** with the quarantine reader merged and wired:
   - `pnpm build && pnpm verify`: 314 tests, all pass (11 more in `packages/gateway/test/quarantine-reader.test.ts`).
   - `pnpm test:kafka` against the local broker: 39 tests, all pass, including 7 in `tests/kafka/10-quarantine-reader.test.ts` (byte-for-byte read-back, multiple partitions, concurrent reads, expired, mismatches, a missing topic that is never created, timeouts and stop, no leftover groups or sockets) and 2 in `tests/kafka/11-operator.test.ts` (show, evaluate and redrive against read-back evidence; F28). The helper's run from its worktree failed 9 tests only because a worktree has no `.local` certificates or broker install; from the main checkout all pass.
