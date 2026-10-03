@@ -110,7 +110,7 @@ describe("health listener (ADR-15C §4)", () => {
     const blocker = createServer();
     await new Promise<void>(resolve => blocker.listen(port, "127.0.0.1", resolve));
     try {
-      await assert.rejects(startHarness({ health: { port } }), (error: { code: string; message: string }) => error.code === "SOURCE_UNAVAILABLE" && /in use/.test(error.message));
+      await assert.rejects(startHarness({ health: { port } }), (error: { code: string; message: string }) => error.code === "SOURCE_UNAVAILABLE" && error.message === `Health port 127.0.0.1:${port} is already in use.`);
     } finally {
       await new Promise<void>(resolve => blocker.close(() => resolve()));
     }

@@ -174,6 +174,8 @@ Slice B note (normative for `stateDirectory`, `handlerBuildId` and the checks ab
 - Startup opens the journal (`openJournal`) and claims the configured sources. It refuses a missing journal (pointing at `streamotter init --failures`), a journal another gateway holds, and an open incident from another source generation.
 - With a quarantining Kafka source, startup also checks that the quarantine topic exists and that its `max.message.bytes` is at least `maxSourceRecordBytes` plus 80 KiB.
 
+Slice E note (normative, F48 and spec §14): when `failureHandling` is absent but `stateDirectory` points at an existing journal, startup opens it and refuses (`CONFIG_INVALID`, `details.reason: "failure-handling-removed"`, with `openIncidentSources` and `boundarySources`) while any configured source has an open incident or a recovery boundary in force. Removing `failureHandling` therefore needs the incidents resolved and the boundaries retired first, with it still configured. A journal with nothing outstanding is left untouched. A gateway started without `stateDirectory` cannot see the journal, and the V1 runtime (0.1.0-rc.3) does not read journals at all; it refuses a configuration that still contains `failureHandling` (`UNKNOWN_KEY`). The downgrade procedure is in the runbook.
+
 Slice D note (normative for `operatorSocket`, as implemented in `packages/gateway/src/runtime/gateway.ts`):
 
 - `operatorSocket` must be a boolean. `true` requires both `stateDirectory` and `failureHandling`, because the socket lives in the state directory and serves the failure operator API.
@@ -375,7 +377,7 @@ Slice E notes (normative, as implemented in `packages/gateway/src/runtime/health
   - `source-unavailable`: a source is starting, degraded or stopped while the gateway runs (for example, a broker outage);
   - `journal`: the last incident-store write failed, or the journal is at its size limit;
   - `quarantine`: an open incident's quarantine write failed or its outcome is unknown.
-- The listener opens first in `start()`, so readiness reports `starting` throughout startup, and closes with a failed start. A port already in use fails startup. `stop()` closes it first, so readiness ends before sessions close.
+- The listener opens first in `start()`, so readiness reports `starting` throughout startup, and closes with a failed start. A health port already in use fails startup with `SOURCE_UNAVAILABLE` "Health port <host>:<port> is already in use." `stop()` closes it first, so readiness ends before sessions close.
 - `streamotter start --health <host:port>` accepts `host:port`, `[ipv6]:port` or a bare port (bound to 127.0.0.1).
 
 ## 9. Development management routes and workbench (slice D)

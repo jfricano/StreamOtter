@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import type { Server as IoServer } from "socket.io";
 import {
   assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
@@ -12,11 +14,11 @@ import {
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
   type SourceStatus, type StreamError, type StreamEvent, type Trace
 } from "@streamotter/contracts";
-import { openJournal } from "../failures/journal.ts";
+import { JOURNAL_FILE, openJournal } from "../failures/journal.ts";
 import { KafkaQuarantineReader, KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicReport } from "../failures/quarantine.ts";
 import { FailureService, type AdvanceHooks } from "../failures/service.ts";
 import { MemoryIncidentStore, type IncidentStore, type RawEvidence } from "../failures/store.ts";
-import { assertFailureHandling, usesQuarantine } from "../failures/validate.ts";
+import { assertFailureHandling, nodeSupportsJournal, usesQuarantine } from "../failures/validate.ts";
 import { startOperatorSocket, type OperatorSocket } from "../operator/ipc.ts";
 import { OperatorService, type OperatorHooks, type OperatorHost } from "../operator/service.ts";
 import { ByteBudget } from "./budget.ts";
@@ -906,6 +908,39 @@ export class GatewayRuntime implements SessionOwner {
     }
   }
 
+  /**
+   * Spec §14 and F48: removing failureHandling must not silently drop the
+   * obligations a journal still holds. When stateDirectory points at a journal
+   * with an open incident or a recovery boundary in force for a configured
+   * source, startup is refused until they are resolved or retired with failure
+   * handling still configured. A journal with nothing outstanding is left alone.
+   */
+  #refuseAbandonedJournal(): void {
+    if (this.#stateDirectory === undefined || !existsSync(join(this.#stateDirectory, JOURNAL_FILE))) return;
+    const refuse = (message: string, details: Record<string, Json>) => new StreamOtterError("CONFIG_INVALID", {
+      message: `${message} Restore the failureHandling section, resolve the incidents and retire the boundaries, then remove it (see the V1.1 downgrade notes).`,
+      details: { reason: "failure-handling-removed", ...details }
+    });
+    if (!nodeSupportsJournal()) throw refuse("The state directory holds a failure journal that this Node version cannot read, and failureHandling is not configured.", {});
+    const store = openJournal(this.#stateDirectory, { projectId: this.config.projectId });
+    try {
+      const openIncidents: string[] = [];
+      const boundaries: string[] = [];
+      for (const sourceId of this.#sources.keys()) {
+        if (store.open(sourceId).length > 0) openIncidents.push(sourceId);
+        if (store.boundary(sourceId) !== null) boundaries.push(sourceId);
+      }
+      if (openIncidents.length > 0 || boundaries.length > 0) {
+        throw refuse(
+          `failureHandling was removed, but the failure journal still has ${openIncidents.length > 0 ? `open incidents on ${openIncidents.join(", ")}` : ""}${openIncidents.length > 0 && boundaries.length > 0 ? " and " : ""}${boundaries.length > 0 ? `recovery boundaries in force on ${boundaries.join(", ")}` : ""}.`,
+          { openIncidentSources: openIncidents, boundarySources: boundaries }
+        );
+      }
+    } finally {
+      store.close();
+    }
+  }
+
   /** Readiness reason categories (ADR-15C §4); empty means ready. */
   #readiness(): HealthReason[] {
     if (this.#state !== "running") return ["starting"];
@@ -962,7 +997,13 @@ export class GatewayRuntime implements SessionOwner {
     try {
       // First, so readiness reports "starting" for the whole startup.
       if (this.#healthOptions !== null) {
-        this.#health = await startHealthListener({ ...this.#healthOptions, readiness: () => this.#readiness() });
+        const { host, port } = this.#healthOptions;
+        this.#health = await startHealthListener({ host, port, readiness: () => this.#readiness() }).catch((error: unknown) => {
+          const code = (error as NodeJS.ErrnoException | undefined)?.code;
+          throw new StreamOtterError("SOURCE_UNAVAILABLE", {
+            message: code === "EADDRINUSE" ? `Health port ${host}:${port} is already in use.` : `The health listener could not start on ${host}:${port}: ${(error as Error | undefined)?.message ?? String(error)}`
+          });
+        });
         this.core.logger.info("Health listener started", { origin: this.#health.origin });
       }
       const connections = new Map<string, ResolvedKafkaConnection>();
@@ -973,6 +1014,7 @@ export class GatewayRuntime implements SessionOwner {
         connections.set(source.config.connectionRef, await resolveKafkaConnection(profile, this.#configDir));
       }
       if (this.config.failureHandling !== undefined) await this.#startFailures(connections);
+      else this.#refuseAbandonedJournal();
 
       http = createServer((_request, response) => {
         response.statusCode = 404;
