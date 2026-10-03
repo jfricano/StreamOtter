@@ -57,7 +57,7 @@ export function renderExport(root: HTMLElement, state: WorkbenchState): void {
         "import { createClient } from \"@streamotter/client\";",
         "import { channelVersions, type AppChannels } from \"./generated/streamotter.generated.js\";",
         "",
-        `const client = createClient<AppChannels>({ origin: "${state.gatewayOrigin}", getToken: ({ signal }) => session.getAccessToken(signal) });`,
+        `const client = createClient<AppChannels>({ origin: "${state.gatewayOrigin || "https://gateway.example.com"}", getToken: ({ signal }) => session.getAccessToken(signal) });`,
         `const sub = client.subscribe("${state.channels[0]?.name ?? "channelName"}", { channelVersion: channelVersions.${state.channels[0]?.name ?? "channelName"}, params });`,
         "sub.on(\"data\", event => render(event.data));",
         "sub.on(\"state\", ({ state }) => showDeliveryState(state)); // \"live\" means synchronized",

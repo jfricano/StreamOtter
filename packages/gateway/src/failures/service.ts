@@ -45,7 +45,7 @@ export interface FailureSource {
 type Pause = Extract<ProcessOutcome, { kind: "pause" }>;
 
 let cachedVersion: string | null = null;
-function gatewayVersion(): string {
+export function gatewayVersion(): string {
   if (cachedVersion !== null) return cachedVersion;
   try {
     const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version?: unknown };
@@ -199,6 +199,18 @@ export class FailureService {
     return next;
   }
 
+  /**
+   * Runs operator work in the source's failure chain, after any disposition
+   * already queued and before any queued later, so an operator action never
+   * interleaves with the guarded continuation of the same source.
+   */
+  run<T>(sourceId: string, work: () => Promise<T> | T): Promise<T> {
+    const previous = this.#chains.get(sourceId) ?? Promise.resolve();
+    const result = previous.then(work);
+    this.#chains.set(sourceId, result.then(() => undefined, () => undefined));
+    return result;
+  }
+
   /** Resolves when every queued disposition has finished; for tests and shutdown. */
   async settled(): Promise<void> {
     await Promise.all(this.#chains.values());
@@ -260,7 +272,7 @@ export class FailureService {
   /**
    * The guarded form of resumeSource for a source with failure handling
    * (ADR-15C §6): it retries the held record and never skips it. Refused while an
-   * advance is pending or uncertain.
+   * advance is pending or uncertain, and while a quarantine-resync source's circuit is open.
    */
   beforeRetry(sourceId: string, reason: string): void {
     const open = this.store.open(sourceId);
@@ -269,6 +281,14 @@ export class FailureService {
       throw new StreamOtterError("SOURCE_UNAVAILABLE", {
         message: `Source "${sourceId}" has an unresolved advance for incident ${blocking.failureId}; it cannot be retried until that is reconciled.`,
         details: { status: 409, reason: "advance-unresolved" }
+      });
+    }
+    const policy = this.policy(sourceId);
+    const resync = policy.invalidJson === "quarantine-resync" || policy.invalidPublicPayload === "quarantine-resync";
+    if (resync && open.length > 0 && this.store.circuit(sourceId).state === "open") {
+      throw new StreamOtterError("SOURCE_UNAVAILABLE", {
+        message: `Source "${sourceId}" has an open automatic-continuation circuit; reopen it after correcting the cause, then retry.`,
+        details: { status: 409, reason: "circuit-open" }
       });
     }
     for (const incident of open) {

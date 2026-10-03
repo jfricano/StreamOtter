@@ -1,6 +1,6 @@
 # Workbench host contract, version 1 (WHC-1)
 
-**Status:** Interface specification, revision 0.1 (October 3, 2026). Defined before implementation so Lontra Creek can build against it. Not implemented or published yet; [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) tracks the slice that ships it.\
+**Status:** Interface specification, revision 0.2 (October 3, 2026). Implemented on branch `feat/v1.1-workbench-host` (PR 2 in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)); not merged or published yet. Revision 0.2 records the clarifications made while implementing it ([§9](#9-implementation-notes-revision-02)).\
 **Governs:** spec §10 "Published frontend integration for a synthetic demo", acceptance families F44 and F46.\
 **Owner:** the StreamOtter library. Lontra Creek owns everything on the host side of the boundary described here.
 
@@ -225,3 +225,20 @@ Using the helper is optional. A host may implement the §5 contract itself, for 
 | The packed `@streamotter/workbench` tarball contains `workbench-host.json`, its integrity values match the files, and the exports resolve after `npm install` outside the workspace | F46 |
 
 Hosted LC11 results are Lontra Creek's and do not gate the library release.
+
+## 9. Implementation notes (revision 0.2)
+
+These clarify revision 0.1 where implementing it needed a decision. None changes a field, path or name above.
+
+| Section | Clarification |
+| --- | --- |
+| §2 | `connect-src` in `workbench-host.json` holds the literal placeholders `"<gateway origin>"` and `"<gateway websocket origin>"`; the host replaces them with its gateway's `http(s)` and `ws(s)` origins. Integrity values are computed from the final `app.js` and `styles.css` after the build. `exports` is `./host`, `./dist/*` and `./package.json`. The `WorkbenchHostManifest` type in `@streamotter/contracts` describes the file. |
+| §3.2 | Only `hostContract` is required. `auth` defaults to `{ "mode": "token" }`, `environment` to `{ "kind": "development" }`, and `gateway.path` to `/streamotter/socket.io`; `gateway.origin` is required when `gateway` is present. `apiBase` must be one or more non-empty path segments (no `.` or `..`, no query, fragment, backslash or `//` prefix). `label` and `detail` are counted in characters and may not contain control characters; `packageVersion` is an exact version (`[0-9A-Za-z.+-]`, at most 64 characters). `validateWorkbenchHostConfig` in `@streamotter/contracts` implements these rules and returns JSON Pointer paths. A present `hostContract` other than `1` is reported alone, and the workbench shows the "unsupported host contract" screen for it. When a boot block is present, the gateway comes only from it; the meta tags are used only without a boot block. |
+| §3.2 | In `session` mode the workbench also sends `redirect: "error"`, so a host that answers an expired session with a redirect cannot lead it to another origin. |
+| §4 | `workbench` is in the operation vocabulary. `createManagementHandler` always answers `GET {apiBase}/workbench`, whether or not `workbench` is in its allowlist, and reports the allowlisted operations it implements (plus `workbench`). An allowlisted operation the installed gateway does not implement yet (the V1.1 failure operations before slice D) is not reported and answers 404. The native server reports every operation it implements and `limits.maxRequestBytes` 1048576. The workbench also refuses locally, without a request, any operation discovery did not report, and any body larger than `limits.maxRequestBytes`. |
+| §4 | When a shell operation (`config`, `health`, `channels`, `sources`) is missing, the whole workbench shows "Not available in this environment" with the missing names. A missing tab operation replaces that tab's content; a missing button operation replaces that button. Without `dev.principals`, the principal list is empty and Preview is unavailable. |
+| §6 | `createManagementHandler` requires `X-StreamOtter-Workbench: 1` on every POST and answers 403 `FORBIDDEN` without it (a CSRF guard: a cross-site form cannot set the header, and a cross-origin `fetch` that sets it needs a CORS preflight the handler never grants). GETs change nothing and do not need it. |
+| §6 | Checks run in this order: `authorize` (401), route lookup (404 for an unknown path or method), allowlist (403), query parameters (400), the POST header (403), then the body (413, 400). `authorize` must return exactly `true`; anything else is 401, and a throw is a 500. |
+| §6 | `maxBodyBytes` applies to every route served by the handler: default 65536, at most 1048576. A host that allows `config.validate` or `config.export` for full project configurations sets it higher (up to 1 MiB). `pathWithinApi` is the path after `apiBase`, such as `/traces`; the query string is read from it when it has one, and otherwise from `request.url`. Rate limiting is the host's. |
+| §6 | Responses carry `X-Request-Id`, `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`. The handler adds no CORS headers and answers `OPTIONS` with 404. |
+| §8 | The native server and `createManagementHandler` share one router (`packages/gateway/src/management/router.ts`). One native refinement follows from it: an unknown route now answers 404 before its body is read, where it previously could answer 400 or 413 for a malformed body first. |

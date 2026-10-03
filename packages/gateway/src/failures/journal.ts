@@ -4,11 +4,12 @@ import { join } from "node:path";
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { StreamOtterError, type ErrorCode, type Json, type Page } from "@streamotter/contracts";
 import {
-  advancedIncident, capAdvances, checkAdvanceState, checkCircuit, checkPrepareAdvance, checkRetirement, clampLimit, defaultCircuit, endBoundary,
-  evidenceBytes, generationRetirement, JOURNAL_LIMIT_BYTES, MAX_EVENTS_PER_INCIDENT, nextBoundary, SPOOL_LIMIT_BYTES, StaleRevisionError, storeFull,
-  unknownIncident,
+  abandonedOperation, advancedIncident, capAdvances, checkAdvanceState, checkCircuit, checkOperationResult, checkPrepareAdvance, checkRetirement,
+  clampLimit, defaultCircuit, endBoundary, evidenceBytes, finishedOperation, generationRetirement, JOURNAL_LIMIT_BYTES, MAX_EVENTS_PER_INCIDENT,
+  MAX_OPERATIONS, newOperation, nextBoundary, operationsToPrune, SPOOL_LIMIT_BYTES, StaleRevisionError, storeFull, unknownIncident,
   type CircuitState, type HeaderBytes, type IncidentEvent, type IncidentPatch, type IncidentQuery, type IncidentRecord, type IncidentStore,
-  type NewObservation, type ObservationResult, type PrepareAdvance, type RawEvidence, type SourceIdentity, type StoreUsage, type StoredBoundary
+  type NewObservation, type ObservationResult, type PrepareAdvance, type RawEvidence, type SourceIdentity, type StoreUsage, type StoredBoundary,
+  type NewOperation, type StoredOperation
 } from "./store.ts";
 
 /**
@@ -54,8 +55,9 @@ const SQLITE_NOTADB = 26;
  * Forward-only schema migrations. A migration's SQL runs in one transaction
  * together with the schema_version bump, so a journal is always at exactly one
  * version. Append new versions; never edit a shipped one. Version 1 has not
- * shipped yet, so the recovery-boundary and circuit tables (ADR-15B) were added
- * to it in place rather than as version 2.
+ * shipped yet, so the recovery-boundary and circuit tables (ADR-15B) and the
+ * operator operations table (ADR-15C §1) were added to it in place rather than
+ * as later versions.
  */
 const MIGRATIONS: readonly { version: number; sql: string }[] = [
   {
@@ -127,6 +129,21 @@ const MIGRATIONS: readonly { version: number; sql: string }[] = [
         reason TEXT,
         revision INTEGER NOT NULL CHECK (revision >= 1)
       ) STRICT;
+      CREATE TABLE operations (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_id TEXT NOT NULL UNIQUE CHECK (length(operation_id) BETWEEN 1 AND 128),
+        kind TEXT NOT NULL CHECK (kind IN ('retry-current', 'reassess', 'reopen-circuit', 'retire-boundary', 'redrive')),
+        source_id TEXT NOT NULL,
+        failure_id TEXT,
+        request_hash TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('pending', 'completed', 'unknown')),
+        result TEXT CHECK (result IS NULL OR json_valid(result)),
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        CHECK ((state = 'pending') = (completed_at IS NULL)),
+        CHECK (state <> 'pending' OR result IS NULL)
+      ) STRICT;
+      CREATE INDEX operations_prune_order ON operations (completed_at, started_at, seq) WHERE state <> 'pending';
     `
   }
 ];
@@ -139,6 +156,8 @@ export interface JournalLimits {
   journalLimitBytes?: number;
   /** Default SPOOL_LIMIT_BYTES (16 MiB). */
   spoolLimitBytes?: number;
+  /** Operator operations kept before the oldest finished ones are pruned. Default MAX_OPERATIONS (10,000). */
+  maxOperations?: number;
 }
 
 export interface JournalLock {
@@ -613,6 +632,34 @@ function boundaryFromRow(row: BoundaryRow): StoredBoundary {
   };
 }
 
+interface OperationRow {
+  operation_id: string;
+  kind: StoredOperation["kind"];
+  source_id: string;
+  failure_id: string | null;
+  request_hash: string;
+  state: StoredOperation["state"];
+  result: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+const OPERATION_COLUMNS = "operation_id, kind, source_id, failure_id, request_hash, state, result, started_at, completed_at";
+
+function operationFromRow(row: OperationRow): StoredOperation {
+  return {
+    operationId: row.operation_id,
+    kind: row.kind,
+    sourceId: row.source_id,
+    failureId: row.failure_id,
+    requestHash: row.request_hash,
+    state: row.state,
+    result: row.result === null ? null : JSON.parse(row.result) as Json,
+    startedAt: row.started_at,
+    completedAt: row.completed_at
+  };
+}
+
 interface CircuitRow { source_id: string; state: CircuitState["state"]; advances: string; opened_at: string | null; reason: string | null; revision: number }
 
 /**
@@ -627,6 +674,7 @@ export class SqliteIncidentStore implements IncidentStore {
   readonly #db: DatabaseSync;
   readonly #journalLimitBytes: number;
   readonly #spoolLimitBytes: number;
+  readonly #maxOperations: number;
   readonly #release: () => void;
   readonly #statements = new Map<string, StatementSync>();
   #closed = false;
@@ -636,6 +684,7 @@ export class SqliteIncidentStore implements IncidentStore {
     this.path = path;
     this.#journalLimitBytes = limits.journalLimitBytes ?? JOURNAL_LIMIT_BYTES;
     this.#spoolLimitBytes = limits.spoolLimitBytes ?? SPOOL_LIMIT_BYTES;
+    this.#maxOperations = limits.maxOperations ?? MAX_OPERATIONS;
     this.#release = release;
     this.replacedLock = replacedLock;
     // A hard backstop under the admission checks below: SQLite itself refuses to grow the file past the limit.
@@ -885,6 +934,53 @@ export class SqliteIncidentStore implements IncidentStore {
       const updated = checkCircuit(sourceId, next, current.revision + 1);
       this.#saveCircuit(updated);
       return updated;
+    });
+  }
+
+  /** Same semantics as MemoryIncidentStore.beginOperation: the prune and the insert commit together. */
+  beginOperation(input: NewOperation): { operation: StoredOperation; created: boolean } {
+    const operation = newOperation(input);
+    return this.#write(() => {
+      const existing = this.getOperation(operation.operationId);
+      if (existing !== null) return { operation: existing, created: false };
+      const counts = this.#statement("SELECT count(*) AS stored, count(*) FILTER (WHERE state <> 'pending') AS finished FROM operations").get() as
+        { stored: number; finished: number };
+      const prune = operationsToPrune(counts.stored, counts.finished, this.#maxOperations);
+      if (prune > 0) {
+        // The WHERE clause matches operations_prune_order's, so the oldest finished rows come straight off that index.
+        this.#statement(`DELETE FROM operations WHERE seq IN (
+          SELECT seq FROM operations WHERE state <> 'pending' ORDER BY completed_at, started_at, seq LIMIT ?)`).run(prune);
+      }
+      // A new operation row is growth, so it is admitted like a new incident.
+      this.#admit(Buffer.byteLength(JSON.stringify(operation)) + ROW_OVERHEAD_BYTES, "record an operator operation");
+      this.#statement(`INSERT INTO operations (${OPERATION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(operation.operationId, operation.kind, operation.sourceId, operation.failureId, operation.requestHash, operation.state, null,
+          operation.startedAt, null);
+      return { operation, created: true };
+    });
+  }
+
+  finishOperation(operationId: string, state: "completed" | "unknown", result: Json, at = new Date().toISOString()): StoredOperation {
+    const canonical = checkOperationResult(state, result);
+    return this.#write(() => {
+      const finished = finishedOperation(operationId, this.getOperation(operationId), state, canonical, at);
+      // Not pre-admitted (see IncidentStore.finishOperation); SQLite's page cap still refuses real growth past the limit.
+      this.#statement("UPDATE operations SET state = ?, result = ?, completed_at = ? WHERE operation_id = ?").run(state, canonical, at, operationId);
+      return finished;
+    });
+  }
+
+  getOperation(operationId: string): StoredOperation | null {
+    const row = this.#statement(`SELECT ${OPERATION_COLUMNS} FROM operations WHERE operation_id = ?`).get(operationId) as OperationRow | undefined;
+    return row === undefined ? null : operationFromRow(row);
+  }
+
+  abandonPendingOperations(at: string): StoredOperation[] {
+    return this.#write(() => {
+      const rows = this.#statement(`SELECT ${OPERATION_COLUMNS} FROM operations WHERE state = 'pending' ORDER BY seq`).all() as unknown as OperationRow[];
+      const abandoned = rows.map(row => abandonedOperation(operationFromRow(row), at));
+      this.#statement("UPDATE operations SET state = 'unknown', result = NULL, completed_at = ? WHERE state = 'pending'").run(at);
+      return abandoned;
     });
   }
 

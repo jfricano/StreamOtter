@@ -174,6 +174,12 @@ Slice B note (normative for `stateDirectory`, `handlerBuildId` and the checks ab
 - Startup opens the journal (`openJournal`) and claims the configured sources. It refuses a missing journal (pointing at `streamotter init --failures`), a journal another gateway holds, and an open incident from another source generation.
 - With a quarantining Kafka source, startup also checks that the quarantine topic exists and that its `max.message.bytes` is at least `maxSourceRecordBytes` plus 80 KiB.
 
+Slice D note (normative for `operatorSocket`, as implemented in `packages/gateway/src/runtime/gateway.ts`):
+
+- `operatorSocket` must be a boolean. `true` requires both `stateDirectory` and `failureHandling`, because the socket lives in the state directory and serves the failure operator API.
+- The socket starts after every source is ready, just before `start()` resolves. If it cannot start (§7 lists the refusals), `start()` rolls back and rejects like any other startup failure.
+- `stop()` closes the socket first, before sources drain, so no operation starts during shutdown. Closing removes the socket and the token file.
+
 ## 5. Incidents (slices A, B)
 
 ### 5.1 Failure classes (ADR-15B §1; normative in slice A)
@@ -244,6 +250,8 @@ export interface IncidentEvent {
 The `event` names are spec §11.2's structured lifecycle events. They are emitted to the gateway logger as `{ failureId, sourceId, event }` with metadata only.
 
 Slice B note: these operator-facing shapes ship with slice D. The journal's internal record (`IncidentRecord` in `packages/gateway/src/failures/store.ts`) has the same fields. It differs in two ways: `impact` and `nextAction` are derived rather than stored, and `progress` names the retry states `"retrying"` and `"processed"` (a held record that processed on retry) instead of `"retried"`. Slice D maps the record onto `IncidentSummary`.
+
+Slice D note (normative; the types are in `packages/contracts/src/operator.ts`): `IncidentSummary.progress` keeps the journal's vocabulary (`held`, `retrying`, `advance-pending`, `advanced`, `processed`, `uncertain`) instead of mapping onto `retried`, because a lossy mapping would hide whether a retried record processed. `IncidentSummary` also carries `state` and `resolution`, `IncidentEvent` adds `resolved`, the detail's `boundary` carries its `state`, and `IncidentDetail.explanation` holds the plain-language fields the console shows (spec §10).
 
 Slice C note, continuation order (spec §6; ADR-15A ordering step 5). For an eligible record under `quarantine-resync`:
 
@@ -318,6 +326,16 @@ export interface OperatorStatus {
 
 Refusals are `result: "refused"` with a specific `outcome` (for example `stale-revision`, `integrity-class`, `plan-expired`, `fingerprint-changed`, `evidence-unavailable`, `circuit-open`, `not-held`), never an exception, so tooling can show them. Malformed input is an `INVALID_REQUEST` exception.
 
+Slice D notes (normative, as implemented in `packages/gateway/src/operator/service.ts`):
+
+- **Every mutation is an operation.** `retryCurrent`, `reassess`, `reopenCircuit`, `retireBoundary` and `redrive` each record their intent in the journal before acting and their `OperationResult` after (`IncidentStore.beginOperation`/`finishOperation`). Only `redrive` accepts a caller-supplied `operationId`; the others generate `op1:` + 32 hex. A reused ID returns the recorded result; a reused ID with a different request is refused (`operation-id-reused`); an ID still running is refused (`operation-in-progress`). At startup every operation still pending becomes `unknown` and is reported, never rerun (F35). Operations touching an incident also add an `operator` event carrying the operation ID.
+- **Retry and reassess redeliver the held record.** Both resume the paused source, so the original record is processed again; neither skips it. Under `quarantine-resync`, the redelivered record goes through the slice C order again: a fresh acknowledged quarantine copy, the circuit, then the guard. `reassess` is the restricted form: only an eligible class (`integrity-class` otherwise) under `quarantine-resync` (`policy-not-resync`) whose recovery is `held` or `denied`. Both wait up to 15 s for the record to settle and report `retried` (processed), `advanced`, `held` (failed again, with the diagnosis), or `retrying` (not settled yet).
+- **The circuit blocks retries too.** Following ADR-15C §6, `retryCurrent`, `reassess` and the legacy `resumeSource` are refused with `circuit-open` while the circuit of a source with a `quarantine-resync` policy is open. `reopenCircuit` closes it and clears the window; it approves no record.
+- **`retireBoundary`** is refused unless the source's `boundaryRetirement` is `"operator"` (`retirement-mode`), and while any incident the boundary lists is held (`incident-held`). The retirement records the reason and operation ID; snapshots stop acknowledging the boundary at once.
+- **Evaluate** runs any incident whose evidence can be read back (local fixture evidence, or the quarantine topic at the recorded coordinates, checked against the evidence hash). It records no traces and admits nothing. A plan is issued only when a redrive would be allowed: the incident was `advanced`, its class is eligible, the source declares `replaySafeMapping`, no integrity incident is open on the source, and the mapping now succeeds. Otherwise `ineligibleReason` says why (`not-advanced`, `not-replay-safe`, `integrity-fault-open`, `still-fails`, `evidence-expired`, `evidence-unavailable`, `stale-revision`, `generation-changed`). A stale or unknown request is reported the same way, not thrown.
+- **Plans** live in gateway memory: at most 64, five minutes each, single use, and gone after a restart (`plan-unknown`). The fingerprint is `sha256:` over the incident ID and revision, source generation, evidence hash, configuration fingerprint, handler build ID, channel versions and the canonical mapped-output hash (routing key, revision and data hash of each output, in order).
+- **Redrive** rechecks everything at execution, reads the evidence back again, and re-evaluates under the source's processing lock, so it runs between two records. If the outputs no longer hash to the plan's, nothing is admitted (`fingerprint-changed`). Otherwise the outputs go through `admit`, and the result is `reprocessed` when at least one subscription queued a frame, else `superseded`; the message gives the counts. A record that now maps to an existing revision with different data ends `failed` with outcome `revision-conflict` and admits nothing. Unlike a live conflict it does not pause the source, because the conflicting record came from the operator, not from the stream.
+
 `RawEvidence` is `{ keyBase64: string | null; valueBase64: string | null; headers: { name: string; valueBase64: string }[]; complete: boolean }`. It is only available in-process and over the local socket, never over WHC-1 (see [WORKBENCH_HOST_CONTRACT.md](./WORKBENCH_HOST_CONTRACT.md) §5).
 
 `ReproductionBundle` is versioned JSON (`bundleVersion: 1`) with fingerprints, the sanitized incident, the relevant traces, the configured policy, the expected behavior, the supported remedy, and `raw` only when requested. The CLI writes it with mode 0600 and refuses to overwrite (F40).
@@ -331,6 +349,16 @@ ADR-15C §3 fixes the socket location and permissions. The wire format:
 - Response: `{ "v": 1, "id": string, "ok": true, "data": … }` or `{ "v": 1, "id": string, "ok": false, "error": StreamError }`.
 - The token is compared in constant time. Ten requests per second per gateway, burst twenty; excess gets `OVERLOADED`. Connections idle for 5 seconds are closed.
 - The CLI reads the token from `<stateDirectory>/run/operator.token` and refuses to read it if the file or directory is group- or world-accessible or not owned by the current user.
+
+Slice D notes (normative, as implemented in `packages/gateway/src/operator/ipc.ts`):
+
+- **Startup refusals** are `CONFIG_INVALID` with `details.reason`: `state-dir-missing` or `state-dir-insecure` (the journal's rule), `run-dir-missing` or `run-dir-insecure` (`run/` must have no group or world access, must not be a symlink, and must be owned by the gateway's user), `socket-path-too-long` (over 103 bytes), `socket-in-use` (another gateway answers on it), and `socket-path-occupied` (something other than a socket, including a symlink). A stale socket nobody answers is replaced.
+- **The token** is 32 random bytes in base64url, fresh on every start. It is written to a new 0600 file and renamed over `operator.token`, so a symlink planted there is replaced, never written through. It is written only after the live-socket check, so a refused second gateway leaves the running one's token alone. The socket is 0600. Close removes the socket and token only if they are still the files this gateway created.
+- **Request checks run in this order:** size (65,536 bytes including the newline), strict UTF-8, a JSON object, `id` (a string of at most 128 characters; otherwise the answer carries `id: ""`), the rate limit, unknown top-level fields, `v`, the token, a known `op`, `args` is an object, then the shared `validateOperatorRequest`. A request without a terminating newline is refused.
+- **Errors:** a `StreamOtterError` from the operator passes through unchanged; anything else is `INTERNAL` with no details. More than 16 concurrent connections get `OVERLOADED`. The idle timer is absolute, so trickled bytes do not extend it.
+- **Logs** carry the operation name and outcome only, never the token or any payload.
+- **The client** (`callOperator`, `connectOperator` in `@streamotter/gateway/operator`) validates arguments before connecting, re-checks the token file after opening it, times out after 30 s (`TIMEOUT`), and caps responses at 64 MiB. When no gateway serves the directory it raises `UNSUPPORTED_CAPABILITY` with `details.reason: "operator-not-running"`.
+- Windows is not supported; both sides refuse with `UNSUPPORTED_CAPABILITY`.
 
 ## 8. Health listener (slice E)
 
@@ -355,6 +383,16 @@ Added to `ManagementOperations`, all behind the existing development token and o
 
 The workbench gains a Failures tab built only on these, and runs anywhere the [workbench host contract](./WORKBENCH_HOST_CONTRACT.md) is honored.
 
+Slice D notes (normative, as implemented in `packages/gateway/src/management/router.ts` and `apps/workbench/src/views/failures.ts`):
+
+- The routes exist only while the gateway has an operator service, that is, when `failureHandling` is configured. Otherwise they answer 404 and discovery omits them. With an operator but an allowlist that excludes them, `createManagementHandler` answers 403.
+- Every argument goes through `validateOperatorRequest`. `GET /failures` accepts only `sourceId`, `state`, `limit` and `cursor`, each at most once. The failure ID in `GET /failures/{failureId}` is URL-decoded exactly once.
+- No route returns raw evidence. `showFailure` and `exportFailure` are called without `includeRaw`, an export body carrying `includeRaw` is refused, and a `raw` field is removed from any answer (F37).
+- Bodies are capped at 64 KiB on these routes, whatever `maxBodyBytes` allows.
+- A refused `OperationResult` is a normal 200 response.
+- There is no route for `retireBoundary`; it is reachable only in-process and over the local socket.
+- The Failures tab appears when discovery lists `failures.list`. Each action sends the revision shown on screen and displays the result exactly as returned. An action the host does not offer reads "Not available in this environment".
+
 ## 10. CLI (slices B, D, E)
 
 | Command | Behavior |
@@ -366,6 +404,15 @@ The workbench gains a Failures tab built only on these, and runs anywhere the [w
 | `streamotter sources retry-current\|reassess\|reopen-circuit\|retire-boundary --state-dir <dir> ...` | §6 over IPC. `retire-boundary` prints the ADR-15B §4 warning and requires `--confirm <boundaryId>`. |
 
 Exit codes extend the existing `0` ok, `1` runtime, `2` invalid: `3` refused (the operation was understood and declined), `4` unknown outcome. `--json` prints the `OperationResult` or data verbatim.
+
+Slice D notes (normative, as implemented in `packages/cli/src/operator.ts`):
+
+- `INVALID_REQUEST` from the gateway exits 2; a gateway that is not running exits 1. With `--json`, errors go to stderr as `{"error": StreamError}` and stdout stays empty.
+- Each subcommand accepts only its own flags; `--force` does not exist.
+- Raw bytes appear in human output only as base64 with a 64-byte hex preview. Every printed string, `--json` included, has control and bidirectional-override characters escaped as `\uXXXX` (F39).
+- `failures export --out <file>` creates the file with mode 0600, refuses an existing file before contacting the gateway, and removes a partial file if the write fails. With `--json` it prints `{ path, bundleVersion, rawIncluded }` rather than the bundle.
+- `sources retire-boundary` exits 2 before connecting unless `--confirm` equals `--boundary`.
+- `start` and `dev` accept `--operator-socket`, which requires `--state-dir`.
 
 ## 11. Decisions this draft adds
 

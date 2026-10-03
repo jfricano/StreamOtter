@@ -22,6 +22,11 @@
       "types": "./dist/management/index.d.ts",
       "default": "./dist/management/index.js"
     },
+    "./operator": {
+      "streamotter-source": "./src/operator/index.ts",
+      "types": "./dist/operator/index.d.ts",
+      "default": "./dist/operator/index.js"
+    },
     "./internals": {
       "streamotter-source": "./src/internals.ts",
       "types": "./dist/internals.d.ts",
@@ -45,6 +50,10 @@
       "./management": {
         "types": "./dist/management/index.d.ts",
         "default": "./dist/management/index.js"
+      },
+      "./operator": {
+        "types": "./dist/operator/index.d.ts",
+        "default": "./dist/operator/index.js"
       },
       "./internals": {
         "types": "./dist/internals.d.ts",

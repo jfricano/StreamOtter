@@ -232,9 +232,85 @@ export interface IncidentStore {
   /** Replaces the circuit's state at expectedRevision (StaleRevisionError otherwise). */
   updateCircuit(sourceId: string, expectedRevision: number, next: Pick<CircuitState, "state" | "advances" | "openedAt" | "reason">): CircuitState;
 
+  // --- operator operations (slice D) ---------------------------------------------
+
+  /**
+   * Records an operation's intent before it acts (spec §8.3, F35). When
+   * operationId already exists nothing is written and the stored record is
+   * returned with created false; the caller compares requestHash and state.
+   * Admitted against the journal limit like a new incident; when more than
+   * MAX_OPERATIONS are stored, the oldest finished ones (completed or unknown)
+   * are pruned in the same transaction. Pending ones are never pruned.
+   *
+   * Input is checked first, before anything is read, and refused (400) with
+   * details.reason: "operation-id" (1–128 characters, no control characters),
+   * "operation-kind", "request-hash" ("sha256:" + 64 lowercase hex),
+   * "source-id" (non-empty), "failure-id" (null or non-empty) and
+   * "operation-time" (a non-empty `at`). A known operationId is then returned
+   * as stored even when the store is full, so a repeated request can always be
+   * answered. Otherwise the insert never leaves more than MAX_OPERATIONS stored:
+   * the oldest finished ones by completedAt, then startedAt, then insertion
+   * order make room; when only pending ones would be left to prune, or the
+   * journal is past its byte limit, it refuses OVERLOADED ("journal-full").
+   * A refusal writes nothing, prunes included.
+   */
+  beginOperation(input: NewOperation): { operation: StoredOperation; created: boolean };
+  /**
+   * Moves a pending operation to completed or unknown with its result. Refuses
+   * (409, "operation-not-pending") anything not pending, and 404 an unknown ID.
+   *
+   * The result is checked first and refused (400) when it is not JSON data
+   * ("result-not-json") or is over 16 KiB of canonical JSON
+   * ("result-too-large"); a state other than completed or unknown is refused
+   * ("operation-state"). The result is stored, and returned, in canonical
+   * form. Finishing rewrites an existing row, so like update() it is not
+   * pre-admitted against the journal limit: recording the outcome of an
+   * operation that already acted is never refused for space short of the
+   * journal's hard page cap. Nothing is written on any refusal.
+   */
+  finishOperation(operationId: string, state: "completed" | "unknown", result: Json, at?: string): StoredOperation;
+  /** The stored operation, or null; an ID that could never be stored is simply not found. */
+  getOperation(operationId: string): StoredOperation | null;
+  /**
+   * At startup, before any operation runs: every pending operation becomes
+   * unknown (a crash between intent and result), with completedAt = at and
+   * result left null. Returns those operations, oldest first. Idempotent: a
+   * second call finds nothing pending and returns an empty list. Like
+   * finishOperation it is not pre-admitted against the journal limit.
+   */
+  abandonPendingOperations(at: string): StoredOperation[];
+
   usage(): StoreUsage;
   close(): void;
 }
+
+export type OperationKind = "retry-current" | "reassess" | "reopen-circuit" | "retire-boundary" | "redrive";
+
+/** One operator mutation, recorded before it acts and finished with its result (ADR-15C §1, spec §8.3). */
+export interface StoredOperation {
+  /** Caller-supplied (redrive) or generated: "op1:" + random. At most 128 characters. */
+  operationId: string;
+  kind: OperationKind;
+  sourceId: string;
+  failureId: string | null;
+  /** "sha256:<hex>" of the canonical request. A reused operationId with a different request is refused by the caller. */
+  requestHash: string;
+  state: "pending" | "completed" | "unknown";
+  /** The recorded OperationResult once finished; null while pending or when abandoned at startup. At most 16 KiB canonical. */
+  result: Json | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export type NewOperation = Pick<StoredOperation, "operationId" | "kind" | "sourceId" | "failureId" | "requestHash"> & { at: string };
+
+/** Operations retained for idempotency and audit (F41); the oldest finished ones are pruned beyond this. */
+export const MAX_OPERATIONS = 10_000;
+/** Operation ID limit, in characters (UTF-16 code units, as the operator request validator counts them). */
+export const MAX_OPERATION_ID = 128;
+/** A finished operation's result limit, in bytes of canonical JSON. */
+export const MAX_OPERATION_RESULT_BYTES = 16 * 1024;
+export const OPERATION_KINDS: readonly OperationKind[] = ["retry-current", "reassess", "reopen-circuit", "retire-boundary", "redrive"];
 
 /** Spec §13 budgets. */
 export const JOURNAL_LIMIT_BYTES = 256 * 1024 * 1024;
@@ -259,6 +335,10 @@ export function unknownIncident(failureId: string): StreamOtterError {
 
 export function unknownBoundary(boundaryId: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message: `Unknown recovery boundary ${boundaryId}.`, details: { status: 404 } });
+}
+
+export function unknownOperation(operationId: string): StreamOtterError {
+  return new StreamOtterError("INVALID_REQUEST", { message: `Unknown operation ${operationId}.`, details: { status: 404 } });
 }
 
 function invalid(reason: string, message: string): StreamOtterError {
@@ -402,6 +482,79 @@ export function generationRetirement(sourceId: string, from: string, to: string)
   return { mode: "generation", reason: `Source ${sourceId} changed from generation ${from} to ${to}.`, operationId: null };
 }
 
+const REQUEST_HASH = /^sha256:[0-9a-f]{64}$/;
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
+/**
+ * Checks beginOperation's input before anything is read or written, and
+ * returns the pending record it would store. Messages never echo a rejected
+ * value, which may hold control characters.
+ */
+export function newOperation(input: NewOperation): StoredOperation {
+  const { operationId, kind, sourceId, failureId, requestHash, at } = input;
+  if (typeof operationId !== "string" || operationId.length === 0 || operationId.length > MAX_OPERATION_ID || CONTROL_CHARACTERS.test(operationId)) {
+    throw invalid("operation-id", `An operation ID is 1 to ${MAX_OPERATION_ID} characters without control characters.`);
+  }
+  if (!OPERATION_KINDS.includes(kind)) throw invalid("operation-kind", `An operation's kind is one of ${OPERATION_KINDS.join(", ")}.`);
+  if (typeof requestHash !== "string" || !REQUEST_HASH.test(requestHash)) throw invalid("request-hash", 'A request hash is "sha256:" followed by 64 lowercase hex digits.');
+  if (typeof sourceId !== "string" || sourceId === "") throw invalid("source-id", "An operation names a source.");
+  if (failureId !== null && (typeof failureId !== "string" || failureId === "")) throw invalid("failure-id", "An operation's failure ID is null or a non-empty string.");
+  if (typeof at !== "string" || at === "") throw invalid("operation-time", "An operation needs the time it started.");
+  return { operationId, kind, sourceId, failureId, requestHash, state: "pending", result: null, startedAt: at, completedAt: null };
+}
+
+/** Checks finishOperation's state and result before anything is read; returns the result's canonical JSON text. */
+export function checkOperationResult(state: "completed" | "unknown", result: Json): string {
+  if (state !== "completed" && state !== "unknown") throw invalid("operation-state", `An operation finishes completed or unknown, not "${String(state)}".`);
+  let text: string;
+  try {
+    text = canonicalJson(result);
+  } catch (error) {
+    throw invalid("result-not-json", `The operation result is not JSON data: ${error instanceof Error ? error.message : String(error)}.`);
+  }
+  if (Buffer.byteLength(text) > MAX_OPERATION_RESULT_BYTES) {
+    throw invalid("result-too-large", `The operation result is ${Buffer.byteLength(text)} bytes of canonical JSON; the limit is ${MAX_OPERATION_RESULT_BYTES}.`);
+  }
+  return text;
+}
+
+/** The operation after finishOperation, once its current state allows it. */
+export function finishedOperation(operationId: string, operation: StoredOperation | null, state: "completed" | "unknown", canonicalResult: string, at: string): StoredOperation {
+  if (operation === null) throw unknownOperation(operationId);
+  if (operation.state !== "pending") {
+    throw conflict("operation-not-pending", `Operation ${operationId} is already ${operation.state}.`, { operationId, state: operation.state });
+  }
+  return { ...operation, state, result: JSON.parse(canonicalResult) as Json, completedAt: at };
+}
+
+/** A pending operation found at startup: its outcome is unknown and it has no result. */
+export function abandonedOperation(operation: StoredOperation, at: string): StoredOperation {
+  return { ...operation, state: "unknown", result: null, completedAt: at };
+}
+
+/**
+ * How many finished operations must be pruned so that, after one insert,
+ * at most `limit` are stored. Throws (OVERLOADED) when that would need more
+ * finished ones than exist: pending operations are never pruned.
+ */
+export function operationsToPrune(stored: number, finished: number, limit: number): number {
+  const excess = Math.max(0, stored + 1 - limit);
+  if (excess > finished) {
+    throw storeFull(`The store holds ${stored} operator operations (limit ${limit}) and ${stored - finished} are still pending; refusing to record another. Nothing was pruned.`);
+  }
+  return excess;
+}
+
+/** Pruning order for finished operations: completedAt, then startedAt; ties keep insertion order (Array.sort is stable). */
+export function compareFinished(a: StoredOperation, b: StoredOperation): number {
+  const byCompleted = compareText(a.completedAt ?? "", b.completedAt ?? "");
+  return byCompleted !== 0 ? byCompleted : compareText(a.startedAt, b.startedAt);
+}
+
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export function storeFull(message: string): StreamOtterError {
   return new StreamOtterError("OVERLOADED", { message, details: { reason: "journal-full" } });
 }
@@ -445,12 +598,16 @@ export class MemoryIncidentStore implements IncidentStore {
   readonly #circuits = new Map<string, CircuitState>();
   /** Generations from the last claim(), so a boundary is never installed for a superseded generation. */
   readonly #generations = new Map<string, string>();
+  /** Operator operations by ID, in insertion order. */
+  readonly #operations = new Map<string, StoredOperation>();
   readonly #maxIncidents: number;
   readonly #spoolLimitBytes: number;
+  readonly #maxOperations: number;
 
-  constructor(options: { maxIncidents?: number; spoolLimitBytes?: number } = {}) {
+  constructor(options: { maxIncidents?: number; spoolLimitBytes?: number; maxOperations?: number } = {}) {
     this.#maxIncidents = options.maxIncidents ?? 10_000;
     this.#spoolLimitBytes = options.spoolLimitBytes ?? SPOOL_LIMIT_BYTES;
+    this.#maxOperations = options.maxOperations ?? MAX_OPERATIONS;
   }
 
   /**
@@ -626,6 +783,37 @@ export class MemoryIncidentStore implements IncidentStore {
     const updated = checkCircuit(sourceId, next, current.revision + 1);
     this.#circuits.set(sourceId, updated);
     return structuredClone(updated);
+  }
+
+  beginOperation(input: NewOperation): { operation: StoredOperation; created: boolean } {
+    const operation = newOperation(input);
+    const existing = this.#operations.get(operation.operationId);
+    if (existing !== undefined) return { operation: structuredClone(existing), created: false };
+    // Map iteration is insertion order, so the stable sort breaks completedAt/startedAt ties as the journal's seq does.
+    const finished = [...this.#operations.values()].filter(item => item.state !== "pending").sort(compareFinished);
+    const prune = operationsToPrune(this.#operations.size, finished.length, this.#maxOperations);
+    // Every check has passed; the prune and the insert land together.
+    for (const item of finished.slice(0, prune)) this.#operations.delete(item.operationId);
+    this.#operations.set(operation.operationId, operation);
+    return { operation: structuredClone(operation), created: true };
+  }
+
+  finishOperation(operationId: string, state: "completed" | "unknown", result: Json, at = new Date().toISOString()): StoredOperation {
+    const canonical = checkOperationResult(state, result);
+    const finished = finishedOperation(operationId, this.#operations.get(operationId) ?? null, state, canonical, at);
+    this.#operations.set(operationId, finished);
+    return structuredClone(finished);
+  }
+
+  getOperation(operationId: string): StoredOperation | null {
+    const operation = this.#operations.get(operationId);
+    return operation === undefined ? null : structuredClone(operation);
+  }
+
+  abandonPendingOperations(at: string): StoredOperation[] {
+    const abandoned = [...this.#operations.values()].filter(item => item.state === "pending").map(item => abandonedOperation(item, at));
+    for (const operation of abandoned) this.#operations.set(operation.operationId, operation);
+    return structuredClone(abandoned);
   }
 
   usage(): StoreUsage {

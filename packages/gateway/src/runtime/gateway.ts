@@ -6,17 +6,19 @@ import {
   assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
   resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
-  type FailureClass,
+  type FailureClass, type OperatorApi,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
   type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry,
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
   type SourceStatus, type StreamError, type StreamEvent, type Trace
 } from "@streamotter/contracts";
 import { openJournal } from "../failures/journal.ts";
-import { KafkaQuarantineWriter } from "../failures/quarantine.ts";
+import { KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicReport } from "../failures/quarantine.ts";
 import { FailureService, type AdvanceHooks } from "../failures/service.ts";
-import { MemoryIncidentStore, type IncidentStore } from "../failures/store.ts";
+import { MemoryIncidentStore, type IncidentStore, type RawEvidence } from "../failures/store.ts";
 import { assertFailureHandling, usesQuarantine } from "../failures/validate.ts";
+import { startOperatorSocket, type OperatorSocket } from "../operator/ipc.ts";
+import { OperatorService, type OperatorHooks, type OperatorHost } from "../operator/service.ts";
 import { ByteBudget } from "./budget.ts";
 import { Router, routingKey, type ChannelRuntime, type GatewayCore, type SourceRuntime } from "./core.ts";
 import {
@@ -44,6 +46,8 @@ class SourceRuntimeImpl implements SourceRuntime {
   /** Extra attempts at the whole mapping after a TransientMappingError (V1.1 policy). */
   readonly transientRetries: 0 | 1 | 2;
   boundary: SourceRuntime["boundary"] = null;
+  /** Serializes record processing with operator redrive, so a redrive runs at a record boundary (ADR-15C §5). */
+  #lock: Promise<unknown> = Promise.resolve();
 
   constructor(id: string, config: ProjectConfig["sources"][string], transientRetries: 0 | 1 | 2) {
     this.id = id;
@@ -53,6 +57,12 @@ class SourceRuntimeImpl implements SourceRuntime {
 
   get ready(): boolean {
     return this.status === "healthy";
+  }
+
+  exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.#lock.then(work, work);
+    this.#lock = run.catch(() => undefined);
+    return run;
   }
 
   summary(): SourceStatus {
@@ -68,6 +78,42 @@ interface RoutedOutput { channel: ChannelRuntime; key: string; frame: PendingFra
 interface OutputProblem { failureClass: FailureClass; message: string }
 
 interface PreviewSession { principal: Principal; expiresAtMs: number }
+
+/** One record decoded, mapped and checked, before admission. */
+type Prepared =
+  | { kind: "ok"; record: SourceRecord; outputs: RoutedOutput[] }
+  | { kind: "problem"; stage: "validate" | "map" | "queue"; code: ErrorCode; failureClass: FailureClass; reason: string; channel: string | null }
+  | { kind: "abandon" };
+
+/** An evaluation as the operator service sees it: metadata only, never the frames themselves. */
+export type OperatorPrepared =
+  | { kind: "ok"; outputs: { channel: string; channelVersion: number; revision: string }[]; outputHash: string }
+  | { kind: "problem"; stage: "validate" | "map" | "queue"; code: ErrorCode; failureClass: FailureClass; reason: string; channel: string | null }
+  | { kind: "abandon" };
+
+export type RedriveOutcome =
+  | Exclude<OperatorPrepared, { kind: "ok" }>
+  | { kind: "changed"; evaluation: Extract<OperatorPrepared, { kind: "ok" }> }
+  | { kind: "admitted"; evaluation: Extract<OperatorPrepared, { kind: "ok" }>; counts: Record<"queued" | "filtered" | "inactive" | "overflow", number> };
+
+function describePrepared(prepared: Prepared): OperatorPrepared {
+  if (prepared.kind !== "ok") return prepared;
+  const outputs = prepared.outputs.map(output => ({ channel: output.channel.name, channelVersion: output.channel.version, revision: output.frame.revision }));
+  // The canonical mapped-output hash of the plan fingerprint (ADR-15C §5): routing key, revision and data hash of every output, in order.
+  const outputHash = `sha256:${sha256Hex(prepared.outputs.map(output => [output.key, output.frame.revision, output.frame.dataHash]))}`;
+  return { kind: "ok", outputs, outputHash };
+}
+
+/** A source input rebuilt from stored original bytes, decoded the way the Kafka adapter decodes a key. */
+function storedInput(raw: RawEvidence, position: SourceRecord["position"]): SourceInput {
+  return {
+    key: raw.key === null ? null : Buffer.from(raw.key).toString("utf8"),
+    bytes: raw.value,
+    keyBytes: raw.key,
+    headers: raw.headers,
+    position
+  };
+}
 
 /** Waits before re-running a mapping that threw TransientMappingError (spec §6). */
 const TRANSIENT_RETRY_DELAYS_MS = [250, 1_000] as const;
@@ -89,6 +135,8 @@ export interface InternalGatewayOptions {
   incidentStore?: IncidentStore;
   /** Crash points around a guarded advance (slice C crash tests). */
   advanceHooks?: AdvanceHooks;
+  /** Crash and lost-response points around operator operations (slice D tests). */
+  operatorHooks?: OperatorHooks;
 }
 
 /** Development and management access to a running gateway; never exposed to browsers. */
@@ -120,6 +168,8 @@ export interface GatewayInternals {
   incidentStore(): IncidentStore | null;
   /** Resolves when queued failure dispositions (journal, quarantine writes) have finished. */
   failuresSettled(): Promise<void>;
+  /** The operator service (ADR-15C §1) while the gateway runs with failureHandling; null otherwise. */
+  operator(): OperatorApi | null;
 }
 
 const internalsRegistry = new WeakMap<Gateway, GatewayInternals>();
@@ -222,7 +272,12 @@ export class GatewayRuntime implements SessionOwner {
   readonly #configDir: string;
   readonly #stateDirectory: string | undefined;
   readonly #handlerBuildId: string;
+  readonly #operatorSocketEnabled: boolean;
+  #operatorSocket: OperatorSocket | null = null;
   #failures: FailureService | null = null;
+  #operator: OperatorService | null = null;
+  #quarantineReport: QuarantineTopicReport | null = null;
+  #quarantineReader: QuarantineReader | null = null;
   readonly #sources = new Map<string, SourceRuntimeImpl>();
   readonly #channels = new Map<string, ChannelRuntime>();
   readonly #sessions = new Set<ClientSession>();
@@ -261,6 +316,7 @@ export class GatewayRuntime implements SessionOwner {
     this.#configDir = options.configDir ?? process.cwd();
     this.#stateDirectory = options.stateDirectory;
     this.#handlerBuildId = options.handlerBuildId ?? "unspecified";
+    this.#operatorSocketEnabled = options.operatorSocket === true;
     this.#allowedOrigins = new Set(config.gateway.allowedOrigins);
     const limits = resolveLimits(config.limits);
     this.core = {
@@ -463,7 +519,7 @@ export class GatewayRuntime implements SessionOwner {
 
   #sink(source: SourceRuntimeImpl): SourceSink {
     return {
-      process: input => this.#process(source, input),
+      process: input => source.exclusive(() => this.#process(source, input)),
       setStatus: (status, reason) => this.#setSourceStatus(source, status, reason),
       held: (input, outcome) => { void this.#failures?.held(source, input, outcome); },
       logger: this.core.logger,
@@ -496,7 +552,7 @@ export class GatewayRuntime implements SessionOwner {
   async #process(source: SourceRuntimeImpl, input: SourceInput): Promise<ProcessOutcome> {
     if (this.#halting()) return { kind: "abandon" };
     const requestId = newId();
-    const { limits, traces } = this.core;
+    const { traces } = this.core;
     const trace = (stage: Trace["stage"], outcome: Trace["outcome"], extra: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">> = {}) =>
       traces.record({ requestId, stage, outcome, sourceId: source.id, ...extra });
     const pause = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string): ProcessOutcome => {
@@ -524,23 +580,45 @@ export class GatewayRuntime implements SessionOwner {
       return { kind: "hold", code: "SOURCE_UNAVAILABLE", reason: moved };
     }
 
+    const prepared = await this.#prepare(source, input, { requestId, trace, retries: source.transientRetries });
+    if (prepared.kind === "abandon") return { kind: "abandon" };
+    if (prepared.kind === "problem") return pause(prepared.stage, prepared.code, prepared.failureClass, prepared.reason, prepared.channel ?? undefined);
+    this.#admit(prepared.outputs, requestId);
+    return { kind: "commit" };
+  }
+
+  /**
+   * Decodes, maps and validates one record for every channel of its source, and
+   * checks the outputs against current subscriber state, without admitting
+   * anything. Shared by live processing, evaluation and redrive (ADR-15C §5), so
+   * all three apply the same rules. Records traces only through `trace`.
+   */
+  async #prepare(source: SourceRuntimeImpl, input: SourceInput, options: {
+    requestId: string;
+    trace: (stage: Trace["stage"], outcome: Trace["outcome"], extra?: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">>) => void;
+    retries: 0 | 1 | 2;
+  }): Promise<Prepared> {
+    const { limits } = this.core;
+    const { requestId, trace } = options;
+    const problem = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string): Prepared =>
+      ({ kind: "problem", stage, code, failureClass, reason, channel: channel ?? null });
     let value: Json;
     if (input.value !== undefined) {
-      if (!isJsonValue(input.value)) return pause("validate", "INVALID_PAYLOAD", "invalid-json", "fixture value is not JSON data");
+      if (!isJsonValue(input.value)) return problem("validate", "INVALID_PAYLOAD", "invalid-json", "fixture value is not JSON data");
       if (utf8ByteLength(JSON.stringify(input.value)) > limits.maxSourceRecordBytes) {
-        return pause("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
+        return problem("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
       }
       value = input.value;
     } else {
       const bytes = input.bytes ?? null;
-      if (bytes === null) return pause("validate", "INVALID_PAYLOAD", "tombstone", "tombstone records have no V1 meaning; represent deletion as explicit state");
-      if (bytes.byteLength > limits.maxSourceRecordBytes) return pause("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
+      if (bytes === null) return problem("validate", "INVALID_PAYLOAD", "tombstone", "tombstone records have no V1 meaning; represent deletion as explicit state");
+      if (bytes.byteLength > limits.maxSourceRecordBytes) return problem("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
       try {
         value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as Json;
       } catch {
-        return pause("validate", "INVALID_PAYLOAD", "invalid-json", "record value is not valid UTF-8 JSON");
+        return problem("validate", "INVALID_PAYLOAD", "invalid-json", "record value is not valid UTF-8 JSON");
       }
-      if (!isJsonValue(value)) return pause("validate", "INVALID_PAYLOAD", "invalid-json", "record value exceeds the nesting limit");
+      if (!isJsonValue(value)) return problem("validate", "INVALID_PAYLOAD", "invalid-json", "record value exceeds the nesting limit");
     }
     trace("validate", "ok");
 
@@ -564,10 +642,10 @@ export class GatewayRuntime implements SessionOwner {
           { timeoutMs: limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
         );
         if (outcome.kind === "aborted" || this.#halting()) return { kind: "abandon" };
-        if (outcome.kind === "timeout") return pause("map", "TIMEOUT", "mapper-timeout", "map handler timed out", channel.name);
+        if (outcome.kind === "timeout") return problem("map", "TIMEOUT", "mapper-timeout", "map handler timed out", channel.name);
         if (outcome.kind === "error") {
           const transient = TransientMappingError.is(outcome.error);
-          if (transient && attempt < source.transientRetries) {
+          if (transient && attempt < options.retries) {
             trace("map", "failed", { channel: channel.name, errorCode: "HANDLER_FAILED" });
             this.core.logger.info("Retrying a transient mapping failure", { sourceId: source.id, channel: channel.name, attempt: attempt + 1 });
             if (!await abortableDelay(TRANSIENT_RETRY_DELAYS_MS[attempt] ?? 1_000, this.#stopController.signal) || this.#halting()) {
@@ -577,14 +655,14 @@ export class GatewayRuntime implements SessionOwner {
             continue attempts;
           }
           const failureClass = transient ? "mapper-transient" : "mapper-error";
-          return pause("map", "HANDLER_FAILED", failureClass, `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
+          return problem("map", "HANDLER_FAILED", failureClass, `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
         }
         const mapped: unknown = outcome.value;
-        if (!Array.isArray(mapped)) return pause("map", "INVALID_PAYLOAD", "routing-invalid", "map must return an array", channel.name);
-        if (mapped.length > limits.maxMapOutputs) return pause("map", "INVALID_PAYLOAD", "routing-invalid", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
+        if (!Array.isArray(mapped)) return problem("map", "INVALID_PAYLOAD", "routing-invalid", "map must return an array", channel.name);
+        if (mapped.length > limits.maxMapOutputs) return problem("map", "INVALID_PAYLOAD", "routing-invalid", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
         for (let index = 0; index < mapped.length; index++) {
           const built = this.#buildOutput(channel, record, mapped[index]);
-          if ("failureClass" in built) return pause("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.message}`, channel.name);
+          if ("failureClass" in built) return problem("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.message}`, channel.name);
           outputs.push(built);
         }
         trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
@@ -602,16 +680,63 @@ export class GatewayRuntime implements SessionOwner {
         if (conflicting) break;
         conflicting = (subscription as ServerSubscription).conflicts(revision, dataHash);
       }
-      if (conflicting) return pause("queue", "REVISION_CONFLICT", "revision-conflict", "the same revision was mapped to different data", output.channel.name);
+      if (conflicting) return problem("queue", "REVISION_CONFLICT", "revision-conflict", "the same revision was mapped to different data", output.channel.name);
       if (earlier === undefined || compareRevisions(revision, earlier.revision) > 0) seen.set(output.key, { revision, dataHash });
     }
+    return { kind: "ok", record, outputs };
+  }
 
+  /** Admits validated outputs to every capturing subscription; the revision filter drops anything at or below a subscriber's state. */
+  #admit(outputs: readonly RoutedOutput[], requestId: string): Record<"queued" | "filtered" | "inactive" | "overflow", number> {
+    const counts = { queued: 0, filtered: 0, inactive: 0, overflow: 0 };
     for (const output of outputs) {
       const subscriptions = this.core.router.get(output.key);
       if (subscriptions === undefined) continue;
-      for (const subscription of [...subscriptions] as ServerSubscription[]) subscription.admit(output.frame, requestId);
+      for (const subscription of [...subscriptions] as ServerSubscription[]) counts[subscription.admit(output.frame, requestId)]++;
     }
-    return { kind: "commit" };
+    return counts;
+  }
+
+  // --- operator evaluation and redrive (ADR-15C §5) --------------------------------
+
+  /**
+   * Runs stored original bytes through the live decode, map and validate path
+   * without admitting anything, committing, seeking or recording traces (spec
+   * §8.2, F31). Transient mapping errors are not retried.
+   */
+  async evaluateRecord(sourceId: string, raw: RawEvidence, position: SourceRecord["position"]): Promise<OperatorPrepared> {
+    const source = this.#sources.get(sourceId);
+    if (source === undefined) throw notFound(`Unknown source "${sourceId}".`);
+    const prepared = await this.#prepare(source, storedInput(raw, position), { requestId: newId(), trace: () => undefined, retries: 0 });
+    return describePrepared(prepared);
+  }
+
+  /**
+   * Re-evaluates stored original bytes at a record boundary of the source and,
+   * only if the mapped outputs still hash to what the approved plan saw, admits
+   * them through the normal revision filter (ADR-15C §5, F33). Never commits,
+   * seeks or publishes. Traces are recorded under one request ID.
+   */
+  async redriveRecord(sourceId: string, raw: RawEvidence, position: SourceRecord["position"], expectedOutputHash: string): Promise<RedriveOutcome> {
+    const source = this.#sources.get(sourceId);
+    if (source === undefined) throw notFound(`Unknown source "${sourceId}".`);
+    if (this.#state !== "running") return { kind: "abandon" };
+    return source.exclusive(async () => {
+      if (this.#halting()) return { kind: "abandon" } as const;
+      const requestId = newId();
+      const trace = (stage: Trace["stage"], outcome: Trace["outcome"], extra: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">> = {}) =>
+        this.core.traces.record({ requestId, stage, outcome, sourceId, ...extra });
+      trace("source", "ok");
+      const prepared = await this.#prepare(source, storedInput(raw, position), { requestId, trace, retries: 0 });
+      const described = describePrepared(prepared);
+      if (described.kind !== "ok") {
+        if (described.kind === "problem") trace(described.stage, described.stage === "map" ? "failed" : "rejected", { errorCode: described.code });
+        return described;
+      }
+      if (described.outputHash !== expectedOutputHash) return { kind: "changed", evaluation: described } as const;
+      const counts = this.#admit((prepared as Extract<Prepared, { kind: "ok" }>).outputs, requestId);
+      return { kind: "admitted", evaluation: described, counts } as const;
+    });
   }
 
   /**
@@ -728,6 +853,7 @@ export class GatewayRuntime implements SessionOwner {
           clientId: `streamotter-${this.config.projectId}-quarantine`
         });
         const report = await quarantine.start();
+        this.#quarantineReport = report;
         this.core.logger.info("Quarantine topic checked", { ...report });
       }
       const failures = new FailureService({
@@ -754,11 +880,34 @@ export class GatewayRuntime implements SessionOwner {
           `streamotter-${this.config.projectId}-reconcile`, source.config.consumerGroup, topic, partition, this.core.logger);
       });
       this.#failures = failures;
+      this.#operator = new OperatorService(this.#operatorHost(), failures, this.#internal.operatorHooks);
     } catch (error) {
       await quarantine?.stop().catch(() => undefined);
       store.close();
       throw error;
     }
+  }
+
+  #operatorHost(): OperatorHost {
+    return {
+      mode: this.mode,
+      config: this.config,
+      fingerprint: this.fingerprint,
+      handlerBuildId: this.#handlerBuildId,
+      logger: this.core.logger,
+      state: () => this.#state,
+      source: sourceId => this.#sources.get(sourceId)?.summary() ?? null,
+      traces: query => this.core.traces.page(query),
+      quarantineReport: () => this.#quarantineReport,
+      quarantineReader: () => this.#quarantineReader,
+      retry: async sourceId => { await this.resumeSource(sourceId); },
+      evaluateRecord: (sourceId, raw, position) => this.evaluateRecord(sourceId, raw, position),
+      redriveRecord: (sourceId, raw, position, hash) => this.redriveRecord(sourceId, raw, position, hash),
+      setBoundary: (sourceId, boundary) => {
+        const source = this.#sources.get(sourceId);
+        if (source !== undefined) source.boundary = boundary === null ? null : Object.freeze({ id: boundary.id, context: boundary.context });
+      }
+    };
   }
 
   /** Called by adapters after a commit so the trace reflects actual source progress. */
@@ -836,6 +985,12 @@ export class GatewayRuntime implements SessionOwner {
         })
       ]).finally(() => clearTimeout(timer));
 
+      // The validator guarantees stateDirectory and failureHandling, so the operator exists here.
+      if (this.#operatorSocketEnabled && this.#operator !== null && this.#stateDirectory !== undefined) {
+        this.#operatorSocket = await startOperatorSocket({ stateDirectory: this.#stateDirectory, operator: this.#operator, logger: this.core.logger });
+        this.core.logger.info("Operator socket listening", { path: this.#operatorSocket.path });
+      }
+
       const address = http.address() as AddressInfo;
       const host = this.config.gateway.host === "0.0.0.0" || this.config.gateway.host === "::" ? "127.0.0.1" : this.config.gateway.host;
       this.#http = http;
@@ -845,9 +1000,12 @@ export class GatewayRuntime implements SessionOwner {
       this.core.logger.info("Gateway started", { origin: this.#address.origin, path: this.#address.path, mode: this.mode });
       return this.#address;
     } catch (error) {
+      await this.#operatorSocket?.close().catch(() => undefined);
+      this.#operatorSocket = null;
       await Promise.allSettled(started.map(adapter => adapter.stop(Date.now() + 5_000)));
       await this.#failures?.stop().catch(() => undefined);
       this.#failures = null;
+      this.#operator = null;
       for (const source of this.#sources.values()) {
         source.adapter = null;
         source.status = "starting";
@@ -872,6 +1030,11 @@ export class GatewayRuntime implements SessionOwner {
     for (const session of [...this.#sessions]) session.close();
     const deadline = Date.now() + timeoutMs;
     const work = (async () => {
+      // Close the operator socket first so no mutation starts while sources drain.
+      await this.#operatorSocket?.close().catch(error => {
+        this.core.logger.error("The operator socket did not close cleanly", { error: (error as Error).message.slice(0, 200) });
+      });
+      this.#operatorSocket = null;
       await Promise.allSettled([...this.#sources.values()].map(async source => {
         await source.adapter?.stop(deadline);
         source.status = "stopped";
@@ -1009,7 +1172,8 @@ export class GatewayRuntime implements SessionOwner {
       subscriptionCount: () => [...this.#sessions].reduce((sum, session) => sum + session.subscriptionCount, 0),
       pendingBytes: () => this.core.gatewayBudget.used,
       incidentStore: () => this.#failures?.store ?? null,
-      failuresSettled: async () => { await this.#failures?.settled(); }
+      failuresSettled: async () => { await this.#failures?.settled(); },
+      operator: () => this.#operator
     };
   }
 

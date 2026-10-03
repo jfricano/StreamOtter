@@ -52,6 +52,11 @@ describe("V1.1: failure handling checks at gateway construction", () => {
     assert.deepEqual(failureOptionIssues(config, { mode: "development", stateDirectory: "/tmp/state" }, "24.14.0"), [
       "the failure journal needs Node 24.15 or newer; this is Node 24.14.0"
     ]);
+    assert.deepEqual(failureOptionIssues(config, { mode: "development", operatorSocket: true }), [
+      "operatorSocket requires stateDirectory and failureHandling: the socket lives in the state directory and serves the failure operator API"
+    ]);
+    assert.deepEqual(failureOptionIssues(config, { mode: "development", operatorSocket: "yes" }), ["operatorSocket must be true or false"]);
+    assert.deepEqual(failureOptionIssues(config, { mode: "production", stateDirectory: "/var/lib/streamotter", operatorSocket: true }), []);
     assert.equal(nodeSupportsJournal("24.15.0"), true);
     assert.equal(nodeSupportsJournal("26.0.0"), true);
     assert.equal(nodeSupportsJournal("22.20.0"), false);

@@ -21,8 +21,25 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
     - A circuit breaker (default five advances per 60 s) stops automatic continuation and persists across restarts.
     - `boundaryRetirement: "application"` calls `retire()` after acknowledged snapshots.
     - At startup, prepared advances are reconciled against the consumer group's committed offset.
+- V1.1 operator workflow (opt-in; nothing changes without `failureHandling`):
+  - `@streamotter/gateway/operator` (also `streamotter/gateway/operator`): `getGatewayOperator(gateway)` returns the operator service, with `status`, `listFailures`, `showFailure`, `exportFailure`, `retryCurrent`, `reassess`, `reopenCircuit`, `retireBoundary`, `evaluate` and `redrive`. Every mutation records its intent and its result in the incident store; an operation interrupted by a crash is reported as `unknown` after restart and never rerun, and a reused operation ID returns the recorded result. Refusals are results (`result: "refused"` with an `outcome`), not exceptions.
+  - Retry and reassess process the held record again; neither skips it. While the circuit of a `quarantine-resync` source is open, retries (including `resumeSource`) are refused with `circuit-open` until `reopenCircuit`.
+  - `evaluate` runs the current mapping on the stored original without committing, tracing or delivering, and issues a five-minute, single-use plan when a redrive is allowed. `redrive` checks the plan again and admits the outputs through the normal revision filter, so older state is `superseded` and never overwrites newer state.
+  - The new `operatorSocket` gateway option (`--operator-socket` on `start` and `dev`) serves the operator API on `<stateDirectory>/run/operator.sock`, with a fresh 0600 token per start. `callOperator` and `connectOperator` are the client.
+  - CLI: `streamotter status`, `streamotter failures list|show|export|evaluate|redrive` and `streamotter sources retry-current|reassess|reopen-circuit|retire-boundary`, all with `--state-dir` and `--json`. Exit code 3 means refused and 4 means the outcome is unknown. Raw bytes are shown only with `--raw` or `--include-raw`, and only as base64 and hex.
+  - Development management API: `GET /management/v1/operator/status`, `GET /management/v1/failures`, `GET /management/v1/failures/{failureId}`, and `POST` routes for export, evaluate, redrive, retry-current, reassess and reopen-circuit. None returns raw evidence, and boundary retirement has no route.
+  - `@streamotter/workbench`: a Failures tab listing incidents with their evidence, quarantine, source position, recovery and state kept separate, with the supported actions. It appears only when the host offers `failures.list`.
 - Gateway operator logs for a paused source now include `failureClass`, the trusted classification of why the record could not be processed.
 - `@streamotter/workbench`: a favicon (the StreamOtter brandmark reduced for a browser tab) in place of the blank one.
+- Workbench host contract, version 1 ([WHC-1](./docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md)), for running the published workbench under a route of your own site:
+  - `@streamotter/workbench` reads an optional `<script type="application/json" id="streamotter-workbench-host">` boot block (API base path, `token` or `session` authentication, gateway, environment label), discovers the offered operations, and shows anything else as "Not available in this environment". Without the block it behaves as before. The package ships `dist/workbench-host.json` (entry files, `sha384` integrity values, required CSP) and exports `@streamotter/workbench/host`, `@streamotter/workbench/dist/*` and `@streamotter/workbench/package.json`.
+  - `@streamotter/gateway/management`: `createManagementHandler`, a mountable handler for a development-mode gateway with an operation allowlist and a host `authorize` callback. The development management API gains `GET /management/v1/workbench`.
+  - `@streamotter/contracts`: `WorkbenchHostConfig`, `WorkbenchOperation`, `WorkbenchDiscovery`, `WorkbenchHostManifest`, `WORKBENCH_OPERATIONS` and `validateWorkbenchHostConfig`.
+- `@streamotter/workbench`: the top bar shows the environment (`Development` under `streamotter dev`).
+
+### Changed
+
+- Development management API: an unknown route answers 404 before its request body is read (it could previously answer 400 or 413 for a malformed body first).
 
 ## [0.1.0-rc.3] — 2026-09-25
 

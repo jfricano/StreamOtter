@@ -1,7 +1,8 @@
 /** Compile-time acceptance checks, including intentional invalid API uses. */
 import {
   createClient, TransientMappingError,
-  type HandlerRegistry, type ProjectConfig, type SocketAuth, type SourceRecoveryHandlers, type StreamEvent
+  type HandlerRegistry, type ManagementOperations, type ProjectConfig, type SocketAuth, type SourceRecoveryHandlers, type StreamEvent,
+  type WorkbenchHostConfig, type WorkbenchOperation
 } from "./api";
 import { project, type AppChannels, type OrderState } from "./example";
 
@@ -110,3 +111,23 @@ const acknowledging: HandlerRegistry<AppChannels> = {
 };
 void acknowledging;
 void new TransientMappingError("pricing service unavailable");
+
+// Workbench host contract (WHC-1), added with the V1.1 workbench seam.
+const hosted: WorkbenchHostConfig = {
+  hostContract: 1, apiBase: "/workbench/api/v1", auth: { mode: "session" },
+  environment: { kind: "sandbox", label: "Synthetic fixture" }
+};
+void hosted;
+// @ts-expect-error Only host contract 1 exists.
+const futureContract: WorkbenchHostConfig = { hostContract: 2 };
+void futureContract;
+// @ts-expect-error A boot block never carries a credential.
+const tokenInBootBlock: WorkbenchHostConfig = { hostContract: 1, auth: { mode: "token", token: "secret" } };
+void tokenInBootBlock;
+// @ts-expect-error Retiring a recovery boundary is CLI-only and never a workbench operation.
+const retire: WorkbenchOperation = "sources.retire-boundary";
+void retire;
+const discovered: ManagementOperations["GET /management/v1/workbench"]["response"] = {
+  hostContract: 1, operations: ["health", "failures.list"], limits: { maxRequestBytes: 65_536 }
+};
+void discovered;

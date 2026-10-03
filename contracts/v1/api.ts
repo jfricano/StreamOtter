@@ -12,7 +12,8 @@ export type {
   Params, Principal, ProjectConfig, Receipt, RecoveryBoundary, RecoveryDecision, RecoveryIncident, Result, Revision,
   Revocation, Schema, SecretRef, ServerToClientEvents, SourceFailurePolicy, SourceRecoveryHandlers,
   SocketAuth, Source, SourceRecord, SourceStatus, StateChange, StreamError, StreamEvent, SubscribeRequest,
-  Subscription, SubscriptionFrame, SubscriptionState, Trace, TraceStage, Unlisten, WaitOptions
+  Subscription, SubscriptionFrame, SubscriptionState, Trace, TraceStage, Unlisten, WaitOptions,
+  WorkbenchDiscovery, WorkbenchHostConfig, WorkbenchHostManifest, WorkbenchOperation
 } from "@streamotter/contracts";
 export { createClient } from "@streamotter/client";
 export { createGateway, defineProject, TransientMappingError } from "@streamotter/gateway";

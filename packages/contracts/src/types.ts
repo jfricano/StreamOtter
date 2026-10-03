@@ -3,6 +3,10 @@
  * declarations govern public types. contracts/v1/api.ts re-exports them.
  */
 import type { FailureHandlingConfig, SourceRecoveryHandlers } from "./failures.ts";
+import type {
+  EvaluateRequest, EvaluationResult, IncidentDetail, IncidentSummary, ListFailuresRequest, OperationResult, OperatorStatus, ReassessRequest,
+  RedriveRequest, ReopenCircuitRequest, ReproductionBundle, RetryCurrentRequest
+} from "./operator.ts";
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type Params = Readonly<Record<string, string | boolean | number>>;
@@ -238,6 +242,11 @@ export interface GatewayOptions<C extends ChannelMap> {
   stateDirectory?: string;
   /** Declared identity of the handler build, recorded in incidents. Default "unspecified"; at most 128 characters. */
   handlerBuildId?: string;
+  /**
+   * Serve the local operator socket at `<stateDirectory>/run/operator.sock` (ADR-15C §3).
+   * Requires stateDirectory. Default false.
+   */
+  operatorSocket?: boolean;
 }
 
 export interface Capabilities {
@@ -336,4 +345,75 @@ export interface ManagementOperations {
   "GET /management/v1/dev/principals": { request: null; response: { items: readonly DevelopmentPrincipalSummary[] } };
   "POST /management/v1/dev/fixtures/advance": { request: { sourceId: string; count: number }; response: { advanced: number } };
   "POST /management/v1/dev/disconnect": { request: { previewSessionId: string }; response: null };
+  /** WHC-1 capability discovery (docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md §4). */
+  "GET /management/v1/workbench": { request: null; response: WorkbenchDiscovery };
+  /** V1.1 operator routes (docs/releases/v1.1/V1_1_API.md §9): development only, never raw evidence. */
+  "GET /management/v1/operator/status": { request: null; response: OperatorStatus };
+  "GET /management/v1/failures": { request: ListFailuresRequest; response: Page<IncidentSummary> };
+  "GET /management/v1/failures/{failureId}": { request: null; response: IncidentDetail };
+  "POST /management/v1/failures/export": { request: { failureId: string }; response: ReproductionBundle };
+  "POST /management/v1/failures/evaluate": { request: EvaluateRequest; response: EvaluationResult };
+  "POST /management/v1/failures/redrive": { request: RedriveRequest; response: OperationResult };
+  "POST /management/v1/sources/retry-current": { request: RetryCurrentRequest; response: OperationResult };
+  "POST /management/v1/sources/reassess": { request: ReassessRequest; response: OperationResult };
+  "POST /management/v1/sources/reopen-circuit": { request: ReopenCircuitRequest; response: OperationResult };
+}
+
+/**
+ * Workbench host contract, version 1 (WHC-1): the closed vocabulary of operations a workbench
+ * host can offer. `WORKBENCH_OPERATIONS` lists the same names at runtime. The failure and
+ * operator names are V1.1 operations; a host lists them only when it implements them.
+ * `sources.retire-boundary` is deliberately absent: it is a CLI-only action.
+ */
+export type WorkbenchOperation =
+  | "capabilities" | "health" | "sources" | "channels" | "config" | "config.validate" | "config.export"
+  | "traces" | "source-checks" | "sources.resume" | "preview-sessions" | "dev.principals"
+  | "dev.fixtures.advance" | "dev.disconnect" | "workbench"
+  | "operator.status" | "failures.list" | "failures.show" | "failures.export" | "failures.evaluate"
+  | "failures.redrive" | "sources.retry-current" | "sources.reassess" | "sources.reopen-circuit";
+
+/** Response of `GET {apiBase}/workbench` (WHC-1 §4). */
+export interface WorkbenchDiscovery {
+  hostContract: 1;
+  /** The operations this host answers. Anything absent is shown as unavailable and never called. */
+  operations: readonly WorkbenchOperation[];
+  limits: { maxRequestBytes: number };
+}
+
+/**
+ * The boot block a host page embeds as `<script type="application/json" id="streamotter-workbench-host">`
+ * (WHC-1 §3). Unknown fields are refused; see `validateWorkbenchHostConfig`.
+ */
+export interface WorkbenchHostConfig {
+  hostContract: 1;
+  /** Absolute path on the page's own origin, no trailing slash. Default `/management/v1`. */
+  apiBase?: string;
+  /** Default `{ mode: "token" }`, the native behavior. */
+  auth?: { mode: "token" | "session" };
+  /** The gateway the Preview tab connects to. When absent, Preview is unavailable. */
+  gateway?: { origin: string; path?: string };
+  /** Default `{ kind: "development" }`. `label` is required for `sandbox`. */
+  environment?: {
+    kind: "development" | "sandbox";
+    label?: string;
+    detail?: string;
+    packageVersion?: string;
+  };
+}
+
+/** One problem found in a boot block, with a JSON Pointer to the offending value. */
+export interface WorkbenchHostConfigIssue { path: string; message: string }
+
+/** `dist/workbench-host.json` in `@streamotter/workbench`, also exported as `@streamotter/workbench/host` (WHC-1 §2). */
+export interface WorkbenchHostManifest {
+  hostContract: 1;
+  package: "@streamotter/workbench";
+  version: string;
+  entry: { script: string; style: string; icon: string };
+  /** Subresource Integrity values (`sha384-…`) keyed by file name. */
+  integrity: Readonly<Record<string, string>>;
+  bootElementId: string;
+  mountElementId: string;
+  /** Directive name to source list. `<gateway origin>` and `<gateway websocket origin>` are placeholders the host replaces. */
+  csp: Readonly<Record<string, readonly string[]>>;
 }

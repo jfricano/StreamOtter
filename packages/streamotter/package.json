@@ -46,6 +46,11 @@
       "types": "./dist/management.d.ts",
       "default": "./dist/management.js"
     },
+    "./gateway/operator": {
+      "streamotter-source": "./src/operator.ts",
+      "types": "./dist/operator.d.ts",
+      "default": "./dist/operator.js"
+    },
     "./contracts": {
       "streamotter-source": "./src/contracts.ts",
       "types": "./dist/contracts.d.ts",
@@ -80,6 +85,10 @@
       "./gateway/management": {
         "types": "./dist/management.d.ts",
         "default": "./dist/management.js"
+      },
+      "./gateway/operator": {
+        "types": "./dist/operator.d.ts",
+        "default": "./dist/operator.js"
       },
       "./contracts": {
         "types": "./dist/contracts.d.ts",
