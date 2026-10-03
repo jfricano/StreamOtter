@@ -56,6 +56,22 @@ export function flattenKafkaHeaders(headers: Readonly<Record<string, Buffer | st
   return list;
 }
 
+/** ADR-15A §4: the quarantine record carries each original header under this prefix, next to its own streamotter-* headers. */
+export const SOURCE_HEADER_PREFIX = "src.";
+
+/**
+ * Reverses the quarantine writer's header mapping for a record read back from
+ * the quarantine topic: the src.* headers in order, one entry per value, with
+ * the prefix removed. Flattening the prefixed names first (rather than
+ * rebuilding an object keyed by the original names) keeps the order the record
+ * carries, which is the order flattenKafkaHeaders produced at capture.
+ */
+export function sourceHeadersFromQuarantine(headers: Readonly<Record<string, Buffer | string | (Buffer | string)[] | undefined>> | undefined): HeaderBytes[] {
+  return flattenKafkaHeaders(headers)
+    .filter(header => header.name.startsWith(SOURCE_HEADER_PREFIX))
+    .map(header => ({ name: header.name.slice(SOURCE_HEADER_PREFIX.length), value: header.value }));
+}
+
 export function keyAndHeaderBytes(evidence: RawEvidence): number {
   return (evidence.key?.byteLength ?? 0) + evidence.headers.reduce((sum, header) => sum + Buffer.byteLength(header.name) + header.value.byteLength, 0);
 }
