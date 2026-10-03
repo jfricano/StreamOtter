@@ -237,3 +237,22 @@ export async function startKafkaHarness(options: {
     }
   };
 }
+
+/** Consumer groups the broker currently lists whose IDs start with prefix (empty groups included, removed ones not). */
+export async function groupsWithPrefix(prefix: string): Promise<string[]> {
+  const { groups } = await (await testAdmin()).listGroups();
+  return groups.map(group => group.groupId).filter(groupId => groupId.startsWith(prefix));
+}
+
+/** Every listed consumer group with a committed offset on the topic, and those offsets. */
+export async function committedOffsetsOnTopic(topic: string): Promise<Record<string, Record<number, string>>> {
+  const client = await testAdmin();
+  const { groups } = await client.listGroups();
+  const result: Record<string, Record<number, string>> = {};
+  await Promise.all(groups.map(async ({ groupId }) => {
+    const offsets = await committedOffsets(groupId, topic);
+    const committed = Object.entries(offsets).filter(([, offset]) => offset !== "-1");
+    if (committed.length > 0) result[groupId] = Object.fromEntries(committed);
+  }));
+  return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
+}
