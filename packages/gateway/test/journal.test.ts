@@ -10,8 +10,10 @@ import {
 } from "../src/failures/journal.ts";
 import {
   MAX_EVENTS_PER_INCIDENT, MemoryIncidentStore,
-  type IncidentRecord, type IncidentStore, type NewObservation, type RawEvidence, type SourceIdentity
+  type GuardResult, type IncidentRecord, type IncidentStore, type NewObservation, type PrepareAdvance, type RawEvidence, type SourceIdentity,
+  type StoredBoundary
 } from "../src/failures/store.ts";
+import type { Json } from "@streamotter/contracts";
 
 const PROJECT = "order-dashboard";
 const SOURCES: SourceIdentity[] = [
@@ -85,6 +87,38 @@ function allPages(store: IncidentStore, query: Parameters<IncidentStore["list"]>
     if (cursor === null) return items;
   }
   assert.fail("pagination did not terminate");
+}
+
+const GUARD: GuardResult = { decision: "recoverable", reason: null, evidenceRef: "outbox:42", at: "2026-10-03T00:01:00.000Z" };
+
+function advance(failureId: string, expectedRevision: number, boundaryId: string, expectedPrior: string | null, context: Json, at = "2026-10-03T00:01:00.000Z"): PrepareAdvance {
+  return { failureId, expectedRevision, boundary: { boundaryId, context, expectedPrior }, guard: { ...GUARD, at }, at };
+}
+
+/** Everything recovery state touches, for asserting that a refused call wrote nothing. */
+function recoveryState(store: IncidentStore, failureIds: readonly string[], boundaryIds: readonly string[]): unknown {
+  return {
+    incidents: failureIds.map(id => [store.get(id), store.events(id)]),
+    boundaries: boundaryIds.map(id => store.getBoundary(id)),
+    inForce: SOURCES.map(source => store.boundary(source.sourceId)),
+    circuits: SOURCES.map(source => store.circuit(source.sourceId))
+  };
+}
+
+/** Matches a StreamOtterError by reason and, when given, details.status. */
+function rejects(reason: string, status?: number): (error: unknown) => boolean {
+  return (error: unknown) => {
+    const actual = error as { code?: string; details?: { reason?: string; status?: number }; message?: string };
+    assert.equal(actual.code, "INVALID_REQUEST", actual.message);
+    assert.equal(actual.details?.reason, reason, actual.message);
+    if (status !== undefined) assert.equal(actual.details?.status, status, actual.message);
+    return true;
+  };
+}
+
+function notFound(error: unknown): boolean {
+  const actual = error as { code?: string; details?: { status?: number } };
+  return actual.code === "INVALID_REQUEST" && actual.details?.status === 404;
 }
 
 /** The behavior every IncidentStore must share, run against the memory store and the journal. */
@@ -244,6 +278,217 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       store.putEvidence("f1:b", { key: null, value: new Uint8Array(500), headers: [] });
       store.close();
     });
+
+    it("prepares an advance: boundary in force, incident advance-pending, event and circuit together", () => {
+      const store = create();
+      store.claim(PROJECT, SOURCES);
+      const observed = store.observe(observation("f1:a")).record;
+      assert.equal(observed.guard, null, "a new incident has no guard result");
+      assert.equal(observed.boundaryId, null, "nor a boundary");
+      assert.equal(store.boundary("orders"), null);
+      assert.equal(store.getBoundary("rb1:one"), null);
+
+      const at = "2026-10-03T00:01:00.000Z";
+      const { record, boundary } = store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, { z: 1, a: [1, { y: true, b: null }] }, at));
+      const expected: StoredBoundary = {
+        boundaryId: "rb1:one", sourceId: "orders", generation: "g1", context: { a: [1, { b: null, y: true }], z: 1 }, revision: 1,
+        state: "in-force", failureIds: ["f1:a"], supersedes: null, createdAt: at, retiredAt: null, retirement: null
+      };
+      assert.deepEqual(boundary, expected);
+      assert.equal(JSON.stringify(boundary.context), '{"a":[1,{"b":null,"y":true}],"z":1}', "context is canonical JSON");
+      assert.deepEqual(store.boundary("orders"), expected);
+      assert.deepEqual(store.getBoundary("rb1:one"), expected);
+      assert.equal(store.boundary("payments"), null, "boundaries are per source");
+
+      assert.equal(record.revision, 2);
+      assert.equal(record.progress, "advance-pending");
+      assert.equal(record.recovery, "boundary-in-force");
+      assert.equal(record.state, "open");
+      assert.deepEqual(record.guard, GUARD);
+      assert.equal(record.boundaryId, "rb1:one");
+      assert.equal(record.updatedAt, at);
+      assert.deepEqual(store.get("f1:a"), record);
+      assert.deepEqual(store.events("f1:a").at(-1), { at, event: "advance-pending", detail: "rb1:one", operationId: null });
+      assert.deepEqual(store.circuit("orders"), { sourceId: "orders", state: "closed", advances: [at], openedAt: null, reason: null, revision: 1 });
+      assert.equal(store.circuit("payments").revision, 0);
+
+      // The patchable fields go through update() like any other.
+      const patched = store.update("f1:a", 2, { guard: { ...GUARD, decision: "hold", reason: "watermark behind" }, boundaryId: null }, { event: "operator", detail: null, operationId: null });
+      assert.equal(patched.guard?.decision, "hold");
+      assert.equal(store.get("f1:a")?.boundaryId, null);
+      store.close();
+    });
+
+    it("refuses an advance without writing anything", () => {
+      const store = create();
+      store.claim(PROJECT, SOURCES);
+      store.observe(observation("f1:a"));
+      store.observe(observation("f1:b", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "43" } }));
+      store.observe(observation("f1:done", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "44" } }));
+      store.update("f1:done", 1, { state: "resolved", resolution: "processed", progress: "processed" }, { event: "resolved", detail: null, operationId: null });
+      store.observe(observation("f1:old", { generation: "g0", position: { kind: "kafka", topic: "orders", partition: 0, offset: "45" } }));
+      store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, { watermark: 1 }));
+      const ids = ["f1:a", "f1:b", "f1:done", "f1:old"];
+      const boundaries = ["rb1:one", "rb1:two"];
+      const before = recoveryState(store, ids, boundaries);
+
+      const attempts: [string, () => unknown, (error: unknown) => boolean][] = [
+        ["unknown incident", () => store.prepareAdvance(advance("f1:missing", 1, "rb1:two", "rb1:one", {})), notFound],
+        ["stale incident revision", () => store.prepareAdvance(advance("f1:b", 2, "rb1:two", "rb1:one", {})), rejects("stale-revision", 409)],
+        ["resolved incident", () => store.prepareAdvance(advance("f1:done", 2, "rb1:two", "rb1:one", {})), rejects("incident-resolved", 409)],
+        ["prior named as none", () => store.prepareAdvance(advance("f1:b", 1, "rb1:two", null, {})), rejects("stale-revision", 409)],
+        ["wrong prior", () => store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:other", {})), rejects("stale-revision", 409)],
+        ["boundary ID reused", () => store.prepareAdvance(advance("f1:b", 1, "rb1:one", "rb1:one", {})), rejects("boundary-exists", 409)],
+        ["incident of an earlier generation", () => store.prepareAdvance(advance("f1:old", 1, "rb1:two", "rb1:one", {})), rejects("generation-changed", 409)],
+        ["context over 16 KiB", () => store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:one", { pad: "x".repeat(16_384) })), rejects("context-too-large", 400)],
+        ["context not JSON", () => store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:one", { bad: Number.NaN })), rejects("context-not-json", 400)],
+        ["guard reason over 512 characters", () => store.prepareAdvance({ ...advance("f1:b", 1, "rb1:two", "rb1:one", {}), guard: { ...GUARD, reason: "r".repeat(513) } }),
+          rejects("guard-text-too-long", 400)]
+      ];
+      for (const [label, attempt, match] of attempts) {
+        assert.throws(attempt, match, label);
+        assert.deepEqual(recoveryState(store, ids, boundaries), before, `${label}: nothing was written`);
+      }
+      // The same request with the right prior goes through.
+      store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:one", {}));
+      assert.equal(store.boundary("orders")?.boundaryId, "rb1:two");
+      store.close();
+    });
+
+    it("supersedes the prior boundary and carries its incidents forward", () => {
+      const store = create();
+      store.claim(PROJECT, SOURCES);
+      store.observe(observation("f1:a"));
+      store.observe(observation("f1:b", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "50" } }));
+      store.observe(observation("f1:c", { position: { kind: "kafka", topic: "orders", partition: 1, offset: "7" } }));
+      store.observe(observation("f1:p", { sourceId: "payments" }));
+      const t1 = "2026-10-03T00:01:00.000Z";
+      const t2 = "2026-10-03T00:02:00.000Z";
+      const t3 = "2026-10-03T00:03:00.000Z";
+      store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, { watermark: 1 }, t1));
+      store.prepareAdvance(advance("f1:p", 1, "rb1:pay", null, { watermark: 9 }, t1));
+      const second = store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:one", { watermark: 2 }, t2));
+      assert.deepEqual(second.boundary.failureIds, ["f1:a", "f1:b"], "cumulative, oldest first");
+      assert.equal(second.boundary.supersedes, "rb1:one");
+      assert.deepEqual(store.getBoundary("rb1:one"), {
+        boundaryId: "rb1:one", sourceId: "orders", generation: "g1", context: { watermark: 1 }, revision: 2, state: "superseded",
+        failureIds: ["f1:a"], supersedes: null, createdAt: t1, retiredAt: t2, retirement: { mode: "superseded", reason: null, operationId: null }
+      });
+      const third = store.prepareAdvance(advance("f1:c", 1, "rb1:three", "rb1:two", { watermark: 3 }, t3));
+      assert.deepEqual(third.boundary.failureIds, ["f1:a", "f1:b", "f1:c"]);
+      assert.equal(store.getBoundary("rb1:two")?.state, "superseded");
+      assert.deepEqual(store.boundary("orders"), third.boundary);
+      assert.equal(store.get("f1:a")?.boundaryId, "rb1:one", "each incident keeps the boundary its advance installed");
+      assert.equal(store.get("f1:b")?.boundaryId, "rb1:two");
+      assert.deepEqual(store.circuit("orders").advances, [t1, t2, t3]);
+      assert.equal(store.circuit("orders").revision, 3);
+      assert.deepEqual(store.boundary("payments")?.failureIds, ["f1:p"], "another source's chain is independent");
+      assert.deepEqual(store.circuit("payments").advances, [t1]);
+      store.close();
+    });
+
+    it("retires a boundary only at its revision and never while its incident is held", () => {
+      const store = create();
+      store.claim(PROJECT, SOURCES);
+      store.observe(observation("f1:a"));
+      store.observe(observation("f1:b", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "43" } }));
+      store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, {}));
+      store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:one", {}));
+      const operator = { mode: "operator" as const, reason: "verified manual repair", operationId: "op-7" };
+      const ids = ["f1:a", "f1:b"];
+      const boundaries = ["rb1:one", "rb1:two"];
+
+      store.update("f1:a", 2, { progress: "held" }, { event: "held", detail: null, operationId: null });
+      let before = recoveryState(store, ids, boundaries);
+      assert.throws(() => store.retireBoundary("rb1:two", 1, operator), (error: unknown) => {
+        rejects("incident-held", 409)(error);
+        assert.equal((error as { details?: { failureId?: string } }).details?.failureId, "f1:a");
+        return true;
+      });
+      assert.deepEqual(recoveryState(store, ids, boundaries), before, "a refused retirement writes nothing");
+      store.update("f1:a", 3, { progress: "retrying" }, { event: "retrying", detail: null, operationId: null });
+      assert.throws(() => store.retireBoundary("rb1:two", 1, operator), rejects("incident-held", 409));
+      store.update("f1:a", 4, { progress: "advanced" }, { event: "advance-confirmed", detail: null, operationId: null });
+
+      before = recoveryState(store, ids, boundaries);
+      assert.throws(() => store.retireBoundary("rb1:two", 2, operator), rejects("stale-revision", 409));
+      assert.throws(() => store.retireBoundary("rb1:one", 2, operator), rejects("boundary-not-in-force", 409), "a superseded boundary cannot be retired");
+      assert.throws(() => store.retireBoundary("rb1:two", 1, { mode: "superseded", reason: null, operationId: null }), rejects("retirement-mode", 400));
+      assert.throws(() => store.retireBoundary("rb1:missing", 1, operator), notFound);
+      assert.deepEqual(recoveryState(store, ids, boundaries), before);
+
+      const at = "2026-10-03T00:05:00.000Z";
+      const retired = store.retireBoundary("rb1:two", 1, operator, at);
+      assert.equal(retired.state, "retired");
+      assert.equal(retired.revision, 2);
+      assert.equal(retired.retiredAt, at);
+      assert.deepEqual(retired.retirement, operator);
+      assert.deepEqual(store.getBoundary("rb1:two"), retired);
+      assert.equal(store.boundary("orders"), null);
+      assert.equal(store.getBoundary("rb1:one")?.state, "superseded", "the chain behind it is untouched");
+      assert.throws(() => store.retireBoundary("rb1:two", 2, operator), rejects("boundary-not-in-force", 409));
+
+      // With nothing in force, the next advance names no prior.
+      store.observe(observation("f1:c", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "60" } }));
+      assert.equal(store.prepareAdvance(advance("f1:c", 1, "rb1:three", null, {})).boundary.supersedes, null);
+      store.close();
+    });
+
+    it("keeps a circuit per source with a revision and at most 20 advances", () => {
+      const store = create();
+      store.claim(PROJECT, SOURCES);
+      assert.deepEqual(store.circuit("orders"), { sourceId: "orders", state: "closed", advances: [], openedAt: null, reason: null, revision: 0 });
+      const opened = store.updateCircuit("orders", 0, { state: "open", advances: ["2026-10-03T00:00:01.000Z"], openedAt: "2026-10-03T00:00:02.000Z", reason: "5 advances in 60 s" });
+      assert.deepEqual(opened, { sourceId: "orders", state: "open", advances: ["2026-10-03T00:00:01.000Z"], openedAt: "2026-10-03T00:00:02.000Z", reason: "5 advances in 60 s", revision: 1 });
+      assert.deepEqual(store.circuit("orders"), opened);
+      assert.throws(() => store.updateCircuit("orders", 0, { state: "closed", advances: [], openedAt: null, reason: null }), rejects("stale-revision", 409));
+      assert.throws(() => store.updateCircuit("orders", 1, { state: "half-open" as "open", advances: [], openedAt: null, reason: null }), rejects("circuit-state", 400));
+      assert.deepEqual(store.circuit("orders"), opened, "a refused update changes nothing");
+      assert.equal(store.circuit("payments").revision, 0, "circuits are per source");
+
+      const times = Array.from({ length: 25 }, (_, i) => `2026-10-03T00:00:${String(i + 10).padStart(2, "0")}.000Z`);
+      const capped = store.updateCircuit("orders", 1, { state: "closed", advances: times, openedAt: null, reason: "operator reopened" });
+      assert.deepEqual(capped.advances, times.slice(5), "the oldest entries are dropped");
+      assert.equal(capped.revision, 2);
+
+      store.observe(observation("f1:a"));
+      store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, {}, "2026-10-03T00:01:00.000Z"));
+      const after = store.circuit("orders");
+      assert.equal(after.advances.length, 20);
+      assert.equal(after.advances[0], times[6]);
+      assert.equal(after.advances.at(-1), "2026-10-03T00:01:00.000Z");
+      assert.equal(after.revision, 3);
+      assert.equal(after.reason, "operator reopened", "an advance only appends");
+      store.close();
+    });
+
+    it("retires the boundary of a source whose generation changed on claim", () => {
+      const store = create();
+      store.claim(PROJECT, SOURCES);
+      store.observe(observation("f1:a"));
+      store.observe(observation("f1:p", { sourceId: "payments" }));
+      store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, {}));
+      store.prepareAdvance(advance("f1:p", 1, "rb1:pay", null, {}));
+      store.update("f1:a", 2, { state: "resolved", resolution: "advanced", progress: "advanced" }, { event: "resolved", detail: null, operationId: null });
+      store.update("f1:p", 2, { state: "resolved", resolution: "advanced", progress: "advanced" }, { event: "resolved", detail: null, operationId: null });
+
+      store.claim(PROJECT, SOURCES);
+      assert.equal(store.boundary("orders")?.boundaryId, "rb1:one", "an unchanged generation keeps its boundary");
+
+      store.claim(PROJECT, [{ sourceId: "orders", generation: "g2", kind: "kafka" }, SOURCES[1]!]);
+      assert.equal(store.boundary("orders"), null);
+      const retired = store.getBoundary("rb1:one");
+      assert.equal(retired?.state, "retired");
+      assert.equal(retired?.revision, 2);
+      assert.equal(retired?.retirement?.mode, "generation");
+      assert.equal(retired?.retirement?.operationId, null);
+      assert.ok(retired?.retiredAt !== null);
+      assert.equal(store.boundary("payments")?.boundaryId, "rb1:pay", "other sources keep theirs");
+
+      store.observe(observation("f1:new", { generation: "g2" }));
+      assert.equal(store.prepareAdvance(advance("f1:new", 1, "rb1:g2", null, {})).boundary.generation, "g2");
+      store.close();
+    });
   });
 }
 
@@ -301,6 +546,43 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     reopened.close();
     reopened.close();
     assert.throws(() => reopened.get("f1:a"), refusal("journal-closed"));
+  });
+
+  it("keeps boundaries, guard results and circuits across close and reopen", () => {
+    const { directory, store } = freshJournal();
+    store.claim(PROJECT, SOURCES);
+    store.observe(observation("f1:a"));
+    store.observe(observation("f1:b", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "43" } }));
+    store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, { watermark: 1, nested: { é: "ü" } }, "2026-10-03T00:01:00.000Z"));
+    store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:one", { watermark: 2 }, "2026-10-03T00:02:00.000Z"));
+    store.updateCircuit("payments", 0, { state: "open", advances: [], openedAt: "2026-10-03T00:03:00.000Z", reason: "operator" });
+    const before = recoveryState(store, ["f1:a", "f1:b"], ["rb1:one", "rb1:two"]);
+    store.close();
+
+    const reopened = openJournal(directory);
+    reopened.claim(PROJECT, SOURCES);
+    assert.deepEqual(recoveryState(reopened, ["f1:a", "f1:b"], ["rb1:one", "rb1:two"]), before);
+    assert.equal(reopened.boundary("orders")?.boundaryId, "rb1:two");
+    assert.deepEqual(reopened.get("f1:b")?.guard, { ...GUARD, at: "2026-10-03T00:02:00.000Z" });
+    assert.equal(reopened.circuit("payments").state, "open");
+    // A stale prior is still refused after a restart.
+    reopened.observe(observation("f1:c", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "44" } }));
+    assert.throws(() => reopened.prepareAdvance(advance("f1:c", 1, "rb1:three", "rb1:one", {})), rejects("stale-revision", 409));
+    reopened.close();
+  });
+
+  it("leaves the boundary in force when claim refuses a generation change", () => {
+    const { store } = freshJournal();
+    store.claim(PROJECT, SOURCES);
+    store.observe(observation("f1:a"));
+    store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, {}));
+    assert.throws(() => store.claim(PROJECT, [{ sourceId: "orders", generation: "g2", kind: "kafka" }, SOURCES[1]!]),
+      refusal("generation-changed-with-open-incidents", "SOURCE_UNAVAILABLE"));
+    assert.equal(store.boundary("orders")?.state, "in-force");
+    assert.equal(store.getBoundary("rb1:one")?.revision, 1);
+    assert.throws(() => store.updateCircuit("never-claimed", 0, { state: "open", advances: [], openedAt: null, reason: null }), refusal("source-not-claimed"));
+    assert.equal(store.circuit("never-claimed").revision, 0);
+    store.close();
   });
 
   it("checks project and source identity on claim", () => {
@@ -467,6 +749,11 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     assert.equal(store.get(`f1:${accepted}`), null, "the refused incident was not partly written");
     assert.throws(() => store.putEvidence("f1:0", { key: null, value: new Uint8Array(64 * 1024), headers: [] }), refusal("journal-full", "OVERLOADED"));
     assert.equal(store.getEvidence("f1:0"), null);
+    // A recovery boundary is growth too, and is refused whole.
+    assert.throws(() => store.prepareAdvance(advance("f1:0", 1, "rb1:full", null, { pad: "p".repeat(16_000) })), refusal("journal-full", "OVERLOADED"));
+    assert.equal(store.getBoundary("rb1:full"), null);
+    assert.equal(store.get("f1:0")?.progress, "held");
+    assert.equal(store.circuit("orders").revision, 0);
     // Transitions on existing incidents still go through, so an operator can resolve them.
     store.update("f1:0", 1, { state: "resolved", resolution: "done" }, { event: "resolved", detail: null, operationId: null });
     assert.ok(store.usage().sizeBytes <= baseline + 48 * 1024);
