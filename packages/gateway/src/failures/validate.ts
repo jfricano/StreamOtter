@@ -2,6 +2,7 @@ import {
   isPlainObject, resolveSourcePolicy, StreamOtterError,
   type ChannelMap, type FailurePolicy, type HandlerRegistry, type ProjectConfig
 } from "@streamotter/contracts";
+import { nodeSqliteSupported } from "./journal.ts";
 
 /** The source-failure features this build of the gateway implements. */
 export interface FailureCapabilities {
@@ -22,8 +23,7 @@ export const FAILURE_CAPABILITIES: FailureCapabilities = Object.freeze({
 export const MIN_JOURNAL_NODE = [24, 15] as const;
 
 export function nodeSupportsJournal(version: string = process.versions.node): boolean {
-  const [major = 0, minor = 0] = version.split(".").map(Number);
-  return major > MIN_JOURNAL_NODE[0] || (major === MIN_JOURNAL_NODE[0] && minor >= MIN_JOURNAL_NODE[1]);
+  return nodeSqliteSupported(version);
 }
 
 /** True when the source can quarantine any failure class. */

@@ -191,9 +191,11 @@ export class MemoryIncidentStore implements IncidentStore {
   readonly #evidence = new Map<string, RawEvidence>();
   readonly #order: string[] = [];
   readonly #maxIncidents: number;
+  readonly #spoolLimitBytes: number;
 
-  constructor(options: { maxIncidents?: number } = {}) {
+  constructor(options: { maxIncidents?: number; spoolLimitBytes?: number } = {}) {
     this.#maxIncidents = options.maxIncidents ?? 10_000;
+    this.#spoolLimitBytes = options.spoolLimitBytes ?? SPOOL_LIMIT_BYTES;
   }
 
   claim(): void {
@@ -289,8 +291,10 @@ export class MemoryIncidentStore implements IncidentStore {
   }
 
   putEvidence(failureId: string, evidence: RawEvidence): void {
-    const used = [...this.#evidence.values()].reduce((sum, item) => sum + evidenceBytes(item), 0);
-    if (used + evidenceBytes(evidence) > SPOOL_LIMIT_BYTES) throw storeFull("The raw evidence spool is full.");
+    // Replacing a failure's evidence frees the old copy, so it does not count against the new one.
+    const replaced = this.#evidence.get(failureId);
+    const used = [...this.#evidence.values()].reduce((sum, item) => sum + evidenceBytes(item), 0) - (replaced === undefined ? 0 : evidenceBytes(replaced));
+    if (used + evidenceBytes(evidence) > this.#spoolLimitBytes) throw storeFull("The raw evidence spool is full.");
     this.#evidence.set(failureId, structuredClone(evidence));
   }
 
@@ -305,7 +309,7 @@ export class MemoryIncidentStore implements IncidentStore {
 
   usage(): StoreUsage {
     const spoolBytes = [...this.#evidence.values()].reduce((sum, item) => sum + evidenceBytes(item), 0);
-    return { sizeBytes: spoolBytes, limitBytes: JOURNAL_LIMIT_BYTES, spoolBytes, spoolLimitBytes: SPOOL_LIMIT_BYTES, schemaVersion: 1 };
+    return { sizeBytes: spoolBytes, limitBytes: JOURNAL_LIMIT_BYTES, spoolBytes, spoolLimitBytes: this.#spoolLimitBytes, schemaVersion: 1 };
   }
 
   close(): void {
