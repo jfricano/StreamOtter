@@ -4,9 +4,11 @@ import { join } from "node:path";
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { StreamOtterError, type ErrorCode, type Json, type Page } from "@streamotter/contracts";
 import {
-  clampLimit, evidenceBytes, JOURNAL_LIMIT_BYTES, MAX_EVENTS_PER_INCIDENT, SPOOL_LIMIT_BYTES, StaleRevisionError, storeFull,
-  type HeaderBytes, type IncidentEvent, type IncidentPatch, type IncidentQuery, type IncidentRecord, type IncidentStore,
-  type NewObservation, type ObservationResult, type RawEvidence, type SourceIdentity, type StoreUsage
+  advancedIncident, capAdvances, checkAdvanceState, checkCircuit, checkPrepareAdvance, checkRetirement, clampLimit, defaultCircuit, endBoundary,
+  evidenceBytes, generationRetirement, JOURNAL_LIMIT_BYTES, MAX_EVENTS_PER_INCIDENT, nextBoundary, SPOOL_LIMIT_BYTES, StaleRevisionError, storeFull,
+  unknownIncident,
+  type CircuitState, type HeaderBytes, type IncidentEvent, type IncidentPatch, type IncidentQuery, type IncidentRecord, type IncidentStore,
+  type NewObservation, type ObservationResult, type PrepareAdvance, type RawEvidence, type SourceIdentity, type StoreUsage, type StoredBoundary
 } from "./store.ts";
 
 /**
@@ -51,8 +53,9 @@ const SQLITE_NOTADB = 26;
 /**
  * Forward-only schema migrations. A migration's SQL runs in one transaction
  * together with the schema_version bump, so a journal is always at exactly one
- * version. Append new versions; never edit a shipped one. Version 2 is expected
- * to add the recovery-boundary and circuit tables (ADR-15B).
+ * version. Append new versions; never edit a shipped one. Version 1 has not
+ * shipped yet, so the recovery-boundary and circuit tables (ADR-15B) were added
+ * to it in place rather than as version 2.
  */
 const MIGRATIONS: readonly { version: number; sql: string }[] = [
   {
@@ -97,6 +100,32 @@ const MIGRATIONS: readonly { version: number; sql: string }[] = [
         headers BLOB NOT NULL,
         bytes INTEGER NOT NULL CHECK (bytes >= 0),
         stored_at TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE boundaries (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        boundary_id TEXT NOT NULL UNIQUE,
+        source_id TEXT NOT NULL REFERENCES sources (source_id),
+        generation TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('in-force', 'superseded', 'retired')),
+        revision INTEGER NOT NULL CHECK (revision >= 1),
+        context TEXT NOT NULL CHECK (json_valid(context)),
+        failure_ids TEXT NOT NULL CHECK (json_valid(failure_ids) AND json_type(failure_ids) = 'array'),
+        supersedes TEXT REFERENCES boundaries (boundary_id),
+        created_at TEXT NOT NULL,
+        retired_at TEXT,
+        retirement_mode TEXT CHECK (retirement_mode IN ('generation', 'application', 'operator', 'superseded')),
+        retirement_reason TEXT,
+        retirement_operation_id TEXT,
+        CHECK ((state = 'in-force') = (retirement_mode IS NULL))
+      ) STRICT;
+      CREATE UNIQUE INDEX boundaries_in_force ON boundaries (source_id) WHERE state = 'in-force';
+      CREATE TABLE circuits (
+        source_id TEXT PRIMARY KEY REFERENCES sources (source_id),
+        state TEXT NOT NULL CHECK (state IN ('closed', 'open')),
+        advances TEXT NOT NULL CHECK (json_valid(advances) AND json_type(advances) = 'array'),
+        opened_at TEXT,
+        reason TEXT,
+        revision INTEGER NOT NULL CHECK (revision >= 1)
       ) STRICT;
     `
   }
@@ -549,6 +578,43 @@ function decodeCursor(cursor: string | undefined): number {
 
 interface IncidentRow { seq: number; record: string }
 
+interface BoundaryRow {
+  boundary_id: string;
+  source_id: string;
+  generation: string;
+  state: StoredBoundary["state"];
+  revision: number;
+  context: string;
+  failure_ids: string;
+  supersedes: string | null;
+  created_at: string;
+  retired_at: string | null;
+  retirement_mode: NonNullable<StoredBoundary["retirement"]>["mode"] | null;
+  retirement_reason: string | null;
+  retirement_operation_id: string | null;
+}
+
+const BOUNDARY_COLUMNS = `boundary_id, source_id, generation, state, revision, context, failure_ids, supersedes, created_at,
+  retired_at, retirement_mode, retirement_reason, retirement_operation_id`;
+
+function boundaryFromRow(row: BoundaryRow): StoredBoundary {
+  return {
+    boundaryId: row.boundary_id,
+    sourceId: row.source_id,
+    generation: row.generation,
+    context: JSON.parse(row.context) as Json,
+    revision: row.revision,
+    state: row.state,
+    failureIds: JSON.parse(row.failure_ids) as string[],
+    supersedes: row.supersedes,
+    createdAt: row.created_at,
+    retiredAt: row.retired_at,
+    retirement: row.retirement_mode === null ? null : { mode: row.retirement_mode, reason: row.retirement_reason, operationId: row.retirement_operation_id }
+  };
+}
+
+interface CircuitRow { source_id: string; state: CircuitState["state"]; advances: string; opened_at: string | null; reason: string | null; revision: number }
+
 /**
  * The SQLite incident store. Construct it through openJournal(), which checks
  * the file, takes the lock and hands the open handle over; close() releases both.
@@ -610,6 +676,11 @@ export class SqliteIncidentStore implements IncidentStore {
             { sourceId: source.sourceId, storedGeneration: previous.generation, generation: source.generation, openIncidents: open });
         }
         this.#statement("UPDATE sources SET generation = ?, kind = ?, recorded_at = ? WHERE source_id = ?").run(source.generation, source.kind, now, source.sourceId);
+        // ADR-15B §4: a generation change always retires the boundary in force, whatever the retirement mode.
+        const boundary = this.#inForceBoundary(source.sourceId);
+        if (boundary !== null && boundary.generation !== source.generation) {
+          this.#saveBoundary(endBoundary(boundary, generationRetirement(source.sourceId, boundary.generation, source.generation), now));
+        }
       }
     });
   }
@@ -646,6 +717,8 @@ export class SqliteIncidentStore implements IncidentStore {
           recovery: "not-applicable",
           state: "open",
           resolution: null,
+          guard: null,
+          boundaryId: null,
           updatedAt: observedAt
         };
         const json = JSON.stringify(record);
@@ -684,7 +757,7 @@ export class SqliteIncidentStore implements IncidentStore {
   update(failureId: string, expectedRevision: number, patch: IncidentPatch, event: Omit<IncidentEvent, "at"> & { at?: string }): IncidentRecord {
     return this.#write(() => {
       const row = this.#statement("SELECT seq, record FROM incidents WHERE failure_id = ?").get(failureId) as IncidentRow | undefined;
-      if (row === undefined) throw new StreamOtterError("INVALID_REQUEST", { message: `Unknown incident ${failureId}.`, details: { status: 404 } });
+      if (row === undefined) throw unknownIncident(failureId);
       const existing = JSON.parse(row.record) as IncidentRecord;
       if (existing.revision !== expectedRevision) throw new StaleRevisionError(failureId, expectedRevision, existing.revision);
       const at = event.at ?? new Date().toISOString();
@@ -747,6 +820,71 @@ export class SqliteIncidentStore implements IncidentStore {
   deleteEvidence(failureId: string): void {
     this.#write(() => {
       this.#statement("DELETE FROM evidence WHERE failure_id = ?").run(failureId);
+    });
+  }
+
+  boundary(sourceId: string): StoredBoundary | null {
+    return this.#inForceBoundary(sourceId);
+  }
+
+  getBoundary(boundaryId: string): StoredBoundary | null {
+    const row = this.#statement(`SELECT ${BOUNDARY_COLUMNS} FROM boundaries WHERE boundary_id = ?`).get(boundaryId) as BoundaryRow | undefined;
+    return row === undefined ? null : boundaryFromRow(row);
+  }
+
+  /** Same semantics as MemoryIncidentStore.prepareAdvance: the boundary, the incident, its event and the circuit commit together. */
+  prepareAdvance(input: PrepareAdvance): { record: IncidentRecord; boundary: StoredBoundary } {
+    const context = checkPrepareAdvance(input);
+    return this.#write(() => {
+      const row = this.#statement("SELECT seq, record FROM incidents WHERE failure_id = ?").get(input.failureId) as IncidentRow | undefined;
+      const existing = row === undefined ? null : JSON.parse(row.record) as IncidentRecord;
+      const prior = existing === null ? null : this.#inForceBoundary(existing.sourceId);
+      const generation = existing === null ? null
+        : (this.#statement("SELECT generation FROM sources WHERE source_id = ?").get(existing.sourceId) as { generation: string } | undefined)?.generation ?? null;
+      const record = checkAdvanceState(input, existing, prior, generation, this.getBoundary(input.boundary.boundaryId) !== null);
+      const boundary = nextBoundary(input, record, prior, context);
+      const advanced = advancedIncident(input, record);
+      const recordJson = JSON.stringify(advanced.record);
+      const failureIds = JSON.stringify(boundary.failureIds);
+      // A new boundary row is growth, so it is admitted like a new incident; the rest rewrites existing rows.
+      this.#admit(Buffer.byteLength(context) + Buffer.byteLength(failureIds) + Math.max(0, Buffer.byteLength(recordJson) - Buffer.byteLength((row as IncidentRow).record))
+        + 2 * ROW_OVERHEAD_BYTES, "record a recovery boundary");
+      if (prior !== null) this.#saveBoundary(endBoundary(prior, { mode: "superseded", reason: null, operationId: null }, input.at));
+      this.#statement(`INSERT INTO boundaries (${BOUNDARY_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(boundary.boundaryId, boundary.sourceId, boundary.generation, boundary.state, boundary.revision, context, failureIds,
+          boundary.supersedes, boundary.createdAt, null, null, null, null);
+      this.#replace(advanced.record, recordJson);
+      this.#addEvent(record.failureId, advanced.event);
+      const circuit = this.circuit(record.sourceId);
+      this.#saveCircuit({ ...circuit, advances: capAdvances([...circuit.advances, input.at]), revision: circuit.revision + 1 });
+      return { record: advanced.record, boundary };
+    });
+  }
+
+  retireBoundary(boundaryId: string, expectedRevision: number, retirement: NonNullable<StoredBoundary["retirement"]>, at = new Date().toISOString()): StoredBoundary {
+    return this.#write(() => {
+      const boundary = checkRetirement(boundaryId, this.getBoundary(boundaryId), expectedRevision, retirement, failureId => this.get(failureId));
+      const retired = endBoundary(boundary, retirement, at);
+      this.#saveBoundary(retired);
+      return retired;
+    });
+  }
+
+  circuit(sourceId: string): CircuitState {
+    const row = this.#statement("SELECT source_id, state, advances, opened_at, reason, revision FROM circuits WHERE source_id = ?").get(sourceId) as CircuitRow | undefined;
+    if (row === undefined) return defaultCircuit(sourceId);
+    return { sourceId: row.source_id, state: row.state, advances: JSON.parse(row.advances) as string[], openedAt: row.opened_at, reason: row.reason, revision: row.revision };
+  }
+
+  updateCircuit(sourceId: string, expectedRevision: number, next: Pick<CircuitState, "state" | "advances" | "openedAt" | "reason">): CircuitState {
+    return this.#write(() => {
+      const current = this.circuit(sourceId);
+      if (current.revision !== expectedRevision) {
+        throw new StaleRevisionError(sourceId, expectedRevision, current.revision, `The circuit of source ${sourceId} is at revision ${current.revision}, not ${expectedRevision}.`);
+      }
+      const updated = checkCircuit(sourceId, next, current.revision + 1);
+      this.#saveCircuit(updated);
+      return updated;
     });
   }
 
@@ -824,6 +962,30 @@ export class SqliteIncidentStore implements IncidentStore {
     this.#statement(`DELETE FROM incident_events WHERE failure_id = ? AND id <= (
       SELECT id FROM incident_events WHERE failure_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`)
       .run(failureId, failureId, MAX_EVENTS_PER_INCIDENT);
+  }
+
+  #inForceBoundary(sourceId: string): StoredBoundary | null {
+    const row = this.#statement(`SELECT ${BOUNDARY_COLUMNS} FROM boundaries WHERE source_id = ? AND state = 'in-force'`).get(sourceId) as BoundaryRow | undefined;
+    return row === undefined ? null : boundaryFromRow(row);
+  }
+
+  /** Rewrites a boundary's mutable fields; context, failureIds and links never change after insert. */
+  #saveBoundary(boundary: StoredBoundary): void {
+    this.#statement(`UPDATE boundaries SET state = ?, revision = ?, retired_at = ?, retirement_mode = ?, retirement_reason = ?, retirement_operation_id = ?
+      WHERE boundary_id = ?`)
+      .run(boundary.state, boundary.revision, boundary.retiredAt, boundary.retirement?.mode ?? null, boundary.retirement?.reason ?? null,
+        boundary.retirement?.operationId ?? null, boundary.boundaryId);
+  }
+
+  /** Inserts or replaces a circuit; a source the journal does not know is refused like an observation of one. */
+  #saveCircuit(circuit: CircuitState): void {
+    if (this.#statement("SELECT 1 AS present FROM sources WHERE source_id = ?").get(circuit.sourceId) === undefined) {
+      throw refuse("SOURCE_UNAVAILABLE", "source-not-claimed", `Source ${circuit.sourceId} is not registered in the journal; claim() it first.`, { sourceId: circuit.sourceId });
+    }
+    this.#statement(`INSERT INTO circuits (source_id, state, advances, opened_at, reason, revision) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (source_id) DO UPDATE SET state = excluded.state, advances = excluded.advances, opened_at = excluded.opened_at,
+        reason = excluded.reason, revision = excluded.revision`)
+      .run(circuit.sourceId, circuit.state, JSON.stringify(circuit.advances), circuit.openedAt, circuit.reason, circuit.revision);
   }
 
   #openCount(sourceId: string): number {
