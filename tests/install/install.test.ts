@@ -249,7 +249,7 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
         for (const source of sources) assert.ok(entries.includes(`dist/${source}.d.ts`), `declarations for ${source}`);
         if (pkg.name === "streamotter") {
           assert.equal(manifest.main, undefined, "no root entry point: browser and server code are separate subpaths");
-          assert.deepEqual([...sources].sort(), ["cli", "client", "contracts", "gateway", "management"]);
+          assert.deepEqual([...sources].sort(), ["cli", "client", "contracts", "gateway", "management", "operator"]);
         } else {
           assert.equal(manifest.main, "./dist/index.js");
           assert.equal(manifest.types, "./dist/index.d.ts");
@@ -569,6 +569,7 @@ console.log(JSON.stringify({ percents, states }));
 const GATEWAY_CHECK = `import { createClient } from "@streamotter/client";
 import { createGateway, defineProject, silentLogger } from "@streamotter/gateway";
 import { startManagementServer } from "@streamotter/gateway/management";
+import { getGatewayOperator } from "@streamotter/gateway/operator";
 
 const config = defineProject({
   configVersion: 1,
@@ -631,6 +632,13 @@ const until = async (predicate, label) => {
 
 const gateway = createGateway({ config, handlers, mode: "development", development, logger: silentLogger });
 const { origin } = await gateway.start();
+// The operator subpath resolves; without failureHandling there is no operator service (V1.1 API §6).
+try {
+  getGatewayOperator(gateway);
+  throw new Error("expected no operator service");
+} catch (error) {
+  if (error.code !== "UNSUPPORTED_CAPABILITY") throw error;
+}
 const management = await startManagementServer({ gateway, port: 0, workbenchDir: null });
 const client = createClient({ origin, getToken: () => "alice-token" });
 const order = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
