@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/streamotter-logo-dark.png">
-    <img src="docs/assets/streamotter-logo.png" alt="StreamOtter" width="480">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/streamotter-readme-lockup-dark.svg">
+    <img src="docs/assets/streamotter-readme-lockup.svg" alt="StreamOtter" width="240">
   </picture>
 </p>
 
