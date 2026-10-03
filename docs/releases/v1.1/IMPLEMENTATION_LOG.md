@@ -8,9 +8,10 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - planning, PR #12;
 - the workbench seam, PR #14 (`feat/v1.1-workbench-host`, on #12);
 - slice A, PR #13 (`feat/v1.1-contracts`, on #12);
-- slice B, PR 4 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`.
+- slice B, PR #15 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`;
+- slice C, PR 5 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`.
 
-**Next step:** slice C (guarded continuation and `quarantine-resync`) on `feat/v1.1-guarded-continuation`, stacked on slice B. It builds on `FailureService`, `KafkaSourceAdapter.advancePast`, and the `advance-pending`/`uncertain` progress states that slice B already defines.
+**Next step:** slice D, the operator workflow (PR 6, `feat/v1.1-operator`). It is stacked on slice C, needs PR #14's workbench seam, and must merge both. It adds the `OperatorService` over the incident store, local IPC, the CLI groups (`failures`, `sources retry-current|reassess|retire-boundary|reopen-circuit`, `status`), development routes, the workbench Failures view, evaluate and redrive, and reproduction bundles. When the Failures operations land, tell the Lontra Creek thread.
 
 **Open owner decisions:**
 
@@ -107,6 +108,39 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - `node --conditions=streamotter-source --test packages/gateway/test/journal.test.ts` on Node 24.21.0 and 26.10.0: 37 tests, 37 pass, 0 fail (23 before). New: six conformance cases run against both stores (advance happy path, every refusal leaving state unchanged, a supersede chain across incidents and sources, retirement, circuits, claim on a generation change), two journal-only cases (recovery state across close and reopen; a refused claim keeps the boundary), and a full-journal refusal of `prepareAdvance` added to the existing limit test.
   - `pnpm build && pnpm verify` on Node 24.21.0: 208 tests, 208 pass, 0 fail.
   - `gateway.ts` and `service.ts` were not changed.
+
+### October 3, 2026 — slice C (guarded continuation)
+
+- Defined the recovery storage in the `IncidentStore` interface first (`5e9dcf1`). A helper implemented it in both stores on `feat/v1.1-recovery-store` (entry above) while the service work continued; the branch was merged.
+- **`FailureService.#continue`** carries out the slice C continuation order recorded in the API draft §5. For `quarantine-resync`:
+  1. write fresh acknowledged evidence;
+  2. check the circuit;
+  3. run the guard with the prior boundary under the 10 s budget, then recheck the incident;
+  4. `prepareAdvance` in one transaction;
+  5. apply the boundary to the runtime;
+  6. `advancePast`;
+  7. record the result as advanced, back to held, or uncertain.
+- **Guard answers** are validated (JSON context of at most 16 KiB, `evidenceRef` of at most 512 characters). `hold` sets recovery to `denied`; an error or timeout sets it to `held`.
+- **Snapshot acknowledgment** (`subscription.ts`):
+  - The boundary in force when a snapshot starts goes in as `recovery` and must be echoed. A missing, wrong or superseded acknowledgment is a retryable `SOURCE_UNAVAILABLE` attempt failure.
+  - The boundary is checked again after the pre-delivery authorization.
+  - An echo with no boundary in force is `INVALID_PAYLOAD`.
+  - Acknowledged snapshots trigger application retirement through `GatewayCore.boundaryAcknowledged`.
+- **Startup** restores the in-force boundary before adapters start. It reconciles `advance-pending` and `uncertain` incidents against the group's committed offset, read with a short-lived admin client (`readCommittedOffset`). Fixture incidents go back to `held`.
+- **Test-only hooks:** `InternalGatewayOptions.advanceHooks` provides the crash points for F16 and F17 (`tests/kafka/resync-crash-child.ts`).
+- **Deviations and decisions:**
+  - A fresh quarantine copy is written before every advance attempt, even if an earlier one was acknowledged (spec §6 step 4); `quarantine-hold` still writes once.
+  - The circuit counts prepared advances, so duplicate writes never count. A `not-held` result (a stop or rebalance before the commit) re-prepares on redelivery and counts again, which errs toward opening.
+  - After `not-held`, the new cumulative boundary stays in force. It only adds obligations.
+  - An advanced incident is resolved with its boundary still in force: the incident is over, but its recovery requirement is not.
+- **Not done:**
+  - `sources retire-boundary`, `reassess` and `reopen-circuit` (slice D);
+  - the reference guard in the order-dashboard example (slice E);
+  - tests for a denied ACL, an unavailable quarantine broker (F13), a rebalance during the advance (F18), and revoke races (F25).
+- **Verification on Node 24.21.0:**
+  - `pnpm build && pnpm verify`: 220 tests, all passed. 26 are new since slice B: 14 conformance cases and 12 in `tests/integration/guarded-continuation.test.ts`.
+  - `pnpm test:kafka`: 30 tests, all passed, including the 4 in `tests/kafka/09-guarded-continuation.test.ts`. The two crash tests SIGKILL a child gateway at each side of the commit and check reconciliation on restart.
+  - Every new test passed on its first run.
 
 ## 3. Handoff checklist for each slice
 

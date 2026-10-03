@@ -11,27 +11,27 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 | F03 | Invalid JSON under default pause | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
 | F04 | Invalid mapped public payload with valid routing/revision | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
 | F05 | Multi-channel record where one output fails validation | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
-| F06 | Invalid tenant, parameters, revision, output count, or conflicting … | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
+| F06 | Invalid tenant, parameters, revision, output count, or conflicting … | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`, `tests/integration/guarded-continuation.test.ts` (resync policy never reaches the guard); run in the log, October 3 |
 | F07 | Typed transient mapper failure succeeds after retry | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; long-hold membership in `tests/kafka/08-quarantine-hold.test.ts`; run in the log, October 3 |
 | F08 | Arbitrary mapper exception/timeout or transient retry exhausted | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts`; run in the log, October 3 |
 | F09 | Broker outage, token denial, or stalled browser | B (PR 4) | fixture, kafka | partial | Unchanged V1 tests (`tests/kafka/02`, `04`, `06`; `tests/integration/access.test.ts`, `flow-control.test.ts`). Infrastructure failures never reach the failure service; no V1.1-specific test yet; run in the log, October 3 |
 | F10 | Byte-preserving capture with binary key, invalid UTF-8 value, null … | B (PR 4) | kafka | implemented | `tests/kafka/08-quarantine-hold.test.ts`; run in the log, October 3 |
 | F11 | Source record, header, envelope, or local spool exceeds budget | B (PR 4) | fixture, kafka | implemented | `tests/integration/quarantine-hold.test.ts`, `packages/gateway/test/failure-service.test.ts`; spool and journal limits in `packages/gateway/test/journal.test.ts`; run in the log, October 3 |
 | F12 | Journal persistence fails before quarantine | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts` (fault-injected store); full and failed journals in `packages/gateway/test/journal.test.ts`; run in the log, October 3 |
-| F13 | Missing topic, denied ACL, oversized broker message, or … | C (PR 5) | kafka | planned | |
+| F13 | Missing topic, denied ACL, oversized broker message, or … | C (PR 5) | kafka | partial | `tests/kafka/09-guarded-continuation.test.ts` (a write refused as too large holds without advancing); missing and undersized topics in `tests/kafka/08-quarantine-hold.test.ts`. Denied ACL and an unavailable quarantine broker are not tested; run in the log, October 3 |
 | F14 | Quarantine accepted but acknowledgment lost | B (PR 4) | kafka | implemented | `packages/gateway/test/failure-service.test.ts` (scripted unknown, then acknowledged). A lost broker acknowledgment is not reproducible on a single local broker; run in the log, October 3 |
 | F15 | Crash after evidence acknowledgment, before original commit | B (PR 4) | crash, kafka | partial | `tests/integration/failure-journal.test.ts` and `tests/kafka/08-quarantine-hold.test.ts` (graceful restart); journal survival after SIGKILL in `packages/gateway/test/journal.test.ts`. No gateway crash-tier test yet; run in the log, October 3 |
-| F16 | Crash after prepared recovery barrier, before source commit | C (PR 5) | crash, kafka | planned | |
-| F17 | Commit succeeded but response/local final write lost | C (PR 5) | crash, kafka | planned | |
-| F18 | Stop, rebalance, or stale batch during write/guard/commit preparation | C (PR 5) | kafka | planned | |
+| F16 | Crash after prepared recovery barrier, before source commit | C (PR 5) | crash, kafka | implemented | `tests/kafka/09-guarded-continuation.test.ts` (SIGKILL after the barrier, before the commit); run in the log, October 3 |
+| F17 | Commit succeeded but response/local final write lost | C (PR 5) | crash, kafka | implemented | `tests/kafka/09-guarded-continuation.test.ts` (SIGKILL after the commit, before the final journal write); run in the log, October 3 |
+| F18 | Stop, rebalance, or stale batch during write/guard/commit preparation | C (PR 5) | kafka | partial | `tests/integration/guarded-continuation.test.ts` F25 case (stop during the guard); `advancePast` checks the assignment epoch. No rebalance-during-advance test yet; run in the log, October 3 |
 | F19 | Quarantine-hold followed by guarded retry-current | D (PRs 2, 6) | fixture | planned | |
-| F20 | Missing, denied, throwing, timed-out, or invalid recovery guard | C (PR 5) | fixture | planned | |
-| F21 | Guarded continuation with authoritative snapshot coverage | C (PR 5) | fixture | planned | |
-| F22 | Lagging snapshot returns no/wrong coverage boundary | C (PR 5) | fixture | planned | |
-| F23 | New subscription/account reconnect after prior skip and gateway … | C (PR 5) | fixture, crash | planned | |
-| F24 | Two incidents affect different unknown entities/audiences | C (PR 5) | fixture | planned | |
-| F25 | Snapshot/mapper/guard completes after epoch change, revoke, stop, … | C (PR 5) | fixture | planned | |
-| F26 | Five distinct automatic advances, sixth within window; duplicate … | C (PR 5) | fixture, crash | planned | |
+| F20 | Missing, denied, throwing, timed-out, or invalid recovery guard | C (PR 5) | fixture | implemented | `tests/integration/guarded-continuation.test.ts`; run in the log, October 3 |
+| F21 | Guarded continuation with authoritative snapshot coverage | C (PR 5) | fixture | implemented | `tests/integration/guarded-continuation.test.ts`, `tests/kafka/09-guarded-continuation.test.ts`; run in the log, October 3 |
+| F22 | Lagging snapshot returns no/wrong coverage boundary | C (PR 5) | fixture | implemented | `tests/integration/guarded-continuation.test.ts`; run in the log, October 3 |
+| F23 | New subscription/account reconnect after prior skip and gateway … | C (PR 5) | fixture, crash | implemented | `tests/integration/guarded-continuation.test.ts` (restart with the journal; new subscription); run in the log, October 3 |
+| F24 | Two incidents affect different unknown entities/audiences | C (PR 5) | fixture | implemented | `tests/integration/guarded-continuation.test.ts`; supersede chain in `packages/gateway/test/journal.test.ts`; run in the log, October 3 |
+| F25 | Snapshot/mapper/guard completes after epoch change, revoke, stop, … | C (PR 5) | fixture | partial | `tests/integration/guarded-continuation.test.ts` (guard answer after stop; boundary change during a snapshot is rechecked before delivery). Revoke and new-incident races are not separately tested; run in the log, October 3 |
+| F26 | Five distinct automatic advances, sixth within window; duplicate … | C (PR 5) | fixture, crash | implemented | `tests/integration/guarded-continuation.test.ts` (circuit opens; survives restart); circuit storage in `packages/gateway/test/journal.test.ts`. Duplicate-write storms do not count because only prepared advances are counted; run in the log, October 3 |
 | F27 | Held source record expired or group offset is out of range | B (PR 4) | kafka | implemented | `tests/kafka/08-quarantine-hold.test.ts` (group offset moved by hand); `packages/gateway/test/failure-service.test.ts`; run in the log, October 3 |
 | F28 | Raw quarantine expired before a later advance or evaluation | D (PRs 2, 6) | fixture | planned | |
 | F29 | Journal missing/corrupt/incompatible, wrong source generation, … | B (PR 4) | fixture | implemented | `tests/integration/quarantine-hold.test.ts` (generation), `tests/integration/failure-journal.test.ts` (missing journal); corrupt and incompatible journals in `packages/gateway/test/journal.test.ts`. Topic recreation is not detected yet; run in the log, October 3 |
@@ -47,7 +47,7 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 | F39 | Raw payload contains secrets, markup, or instructions | D (PRs 2, 6) | fixture | planned | |
 | F40 | Raw export and metadata bundle | D (PRs 2, 6) | fixture | planned | |
 | F41 | Journal capacity, topic-scan budget, audit limit, or repeated … | D (PRs 2, 6) | fixture | planned | |
-| F42 | Unaffected independent source while another is held/quarantining | C (PR 5) | fixture | planned | |
+| F42 | Unaffected independent source while another is held/quarantining | C (PR 5) | fixture | implemented | `tests/integration/guarded-continuation.test.ts`; run in the log, October 3 |
 | F43 | Healthy source, paused source, broker outage, startup, shutdown, … | E (PR 7) | fixture, kafka | planned | |
 | F44 | Workbench failure lifecycle and old-state display | D (PRs 2, 6) | browser | planned | |
 | F45 | Chromium, Firefox and WebKit failure/reconnect/cleanup path | E (PR 7) | browser (3 engines) | planned | |
