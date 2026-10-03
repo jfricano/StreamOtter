@@ -1,6 +1,6 @@
 # Connect to Kafka
 
-This guide replaces a fixture source with a Kafka topic, covers TLS and SASL, and explains how StreamOtter tracks progress, and what happens when a record is bad or the gateway restarts.
+This guide replaces a fixture source with a Kafka topic, covers TLS and SASL, and explains how StreamOtter tracks progress, and what happens when a record is bad or the gateway restarts. It also covers the quarantine topic for V1.1's opt-in failure policies.
 
 StreamOtter uses KafkaJS 2.2.4 internally. It is verified against **Apache Kafka 4.1.2** (see the [support matrix](#what-is-verified)); other broker versions and managed Kafka services are unverified.
 
@@ -72,6 +72,31 @@ To recover, fix the cause (usually your `map` handler: correct it, or have it re
 - from code, call `gateway.resumeSource("orders")`;
 - with `streamotter start`, deploy the fix and restart the gateway. It resumes from the last committed offset, which is the paused record.
 
+That is the default. V1.1 adds opt-in failure policies: every bad record becomes a durable incident, and for invalid JSON and payload-schema failures the original record can be copied to a quarantine topic, then held, or moved past only when your application's recovery guard approves. Nothing is ever skipped silently. See [Handle bad records](./source-failures.md).
+
+## The quarantine topic (V1.1)
+
+Only needed when a Kafka source uses `quarantine-hold` or `quarantine-resync`. The gateway writes the original key, value and headers there, byte for byte (original headers get a `src.` prefix), with the incident's metadata in a `streamotter-envelope` header and its ID in `streamotter-failure-id`.
+
+**Create it before you start the gateway.** The gateway never creates topics, and it refuses to start if the topic is missing.
+
+```bash
+kafka-topics.sh --bootstrap-server kafka-1.example.com:9093 --command-config admin.properties --create \
+  --topic orders-app.streamotter.quarantine --partitions 1 --replication-factor 3 \
+  --config max.message.bytes=1130496 --config min.insync.replicas=2 --config retention.ms=604800000
+```
+
+- **`max.message.bytes` must be at least `limits.maxSourceRecordBytes` plus 80 KiB** (81,920 bytes), so the largest record the gateway accepts fits with its headers. With the default 1 MiB limit that's 1,130,496 bytes, more than Kafka's default of 1,048,588. Startup reads the setting and refuses a smaller one. If you raise `maxSourceRecordBytes`, raise this too.
+- **One cluster.** It must be on the cluster of the quarantining sources, and those sources must share one connection profile. Writes and reads use that profile's credentials.
+- **Not a source topic.** Validation refuses a quarantine topic that is also a configured source topic. Nothing consumes it automatically.
+- **Replication is yours to choose.** Writes use an idempotent producer with `acks=all`, so `min.insync.replicas` and the replication factor decide what survives a broker failure. `streamotter status` reports both. Broker-failure behavior has only been tested against a single broker so far, so these settings are not a StreamOtter guarantee.
+- **Retention decides how long evidence can be read back** for `evaluate` and `redrive`. Seven days is a reasonable start. Expired evidence is reported as expired; it never clears a recovery requirement. See [the runbook](./source-failures.md#64-topic-retention-and-expired-evidence).
+- **Protect it like the source data.** It holds full records. Give read access to operators only.
+
+**ACLs.** In addition to its source permissions, the gateway's principal needs Describe, DescribeConfigs, Write and Read on the quarantine topic, and Read and Delete on consumer groups with the prefix `streamotter-<projectId>-quarantine-read-`, which evidence read-back uses as throwaway groups that never commit. The full table and an example are in the [runbook](./source-failures.md#61-credentials-and-acls); ACL-enabled brokers are not tested yet.
+
+**Source retention matters too.** A held record is never committed, so set the source topics' retention well above how long a hold may last. If retention deletes a held record, the gateway holds the source rather than jumping past it.
+
 ## Restarts and crashes
 
 On a restart, clients reconnect by themselves and resynchronize from fresh snapshots. Records that were processed but not yet committed when a gateway crashed are processed again, and revisions make that harmless: an update no newer than what a view already shows is discarded.
@@ -112,6 +137,8 @@ KafkaJS 2.2.4 against Apache Kafka 4.1.2 (single-node KRaft), from the [implemen
 | Other Kafka versions and managed services | Unverified |
 
 Also verified against real Kafka: explicit per-record commits, poison records pausing without skipping, redelivery after a crash without the displayed state going backwards, rebalances and broker outages marking views `stale` and resynchronizing, and `startFrom` for new groups.
+
+V1.1 failure handling (unreleased), against the same single local broker: byte-exact quarantine of binary keys, invalid UTF-8 and repeated headers; refusal of a missing or undersized quarantine topic; holding a source for 35 seconds without losing group membership; holding when the group position moves past a held record; advancing past a record with the commit confirmed by reading it back, including a gateway killed on either side of the commit; and reading evidence back byte for byte. Not yet tested: a replicated cluster, ACL-enabled brokers, and an unavailable quarantine broker. See the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased).
 
 ## A local broker
 

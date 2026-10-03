@@ -19,7 +19,8 @@ Start from what you see. Every SDK failure is a `StreamError` with a `code`. Log
 `stale` means the view shows the last good state, and the SDK is recovering or waiting for the gateway.
 
 - **The gateway is down or unreachable:** the client state is `reconnecting`. It retries with backoff (up to 30 s between attempts) while subscriptions are open, and resynchronizes once connected.
-- **The source is paused:** a record couldn't be processed (invalid JSON, a tombstone, a `map` error, an invalid mapped state, a revision conflict). The gateway logs a diagnostic, and in development the workbench's Connect tab shows the source as `paused` with a reason. Fix the cause, then resume. See [Connect to Kafka: when a record is bad](./kafka.md#when-a-record-is-bad).
+- **The source is paused:** a record couldn't be processed (invalid JSON, a tombstone, a `map` error, an invalid mapped state, a revision conflict). The gateway logs a diagnostic, and in development the workbench's Connect tab shows the source as `paused` with a reason. Fix the cause, then resume. See [Connect to Kafka: when a record is bad](./kafka.md#when-a-record-is-bad). With V1.1 failure handling configured, the record is also an incident: `streamotter failures list` (or the workbench's Failures tab) shows it, and the [runbook](./source-failures.md#65-repair-a-poison-record) says how to repair and retry it.
+- **The source moved past a quarantined record** (V1.1 `quarantine-resync`): every snapshot on that source must return the recovery boundary's ID. A snapshot that omits it keeps the view `stale` and is retried; the gateway logs "Snapshot did not acknowledge the source's recovery boundary". See [Acknowledge the boundary in every snapshot](./source-failures.md#42-acknowledge-the-boundary-in-every-snapshot).
 - **Kafka is rebalancing, or the broker is unreachable:** views resynchronize once the source is healthy again. A broker outage is detected after about 12 s without fetch or heartbeat activity.
 
 `resync-required` means automatic recovery gave up after its attempts (three per incident, 1 s and then 2 s apart), for example because of repeated snapshot timeouts or overflows. Call `subscription.resync()`, from a retry button for example. In development, a page left open across a `streamotter dev` restart also ends here: the fixture source starts over at revision 1, and the SDK never accepts an older revision than it has shown. Reload the page.
@@ -49,6 +50,49 @@ Exit code `2` means invalid input or configuration; `1` means startup or runtime
 | `The management server could not start: …` (`dev` only) | Something else uses port 7401. Pass `--management-port <port>`. |
 | `Refusing to overwrite existing files: …` (`init`) or `… not created by the generator: …` (`generate`) | Choose another directory, or move those files away. |
 | `… is invalid (N issues):` followed by paths and codes | Fix the configuration. Deferred V2 fields such as `history` or `recovery` are reported by name. |
+| `/failureHandling  UNKNOWN_KEY: Unknown key "failureHandling".` from an older release | `failureHandling` needs a gateway with V1.1 failure handling. An older gateway refuses it rather than ignoring the policies. |
+| `Invalid failure handling: source … uses a quarantine policy, which requires stateDirectory in production …` | Pass `--state-dir`. See [Turn it on](./source-failures.md#2-turn-it-on). |
+| `Invalid failure handling: source … uses quarantine-resync, which requires a recovery guard at handlers.sources.….recover` | Add the guard, or use `quarantine-hold`. See [Write an honest recovery guard](./source-failures.md#4-write-an-honest-recovery-guard). |
+| `--operator-socket requires --state-dir <directory>` | The socket lives in `<directory>/run/`. The configuration also needs a `failureHandling` section. |
+| `No failure journal at …/journal.sqlite. Run \`streamotter init --failures\` …` or `State directory … does not exist` | Create the journal once with `streamotter init --failures --config <path> --state-dir <dir>`, as the gateway's user. If a journal existed before, don't create a new one: see [lost or damaged local state](./source-failures.md#68-lost-or-damaged-local-state). |
+| `… is group- or world-writable (mode …); run chmod go-w on it.`, or `… is owned by uid …` | Make the state directory and journal owned by the gateway's user, and not writable by others. `run/` must have no group or world access at all (`chmod 700`). |
+| `The failure journal needs Node 24.15.0 or later` | Upgrade Node. |
+| `Another gateway owns this journal (pid …)` | Stop the other gateway. A lock naming another host must be removed by hand once you've checked that gateway is stopped. |
+| `… is not a readable SQLite database or is corrupt …` / `… failed its integrity check …` | Restore the journal from a backup. See [lost or damaged local state](./source-failures.md#68-lost-or-damaged-local-state). |
+| `Source "…" has an open incident (…) from generation "…"` | You changed a source's `generation` while it has open incidents. Restore the previous generation and resolve them first. |
+| `The quarantine topic is missing; provision it …` | Create the topic, and check the principal can Describe it. See [the quarantine topic](./kafka.md#the-quarantine-topic-v11). |
+| `The quarantine topic's max.message.bytes (…) is below the … bytes needed …` | Raise the topic's `max.message.bytes` to at least `maxSourceRecordBytes` plus 80 KiB. |
+| `Gateway startup failed: Health port 127.0.0.1:7402 is already in use.` | Something else listens on the `--health` port. Stop it, or choose another port. |
+| `failureHandling was removed, but the failure journal still has open incidents on … / recovery boundaries in force on …` | `--state-dir` points at a journal with outstanding obligations, and the configuration no longer has `failureHandling`. Put the section back, resolve the incidents and retire the boundaries, then remove it. See [upgrade and downgrade](./source-failures.md#8-upgrade-and-downgrade). |
+
+## Operator commands (V1.1)
+
+`streamotter status`, `failures …` and `sources …` talk to a running gateway over its local socket. Exit codes: `0` completed, `1` runtime failure or a `failed` operation, `2` invalid request, `3` refused, `4` unknown outcome.
+
+| What you see | Why | What to do |
+| --- | --- | --- |
+| `No gateway is serving the operator socket for …` (exit 1) | The gateway isn't running, wasn't started with `--operator-socket`, or `--state-dir` points elsewhere | Start it with `--state-dir <dir> --operator-socket` and use the same `<dir>`. |
+| `Operator token file … is accessible to group or others …`, or `… is owned by uid …` | You're not the gateway's user, or the permissions changed | Run the command as the gateway's user (for example with `sudo -u`). |
+| `UNAUTHENTICATED: The operator token is missing or stale` | The gateway restarted between reading the token and the request | Run the command again; each start writes a new token. |
+| `refused: stale-revision` (exit 3) | The incident or circuit changed since you read it | Read the current revision with `failures show` or `status`, check what changed, and decide again. |
+| `refused: circuit-open` | Automatic continuation stopped on that source; retries are refused too | Fix the cause, then `sources reopen-circuit`. |
+| `refused: plan-expired`, `plan-unknown` or `fingerprint-changed` | Redrive plans last five minutes, are single use, and end on restart | Run `failures evaluate` again. |
+| `completed: held` (exit 0) | The retry ran, and the record failed again | Read the reason in the message or `failures show`; repair and retry. |
+| `unknown` (exit 4) | The gateway stopped between recording the operation and its result | Check `failures show`; never assume it ran. See [crash and restart](./source-failures.md#67-crash-and-restart). |
+| `OVERLOADED` | More than 10 requests per second, or 16 connections, on the socket | Slow down; don't poll in a tight loop. |
+
+Every refusal outcome is listed in the [runbook](./source-failures.md#53-exit-codes-and-refusals).
+
+## Health checks (V1.1)
+
+| What you see | Why | What to do |
+| --- | --- | --- |
+| `/health/ready` is 503 with `starting` | `start()` hasn't finished, for example while sources join their groups | Wait; startup has a 30-second deadline. |
+| `source-held` | A source is paused at a record | `streamotter failures list`, then the [runbook](./source-failures.md#65-repair-a-poison-record). |
+| `source-unavailable` | A broker outage, a rebalance, or a source still starting | As in V1: views recover by themselves once Kafka is back. |
+| `journal` | A journal write failed, or the journal is full | [Full disk or full journal](./source-failures.md#63-full-disk-or-full-journal). |
+| `quarantine` | A quarantine write failed or its outcome is unknown | [Credentials and ACLs](./source-failures.md#61-credentials-and-acls) and [quarantine topic outage](./source-failures.md#62-quarantine-topic-outage). |
+| 404 | Only exactly `/health/live` and `/health/ready` answer: no query string, no trailing slash, `GET` or `HEAD` only | Fix the probe's path. |
 
 ## Module not found
 
