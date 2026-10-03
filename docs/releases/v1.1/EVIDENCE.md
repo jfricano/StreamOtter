@@ -7,7 +7,7 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 | ID | Scenario (short) | Slice | Tiers needed | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | F01 | Existing V1 configuration with no new feature enabled | B (PR 4) | fixture, kafka | planned | |
-| F02 | Unknown action, catch-all skip, integrity-class continuation, … | A (PR 3) | fixture | planned | |
+| F02 | Unknown action, catch-all skip, integrity-class continuation, … | A (PR 3) | fixture | implemented | `packages/contracts/test/failures.test.ts`, `tests/integration/failure-config.test.ts`, `contracts/v1/type-tests.ts`; run in the log, October 3 |
 | F03 | Invalid JSON under default pause | B (PR 4) | fixture | planned | |
 | F04 | Invalid mapped public payload with valid routing/revision | B (PR 4) | fixture | planned | |
 | F05 | Multi-channel record where one output fails validation | B (PR 4) | fixture | planned | |

@@ -6,6 +6,8 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ### Added
 
+- V1.1 groundwork (no behavior change for existing configurations): `@streamotter/contracts` types and validation for the optional `failureHandling` configuration section, recovery-guard and snapshot-acknowledgment handler types, the internal `FailureClass` vocabulary, and `TransientMappingError` (also exported by `@streamotter/gateway`). The gateway refuses quarantine policies and transient retries until the slices that implement them land. See [docs/releases/v1.1](docs/releases/v1.1/README.md).
+- Gateway operator logs for a paused source now include `failureClass`, the trusted classification of why the record could not be processed.
 - `@streamotter/workbench`: a favicon (the StreamOtter brandmark reduced for a browser tab) in place of the blank one.
 
 ## [0.1.0-rc.3] — 2026-09-25

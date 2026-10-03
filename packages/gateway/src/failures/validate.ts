@@ -1,0 +1,83 @@
+import {
+  isPlainObject, resolveSourcePolicy, StreamOtterError,
+  type ChannelMap, type FailurePolicy, type HandlerRegistry, type ProjectConfig
+} from "@streamotter/contracts";
+
+/** The source-failure features this build of the gateway implements. */
+export interface FailureCapabilities {
+  readonly policies: readonly FailurePolicy[];
+  readonly transientRetries: boolean;
+}
+
+/**
+ * V1.1 is delivered in slices. A policy the running build cannot carry out is
+ * refused at construction, never accepted and quietly treated as pause (spec §14).
+ */
+export const FAILURE_CAPABILITIES: FailureCapabilities = Object.freeze({ policies: Object.freeze(["pause"] as const), transientRetries: false });
+
+/**
+ * Checks that need both the configuration and the handler registry (V1_1_API.md §4):
+ * recovery guards match quarantine-resync sources exactly, and every configured
+ * policy is one this build supports. Returns human-readable issues.
+ */
+export function failureHandlingIssues(
+  config: ProjectConfig,
+  handlers: HandlerRegistry<ChannelMap>,
+  capabilities: FailureCapabilities = FAILURE_CAPABILITIES
+): string[] {
+  const issues: string[] = [];
+  const failureHandling = config.failureHandling;
+  const guards = (handlers as { sources?: unknown }).sources;
+  const guardEntries: Record<string, unknown> = {};
+  if (guards !== undefined) {
+    if (!isPlainObject(guards)) issues.push("handlers.sources must be an object keyed by source ID");
+    else Object.assign(guardEntries, guards);
+  }
+
+  for (const [sourceId, entry] of Object.entries(guardEntries)) {
+    if (!Object.hasOwn(config.sources, sourceId)) {
+      issues.push(`handlers.sources.${sourceId} does not match a configured source`);
+      continue;
+    }
+    const policy = resolveSourcePolicy(failureHandling, sourceId);
+    if (policy.invalidJson !== "quarantine-resync" && policy.invalidPublicPayload !== "quarantine-resync") {
+      issues.push(`handlers.sources.${sourceId} is only used by a source whose failure policy is quarantine-resync`);
+      continue;
+    }
+    if (!isPlainObject(entry) || typeof entry["recover"] !== "function") {
+      issues.push(`handlers.sources.${sourceId}.recover must be a function`);
+      continue;
+    }
+    if (policy.boundaryRetirement === "application" && typeof entry["retire"] !== "function") {
+      issues.push(`handlers.sources.${sourceId}.retire must be a function because boundaryRetirement is "application"`);
+    }
+    if (policy.boundaryRetirement !== "application" && entry["retire"] !== undefined) {
+      issues.push(`handlers.sources.${sourceId}.retire is only used when boundaryRetirement is "application"`);
+    }
+  }
+
+  for (const sourceId of Object.keys(failureHandling?.sources ?? {})) {
+    if (!Object.hasOwn(config.sources, sourceId)) continue; // Reported by the configuration validator.
+    const policy = resolveSourcePolicy(failureHandling, sourceId);
+    const resyncs = policy.invalidJson === "quarantine-resync" || policy.invalidPublicPayload === "quarantine-resync";
+    if (resyncs && !Object.hasOwn(guardEntries, sourceId)) {
+      issues.push(`source ${sourceId} uses quarantine-resync, which requires a recovery guard at handlers.sources.${sourceId}.recover`);
+    }
+    for (const [key, value] of [["invalidJson", policy.invalidJson], ["invalidPublicPayload", policy.invalidPublicPayload]] as const) {
+      if (!capabilities.policies.includes(value)) {
+        issues.push(`failureHandling.sources.${sourceId}.${key} is "${value}", which this gateway build does not support yet`);
+      }
+    }
+    if (policy.transientMapperRetries > 0 && !capabilities.transientRetries) {
+      issues.push(`failureHandling.sources.${sourceId}.transientMapperRetries is not supported by this gateway build yet`);
+    }
+  }
+  return issues;
+}
+
+export function assertFailureHandling(config: ProjectConfig, handlers: HandlerRegistry<ChannelMap>, capabilities?: FailureCapabilities): void {
+  const issues = failureHandlingIssues(config, handlers, capabilities);
+  if (issues.length > 0) {
+    throw new StreamOtterError("CONFIG_INVALID", { message: `Invalid failure handling: ${issues.join("; ")}.`, details: { issues } });
+  }
+}

@@ -1,5 +1,8 @@
 /** Compile-time acceptance checks, including intentional invalid API uses. */
-import { createClient, type StreamEvent, type SocketAuth, type ProjectConfig } from "./api";
+import {
+  createClient, TransientMappingError,
+  type HandlerRegistry, type ProjectConfig, type SocketAuth, type SourceRecoveryHandlers, type StreamEvent
+} from "./api";
 import { project, type AppChannels, type OrderState } from "./example";
 
 const client = createClient<AppChannels>({ getToken: () => "application-token" });
@@ -46,3 +49,64 @@ const invalidProject: ProjectConfig<AppChannels> = {
   }
 };
 void invalidProject;
+
+// --- V1.1 source-failure handling (additive) ----------------------------------
+
+const v11Project: ProjectConfig<AppChannels> = {
+  ...project,
+  failureHandling: {
+    quarantine: { topic: "orders.streamotter.quarantine", capture: "full-record" },
+    sources: { orders: { invalidJson: "quarantine-resync", invalidPublicPayload: "quarantine-hold", boundaryRetirement: "application" } }
+  }
+};
+void v11Project;
+const skipPolicy: ProjectConfig<AppChannels> = {
+  ...project,
+  // @ts-expect-error There is no ignore, discard, or skip policy.
+  failureHandling: { sources: { orders: { invalidJson: "ignore" } } }
+};
+void skipPolicy;
+const integrityPolicy: ProjectConfig<AppChannels> = {
+  ...project,
+  // @ts-expect-error Integrity failures have no policy key; they always hold.
+  failureHandling: { sources: { orders: { revisionConflict: "quarantine-resync" } } }
+};
+void integrityPolicy;
+const metadataCapture: ProjectConfig<AppChannels> = {
+  ...project,
+  // @ts-expect-error Only full-record capture exists in V1.1.
+  failureHandling: { quarantine: { topic: "q", capture: "metadata-only" }, sources: {} }
+};
+void metadataCapture;
+
+const guard: SourceRecoveryHandlers = {
+  recover: ({ prior, incident }) => incident.failureClass === "invalid-json" && prior === null
+    ? { decision: "recoverable", context: { watermark: "42" }, evidenceRef: "outbox:42" }
+    : { decision: "hold", reason: "coverage unknown" },
+  retire: ({ boundary }) => boundary.id.length > 0
+};
+void guard;
+// @ts-expect-error The guard cannot return a skip decision.
+const skippingGuard: SourceRecoveryHandlers = { recover: () => ({ decision: "skip" }) };
+void skippingGuard;
+// @ts-expect-error The gateway assigns boundary IDs; a guard returns only context.
+const forgedBoundary: SourceRecoveryHandlers = { recover: () => ({ decision: "recoverable", boundary: { id: "rb1:x", context: {} }, evidenceRef: "x" }) };
+void forgedBoundary;
+
+declare const v11Handlers: HandlerRegistry<AppChannels>;
+const acknowledging: HandlerRegistry<AppChannels> = {
+  ...v11Handlers,
+  sources: { orders: guard },
+  channels: {
+    orderStatus: {
+      ...v11Handlers.channels.orderStatus,
+      snapshot: ({ recovery }) => ({
+        revision: "7",
+        data: { orderId: "x", status: "done", progress: 100 },
+        ...(recovery === undefined ? {} : { recoveryBoundaryId: recovery.boundaryId })
+      })
+    }
+  }
+};
+void acknowledging;
+void new TransientMappingError("pricing service unavailable");
