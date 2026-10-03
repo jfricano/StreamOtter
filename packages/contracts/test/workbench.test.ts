@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  isSameOriginApiPath, isWorkbenchOperation, PRE_WHC1_NATIVE_OPERATIONS, validateWorkbenchHostConfig, WORKBENCH_OPERATIONS
+  isSameOriginApiPath, isWorkbenchApiOrigin, isWorkbenchOperation, PRE_WHC1_NATIVE_OPERATIONS, validateWorkbenchHostConfig, WORKBENCH_OPERATIONS
 } from "@streamotter/contracts";
 
 const paths = (input: unknown): string[] => {
@@ -62,6 +62,46 @@ describe("workbench host contract (WHC-1) boot block", () => {
       assert.equal(isSameOriginApiPath(invalid), false, String(invalid));
       assert.deepEqual(paths({ hostContract: 1, apiBase: invalid }), ["/apiBase"], String(invalid));
     }
+  });
+
+  it("accepts an exact https apiOrigin, and http only for loopback hosts (revision 0.3)", () => {
+    const session = { mode: "session" } as const;
+    for (const valid of [
+      "https://demo.streamotter.app", "https://api.example:8443", "https://192.0.2.10", "https://xn--bcher-kva.example",
+      "http://localhost", "http://localhost:7401", "http://127.0.0.1:9000", "http://[::1]:8080"
+    ]) {
+      assert.equal(isWorkbenchApiOrigin(valid), true, valid);
+      assert.deepEqual(paths({ hostContract: 1, apiBase: "/api/v1", apiOrigin: valid, auth: session }), [], valid);
+    }
+    for (const invalid of [
+      "http://demo.streamotter.app", "http://127.0.0.2", "http://localhost.example", "http://127.0.0.1.example", "http://0x7f.0.0.1",
+      "https://demo.streamotter.app/", "https://demo.streamotter.app/api", "https://a.example?x=1", "https://a.example#x",
+      "https://user@a.example", "https://user:pass@a.example", "https://Demo.StreamOtter.app", "https://a.example:443",
+      "http://localhost:80", "https://a.example:", "https://a.example:99999", "ws://localhost", "wss://a.example", "ftp://a.example",
+      "//a.example", "a.example", "https://", "", " https://a.example", "https://a.example ", "https://a.example\\", "null", 7, null, {}
+    ]) {
+      assert.equal(isWorkbenchApiOrigin(invalid), false, String(invalid));
+      assert.deepEqual(paths({ hostContract: 1, apiOrigin: invalid, auth: session }), ["/apiOrigin"], String(invalid));
+    }
+  });
+
+  it("allows apiOrigin only with session auth", () => {
+    const apiOrigin = "https://demo.streamotter.app";
+    assert.deepEqual(paths({ hostContract: 1, apiOrigin, auth: { mode: "session" } }), []);
+    for (const block of [{ hostContract: 1, apiOrigin }, { hostContract: 1, apiOrigin, auth: { mode: "token" } }]) {
+      const result = validateWorkbenchHostConfig(block);
+      assert.ok(!result.ok);
+      assert.deepEqual(result.issues.map(issue => issue.path), ["/apiOrigin"]);
+      assert.match(result.issues[0]!.message, /only with auth\.mode "session"/);
+    }
+    // A malformed origin is reported once, as malformed, whatever the mode.
+    const malformed = validateWorkbenchHostConfig({ hostContract: 1, apiOrigin: "http://demo.streamotter.app", auth: { mode: "token" } });
+    assert.ok(!malformed.ok);
+    assert.equal(malformed.issues.length, 1);
+    assert.match(malformed.issues[0]!.message, /exact origin/);
+    // apiBase keeps its shape rules when apiOrigin is set: a path, never a URL.
+    assert.deepEqual(paths({ hostContract: 1, apiOrigin, auth: { mode: "session" }, apiBase: "https://evil.example/api" }), ["/apiBase"]);
+    assert.deepEqual(paths({ hostContract: 1, apiOrigin, auth: { mode: "session" }, apiBase: "//evil.example/api" }), ["/apiBase"]);
   });
 
   it("validates auth mode, gateway origin and path", () => {

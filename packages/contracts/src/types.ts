@@ -340,8 +340,20 @@ export interface WorkbenchDiscovery {
  */
 export interface WorkbenchHostConfig {
   hostContract: 1;
-  /** Absolute path on the page's own origin, no trailing slash. Default `/management/v1`. */
+  /**
+   * Absolute path, no trailing slash, appended to the page's own origin, or to `apiOrigin` when
+   * that is set. Default `/management/v1`.
+   */
   apiBase?: string;
+  /**
+   * The exact origin of the API, when it is not the page's own (WHC-1 §3.4, revision 0.3): scheme,
+   * host, and a port only when it is not the default, with no path, query, fragment or trailing
+   * slash, such as `"https://api.example.com"`. Must be `https:`; `http:` only for `localhost`,
+   * `127.0.0.1` or `[::1]`. Allowed only with `auth: { mode: "session" }`: the type cannot express
+   * that coupling, so `validateWorkbenchHostConfig` enforces it. Requests then use CORS with
+   * `credentials: "include"`, and the host must answer the preflight for the page's exact origin.
+   */
+  apiOrigin?: string;
   /** Default `{ mode: "token" }`, the native behavior. */
   auth?: { mode: "token" | "session" };
   /** The gateway the Preview tab connects to. When absent, Preview is unavailable. */
@@ -363,11 +375,19 @@ export interface WorkbenchHostManifest {
   hostContract: 1;
   package: "@streamotter/workbench";
   version: string;
-  entry: { script: string; style: string; icon: string };
+  /**
+   * `style` is the native stylesheet, which styles the whole page. `hostStyle` (revision 0.3) is the
+   * same rules with every selector scoped under `[data-streamotter-workbench]`, the attribute the
+   * workbench sets on its mount element when a boot block is present; hosts link it instead.
+   */
+  entry: { script: string; style: string; hostStyle: string; icon: string };
   /** Subresource Integrity values (`sha384-…`) keyed by file name. */
   integrity: Readonly<Record<string, string>>;
   bootElementId: string;
   mountElementId: string;
-  /** Directive name to source list. `<gateway origin>` and `<gateway websocket origin>` are placeholders the host replaces. */
+  /**
+   * Directive name to source list. `<api origin>`, `<gateway origin>` and `<gateway websocket origin>`
+   * are placeholders the host replaces (or removes, when it sets no `apiOrigin` or names no gateway).
+   */
   csp: Readonly<Record<string, readonly string[]>>;
 }
