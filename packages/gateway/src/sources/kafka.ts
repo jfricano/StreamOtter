@@ -633,9 +633,10 @@ export class KafkaSourceAdapter implements SourceAdapter {
       if (processing === null) {
         this.#sink.logger.warn("Kafka source has had no broker activity; marking it degraded", { sourceId: this.#sourceId });
       } else {
-        // Heartbeats continue while a record is processed, so silence here means the broker isn't answering them,
-        // not just that the record is slow. Name the record so the two can be told apart in the log.
-        this.#sink.logger.warn("Kafka source has had no broker activity while a record is processing; heartbeats are not reaching the broker, marking it degraded", {
+        // Heartbeats continue while a record is processed, so silence here means none is being acknowledged (the
+        // broker is unreachable, or a rebalance is refusing them), not just that the record is slow. Name the record
+        // so the two can be told apart in the log.
+        this.#sink.logger.warn("Kafka source has had no broker activity while a record is processing; heartbeats are not being acknowledged, marking it degraded", {
           sourceId: this.#sourceId, topic: processing.position.topic, partition: processing.position.partition, offset: processing.position.offset,
           processingMs: Date.now() - processing.since
         });
