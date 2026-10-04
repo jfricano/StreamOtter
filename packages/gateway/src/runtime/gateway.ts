@@ -8,11 +8,11 @@ import {
   assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
   resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
-  type FailureClass, type OperatorApi,
+  QUARANTINE_ELIGIBLE_CLASSES, type FailureClass, type OperatorApi,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
   type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry, type HealthReason,
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
-  type SourceStatus, type StreamError, type StreamEvent, type Trace
+  type SourceStatus, type StreamError, type StreamEvent, type Trace, type ValueIssue
 } from "@streamotter/contracts";
 import { JOURNAL_FILE, openJournal } from "../failures/journal.ts";
 import { KafkaQuarantineReader, KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicReport } from "../failures/quarantine.ts";
@@ -77,15 +77,19 @@ class SourceRuntimeImpl implements SourceRuntime {
 
 interface RoutedOutput { channel: ChannelRuntime; key: string; frame: PendingFrame }
 
-/** Why a mapped output was rejected, with its trusted failure class (ADR-15B §1). */
-interface OutputProblem { failureClass: FailureClass; message: string }
+/**
+ * Why a mapped output was rejected, with its trusted failure class (ADR-15B §1).
+ * `message` is the V1 log text; `diagnosis`, when set, replaces it where payload
+ * text must not appear (incidents, evaluation and redrive results).
+ */
+interface OutputProblem { failureClass: FailureClass; message: string; diagnosis?: string }
 
 interface PreviewSession { principal: Principal; expiresAtMs: number }
 
 /** One record decoded, mapped and checked, before admission. */
 type Prepared =
   | { kind: "ok"; record: SourceRecord; outputs: RoutedOutput[] }
-  | { kind: "problem"; stage: "validate" | "map" | "queue"; code: ErrorCode; failureClass: FailureClass; reason: string; channel: string | null }
+  | { kind: "problem"; stage: "validate" | "map" | "queue"; code: ErrorCode; failureClass: FailureClass; reason: string; channel: string | null; logReason?: string }
   | { kind: "abandon" };
 
 /** An evaluation as the operator service sees it: metadata only, never the frames themselves. */
@@ -100,11 +104,37 @@ export type RedriveOutcome =
   | { kind: "admitted"; evaluation: Extract<OperatorPrepared, { kind: "ok" }>; counts: Record<"queued" | "filtered" | "inactive" | "overflow", number> };
 
 function describePrepared(prepared: Prepared): OperatorPrepared {
+  if (prepared.kind === "problem") {
+    const { logReason: _logReason, ...problem } = prepared;
+    return problem;
+  }
   if (prepared.kind !== "ok") return prepared;
   const outputs = prepared.outputs.map(output => ({ channel: output.channel.name, channelVersion: output.channel.version, revision: output.frame.revision }));
   // The canonical mapped-output hash of the plan fingerprint (ADR-15C §5): routing key, revision and data hash of every output, in order.
   const outputHash = `sha256:${sha256Hex(prepared.outputs.map(output => [output.key, output.frame.revision, output.frame.dataHash]))}`;
   return { kind: "ok", outputs, outputHash };
+}
+
+/**
+ * A map handler's error as an incident may show it: the error's name and, when
+ * present, its code. Never the message, which can quote record data (a
+ * JSON.parse SyntaxError quotes its input).
+ */
+function errorSummary(error: unknown): string {
+  if (!(error instanceof Error)) return `a non-Error ${typeof error}`;
+  const token = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(value) ? value : null;
+  const name = token(error.name) ?? "Error";
+  const code = token((error as { code?: unknown }).code);
+  return code === null ? name : `${name} (code ${code})`;
+}
+
+/**
+ * A value issue for an incident diagnosis. Paths name schema properties and
+ * array indexes, except for a property the schema doesn't allow, whose name
+ * comes from the mapped data, so that path is left out.
+ */
+function issueDiagnosis(prefix: string, issue: ValueIssue): string {
+  return issue.message === "Property is not allowed." ? `${prefix}: a property is not allowed by the schema` : `${prefix} ${issue.path}: ${issue.message}`;
 }
 
 /** A source input rebuilt from stored original bytes, decoded the way the Kafka adapter decodes a key. */
@@ -565,18 +595,19 @@ export class GatewayRuntime implements SessionOwner {
     const { traces } = this.core;
     const trace = (stage: Trace["stage"], outcome: Trace["outcome"], extra: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">> = {}) =>
       traces.record({ requestId, stage, outcome, sourceId: source.id, ...extra });
-    const pause = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string): ProcessOutcome => {
-      trace(stage, stage === "map" ? "failed" : "rejected", channel === undefined ? { errorCode: code } : { errorCode: code, channel });
+    // The operator log keeps V1's reason text; the incident gets the sanitized diagnosis.
+    const pause = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, diagnosis: string, channel: string | null, logReason: string): ProcessOutcome => {
+      trace(stage, stage === "map" ? "failed" : "rejected", channel === null ? { errorCode: code } : { errorCode: code, channel });
       this.core.logger.warn("Source paused on an unprocessable record; it will not be committed or skipped", {
         sourceId: source.id,
         position: input.position as unknown as Json,
         code,
         failureClass,
-        reason,
-        ...(channel === undefined ? {} : { channel })
+        reason: logReason,
+        ...(channel === null ? {} : { channel })
       });
       this.#setSourceStatus(source, "paused", code);
-      return { kind: "pause", code, failureClass, stage, channel: channel ?? null, diagnosis: reason.slice(0, 512) };
+      return { kind: "pause", code, failureClass, stage, channel, diagnosis: diagnosis.slice(0, 512) };
     };
     trace("source", "ok");
 
@@ -592,7 +623,9 @@ export class GatewayRuntime implements SessionOwner {
 
     const prepared = await this.#prepare(source, input, { requestId, trace, retries: source.transientRetries });
     if (prepared.kind === "abandon") return { kind: "abandon" };
-    if (prepared.kind === "problem") return pause(prepared.stage, prepared.code, prepared.failureClass, prepared.reason, prepared.channel ?? undefined);
+    if (prepared.kind === "problem") {
+      return pause(prepared.stage, prepared.code, prepared.failureClass, prepared.reason, prepared.channel, prepared.logReason ?? prepared.reason);
+    }
     this.#admit(prepared.outputs, requestId);
     return { kind: "commit" };
   }
@@ -610,8 +643,9 @@ export class GatewayRuntime implements SessionOwner {
   }): Promise<Prepared> {
     const { limits } = this.core;
     const { requestId, trace } = options;
-    const problem = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string): Prepared =>
-      ({ kind: "problem", stage, code, failureClass, reason, channel: channel ?? null });
+    type Problem = Extract<Prepared, { kind: "problem" }>;
+    const problem = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string, logReason?: string): Problem =>
+      ({ kind: "problem", stage, code, failureClass, reason, channel: channel ?? null, ...(logReason === undefined || logReason === reason ? {} : { logReason }) });
     let value: Json;
     if (input.value !== undefined) {
       if (!isJsonValue(input.value)) return problem("validate", "INVALID_PAYLOAD", "invalid-json", "fixture value is not JSON data");
@@ -643,9 +677,17 @@ export class GatewayRuntime implements SessionOwner {
 
     // Map for every channel and validate every output before admitting any of them.
     // A TransientMappingError re-runs the whole mapping, up to the source's retry budget.
+    // With failure handling configured, a quarantine-eligible problem does not end the
+    // evaluation: every remaining output, channel and the conflict check still run, and
+    // any other problem found outranks it, so a quarantine policy never advances past an
+    // integrity or mapper failure (INV-03, ADR-15B §1). Without failureHandling the first
+    // problem is reported, as in V1.
+    const classifyAll = this.config.failureHandling !== undefined;
     const outputs: RoutedOutput[] = [];
+    let eligible: Problem | null = null;
     attempts: for (let attempt = 0; ; attempt++) {
       outputs.length = 0;
+      eligible = null;
       for (const channel of source.channels) {
         const outcome = await invokeHandler(
           context => channel.handlers.map({ ...context, record }),
@@ -665,17 +707,25 @@ export class GatewayRuntime implements SessionOwner {
             continue attempts;
           }
           const failureClass = transient ? "mapper-transient" : "mapper-error";
-          return problem("map", "HANDLER_FAILED", failureClass, `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
+          return problem("map", "HANDLER_FAILED", failureClass, `map handler threw ${errorSummary(outcome.error)}`, channel.name,
+            `map handler threw ${JSON.stringify(describeError(outcome.error))}`);
         }
         const mapped: unknown = outcome.value;
         if (!Array.isArray(mapped)) return problem("map", "INVALID_PAYLOAD", "routing-invalid", "map must return an array", channel.name);
         if (mapped.length > limits.maxMapOutputs) return problem("map", "INVALID_PAYLOAD", "routing-invalid", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
+        let failed = false;
         for (let index = 0; index < mapped.length; index++) {
           const built = this.#buildOutput(channel, record, mapped[index]);
-          if ("failureClass" in built) return problem("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.message}`, channel.name);
+          if ("failureClass" in built) {
+            const found = problem("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.diagnosis ?? built.message}`, channel.name, `output ${index}: ${built.message}`);
+            if (!classifyAll || !QUARANTINE_ELIGIBLE_CLASSES.includes(built.failureClass)) return found;
+            eligible ??= found;
+            failed = true;
+            continue;
+          }
           outputs.push(built);
         }
-        trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
+        if (!failed) trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
       }
       break;
     }
@@ -693,7 +743,7 @@ export class GatewayRuntime implements SessionOwner {
       if (conflicting) return problem("queue", "REVISION_CONFLICT", "revision-conflict", "the same revision was mapped to different data", output.channel.name);
       if (earlier === undefined || compareRevisions(revision, earlier.revision) > 0) seen.set(output.key, { revision, dataHash });
     }
-    return { kind: "ok", record, outputs };
+    return eligible ?? { kind: "ok", record, outputs };
   }
 
   /** Admits validated outputs to every capturing subscription; the revision filter drops anything at or below a subscriber's state. */
@@ -750,25 +800,25 @@ export class GatewayRuntime implements SessionOwner {
   }
 
   /**
-   * Builds one routed output. Routing checks (shape, tenant, params, revision) run
-   * before the payload schema, so only a payload that fails its declared schema
-   * after valid routing is classified payload-schema; everything else is an
-   * integrity failure that a quarantine policy can never skip.
+   * Builds one routed output. Routing checks (shape, tenant, params, revision,
+   * frame size) run before the payload schema, so only a payload that fails its
+   * declared schema after valid routing is classified payload-schema; everything
+   * else is an integrity failure that a quarantine policy can never skip.
    */
   #buildOutput(channel: ChannelRuntime, record: SourceRecord, item: unknown): RoutedOutput | OutputProblem {
     const routing = (message: string): OutputProblem => ({ failureClass: "routing-invalid", message });
     if (!isPlainObject(item)) return routing("must be an object");
     for (const key of Object.keys(item)) {
-      if (key !== "tenantId" && key !== "params" && key !== "revision" && key !== "data") return routing(`unexpected field "${key}"`);
+      if (key !== "tenantId" && key !== "params" && key !== "revision" && key !== "data") {
+        return { ...routing(`unexpected field "${key}"`), diagnosis: "unexpected field" };
+      }
     }
     const { tenantId, params, revision, data } = item;
     if (typeof tenantId !== "string" || tenantId.length === 0 || tenantId.length > 512) return routing("tenantId must be a non-empty string");
     const canonical = canonicalizeParams(channel.paramsSchema, params);
-    if (!canonical.ok) return routing(`params ${canonical.issue.path}: ${canonical.issue.message}`);
+    if (!canonical.ok) return { ...routing(`params ${canonical.issue.path}: ${canonical.issue.message}`), diagnosis: issueDiagnosis("params", canonical.issue) };
     if (!isRevision(revision)) return routing("revision must be a canonical unsigned decimal string");
     if (!isJsonValue(data)) return routing("data must be JSON");
-    const issue = validateValue(channel.payloadSchema, data);
-    if (issue !== null) return { failureClass: "payload-schema", message: `data ${issue.path}: ${issue.message}` };
     const event: StreamEvent = {
       id: updateEventId(record.id, channel.name, channel.version, tenantId, canonical.canonical, revision),
       channel: channel.name,
@@ -778,8 +828,11 @@ export class GatewayRuntime implements SessionOwner {
       revision,
       receivedAt: record.receivedAt
     };
+    // Checked before the payload schema: an oversized frame is an integrity failure, never payload-schema.
     const bytes = Buffer.byteLength(JSON.stringify(event)) + FRAME_OVERHEAD_BYTES;
     if (bytes > this.core.limits.maxDataFrameBytes) return routing("the data frame exceeds maxDataFrameBytes");
+    const issue = validateValue(channel.payloadSchema, data);
+    if (issue !== null) return { failureClass: "payload-schema", message: `data ${issue.path}: ${issue.message}`, diagnosis: issueDiagnosis("data", issue) };
     return {
       channel,
       key: routingKey(channel.name, channel.version, tenantId, canonical.canonical),
@@ -913,7 +966,10 @@ export class GatewayRuntime implements SessionOwner {
    * obligations a journal still holds. When stateDirectory points at a journal
    * with an open incident or a recovery boundary in force for a configured
    * source, startup is refused until they are resolved or retired with failure
-   * handling still configured. A journal with nothing outstanding is left alone.
+   * handling still configured. A boundary from a generation other than the
+   * configured one doesn't count: a generation change always retires it (ADR-15B
+   * §4), as the journal does when failure handling claims it again. A journal
+   * with nothing outstanding is left alone.
    */
   #refuseAbandonedJournal(): void {
     if (this.#stateDirectory === undefined || !existsSync(join(this.#stateDirectory, JOURNAL_FILE))) return;
@@ -926,9 +982,10 @@ export class GatewayRuntime implements SessionOwner {
     try {
       const openIncidents: string[] = [];
       const boundaries: string[] = [];
-      for (const sourceId of this.#sources.keys()) {
+      for (const [sourceId, source] of this.#sources) {
         if (store.open(sourceId).length > 0) openIncidents.push(sourceId);
-        if (store.boundary(sourceId) !== null) boundaries.push(sourceId);
+        const boundary = store.boundary(sourceId);
+        if (boundary !== null && boundary.generation === source.config.generation) boundaries.push(sourceId);
       }
       if (openIncidents.length > 0 || boundaries.length > 0) {
         throw refuse(

@@ -127,6 +127,8 @@ Which class can take which policy:
 | `revision-conflict` | The same revision maps to different data | Pause; never skipped |
 | `tombstone`, `oversize` | A null value, or a record over `maxSourceRecordBytes` | Pause |
 
+A record can have more than one problem, for example one output that fails the payload schema and another with an empty tenant. The record is classified by the most serious one: any class other than `invalid-json` or `payload-schema` wins, so a quarantine policy never skips a record that also has a mapping or integrity problem. To find it, StreamOtter still runs every channel's `map` for the record, as it would for a valid one.
+
 Broker outages, rebalances, shutdown, journal failures and quarantine failures are not failure classes. They keep V1's outage handling and never create a skippable incident.
 
 Per-source options, all optional:
@@ -508,7 +510,7 @@ The reasons map to the procedures above: `source-held` to [§6.5](#65-repair-a-p
    - `generation` (the default): only a generation change ends it, and that is a rebaseline ([§6.10](#610-rebaseline-a-source)). If you don't intend one, switch the source to `"operator"`, restart, verify, and retire it by hand.
 
    The mode in the running configuration decides, not the mode the boundary was created under.
-3. **Stop the gateway, remove `failureHandling`, and start it again.** If `--state-dir` still points at a journal with an open incident or a boundary in force for a configured source, startup refuses with `CONFIG_INVALID`, `details.reason: "failure-handling-removed"`, naming the sources (`openIncidentSources`, `boundarySources`). A journal with nothing outstanding is left untouched.
+3. **Stop the gateway, remove `failureHandling`, and start it again.** If `--state-dir` still points at a journal with an open incident or a boundary in force for a configured source, startup refuses with `CONFIG_INVALID`, `details.reason: "failure-handling-removed"`, naming the sources (`openIncidentSources`, `boundarySources`). A boundary from an earlier source generation doesn't count: changing the generation retires it, so you can change the generation and remove `failureHandling` in the same restart. A journal with nothing outstanding is left untouched.
 4. **Make snapshots return only `revision` and `data`** when no `recovery` is given. Written as in [§4.2](#42-acknowledge-the-boundary-in-every-snapshot), they already do. The V1 runtime rejects a snapshot with an extra `recoveryBoundaryId` field as `INVALID_PAYLOAD`.
 5. **To go back to a V1 release** (`0.1.0-rc.3` or earlier), finish steps 1–4 first, then install the older version. It refuses any configuration that still contains `failureHandling` (`streamotter validate` prints `/failureHandling  UNKNOWN_KEY` and exits 2), rejects the new CLI flags, and never reads the journal. A gateway started without `--state-dir` can't see the journal either, so the startup check in step 3 only protects you while the state directory is passed.
 6. **Keep the same consumer group and `generation`,** unless you are deliberately rebaselining. Renaming them is not a way around a held incident.
