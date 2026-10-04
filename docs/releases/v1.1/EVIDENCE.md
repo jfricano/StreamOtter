@@ -57,7 +57,7 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 
 ## Review fixes (October 4, 2026)
 
-The [independent review](./REVIEW.md) found defects behind rows already marked implemented. Their fixes added regression tests to these rows. No row's status changed: each was already implemented, and none is verified until an independent run.
+The [independent review](./REVIEW.md) found defects behind rows already marked implemented. Their fixes, and the second review's follow-ups (REVIEW.md §5 and §6), added regression tests to these rows. No row's status changed: each was already implemented, and none is verified until an independent run.
 
 | Row | Finding | Added evidence |
 | --- | --- | --- |
@@ -77,6 +77,11 @@ The [independent review](./REVIEW.md) found defects behind rows already marked i
 | F35 | S1: a mutation answered after stop, and exit 4 for a lost answer | `operator-ipc.test.ts`, `operator-socket.test.ts`, `operator-cli.test.ts`, S1 (6) |
 | F21 | W1, W2: the reference guard's "never changed" and ambiguous outbox positions | `tests/integration/reference-guard.test.ts`, "incomplete or ambiguous outbox" (4) |
 | F37, F44 | W3, W4, W5, W7: the workbench's session end, non-Result bodies, `%2e` paths, out-of-order detail and export URLs | `tests/browser/workbench-host.test.ts`, `workbench-cross-origin.test.ts`, `failures.test.ts`; `packages/contracts/test/workbench.test.ts` |
+| F38 | S2: `--json` errors printed as plain text | `tests/integration/operator-cli.test.ts`, S2 |
+| F26 | Second review, H: the circuit check counted an incident's own earlier advance | `packages/gateway/test/review-followups.test.ts`, "re-advancing an incident after not-held does not count it twice at the circuit gate" |
+| F29, F33 | Second review, B with O6: a cluster-mismatch incident did not block redrive | `review-followups.test.ts`, "a cluster-mismatch incident is an open integrity fault that blocks redrive" |
+| F18, F20 | Second review, D: `guard-pending` left in the journal by a crash during the guard | `review-followups.test.ts`, "a guard-pending left by a crash is cleared at the next start" |
+| F47 | `replicated-start.sh` and `replicated-stop.sh` read `/proc`, which macOS lacks (REVIEW.md §6) | No new test. The scripts use `ps` since `bdf1445`; `pnpm test:kafka:replicated` passed 2/2 with them on Linux at `483eb82`. They have not run on macOS yet. |
 
 ## Not establishable by tests
 

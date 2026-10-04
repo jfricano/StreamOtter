@@ -12,7 +12,7 @@ This package is StreamOtter in one install: the `streamotter` command (scaffold,
 npm install streamotter
 ```
 
-Node.js 24 or later for the gateway and CLI; current evergreen browsers for the SDK. ESM only, with TypeScript declarations included.
+Node.js 24 or later for the gateway and CLI (24.15 or later for the unreleased V1.1 failure journal); current evergreen browsers for the SDK. ESM only, with TypeScript declarations included.
 
 ## Runtime requirement
 

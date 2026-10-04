@@ -1,6 +1,6 @@
 # StreamOtter V1.1 — Independent review and fixes
 
-October 4, 2026. This records the independent review of the whole V1.1 stack (PRs #12–#18) and the fixes for it, which are on branch `feat/v1.1-review-fixes`, stacked on #18.
+October 4, 2026. This records the independent review of the whole V1.1 stack (PRs #12–#18) and the fixes for it, which are on branch `feat/v1.1-review-fixes` (PR #19), stacked on #18.
 
 ## 1. How the review was run
 

@@ -20,7 +20,7 @@ Planned as `0.2.0-rc.1`, one release that carries two internal milestones: V1.1,
   - `quarantine-resync` continues past an eligible quarantined record only when the source's recovery guard (`handlers.sources[id].recover`) returns `recoverable`:
     - The cumulative recovery boundary and the intent to advance are journaled before the offset moves. The commit is confirmed by reading it back.
     - From then on every snapshot on the source receives `recovery` and must echo `recoveryBoundaryId` before a subscription can be `live`, including after restarts and for new subscriptions.
-    - A circuit breaker (default five advances per 60 s) stops automatic continuation and persists across restarts.
+    - A circuit breaker (default five distinct incidents per 60 s) stops automatic continuation and persists across restarts.
     - `boundaryRetirement: "application"` calls `retire()` after acknowledged snapshots.
     - At startup, prepared advances are reconciled against the consumer group's committed offset. While an advance is unresolved, every record of the source holds, on every partition.
 - V1.1 operator workflow (opt-in; nothing changes without `failureHandling`):
@@ -38,6 +38,18 @@ Planned as `0.2.0-rc.1`, one release that carries two internal milestones: V1.1,
   - The refusal for a `generation` changed while incidents are open now names `streamotter sources rebaseline`.
   - The order-dashboard example's orders source has an outbox-based recovery guard and snapshot acknowledgment (`decideRecovery`, `acknowledgeRecovery`), with a `quarantine-resync` configuration (`streamotter.kafka-resync.json`, `pnpm dev:kafka-resync`).
   - New guide: [Handle bad records](docs/guides/source-failures.md), the source-failure policies and operator runbook. The Kafka, deployment and troubleshooting guides and the package READMEs cover failure handling.
+- V1.1 hardening from its [independent review](docs/releases/v1.1/REVIEW.md):
+  - Startup replaces a stale `journal.lock` left by a dead process on the same host, including one naming the new process's own pid (a container restarted in place), once SQLite confirms nothing holds the journal. Lock files are written atomically.
+  - An incident left `guard-pending` by a crash returns to `recovery: held` at startup.
+  - The operator socket's `close()` (the first step of `gateway.stop()`) answers requests already running for up to 5 seconds. `callOperator` errors raised after a request was sent carry `details.reason: "no-answer"`.
+  - `retryCurrent` and `reassess` wait for a quarantine write or guard already running on the source. A retry the gateway would refuse leaves the incident unchanged.
+  - A redrive claims its plan and every other plan of the incident before it starts. A redrive of an unknown incident is refused `not-found`.
+  - Redrive is refused while the source has any unresolved source-integrity fault: an integrity-class incident, an `uncertain` advance, an evidence conflict, a moved position, or an incident from another Kafka cluster.
+  - `sources rebaseline` runs as one journal transaction and changes no other source.
+  - Removing `failureHandling` together with a `generation` change is allowed.
+  - Quarantine requests have a 10-second deadline.
+  - `@streamotter/workbench`: a session end closes a running preview's connection, a 401 whose body is not a `Result` ends the session, and `apiBase` refuses percent-encoded dot segments.
+  - The order-dashboard guard decides "never changed" from the order's seed revision, and holds when two outbox rows record the same position.
 - Gateway operator logs for a paused source now include `failureClass`, the trusted classification of why the record could not be processed.
 - `@streamotter/workbench`: a favicon (the StreamOtter brandmark reduced for a browser tab) in place of the blank one.
 - Workbench host contract, version 1 ([WHC-1](./docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md)), for running the published workbench under a route of your own site:

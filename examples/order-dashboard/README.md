@@ -119,7 +119,8 @@ and the boundary already in force. It never reads the bad record's payload.
 
 1. **Which order?** It looks for the outbox row published at the failed record's
    position. If more than one row recorded that position (for example, the topic was
-   re-created while the outbox was kept, so offsets started again): **hold**. For a
+   re-created while the outbox was kept, so offsets started again): **hold**. If fixture
+   mode can read the record's key and it names a different order than that row: **hold**. For a
    record the application did not publish, fixture mode can read the record's key back
    from the timeline. An order ID names one order per tenant, so the
    guard considers that order in every tenant that has it. A missing key, a key that is

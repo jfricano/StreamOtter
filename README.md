@@ -86,7 +86,7 @@ Unreleased, and opt-in: a configuration without `failureHandling` behaves exactl
 - **Operator commands.** `streamotter status`, `failures list|show|export|evaluate|redrive` and `sources retry-current|reassess|reopen-circuit|retire-boundary` over a local socket, the same operations in-process, and a Failures tab in the workbench during development.
 - **Health probes.** `streamotter start --health 127.0.0.1:7402` serves read-only `/health/live` and `/health/ready`, with or without failure handling.
 
-Start with [Handle bad records](./docs/guides/source-failures.md). What is tested so far, and what isn't: [implementation status](./docs/IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased).
+Failure handling with a durable journal needs Node.js 24.15 or later. Start with [Handle bad records](./docs/guides/source-failures.md). What is tested so far, and what isn't: [implementation status](./docs/IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased).
 
 ## Documentation
 

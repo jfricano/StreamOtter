@@ -216,7 +216,7 @@ const result = await operator.retryCurrent({ sourceId: incident.sourceId, failur
 // result.result: "completed" | "refused" | "failed" | "unknown"; refusals are results with an outcome, not exceptions
 ```
 
-It offers `status`, `listFailures`, `showFailure`, `exportFailure`, `retryCurrent`, `reassess`, `reopenCircuit`, `retireBoundary`, `evaluate` and `redrive`, the same as the CLI. `callOperator` and `connectOperator` reach a gateway's operator socket from another process. Shapes and refusal outcomes are in the [V1.1 API draft](https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/V1_1_API.md#6-operator-service-slices-c-d).
+It offers `status`, `listFailures`, `showFailure`, `exportFailure`, `retryCurrent`, `reassess`, `reopenCircuit`, `retireBoundary`, `evaluate` and `redrive`, the same as the CLI. `callOperator` and `connectOperator` reach a gateway's operator socket from another process. An error they raise after the request was sent but before an answer arrived (`TIMEOUT`, a dropped connection) carries `details.reason: "no-answer"`: the gateway may have run the request, so check before sending a mutation again. `gateway.stop()` answers operator requests already running for up to 5 seconds before it closes the socket. Shapes and refusal outcomes are in the [V1.1 API draft](https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/V1_1_API.md#6-operator-service-slices-c-d).
 
 ## Revoke access
 
