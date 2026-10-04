@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer, type Socket } from "node:net";
 import { describe, it, type TestContext } from "node:test";
 import { setImmediate as flush } from "node:timers/promises";
 import kafkajs, { type Admin, type Consumer, type EachBatchPayload } from "kafkajs";
@@ -152,6 +153,69 @@ describe("Kafka source offset commits", () => {
       assert.ok(!logs.some(log => log.message === "Kafka offset commit succeeded on retry"));
     } finally {
       await adapter.stop(Date.now() + 1_000);
+    }
+  });
+
+  it("commits the start position when the first assignment fetches", async t => {
+    const { adapter, consumer } = await startAdapter(t);
+    try {
+      consumer.emit(EVENTS.FETCH_START);
+      await flush();
+      assert.deepEqual(consumer.committed, [[{ topic: "orders", partition: 0, offset: "42" }]]);
+    } finally {
+      await adapter.stop(Date.now() + 1_000);
+    }
+  });
+
+  it("warns when a rebalance before the first fetch discards the start position", async t => {
+    const { adapter, consumer, logs } = await startAdapter(t);
+    try {
+      consumer.emit(EVENTS.REBALANCING);
+      consumer.emit(EVENTS.GROUP_JOIN, { memberAssignment: { orders: [0] } });
+      consumer.emit(EVENTS.FETCH_START);
+      await flush();
+      assert.deepEqual(consumer.committed, [], "the start position is not committed after a rejoin");
+      assert.ok(logs.some(log => log.level === "warn" && log.message.startsWith("The consumer group rebalanced before the start position was committed")));
+    } finally {
+      await adapter.stop(Date.now() + 1_000);
+    }
+  });
+});
+
+describe("Kafka source start-position read", () => {
+  it("leaves no connection to an unresponsive broker once the read gives up", async t => {
+    // Accepts connections and never answers, so KafkaJS's first request waits out its 30-second timeout.
+    const open = new Set<Socket>();
+    let accepted = 0;
+    const server = createServer(socket => {
+      accepted++;
+      open.add(socket);
+      socket.on("error", () => undefined);
+      socket.resume(); // Reads and drops the requests, so the client closing is seen.
+      socket.once("close", () => open.delete(socket));
+    });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as import("node:net").AddressInfo;
+    let started: Started | undefined;
+    try {
+      const begin = Date.now();
+      started = await startAdapter(t, { admin: "real", brokers: [`127.0.0.1:${port}`] });
+      const took = Date.now() - begin;
+      assert.ok(took >= 4_500 && took < 6_500, `startup waited for the 5-second deadline only (${took} ms)`);
+      assert.ok(accepted >= 1, "the admin client reached the broker");
+      assert.ok(started.logs.some(log => log.message.startsWith("The consumer group's start position could not be read")));
+      await new Promise(resolve => setTimeout(resolve, 300));
+      assert.equal(open.size, 0, "the admin connection was closed when the read gave up");
+      const acceptedAfter = accepted;
+      await new Promise(resolve => setTimeout(resolve, 2_000)); // Longer than KafkaJS's retry backoff.
+      assert.equal(open.size, 0, "KafkaJS did not reconnect after the read gave up");
+      assert.equal(accepted, acceptedAfter);
+      const stopping = Date.now();
+      await started.adapter.stop(Date.now() + 5_000);
+      assert.ok(Date.now() - stopping < 1_000, "stop() returned promptly");
+    } finally {
+      for (const socket of open) socket.destroy();
+      await new Promise(resolve => server.close(resolve));
     }
   });
 });

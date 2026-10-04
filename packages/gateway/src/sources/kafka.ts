@@ -168,6 +168,8 @@ const WATCHDOG_MS = 12_000;
 const HEARTBEAT_INTERVAL_MS = 3_000;
 /** How long startup waits for each step of reading the group's start position before going on without it. */
 const START_POSITION_TIMEOUT_MS = 5_000;
+/** Few, short retries for that read, so KafkaJS gives up on its own close to the deadline instead of retrying for 25 seconds. */
+const START_POSITION_RETRY = { initialRetryTime: 300, maxRetryTime: 1_000, retries: 2 };
 
 /**
  * KafkaJS adapter with explicit progress management: auto-commit and automatic
@@ -188,6 +190,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
   #consumer: Consumer | null = null;
   #kafka: KafkaClient | null = null;
   #admin: Admin | null = null;
+  /** The admin client reading start positions while startup does, and its sockets; stop() closes both. */
+  #startAdmin: { admin: Admin; sockets: TrackedSockets } | null = null;
   /** Counts the consumer's COMMIT_OFFSETS events; a commit that raised none did not happen. */
   #commitEvents = 0;
   /** The record the source is paused at, if a process() call returned pause. */
@@ -253,7 +257,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const joined = new Promise<void>(resolve => { this.#joined = resolve; });
     await consumer.connect();
     await consumer.subscribe({ topics: [...this.#source.topics], fromBeginning: this.#source.startFrom === "earliest" });
-    await this.#readStartPositions(kafka);
+    await this.#readStartPositions();
     if (this.#stopping) return;
     await consumer.run({
       autoCommit: false,
@@ -344,6 +348,13 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const admin = this.#admin;
     this.#admin = null;
     if (admin !== null) await admin.disconnect().catch(() => undefined);
+    const startAdmin = this.#startAdmin;
+    this.#startAdmin = null;
+    if (startAdmin !== null) {
+      // Its sockets first: disconnect waits for a request in flight, which a silent broker answers only at the request timeout.
+      startAdmin.sockets.destroyAll();
+      await startAdmin.admin.disconnect().catch(() => undefined);
+    }
     if (consumer !== null) {
       let timer: NodeJS.Timeout | undefined;
       await Promise.race([
@@ -506,10 +517,27 @@ export class KafkaSourceAdapter implements SourceAdapter {
    * will start, so committing it can never skip a record. Best effort; a
    * failure only logs.
    */
-  async #readStartPositions(kafka: KafkaClient): Promise<void> {
-    const admin = kafka.admin();
+  async #readStartPositions(): Promise<void> {
+    // stop() disconnects only the admin client it finds, so none may be created once it has begun.
+    if (this.#stopping) return;
+    let abandoned = false;
+    const sockets = new TrackedSockets();
+    const config = kafkaConfig(this.#clientId, this.#connection, this.#sink, sockets, () => this.#stopping || abandoned);
+    // A client of its own with few retries. A connection KafkaJS still opens after the read was given up
+    // is closed at once, so its retrier ends quickly instead of reconnecting behind the source's back.
+    const admin = new Kafka({
+      ...config,
+      retry: START_POSITION_RETRY,
+      socketFactory: options => {
+        const socket = sockets.factory(options);
+        if (abandoned || this.#stopping) socket.destroy(new Error("start position read abandoned"));
+        return socket;
+      }
+    }).admin();
+    this.#startAdmin = { admin, sockets };
     const latest = this.#source.startFrom === "latest";
     const starts = new Map<string, string>();
+    let failed = false;
     try {
       await withDeadline(admin.connect(), Date.now() + START_POSITION_TIMEOUT_MS, "Kafka connect");
       const deadline = Date.now() + START_POSITION_TIMEOUT_MS;
@@ -530,13 +558,21 @@ export class KafkaSourceAdapter implements SourceAdapter {
       }
       if (latest && starts.size > 0) this.#startPositions = starts;
     } catch (error) {
+      failed = true;
       if (!this.#stopping) {
-        this.#sink.logger.warn("The consumer group's start position could not be read; a restart before the first commit starts from the latest offset again", {
+        this.#sink.logger.warn(latest
+          ? "The consumer group's start position could not be read; a restart before the first commit starts from the latest offset again"
+          : "The consumer group's committed offsets could not be read, so an offset outside the retained range is not reported", {
           sourceId: this.#sourceId, error: (error as Error).name
         });
       }
     } finally {
+      abandoned = true;
+      if (this.#startAdmin?.admin === admin) this.#startAdmin = null;
+      // After a failure a request may still be waiting, and disconnect would wait for it; closing the sockets ends it.
+      if (failed) sockets.destroyAll();
       await admin.disconnect().catch(() => undefined);
+      sockets.destroyAll();
     }
   }
 
@@ -616,7 +652,14 @@ export class KafkaSourceAdapter implements SourceAdapter {
       this.#rebalancing = false;
       // Only the first assignment: positions read at startup say nothing about partitions gained later.
       if (this.#startPositions !== null && this.#startJoin === null) this.#startJoin = this.#assignment;
-      else this.#startPositions = null;
+      else if (this.#startPositions !== null) {
+        // The group rejoined before the first assignment fetched; another member may have committed since.
+        this.#sink.logger.warn("The consumer group rebalanced before the start position was committed; a restart before the first commit starts from the latest offset again", {
+          sourceId: this.#sourceId, partitions: this.#startPositions.size
+        });
+        this.#startPositions = null;
+        this.#startJoin = null;
+      }
       this.#lastActivity = Date.now();
       if (this.#paused) this.#reapplyPause();
       this.#setStatus("healthy");
@@ -680,6 +723,7 @@ function withDeadline<T>(promise: Promise<T>, deadline: number, label: string): 
     promise,
     new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => reject(new Error(`${label} timed out`)), Math.max(1, deadline - Date.now()));
+      timer.unref(); // The raced promise keeps the process alive while it is needed.
     })
   ]).finally(() => clearTimeout(timer));
 }
