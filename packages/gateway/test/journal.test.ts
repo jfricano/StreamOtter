@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -894,6 +894,77 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     assert.throws(() => openJournal(directory), refusal("lock-unreadable"));
     rmSync(lockPath);
     openJournal(directory).close();
+  });
+
+  it("treats a lock naming this process's own pid as stale unless this process holds the journal", () => {
+    // A container restarted in place keeps its hostname and usually its pid (often 1), so a killed gateway's lock names the new process.
+    const { directory, store } = freshJournal();
+    store.close();
+    const lockPath = join(directory, "journal.lock");
+    const leftover: JournalLock = { pid: process.pid, projectId: PROJECT, startedAt: "2026-10-01T00:00:00.000Z", hostname: hostname() };
+    writeFileSync(lockPath, JSON.stringify(leftover), { mode: 0o600 });
+    const replaced: JournalLock[] = [];
+    const recovered = openJournal(directory, { onStaleLock: stale => replaced.push(stale) });
+    assert.deepEqual(replaced, [leftover]);
+    assert.deepEqual(recovered.replacedLock, leftover);
+    assert.notEqual((JSON.parse(readFileSync(lockPath, "utf8")) as JournalLock).startedAt, leftover.startedAt);
+    assert.throws(() => openJournal(directory), refusal("journal-locked"), "a second open in the same process is still refused");
+    assert.ok(existsSync(lockPath));
+    recovered.close();
+    assert.equal(existsSync(lockPath), false);
+    openJournal(directory).close();
+  });
+
+  it("never replaces a lock while another process still holds the journal open", async () => {
+    // Liveness by pid cannot see an owner in another pid namespace (a second container on the same volume); SQLite's lock can.
+    const { directory, store } = freshJournal();
+    store.close();
+    const holder = spawn(process.execPath, ["--conditions=streamotter-source", "--input-type=module", "-e", `
+      const { openJournal } = await import(${JSON.stringify(JOURNAL_MODULE)});
+      const store = openJournal(process.env.JOURNAL_DIR);
+      process.stdout.write("open");
+      process.stdin.once("data", () => { store.close(); process.exit(0); });
+    `], { env: { ...process.env, JOURNAL_DIR: directory }, stdio: ["pipe", "pipe", "inherit"] });
+    try {
+      await new Promise<void>((resolve, reject) => { holder.stdout.once("data", () => resolve()); holder.once("exit", code => reject(new Error(`holder exited ${code}`))); });
+      const lockPath = join(directory, "journal.lock");
+      const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+      const misleading = JSON.stringify({ pid: Number(dead.stdout), projectId: PROJECT, startedAt: "2026-10-01T00:00:00.000Z", hostname: hostname() });
+      writeFileSync(lockPath, misleading, { mode: 0o600 });
+      const replaced: JournalLock[] = [];
+      assert.throws(() => openJournal(directory, { onStaleLock: stale => replaced.push(stale) }), refusal("journal-locked", "SOURCE_UNAVAILABLE"));
+      assert.deepEqual(replaced, [], "the lock was not reported as replaced");
+      assert.equal(readFileSync(lockPath, "utf8"), misleading, "the lock is left as it was");
+    } finally {
+      holder.stdin.write("close\n");
+      await new Promise(resolve => holder.once("exit", resolve));
+    }
+  });
+
+  it("never leaves a partly written lock when the gateway dies while writing it", () => {
+    const { directory, store } = freshJournal();
+    store.close();
+    const lockPath = join(directory, "journal.lock");
+    // Dies at the n-th lock write: the first takes the lock, the second records the project read from the journal.
+    for (const write of [1, 2]) {
+      const child = spawnSync(process.execPath, ["--conditions=streamotter-source", "--input-type=module", "-e", `
+        import fs from "node:fs";
+        import { syncBuiltinESMExports } from "node:module";
+        const writeSync = fs.writeSync;
+        let writes = 0;
+        fs.writeSync = (...args) => { if (++writes === ${write}) process.kill(process.pid, "SIGKILL"); return writeSync(...args); };
+        syncBuiltinESMExports();
+        const { openJournal } = await import(${JSON.stringify(JOURNAL_MODULE)});
+        openJournal(process.env.JOURNAL_DIR);
+      `], { encoding: "utf8", env: { ...process.env, JOURNAL_DIR: directory } });
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+      if (existsSync(lockPath)) {
+        const lock = JSON.parse(readFileSync(lockPath, "utf8")) as JournalLock;
+        assert.equal(lock.pid, child.pid, "a lock that exists is complete");
+      }
+      const reopened = openJournal(directory);
+      reopened.close();
+    }
   });
 
   it("refuses writes past the journal limit and evicts nothing", () => {

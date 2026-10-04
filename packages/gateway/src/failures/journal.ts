@@ -1,6 +1,6 @@
-import { closeSync, fsyncSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, unlinkSync, writeSync, type Stats } from "node:fs";
+import { closeSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, unlinkSync, writeSync, type Stats } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { StreamOtterError, type ErrorCode, type Json, type Page } from "@streamotter/contracts";
 import {
@@ -339,28 +339,46 @@ export function initJournal(stateDirectory: string, projectId: string, sources: 
   return path;
 }
 
-function writeLockFile(path: string, lock: JournalLock): void {
-  const fd = openSync(path, "wx", 0o600);
+/**
+ * Writes the lock's content to a temporary file next to it, synced, so the
+ * lock itself only ever appears complete: a gateway that dies mid-write leaves
+ * at most this temporary file, never an empty or partial journal.lock. The
+ * name is fixed per pid, so repeated crashes leave at most one per pid.
+ */
+function writeTemporaryLock(path: string, lock: JournalLock): string {
+  const temporary = `${path}.${process.pid}.tmp`;
+  rmSync(temporary, { force: true });
+  const fd = openSync(temporary, "wx", 0o600);
   try {
     writeSync(fd, JSON.stringify(lock));
     fsyncSync(fd);
   } catch (error) {
     closeSync(fd);
-    rmSync(path, { force: true });
+    rmSync(temporary, { force: true });
     throw error;
   }
   closeSync(fd);
+  return temporary;
 }
 
-/** Rewrites this process's own lock without ever removing it, so there is no moment with no lock. */
-function rewriteLockFile(path: string, lock: JournalLock): void {
-  const fd = openSync(path, "r+");
+/** Creates the lock, complete, or fails with EEXIST: link() is as exclusive as `wx` but publishes the content at once. */
+function writeLockFile(path: string, lock: JournalLock): void {
+  const temporary = writeTemporaryLock(path, lock);
   try {
-    ftruncateSync(fd, 0);
-    writeSync(fd, JSON.stringify(lock), 0);
-    fsyncSync(fd);
+    linkSync(temporary, path);
   } finally {
-    closeSync(fd);
+    rmSync(temporary, { force: true });
+  }
+}
+
+/** Rewrites this process's own lock by renaming a complete copy over it, so there is no moment with no lock or a partial one. */
+function rewriteLockFile(path: string, lock: JournalLock): void {
+  const temporary = writeTemporaryLock(path, lock);
+  try {
+    renameSync(temporary, path);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
   }
 }
 
@@ -385,6 +403,14 @@ function readLockFile(path: string): JournalLock | undefined {
     `${path} exists but cannot be read as a StreamOtter lock. If no gateway is running on this state directory, remove it and start again.`, { path });
 }
 
+/**
+ * Lock paths this process holds, so a lock naming this pid can be told apart:
+ * held here means a second open in the same process, which is refused; not held
+ * means a dead gateway that had the same pid (a container restarted in place,
+ * often pid 1), whose lock is stale.
+ */
+const heldLocks = new Set<string>();
+
 function ownerAlive(lock: JournalLock): boolean {
   try {
     process.kill(lock.pid, 0);
@@ -402,16 +428,40 @@ function lockHeld(path: string, lock: JournalLock): StreamOtterError {
 }
 
 /**
+ * True when another connection holds the journal's SQLite lock. A gateway in
+ * another pid namespace (a second container on the same volume and hostname)
+ * looks dead to ownerAlive, but its exclusive lock still shows here. Any other
+ * error is left for the real open to report.
+ */
+function journalInUse(journalPath: string): boolean {
+  const { DatabaseSync } = requireNodeSqlite();
+  let db: DatabaseSync | null = null;
+  try {
+    db = new DatabaseSync(journalPath);
+    db.exec("PRAGMA busy_timeout = 0");
+    db.prepare("SELECT count(*) AS tables FROM sqlite_schema").get();
+    return false;
+  } catch (error) {
+    const errcode = sqliteErrcode(error);
+    return errcode === SQLITE_BUSY || errcode === SQLITE_LOCKED;
+  } finally {
+    try { db?.close(); } catch { /* the probe only reads */ }
+  }
+}
+
+/**
  * Takes journal.lock. On EEXIST the existing lock is read: a live owner, or one
  * on another host whose liveness cannot be checked, refuses; a dead owner on
- * this host is replaced once. A second EEXIST means another process won the
- * race, which also refuses.
+ * this host is replaced once, after SQLite confirms nobody holds the journal. A
+ * lock naming this process's own pid is a live owner only if this process holds
+ * it. A second EEXIST means another process won the race, which also refuses.
  */
-function acquireLock(path: string, mine: JournalLock): JournalLock | null {
+function acquireLock(path: string, mine: JournalLock, journalPath: string): JournalLock | null {
   let replaced: JournalLock | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       writeLockFile(path, mine);
+      heldLocks.add(resolve(path));
       return replaced;
     } catch (error) {
       if (errnoCode(error) !== "EEXIST") throw error;
@@ -423,7 +473,8 @@ function acquireLock(path: string, mine: JournalLock): JournalLock | null {
         `${path} names a gateway on host ${existing.hostname} (pid ${existing.pid}), which cannot be checked from ${mine.hostname}. ` +
         "If that gateway is not running, remove the lock and start again.", { path, pid: existing.pid, hostname: existing.hostname });
     }
-    if (ownerAlive(existing) || replaced !== null) throw lockHeld(path, existing);
+    const alive = existing.pid === process.pid ? heldLocks.has(resolve(path)) : ownerAlive(existing);
+    if (alive || replaced !== null || journalInUse(journalPath)) throw lockHeld(path, existing);
     try {
       unlinkSync(path);
     } catch (error) {
@@ -436,6 +487,7 @@ function acquireLock(path: string, mine: JournalLock): JournalLock | null {
 
 /** Removes journal.lock only if it is still the one this process wrote. */
 function releaseLock(path: string, mine: JournalLock): void {
+  heldLocks.delete(resolve(path));
   try {
     const current = readLockFile(path);
     if (current !== undefined && current.pid === mine.pid && current.startedAt === mine.startedAt) unlinkSync(path);
@@ -462,7 +514,7 @@ export function openJournal(stateDirectory: string, options: OpenJournalOptions 
 
   const lockPath = join(stateDirectory, LOCK_FILE);
   const lock: JournalLock = { pid: process.pid, projectId: options.projectId ?? null, startedAt: new Date().toISOString(), hostname: hostname() };
-  const replaced = acquireLock(lockPath, lock);
+  const replaced = acquireLock(lockPath, lock, path);
   if (replaced !== null) options.onStaleLock?.(replaced);
 
   let db: DatabaseSync | null = null;

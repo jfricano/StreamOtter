@@ -422,7 +422,7 @@ Restart after a crash as in V1: wait for the dead consumer's 30-second session t
 
 On start, before any source is ready, the gateway:
 
-- **Takes the journal lock.** `journal.lock` names the owning pid and host. A lock left by a dead process on the same host is replaced. A lock naming another host is refused, because its owner can't be checked: confirm that gateway is stopped, remove the lock, and start again.
+- **Takes the journal lock.** `journal.lock` names the owning pid and host. A lock left by a dead process on the same host is replaced, including one that names the new gateway's own pid (a container restarted in place often reuses pid 1), but only once SQLite confirms no other process holds the journal open. A lock naming another host is refused, because its owner can't be checked: confirm that gateway is stopped, remove the lock, and start again.
 - **Restores the boundary in force**, so no snapshot after a restart skips it.
 - **Reconciles unresolved advances** (`advance-pending`, `uncertain`) against the consumer group's committed offset. Offset + 1 confirms the advance. At or below the record means it never happened, and the incident is `held` again. Anything further is unexplained, and the source holds. If the committed offset can't be read, the incident stays `uncertain` and held; restart once the broker is reachable.
 - **Marks interrupted operator operations `unknown`.** They're logged ("An operator operation was interrupted by a restart; its outcome is unknown and it is not rerun") and never rerun. A CLI command that was waiting may have exited 1 or 4.
@@ -448,7 +448,7 @@ The journal is the only record of incidents, decisions and recovery boundaries. 
 
 The gateway never recreates, repairs or replaces a journal on its own. Don't run `init --failures` as a quick fix: an empty journal forgets every boundary, so snapshots would stop being asked to cover records that were skipped.
 
-**Restore from a backup** when you have one. Back up the state directory with the gateway stopped (`journal.sqlite` and any `journal.sqlite-wal`; skip `run/` and `journal.lock`). A backup older than the latest changes can lack incidents and boundaries created since. The gateway holds a source whose position moved past a held record it knows about, but it can't detect a boundary it never saw. Check `status` after restoring and compare it with what you know happened.
+**Restore from a backup** when you have one. Back up the state directory with the gateway stopped (`journal.sqlite` and any `journal.sqlite-wal`; skip `run/`, `journal.lock` and any leftover `journal.lock.*.tmp`). A backup older than the latest changes can lack incidents and boundaries created since. The gateway holds a source whose position moved past a held record it knows about, but it can't detect a boundary it never saw. Check `status` after restoring and compare it with what you know happened.
 
 **Start a new journal** only when there is no usable backup. If the journal is intact and an incident just can't be closed any other way, don't replace the journal: rebaseline the source with the journal you have ([§6.10](#610-rebaseline-a-source)). A new journal is a deliberate decision about application consistency, not a reset button:
 
