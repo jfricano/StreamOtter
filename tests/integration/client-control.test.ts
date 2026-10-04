@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { afterEach, describe, it } from "node:test";
-import { observe, orderRecord, sleep, startHarness, type Harness } from "./harness.ts";
+import { createClient } from "@streamotter/client";
+import { DEFAULT_SOCKET_PATH, EVENTS, PROTOCOL_VERSION, type Hello } from "@streamotter/contracts";
+import { ClientSession } from "../../packages/gateway/src/runtime/session.ts";
+import { FAR_FUTURE, observe, orderRecord, sleep, startHarness, waitFor, type Harness, type TestChannels } from "./harness.ts";
+
+// The tests package has no socket.io server dependency; borrow the gateway's.
+type FakeSocket = { emit(event: string, payload: unknown): void; disconnect(close: boolean): void };
+type FakeServer = { on(event: "connection", listener: (socket: FakeSocket) => void): void; listen(port: number): void; close(): Promise<void>; httpServer: import("node:http").Server };
+const { Server } = createRequire(new URL("../../packages/gateway/package.json", import.meta.url))("socket.io") as { Server: new (options: { path: string }) => FakeServer };
 
 describe("client control requests stay in step with the gateway", () => {
   let h: Harness | undefined;
@@ -63,5 +72,110 @@ describe("client control requests stay in step with the gateway", () => {
     await h.advance(1); // An update for ord_9, which was unsubscribed.
     await sleep(1_500);
     assert.ok(!seenKeep.states.includes("stale"), "the remaining subscription was never disturbed");
+  });
+
+  it("resync() during a source pause stays stale until the source resumes", async () => {
+    h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)] });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    await sub.ready({ timeoutMs: 5_000 });
+    const seen = observe(sub);
+    h.app.mapOverride = () => { throw new Error("boom"); };
+    assert.equal(await h.advance(1), 0);
+    assert.equal(h.internals.sources()[0]?.status, "paused");
+    await waitFor(() => sub.state === "stale", 2_000, "stale while paused");
+    const resynced = sub.resync({ timeoutMs: 8_000 });
+    await sleep(300);
+    assert.equal(sub.state, "stale", "the paused source is still reported");
+    assert.ok(!seen.states.includes("authorizing"));
+    h.app.mapOverride = null;
+    await h.internals.resumeSource("orders");
+    await resynced;
+    assert.equal(sub.state, "live");
+  });
+
+  it("concurrent resync() calls on a stale subscription join one request", async () => {
+    let resyncs = 0;
+    const original = ClientSession.prototype.handleResync;
+    ClientSession.prototype.handleResync = function (this: ClientSession, payload: unknown, reply: unknown) {
+      resyncs++;
+      return original.call(this, payload, reply);
+    };
+    try {
+      h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)] });
+      h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+      const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+      await sub.ready({ timeoutMs: 5_000 });
+      h.app.mapOverride = () => { throw new Error("boom"); };
+      assert.equal(await h.advance(1), 0);
+      await waitFor(() => sub.state === "stale", 2_000, "stale while paused");
+      const waits = [sub.resync({ timeoutMs: 8_000 }), sub.resync({ timeoutMs: 8_000 }), sub.resync({ timeoutMs: 8_000 })];
+      await sleep(300);
+      assert.equal(resyncs, 1, "the gateway received one resync request");
+      h.app.mapOverride = null;
+      await h.internals.resumeSource("orders");
+      await Promise.all(waits);
+      assert.equal(sub.state, "live");
+      assert.equal(resyncs, 1);
+    } finally {
+      ClientSession.prototype.handleResync = original;
+    }
+  });
+
+  it("a resync that runs out of attempts before a new epoch ends in resync-required", async () => {
+    h = await startHarness({ limits: { handlerTimeoutMs: 50, maxSyncAttempts: 1 } });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    await sub.ready({ timeoutMs: 5_000 });
+    h.app.authorizeOverride = () => new Promise<boolean>(() => undefined); // Authorize times out under the old epoch.
+    await assert.rejects(sub.resync({ timeoutMs: 3_000 }), (error: { code?: string }) => error.code === "RESYNC_REQUIRED");
+    assert.equal(sub.state, "resync-required");
+    h.app.authorizeOverride = null;
+    await sub.resync({ timeoutMs: 5_000 });
+    assert.equal(sub.state, "live");
+  });
+
+  it("a listener removed during dispatch is not called again, even for the event being dispatched", async () => {
+    h = await startHarness();
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const client = h.client();
+    const sub = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    const calls: string[] = [];
+    let removeSecondData = () => {};
+    let removeSecondState = () => {};
+    sub.on("data", () => { calls.push("data 1"); removeSecondData(); });
+    removeSecondData = sub.on("data", () => { calls.push("data 2"); });
+    sub.on("state", () => { calls.push("state 1"); removeSecondState(); });
+    removeSecondState = sub.on("state", () => { calls.push("state 2"); });
+    let removeSecondClient = () => {};
+    client.on("state", () => { calls.push("client 1"); removeSecondClient(); });
+    removeSecondClient = client.on("state", () => { calls.push("client 2"); });
+    await sub.ready({ timeoutMs: 5_000 });
+    assert.ok(calls.includes("data 1") && calls.includes("state 1") && calls.includes("client 1"));
+    assert.deepEqual(calls.filter(call => call.endsWith(" 2")), []);
+  });
+
+  it("a hello and a close read together reconnect instead of leaving the client connected to nothing", async () => {
+    const io = new Server({ path: DEFAULT_SOCKET_PATH });
+    let connections = 0;
+    io.on("connection", socket => {
+      connections++;
+      const hello: Hello = {
+        protocolVersion: PROTOCOL_VERSION, configVersions: [1], transport: "socket.io", deliveryModes: ["state"], operations: ["subscribe", "unsubscribe", "resync", "receipt"],
+        connectionId: `c${connections}`, identityKey: "alice", authExpiresAt: FAR_FUTURE
+      };
+      socket.emit(EVENTS.hello, hello);
+      if (connections === 1) socket.disconnect(true); // Same tick: the client reads both together.
+    });
+    io.listen(0);
+    const { port } = io.httpServer.address() as import("node:net").AddressInfo;
+    const client = createClient<TestChannels>({ origin: `http://127.0.0.1:${port}`, getToken: () => "alice@acme" });
+    try {
+      client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+      await waitFor(() => connections === 2, 3_000, "a second connection");
+    } finally {
+      await client.close();
+      await io.close();
+    }
   });
 });

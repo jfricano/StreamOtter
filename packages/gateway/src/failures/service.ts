@@ -11,7 +11,7 @@ import { describeError, invokeHandler, newId, nowIso, sha256Hex } from "../runti
 import type { ProcessOutcome, SourceAdapter, SourceInput } from "../sources/types.ts";
 import { evidenceHash, keyAndHeaderBytes, MAX_CAPTURED_KEY_AND_HEADER_BYTES } from "./evidence.ts";
 import type { QuarantineOutcome, QuarantineWriter } from "./quarantine.ts";
-import { StaleRevisionError, type EvidenceSummary, type GuardResult, type IncidentEventName, type IncidentRecord, type IncidentStore, type RawEvidence, type StoredBoundary } from "./store.ts";
+import { LOCAL_EVIDENCE_RETENTION_MS, StaleRevisionError, type EvidenceSummary, type GuardResult, type IncidentEventName, type IncidentRecord, type IncidentStore, type RawEvidence, type StoredBoundary } from "./store.ts";
 
 /** Spec §13: the recovery guard's budget, independent of handlerTimeoutMs. */
 export const GUARD_TIMEOUT_MS = 10_000;
@@ -123,6 +123,17 @@ export class FailureService {
       policyRevision: sha256Hex(options.config.failureHandling ?? null).slice(0, 16),
       gatewayVersion: gatewayVersion()
     };
+    this.#pruneLocalEvidence();
+  }
+
+  /** Expires local fixture evidence past its retention, at startup and before more is stored. Best effort. */
+  #pruneLocalEvidence(): void {
+    try {
+      const pruned = this.store.pruneEvidence(new Date(Date.now() - LOCAL_EVIDENCE_RETENTION_MS).toISOString());
+      if (pruned > 0) this.#logger.info("Expired local fixture evidence past its retention", { count: pruned, retentionDays: LOCAL_EVIDENCE_RETENTION_MS / 86_400_000 });
+    } catch (error) {
+      this.#logger.warn("Expired local fixture evidence could not be deleted", { error: (error as Error).message.slice(0, 200) });
+    }
   }
 
   get journalError(): string | null {
@@ -721,6 +732,7 @@ export class FailureService {
 
   async #write(source: FailureSource, record: IncidentRecord, raw: RawEvidence): Promise<QuarantineOutcome> {
     if (source.config.kind === "fixture") {
+      this.#pruneLocalEvidence();
       try {
         this.store.putEvidence(record.failureId, raw);
         return { kind: "acknowledged", partition: -1, offset: "-1" };

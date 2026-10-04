@@ -39,25 +39,38 @@ export function renderInspect(root: HTMLElement, state: WorkbenchState): () => v
       h("td", { class: "mono small", title: trace.subscriptionId ?? "" }, short(trace.subscriptionId)),
       h("td", { class: "mono small" }, trace.errorCode ?? ""))));
 
+  // A reset (new filter, Reload) starts a generation; a response from an older one is dropped so
+  // rows matching a previous filter never mix in. One load runs at a time per generation.
+  let generation = 0;
+  let loading = false;
   const load = async (reset: boolean) => {
     if (reset) {
+      generation++;
       rows.length = 0;
       cursor = undefined;
+    } else if (loading) {
+      return;
     }
+    const mine = generation;
+    loading = true;
     try {
       const page = await state.api.traces({ limit: cursor === undefined ? 200 : 500, ...(cursor === undefined ? {} : { cursor }), sourceId: source.value, channel: channel.value, outcome: outcome.value });
+      if (mine !== generation) return;
       rows.push(...page.items);
       if (rows.length > MAX_ROWS) rows.splice(0, rows.length - MAX_ROWS);
       if (page.nextCursor !== null) cursor = page.nextCursor;
       replace(message);
       draw();
     } catch (error) {
+      if (mine !== generation) return;
       if (error instanceof ApiError && error.error.code === "TRACE_CURSOR_EXPIRED") {
         replace(message, h("div", { class: "banner warn" }, "Older traces were evicted from the bounded buffer; showing the latest."));
         await load(true);
         return;
       }
       replace(message, h("div", { class: "banner bad" }, (error as Error).message));
+    } finally {
+      if (mine === generation) loading = false;
     }
   };
 

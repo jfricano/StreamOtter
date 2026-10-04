@@ -107,7 +107,7 @@ export const handlers: HandlerRegistry<AppChannels> = {
 };
 ```
 
-Every handler receives an `AbortSignal` and a `requestId`. Stop work when the signal aborts: results that arrive after a timeout, unsubscribe, or revocation are ignored. A handler that throws fails closed.
+Every handler receives an `AbortSignal` and a `requestId`. Stop work when the signal aborts: results that arrive after a timeout, unsubscribe, or revocation are ignored. A handler that throws fails closed. `authenticate`'s signal also aborts when the client disconnects mid-handshake; pass it on, because a call that keeps running still holds a `maxConnections` slot until it settles or `handlerTimeoutMs` passes.
 
 ## The snapshot and revision contract
 
@@ -118,7 +118,7 @@ StreamOtter can only be as correct as the state your handlers describe:
 - **One instance, one partition.** Changes to one channel instance must arrive in revision order from one Kafka partition (key your records by entity).
 - **Full state, not deltas.** Each update replaces the previous state. Represent deletion as explicit state. A Kafka tombstone (null value) has no delete meaning; it pauses the source like any other invalid record.
 - **Same public state for every authorized reader.** The routing identity is channel, version, the mapper's `tenantId`, and canonical parameters. Don't redact per user in `snapshot`; use separate channels or parameters for different views.
-- **Invalid records pause, never skip.** Invalid JSON, an invalid mapped payload or revision, or a handler failure pauses the source at that record, and its subscriptions go `stale`. Fix the cause, then call `gateway.resumeSource(sourceId)` to retry the same record. V1.1 adds opt-in quarantine and guarded continuation, below; they never skip silently either.
+- **Invalid records pause, never skip.** Invalid JSON, an invalid mapped payload or revision, or a handler failure pauses the source at that record, and its subscriptions go `stale`. Fix the cause, then call `gateway.resumeSource(sourceId)` to retry the same record. After a revision conflict, decide which data is correct first: the retry is compared only with current state, and the gateway logs a warning. V1.1 adds opt-in quarantine and guarded continuation, below; they never skip silently either.
 
 ## Run it
 
@@ -138,6 +138,7 @@ process.once("SIGTERM", () => void gateway.stop({ timeoutMs: 10_000 }));
 - This is an ES module (`"type": "module"` in your `package.json`), because it uses top-level `await`.
 - `defineProject` validates the configuration synchronously and throws `CONFIG_INVALID` with every issue.
 - `start()` rolls back and rejects if startup fails or takes longer than 30 seconds. A stopped gateway cannot restart; create a new one.
+- `stop({ timeoutMs })` (10 seconds by default) commits only completed records. At the deadline it closes client connections and the listening port before it returns, so a replacement can bind the port at once; shutdown work still running finishes in the background, with a log line when it does.
 - `mode: "production"` refuses fixture sources, plaintext Kafka, and the `development` option, and requires an exact browser `Origin` on every connection. `mode: "development"` accepts `development: { principals, fixtures }` for local work.
 - `configDir` (optional) is where relative CA paths resolve; it defaults to the working directory (the CLI uses the configuration file's directory). `logger` (optional) receives redacted operator diagnostics: never credentials or payloads.
 - `health` (optional) serves read-only `GET /health/live` and `GET /health/ready` on a separate listener: `{ port, host? }`, `host` defaulting to `127.0.0.1`, port `0` for a free one. Liveness is 200 while the listener answers, broker outages included; readiness is 503 with reason categories (`starting`, `source-held`, `source-unavailable`, `journal`, `quarantine`) when the gateway can't serve. No CORS headers, and never topic names or incident IDs. New in 0.2.0-rc.1 (V1.1); see [health checks](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md#health-checks).

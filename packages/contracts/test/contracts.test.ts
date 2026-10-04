@@ -261,6 +261,11 @@ describe("project configuration", () => {
     assert.deepEqual(codes(validateProjectConfig(config).issues), ["INCONSISTENT_LIMITS /limits/maxDataFrameBytes"]);
     config["limits"] = { handlerTimeoutMs: 2_147_483_648 }; // setTimeout would clamp this to 1 ms.
     assert.deepEqual(codes(validateProjectConfig(config).issues), ["INVALID_VALUE /limits/handlerTimeoutMs"]);
+    // The CONNECT frame must fit a token at MAX_TOKEN_BYTES.
+    config["limits"] = { maxControlFrameBytes: 4_096, maxParamsBytes: 1_024 };
+    assert.deepEqual(codes(validateProjectConfig(config).issues), ["INCONSISTENT_LIMITS /limits/maxControlFrameBytes"]);
+    config["limits"] = { maxControlFrameBytes: 9_216 };
+    assert.deepEqual(codes(validateProjectConfig(config).issues), []);
   });
 });
 

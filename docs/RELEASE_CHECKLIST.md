@@ -35,13 +35,13 @@ pnpm test:browser
 pnpm test:deploy
 pnpm kafka:stop
 ./scripts/kafka/replicated-start.sh
-pnpm test:kafka:replicated   # F47; skips when the cluster isn't running
+pnpm test:kafka:replicated   # F47; fails when the cluster isn't running (leave STREAMOTTER_ALLOW_SKIP unset)
 ./scripts/kafka/replicated-stop.sh
 ```
 
 - [ ] Every suite passes. Record new results in `docs/IMPLEMENTATION_STATUS.md` if they changed.
 - [ ] `pnpm test:install` reports the TLS Kafka case as passed, not skipped.
-- [ ] `pnpm test:kafka:replicated` reports 2 tests passed, not skipped. The first macOS run of `replicated-start.sh` and `replicated-stop.sh` is also their first check there: confirm that start ends with "Replicated Kafka 4.1.2 is ready" and that stop reports each node stopped and leaves no Kafka `java` process running.
+- [ ] `pnpm test:kafka:replicated` reports 3 tests passed (the environment check and the two failure tests), none skipped. The first macOS run of `replicated-start.sh` and `replicated-stop.sh` is also their first check there: confirm that start ends with "Replicated Kafka 4.1.2 is ready" and that stop reports each node stopped and leaves no Kafka `java` process running.
 
 ## 3. Dry run
 
@@ -81,6 +81,7 @@ From the first stable version on, publish stable versions with `--tag latest`, a
 
 - The real publish keeps pnpm's git checks: a clean tree on the publish branch, in sync with the remote. That's why the push in step 4 comes first.
 - Always pass `--tag` explicitly.
+- Each package's `prepack` script builds it (`tsc -b`, or the workbench bundle), so a stale or missing `dist` is never packed.
 - pnpm publishes in dependency order and skips versions already on the registry. If a one-time password expires or the network fails partway, rerun the same command.
 - A **brand-new** package gets `latest` on its first publish, whatever `--tag` says (this happened for `0.1.0-rc.1`, and for `streamotter` in `0.1.0-rc.3`). The unscoped `streamotter` belongs to the publishing account rather than the organization (`npm owner ls streamotter`). Check with `npm dist-tag ls` in step 6. `latest` can be moved but not removed.
 

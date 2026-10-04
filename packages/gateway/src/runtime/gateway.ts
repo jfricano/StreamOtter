@@ -30,7 +30,7 @@ import {
 import { ClientSession, type SessionOwner } from "./session.ts";
 import { FRAME_OVERHEAD_BYTES, type PendingFrame, type ServerSubscription } from "./subscription.ts";
 import { TraceBuffer, type TraceQuery } from "./traces.ts";
-import { consoleLogger, describeError, invokeHandler, newId, nowIso, Semaphore, sha256Hex } from "./util.ts";
+import { consoleLogger, describeError, invokeHandler, newId, nowIso, Semaphore, sha256Hex, TokenBucket } from "./util.ts";
 import { FixtureSourceAdapter, type FixtureRecord } from "../sources/fixture.ts";
 import { createKafkaSourceAdapter, readCommittedOffset, resolveKafkaConnection, runKafkaDiagnostics, type ResolvedKafkaConnection } from "../sources/kafka.ts";
 import type { ProcessOutcome, SourceAdapter, SourceInput, SourceSink } from "../sources/types.ts";
@@ -150,6 +150,9 @@ function storedInput(raw: RawEvidence, position: SourceRecord["position"]): Sour
 
 /** Waits before re-running a mapping that threw TransientMappingError (spec §6). */
 const TRANSIENT_RETRY_DELAYS_MS = [250, 1_000] as const;
+/** Refused handshakes traced per second (after the burst); the rest are counted in a log line. */
+const HANDSHAKE_REJECTION_TRACES_PER_SECOND = 10;
+const HANDSHAKE_REJECTION_TRACE_BURST = 100;
 
 function abortableDelay(ms: number, signal: AbortSignal): Promise<boolean> {
   if (signal.aborted) return Promise.resolve(false);
@@ -330,6 +333,13 @@ export class GatewayRuntime implements SessionOwner {
   #http: HttpServer | null = null;
   #io: IoServer | null = null;
   #pendingHandshakes = 0;
+  /** Cancelled handshakes whose authenticate call ignored its signal and is still running. */
+  #abandonedAuthenticates = 0;
+  /** Bounds the traces of refused handshakes, which anyone can trigger, so a flood can't evict the rest. */
+  readonly #handshakeRejectionTraces = new TokenBucket(HANDSHAKE_REJECTION_TRACES_PER_SECOND, HANDSHAKE_REJECTION_TRACE_BURST);
+  #untracedHandshakeRejections = 0;
+  /** Reports the skipped count within a second even if no later refusal is traced to report it. */
+  #untracedReportTimer: NodeJS.Timeout | null = null;
   #activeChecks = 0;
   readonly #internal: InternalGatewayOptions;
 
@@ -456,6 +466,11 @@ export class GatewayRuntime implements SessionOwner {
     // With failure handling, a resume is a retry of the held record and is refused while an advance is unresolved (ADR-15C §6).
     await this.#failures?.beforeRetry(sourceId, "operator retry of the held record");
     this.core.logger.info("Resuming source at its uncommitted position", { sourceId });
+    if (source.reason === "REVISION_CONFLICT") {
+      // Pausing marked every subscription stale and dropped the state the record conflicted with; the retry
+      // can only be compared with state resynchronized since, which usually means it is admitted.
+      this.core.logger.warn("Resuming after a revision conflict: the conflicting state was discarded when the source paused, so the record is retried against current state only", { sourceId });
+    }
     await source.adapter.resume();
     return source.summary();
   }
@@ -472,10 +487,10 @@ export class GatewayRuntime implements SessionOwner {
 
   // --- transport callbacks ---------------------------------------------------------
 
-  async authenticateHandshake(input: { auth: unknown; origin: string | undefined }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }> {
+  async authenticateHandshake(input: { auth: unknown; origin: string | undefined; signal?: AbortSignal }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }> {
     const requestId = newId();
     const reject = (code: ErrorCode, message?: string, retryable?: boolean) => {
-      this.core.traces.record({ requestId, stage: "authorize", outcome: "rejected", errorCode: code });
+      this.#traceHandshakeRejection(requestId, code);
       const options: { requestId: string; message?: string; retryable?: boolean } = { requestId };
       if (message !== undefined) options.message = message;
       if (retryable !== undefined) options.retryable = retryable;
@@ -497,7 +512,7 @@ export class GatewayRuntime implements SessionOwner {
     if (typeof token !== "string" || token.length === 0 || utf8ByteLength(token) > MAX_TOKEN_BYTES) {
       return reject("UNAUTHENTICATED", "A non-empty token of at most 8 KiB is required.", false);
     }
-    if (this.#sessions.size + this.#pendingHandshakes >= this.core.limits.maxConnections) {
+    if (this.#sessions.size + this.#pendingHandshakes + this.#abandonedAuthenticates >= this.core.limits.maxConnections) {
       return reject("OVERLOADED", "The gateway has reached its connection limit.");
     }
     this.#pendingHandshakes++;
@@ -512,11 +527,21 @@ export class GatewayRuntime implements SessionOwner {
         principal = preview.principal;
         previewSessionId = previewId;
       } else {
+        let running: Promise<unknown> | undefined;
+        const invokedAt = performance.now();
         const outcome = await invokeHandler(
-          context => this.#handlers.authenticate({ ...context, token, origin: origin ?? "" }),
-          { timeoutMs: this.core.limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
+          context => (running = Promise.resolve(this.#handlers.authenticate({ ...context, token, origin: origin ?? "" }))),
+          {
+            timeoutMs: this.core.limits.handlerTimeoutMs,
+            requestId,
+            // A client that disconnects mid-handshake cancels authenticate as well as gateway shutdown does.
+            parent: input.signal === undefined ? this.#stopController.signal : AbortSignal.any([this.#stopController.signal, input.signal])
+          }
         );
-        if (outcome.kind === "aborted") return reject("OVERLOADED", "The gateway is shutting down.");
+        if (outcome.kind === "aborted") {
+          if (running !== undefined) this.#holdAbandonedAuthenticate(running, this.core.limits.handlerTimeoutMs - (performance.now() - invokedAt));
+          return input.signal?.aborted === true ? reject("CANCELLED", "The client disconnected.") : reject("OVERLOADED", "The gateway is shutting down.");
+        }
         if (outcome.kind === "timeout") {
           this.core.logger.warn("authenticate handler timed out", { requestId });
           return reject("HANDLER_FAILED", "Authentication could not be completed; try again.");
@@ -542,6 +567,46 @@ export class GatewayRuntime implements SessionOwner {
     } finally {
       this.#pendingHandshakes--;
     }
+  }
+
+  /**
+   * A cancelled handshake ends at once, but an authenticate call that ignores its signal keeps running.
+   * It keeps counting against maxConnections until it settles or its timeout passes, so clients that
+   * connect and disconnect can't pile up unbounded authenticate calls.
+   */
+  #holdAbandonedAuthenticate(running: Promise<unknown>, remainingMs: number): void {
+    this.#abandonedAuthenticates++;
+    let held = true;
+    const release = () => {
+      if (!held) return;
+      held = false;
+      clearTimeout(timer);
+      this.#abandonedAuthenticates--;
+    };
+    const timer = setTimeout(release, Math.max(0, remainingMs));
+    timer.unref?.();
+    running.then(release, release);
+  }
+
+  #traceHandshakeRejection(requestId: string, errorCode: ErrorCode): void {
+    if (!this.#handshakeRejectionTraces.take()) {
+      this.#untracedHandshakeRejections++;
+      if (this.#untracedReportTimer === null) {
+        this.#untracedReportTimer = setTimeout(() => this.#reportUntracedHandshakeRejections(), 1_000);
+        this.#untracedReportTimer.unref?.();
+      }
+      return;
+    }
+    this.#reportUntracedHandshakeRejections();
+    this.core.traces.record({ requestId, stage: "authorize", outcome: "rejected", errorCode });
+  }
+
+  #reportUntracedHandshakeRejections(): void {
+    if (this.#untracedReportTimer !== null) clearTimeout(this.#untracedReportTimer);
+    this.#untracedReportTimer = null;
+    if (this.#untracedHandshakeRejections === 0) return;
+    this.core.logger.warn("Refused handshakes were not traced; they exceeded the trace rate", { count: this.#untracedHandshakeRejections });
+    this.#untracedHandshakeRejections = 0;
   }
 
   openSession(result: HandshakeResult, transport: ConnectionTransport): ClientSession {
@@ -1224,8 +1289,20 @@ export class GatewayRuntime implements SessionOwner {
     if (expired) {
       this.core.logger.warn("Stop deadline expired; forcing closure without committing incomplete records");
       this.#http?.closeAllConnections();
+      // Release the listening port now rather than when the remaining work reaches it, so a replacement
+      // gateway can bind it as soon as stop() returns. The listener closes here, synchronously, because
+      // io.close() reaches it only a few microtasks later. What is still running is logged when it ends.
+      this.#http?.close();
+      const io = this.#io;
+      if (io !== null) io.close();
+      const expiredAt = Date.now();
+      void work.then(
+        () => this.core.logger.info("Shutdown work still running at the stop deadline has finished", { afterDeadlineMs: Date.now() - expiredAt }),
+        error => this.core.logger.error("Shutdown work still running at the stop deadline failed", { error: (error as Error).message.slice(0, 200) })
+      );
     }
     this.#state = "stopped";
+    this.#reportUntracedHandshakeRejections();
     if (wasRunning) this.core.logger.info("Gateway stopped");
   }
 

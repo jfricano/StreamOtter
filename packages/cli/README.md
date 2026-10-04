@@ -25,7 +25,7 @@ npm install @streamotter/cli @streamotter/client
 npx streamotter init .
 ```
 
-`init` creates a fixture-backed project that needs no Kafka broker. It refuses to overwrite existing files.
+`init` creates a fixture-backed project that needs no Kafka broker. It refuses to overwrite existing files, and if a write fails partway through (permissions, a full disk) it removes the files and directories it created and exits 2.
 
 | File | Purpose |
 | --- | --- |

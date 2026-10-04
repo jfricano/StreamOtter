@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { DEFAULT_LIMITS, type Result, type Schema } from "@streamotter/contracts";
 import { ByteBudget, SubscriptionBudget } from "../src/runtime/budget.ts";
+import type { ChannelRuntime, GatewayCore } from "../src/runtime/core.ts";
 import { RevocationLog } from "../src/runtime/identity.ts";
+import { ClientSession } from "../src/runtime/session.ts";
 import { TraceBuffer } from "../src/runtime/traces.ts";
-import { invokeHandler, Semaphore, TokenBucket } from "../src/runtime/util.ts";
+import { invokeHandler, Semaphore, silentLogger, TokenBucket } from "../src/runtime/util.ts";
 
 const principal = { subject: "alice", tenantId: "acme", sessionId: "s1", expiresAt: "2099-01-01T00:00:00.000Z", claims: {} };
 
@@ -112,5 +115,82 @@ describe("revocation log", () => {
     assert.equal(log.revokedSince(started, { ...principal, tenantId: "globex" }, channel), false);
     log.add({ kind: "session", tenantId: "acme", sessionId: "s1" }, null);
     assert.equal(log.revokedSince(started, principal), true);
+  });
+});
+
+describe("client session", () => {
+  const paramsSchema: Schema = {
+    type: "object", additionalProperties: false, required: ["orderId"], properties: { orderId: { type: "string", minLength: 1, maxLength: 128 } }
+  };
+  const auditSchema: Schema = {
+    type: "object", additionalProperties: false, required: ["auditScope"], properties: { auditScope: { type: "string", minLength: 1, maxLength: 128 } }
+  };
+  function session(mode: GatewayCore["mode"], limits: Partial<typeof DEFAULT_LIMITS> = {}) {
+    const traces = new TraceBuffer(100, 1_000_000);
+    const core = {
+      mode, limits: { ...DEFAULT_LIMITS, ...limits }, traces, logger: silentLogger, gatewayBudget: new ByteBudget(1_000_000)
+    } as unknown as GatewayCore;
+    const channels: Record<string, ChannelRuntime> = {
+      orderStatus: { name: "orderStatus", version: 1, paramsSchema, source: { id: "orders" } } as unknown as ChannelRuntime,
+      adminAudit: { name: "adminAudit", version: 1, paramsSchema: auditSchema, source: { id: "audit" } } as unknown as ChannelRuntime
+    };
+    const transport = { sendHello() {}, sendState() {}, sendData() {}, sendError() {}, bufferedBytes: () => 0, close() {} };
+    const client = new ClientSession({
+      owner: { core, channel: name => channels[name], sessionClosed() {} },
+      transport, principal, identityKey: "k", previewSessionId: null
+    });
+    const subscribe = (channelName: string, params: unknown, subscriptionId: string = crypto.randomUUID()) => {
+      let result: Result<unknown> | undefined;
+      try {
+        client.handleSubscribe(
+          { requestId: crypto.randomUUID(), subscriptionId, channel: channelName, channelVersion: 1, params },
+          (value: Result<unknown>) => { result = value; }
+        );
+      } catch {
+        // Starting an accepted subscription needs a real core; only the reply matters here.
+      }
+      return result!.ok ? null : result!.error;
+    };
+    return { subscribe, traces };
+  }
+
+  it("answers schema-invalid parameters like an unknown channel in production", () => {
+    const production = session("production");
+    const unknown = production.subscribe("secretChannel", {});
+    const invalid = production.subscribe("orderStatus", {});
+    assert.equal(unknown?.code, "FORBIDDEN");
+    assert.deepEqual({ ...invalid, requestId: "" }, { ...unknown, requestId: "" }, "no channel or parameter names are revealed");
+    assert.deepEqual(production.traces.page({ limit: 10 }).items.map(trace => trace.errorCode), ["CHANNEL_NOT_FOUND", "INVALID_PARAMS"]);
+    // Channel-independent checks still say what is wrong.
+    assert.equal(production.subscribe("secretChannel", { orderId: "x".repeat(5_000) })?.code, "INVALID_PARAMS");
+    const development = session("development").subscribe("orderStatus", {});
+    assert.equal(development?.code, "INVALID_PARAMS");
+    assert.match(development?.message ?? "", /orderId/);
+  });
+
+  it("answers a reused subscription ID the same way for known and unknown channels", () => {
+    const production = session("production");
+    const held = crypto.randomUUID();
+    assert.equal(production.subscribe("orderStatus", { orderId: "o1" }, held), null);
+    const answers = [
+      production.subscribe("doesNotExist", {}, held),
+      production.subscribe("adminAudit", { scope: "x" }, held),
+      production.subscribe("adminAudit", { auditScope: "x" }, held)
+    ];
+    assert.deepEqual(answers.map(error => error?.code), ["INVALID_REQUEST", "INVALID_REQUEST", "INVALID_REQUEST"]);
+    assert.ok(answers.every(error => error?.message === answers[0]?.message), "no channel or parameter names are revealed");
+    assert.equal(production.subscribe("orderStatus", { orderId: "o2" }, held)?.code, "INVALID_REQUEST", "the held channel with other parameters");
+    assert.equal(production.subscribe("orderStatus", { orderId: "o1" }, held), null, "an identical retry is idempotent");
+  });
+
+  it("answers the subscription limit the same way for known and unknown channels", () => {
+    const production = session("production", { maxSubscriptionsPerConnection: 1 });
+    assert.equal(production.subscribe("orderStatus", { orderId: "o1" }), null);
+    const answers = [
+      production.subscribe("doesNotExist", {}),
+      production.subscribe("adminAudit", { scope: "x" }),
+      production.subscribe("adminAudit", { auditScope: "x" })
+    ];
+    assert.deepEqual(answers.map(error => error?.code), ["OVERLOADED", "OVERLOADED", "OVERLOADED"]);
   });
 });

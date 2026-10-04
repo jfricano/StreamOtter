@@ -244,6 +244,9 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
     };
     connection = new Connection({ origin: this.#origin, path: this.#path, token, events });
     const hello = await connection.ready;
+    // A close read with the hello (one socket read) runs before this continuation; its disconnect
+    // was not routed because the connection is not adopted yet, so treat it as a failed attempt.
+    if (!connection.connected) throw streamError("SOURCE_UNAVAILABLE", { message: "The connection closed during the handshake.", retryable: true });
     return { connection, hello };
   }
 
@@ -417,6 +420,7 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
     const change: StateChange<ConnectionState> = reason === undefined ? { state } : { state, reason };
     for (const listener of [...this.#internalStateListeners]) listener(state);
     for (const listener of [...this.#stateListeners]) {
+      if (!this.#stateListeners.has(listener)) continue; // Removed during this dispatch.
       try {
         listener(change);
       } catch (error) {
@@ -427,6 +431,7 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
 
   #emitError(error: StreamError): void {
     for (const listener of [...this.#errorListeners]) {
+      if (!this.#errorListeners.has(listener)) continue; // Removed during this dispatch.
       try {
         listener(error);
       } catch (cause) {

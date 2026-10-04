@@ -2,7 +2,7 @@ import {
   isPlainObject, resolveSourcePolicy, StreamOtterError,
   type ChannelMap, type FailurePolicy, type HandlerRegistry, type ProjectConfig
 } from "@streamotter/contracts";
-import { nodeSqliteSupported } from "./journal.ts";
+import { NODE_SQLITE_FLOOR, nodeSqliteSupported } from "./journal.ts";
 
 /** The source-failure features this build of the gateway implements. */
 export interface FailureCapabilities {
@@ -59,7 +59,7 @@ export function failureOptionIssues(
     issues.push(`source ${quarantined[0]} uses a quarantine policy, which requires stateDirectory in production so incidents survive a restart`);
   }
   if (options.stateDirectory !== undefined && config.failureHandling !== undefined && !nodeSupportsJournal(nodeVersion)) {
-    issues.push(`the failure journal needs Node ${MIN_JOURNAL_NODE.join(".")} or newer; this is Node ${nodeVersion}`);
+    issues.push(`the failure journal needs Node ${NODE_SQLITE_FLOOR} or later; this is Node ${nodeVersion}`);
   }
   const connections = new Set<string>();
   for (const sourceId of quarantined) {

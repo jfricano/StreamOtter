@@ -50,6 +50,40 @@ function service(writer: QuarantineWriter, maxSourceRecordBytes = 1_048_576): Fa
   return failures;
 }
 
+describe("FailureService local evidence retention", () => {
+  it("expires local fixture evidence older than seven days when it starts", t => {
+    const store = new MemoryIncidentStore();
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() - 8 * 24 * 60 * 60 * 1000 });
+    store.putEvidence("f1:old", { key: null, value: new Uint8Array(4), headers: [] });
+    t.mock.timers.reset();
+    store.putEvidence("f1:recent", { key: null, value: new Uint8Array(4), headers: [] });
+    new FailureService({
+      config, store, logger: silent, quarantine: null,
+      configFingerprint: "c".repeat(64), handlerBuildId: "build-7", maxSourceRecordBytes: 1_048_576
+    });
+    assert.equal(store.getEvidence("f1:old"), null);
+    assert.notEqual(store.getEvidence("f1:recent"), null);
+  });
+
+  it("expires local fixture evidence older than seven days before it stores more", async t => {
+    const store = new MemoryIncidentStore();
+    const failures = new FailureService({
+      config, store, logger: silent, quarantine: null,
+      configFingerprint: "c".repeat(64), handlerBuildId: "build-7", maxSourceRecordBytes: 1_048_576
+    });
+    // Stored after the startup prune ran, as in a gateway left running for over a week.
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() - 8 * 24 * 60 * 60 * 1000 });
+    store.putEvidence("f1:old", { key: null, value: new Uint8Array(4), headers: [] });
+    t.mock.timers.reset();
+    const fixture: FailureSource = { ...source, config: { ...source.config, kind: "fixture" } as FailureSource["config"] };
+    await failures.held(fixture, { ...input, position: { kind: "fixture", index: "0" } }, pause);
+    assert.equal(store.getEvidence("f1:old"), null);
+    const [incident] = store.open("orders");
+    assert.equal(incident?.evidence.location, "local");
+    assert.notEqual(store.getEvidence(incident?.failureId as string), null, "the new evidence is stored");
+  });
+});
+
 describe("FailureService quarantine outcomes", () => {
   it("F14: an unknown write is never success; a later acknowledged write completes the same incident", async () => {
     const writer = new ScriptedWriter([{ kind: "unknown", reason: "REQUEST_TIMEOUT" }, { kind: "acknowledged", partition: 2, offset: "9" }]);

@@ -283,6 +283,21 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       store.close();
     });
 
+    it("prunes evidence stored before a cutoff, as local fixture evidence expires", t => {
+      const store = create();
+      t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-01-01T00:00:00.000Z") });
+      store.putEvidence("f1:old", { key: null, value: new Uint8Array(10), headers: [] });
+      t.mock.timers.setTime(Date.parse("2026-01-09T00:00:00.000Z"));
+      store.putEvidence("f1:new", { key: null, value: new Uint8Array(20), headers: [] });
+      t.mock.timers.reset();
+      assert.equal(store.pruneEvidence("2026-01-02T00:00:00.000Z"), 1);
+      assert.equal(store.getEvidence("f1:old"), null);
+      assert.equal(store.getEvidence("f1:new")?.value?.byteLength, 20);
+      assert.equal(store.usage().spoolBytes, 20);
+      assert.equal(store.pruneEvidence("2026-01-02T00:00:00.000Z"), 0, "idempotent");
+      store.close();
+    });
+
     it("refuses evidence past the spool budget without evicting anything", () => {
       const store = create({ spoolLimitBytes: 1_000 });
       store.putEvidence("f1:a", { key: null, value: new Uint8Array(600), headers: [] });

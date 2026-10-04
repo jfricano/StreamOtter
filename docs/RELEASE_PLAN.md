@@ -85,6 +85,8 @@ Preparation (no remote needed):
 
 **Status (September 25):** `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, and `.github/workflows/ci.yml` (every push and pull request: Node 24 and 26, the frozen-lockfile install, build, `check:contracts`, `typecheck`, `test`, `test:load`, and `test:install`) and `extended.yml` (nightly and on demand, Linux: Java from `actions/setup-java`, then `test:kafka`, `test:install` with the broker, `test:browser`, and `test:deploy`) are in place. On September 25 the repository was created (public) and `main` was pushed. `ci.yml` passed on its first run: both Node versions, every step including `test:install`, about 70 seconds per job. `extended.yml` passed on its first (manual) run: Kafka 20 / 20, install 14 / 14, browser 13 / 13, and deployment 4 / 4 on Linux, none skipped. The pre-push review found nothing to remove.
 
+**Update (October 4, V1.2.1, in `0.2.0-rc.1`):** both workflows pin their actions by commit SHA. `extended.yml` no longer uses `actions/setup-java`: `pnpm kafka:setup` downloads a pinned, checksum-verified Temurin 21 on x64 and arm64 Linux. It runs on Node 24 and 26, and a second nightly job runs `test:kafka:replicated` on Node 24. The Kafka and deployment tiers fail, rather than skip, when their broker or Caddy is missing. The extended tiers still don't run on pull requests; [CONTRIBUTING.md](../CONTRIBUTING.md#test-tiers) says how to run them for a branch.
+
 Pushing publishes code and is done only with the owner's explicit go-ahead. The repository is public, so the npm pages' links resolve.
 
 ### 4. Home site and live demo (separate project)

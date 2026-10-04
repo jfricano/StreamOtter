@@ -52,7 +52,7 @@ An example value:
 | `sasl` | Optional. `plain`, `scram-sha-256`, or `scram-sha-512`. `username` and `password` name environment variables, never literal values. |
 | `generation` | Any identifier. Change it when you recreate the topics or point the source at a different cluster; it is part of every record's identity. |
 | `consumerGroup` | Used only by this source of this gateway. Never share it with another application or with a second gateway. |
-| `startFrom` | Where a **new** consumer group starts: `latest` (only new records) or `earliest` (the whole topic). Once the group has committed offsets, it always resumes from them. |
+| `startFrom` | Where a **new** consumer group starts: `latest` (only new records) or `earliest` (the whole topic). With `latest`, the gateway commits the start position as soon as it joins and starts fetching, so a restart before the first record is processed doesn't skip records produced in between. If that position can't be read at startup (within five seconds) or committed, or the group rebalances before it is committed, the gateway logs a warning and this protection is lost until the first record is committed. Once the group has committed offsets, it always resumes from them. If a committed offset has fallen outside the topic's retained range (retention deleted it), Kafka resets the group to the `startFrom` position, so records can be skipped or read again; the gateway logs a warning when that happens. |
 
 Missing environment variables or an unreadable CA file stop startup with a clear message and never print the values. Credentials never appear in exports, logs, or traces.
 
@@ -60,7 +60,7 @@ Then point your channel at the source (`"source": "orders"`) and write a `map` h
 
 ## Progress and commits
 
-The gateway commits a record's offset only after it has fully processed it: validated, mapped, and admitted to (or explicitly invalidated for) every interested subscription. A record that no subscription cares about, or that `map` filters out with `[]`, is committed too. A commit never means that a browser received the data, and source progress never waits for browsers. A slow client is disconnected rather than allowed to hold up the topic.
+The gateway commits a record's offset only after it has fully processed it: validated, mapped, and admitted to (or explicitly invalidated for) every interested subscription. A record that no subscription cares about, or that `map` filters out with `[]`, is committed too. A commit never means that a browser received the data, and source progress never waits for browsers. A slow client is disconnected rather than allowed to hold up the topic. If a commit fails, the gateway logs a warning and retries it every second until it succeeds or a later commit or a rebalance replaces it; until then, a restart can redeliver that record, which revisions make harmless.
 
 ## When a record is bad
 
@@ -71,6 +71,8 @@ To recover, fix the cause (usually your `map` handler: correct it, or have it re
 - in development, press **Resume** in the workbench's Connect tab;
 - from code, call `gateway.resumeSource("orders")`;
 - with `streamotter start`, deploy the fix and restart the gateway. It resumes from the last committed offset, which is the paused record.
+
+A conflicting duplicate revision is different: when the source paused, its views went `stale` and the state the record conflicted with was discarded, so a resume compares the record only with current state and usually admits it. Decide which data is correct before resuming; the gateway logs a warning when it resumes after a revision conflict.
 
 That is the default. V1.1 adds opt-in failure policies: every bad record becomes a durable incident, and for invalid JSON and payload-schema failures the original record can be copied to a quarantine topic, then held, or moved past only when your application's recovery guard approves. Nothing is ever skipped silently. See [Handle bad records](./source-failures.md).
 

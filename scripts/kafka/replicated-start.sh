@@ -21,7 +21,9 @@
 # Data persists in .local/kafka-replicated across restarts. Safe to rerun.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Physical path (pwd -P), so the same checkout reached through a symbolic link names the same config
+# file on the broker's command line and still recognizes its own broker.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 LOCAL="$ROOT/.local"
 KAFKA="$LOCAL/kafka"
 BASE="$LOCAL/kafka-replicated"
@@ -34,7 +36,12 @@ if [ ! -x "$KAFKA/bin/kafka-server-start.sh" ]; then
   echo "Kafka is not installed; run ./scripts/kafka/setup.sh first." >&2
   exit 1
 fi
-if [ -x "$LOCAL/jdk/bin/java" ]; then export JAVA_HOME="$LOCAL/jdk"; fi
+if [ -x "$LOCAL/jdk/bin/java" ]; then
+  export JAVA_HOME="$LOCAL/jdk"
+elif ! command -v java >/dev/null; then
+  echo "No Java found: .local/jdk is missing and java is not on PATH. Run ./scripts/kafka/setup.sh, or install a JDK 17 or newer." >&2
+  exit 1
+fi
 # Kafka's scripts write logs under the installation unless told otherwise; keep them here.
 mkdir -p "$BASE/tool-logs"
 export LOG_DIR="$BASE/tool-logs"
@@ -50,20 +57,26 @@ port_of() {
 # True when the live process names the node's config file on its command line. The command line
 # reads as empty for a moment while the start scripts exec into java, so an empty read is retried.
 # Uses ps rather than /proc so it also works on macOS; -ww keeps Kafka's long command line whole.
+# The path must follow a space, so /other/repo/.local/... never matches. Returns 2 (rather than 1) when
+# the process is still a Kafka broker started with some other config path, so callers keep its pid file.
 owns() {
   local pid="$1" config="$2" cmdline
   for _ in $(seq 1 20); do
     kill -0 "$pid" 2>/dev/null || return 1
     cmdline="$(ps -ww -p "$pid" -o command= 2>/dev/null || true)"
     if [ -n "$cmdline" ]; then
-      case "$cmdline" in *"$config"*) return 0 ;; *) return 1 ;; esac
+      case "$cmdline" in
+        *" $config"|*" $config "*) return 0 ;;
+        *" kafka.Kafka "*|*"/kafka-server-start.sh "*) return 2 ;;
+        *) return 1 ;;
+      esac
     fi
     sleep 0.1
   done
   return 1
 }
 
-# A node is running when its pidfile names a live process started with its own config file.
+# A node is running when its pidfile names a live process started with its own config file; returns 2 as owns does.
 running() {
   local dir="$BASE/node-$1"
   [ -f "$dir/pid" ] || return 1
@@ -118,10 +131,14 @@ cluster_id() {
 }
 
 launch() {
-  local id="$1" dir="$BASE/node-$1"
-  if running "$id"; then
+  local id="$1" dir="$BASE/node-$1" status=0
+  running "$id" || status=$?
+  if [ "$status" = 0 ]; then
     echo "Node $id is already running (pid $(cat "$dir/pid"))."
     return 0
+  elif [ "$status" = 2 ]; then
+    echo "Warning: $dir/pid names a running Kafka process (pid $(cat "$dir/pid")) whose command line does not name $dir/server.properties; left it running and kept the pid file. Stop it yourself if it is this node." >&2
+    exit 1
   fi
   write_config "$id"
   if [ ! -f "$dir/data/meta.properties" ]; then

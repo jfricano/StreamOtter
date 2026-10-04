@@ -25,8 +25,8 @@ export interface SessionHandlers {
 }
 
 export interface TransportCallbacks {
-  /** Validates origin and credentials; resolves to a principal or a public error. */
-  authenticate(input: { auth: unknown; origin: string | undefined }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }>;
+  /** Validates origin and credentials; resolves to a principal or a public error. `signal` aborts when the client disconnects. */
+  authenticate(input: { auth: unknown; origin: string | undefined; signal: AbortSignal }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }>;
   /** Creates the session for an authenticated connection. */
   openSession(result: HandshakeResult, transport: ConnectionTransport): SessionHandlers;
 }
@@ -102,10 +102,28 @@ export function attachSocketIo(httpServer: HttpServer, options: {
     pingTimeout: 20_000
   });
 
+  // engine.io connections with a CONNECT pending or open. socket.io itself closes the connection on a
+  // CONNECT after one completed, but not on one sent while the first is still being authenticated:
+  // each would open its own session, and only the last would receive the client's messages.
+  const claimed = new WeakSet<object>();
+
   io.use((socket, next) => {
+    const conn = socket.conn;
+    if (claimed.has(conn)) {
+      conn.close();
+      next(new Error("Only one CONNECT is allowed at a time on a connection."));
+      return;
+    }
+    claimed.add(conn);
     const origin = socket.handshake.headers.origin;
-    options.callbacks.authenticate({ auth: socket.handshake.auth, origin }).then(result => {
+    const disconnected = new AbortController();
+    const onClose = () => disconnected.abort();
+    conn.once("close", onClose);
+    options.callbacks.authenticate({ auth: socket.handshake.auth, origin, signal: disconnected.signal }).finally(() => {
+      conn.off("close", onClose);
+    }).then(result => {
       if (!result.ok) {
+        claimed.delete(conn);
         const error = new Error(result.error.message) as Error & { data?: StreamError };
         error.data = result.error;
         next(error);
@@ -114,6 +132,7 @@ export function attachSocketIo(httpServer: HttpServer, options: {
       socket.data.handshake = result.value;
       next();
     }, () => {
+      claimed.delete(conn);
       const error = new Error("An unexpected error occurred.") as Error & { data?: StreamError };
       error.data = { code: "INTERNAL", message: "An unexpected error occurred.", retryable: true, requestId: "" };
       next(error);
@@ -135,7 +154,10 @@ export function attachSocketIo(httpServer: HttpServer, options: {
     untyped.onAny((event: unknown, ...args: unknown[]) => {
       if (typeof event !== "string" || !KNOWN_EVENTS.has(event)) session.handleUnknown(String(event), args);
     });
-    socket.on("disconnect", () => session.handleTransportClosed());
+    socket.on("disconnect", () => {
+      claimed.delete(socket.conn);
+      session.handleTransportClosed();
+    });
     session.open();
   });
 

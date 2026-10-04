@@ -103,7 +103,7 @@ export const development = {
 };
 ```
 
-A fixture source may use quarantine policies. Its evidence stays in the local store and is labeled "fixture evidence, not Kafka" everywhere. Advance the fixture in the workbench, then open the **Failures** tab.
+A fixture source may use quarantine policies. Its evidence stays in the local store and is labeled "fixture evidence, not Kafka" everywhere. Like a quarantine topic's copy under Kafka's default seven-day retention, local evidence expires seven days after it was stored; evaluating an incident after that reports `evidence-expired`. Advance the fixture in the workbench, then open the **Failures** tab.
 
 ## 3. Choose a policy
 
@@ -381,7 +381,7 @@ Replication settings decide what survives a broker failure. `status` reports the
 
 Symptoms: the log line "The failure journal could not record an incident; the source stays paused and nothing is skipped" (or "…could not record a state change…"); readiness reports `journal`; `status` shows the journal near its limit; operator actions are refused with `journal-unavailable`; errors are `OVERLOADED` with reason `journal-full`.
 
-Limits: the journal holds at most 256 MiB. The local raw spool, used for fixture evidence, holds 16 MiB. It keeps at most 10,000 operator operations, pruning the oldest finished ones. Nothing else is evicted: the journal refuses the write and the source stays held, because unresolved decision state must not be lost.
+Limits: the journal holds at most 256 MiB. The local raw spool, used for fixture evidence, holds 16 MiB; evidence older than seven days is deleted at startup and before new evidence is stored. It keeps at most 10,000 operator operations, pruning the oldest finished ones. Nothing else is evicted: the journal refuses the write and the source stays held, because unresolved decision state must not be lost.
 
 Do:
 

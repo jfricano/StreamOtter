@@ -69,14 +69,20 @@ describe("acceptance 6 (fixture): unprocessable records pause without skipping",
     assert.deepEqual(seen.events.map(event => event.revision), ["1"], "the valid output was not admitted either");
   });
 
-  it("pauses on a revision conflict against current state", async () => {
-    h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 1, "processing", 99)] });
+  it("pauses on a revision conflict against current state, and warns that a resume can't recheck the discarded state", async () => {
+    const warnings: string[] = [];
+    h = await startHarness({
+      fixtures: [orderRecord("acme", "ord_1", 1, "processing", 99)],
+      logger: { info() {}, warn(message) { warnings.push(message); }, error() {} }
+    });
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
     const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
     await sub.ready();
     assert.equal(await h.advance(1), 0);
     assert.equal(h.internals.sources()[0]?.reason, "REVISION_CONFLICT");
     await waitFor(() => sub.state === "stale");
+    await h.gateway.resumeSource("orders");
+    assert.ok(warnings.some(message => message.startsWith("Resuming after a revision conflict")), "the resume is logged as unchecked");
   });
 
   for (const [label, override, limits, reason] of [

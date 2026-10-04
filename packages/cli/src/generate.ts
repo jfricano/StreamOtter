@@ -63,11 +63,14 @@ function pascalCase(id: string): string {
   return id.split(/[-_]+/).filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("");
 }
 
-/** Maps schema IDs to unique, valid, non-shadowing TypeScript type names. */
+/**
+ * Maps schema IDs to unique, valid, non-shadowing TypeScript type names. IDs that collide get
+ * numeric suffixes in sorted ID order, so reordering the schemas doesn't rename their types.
+ */
 export function typeNames(schemaIds: readonly string[]): Map<string, string> {
   const names = new Map<string, string>();
   const used = new Set<string>();
-  for (const id of schemaIds) {
+  for (const id of [...schemaIds].sort()) {
     let name = pascalCase(id);
     if (RESERVED.has(name)) name = `${name}Schema`;
     let candidate = name;

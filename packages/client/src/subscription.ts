@@ -70,6 +70,8 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   #epoch: string | null = null;
   /** Set after we ask the gateway to replace `#epoch`; old-epoch progress is ignored. */
   #replacing: string | null = null;
+  /** A resync request was sent and no new epoch (or refusal) has answered it; later resyncs join it. */
+  #resyncPending = false;
   #awaitingEpoch = true;
   #expectedSequence = 1;
   #epochRevision: Revision | null = null;
@@ -122,6 +124,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     const blocked = this.#blockedError(true);
     if (blocked !== null) return Promise.reject(asStreamOtterError(blocked));
     const wait = this.#waiters.wait(options);
+    if (this.#resyncPending) return wait; // Joins the request already on its way.
     this.#localFailures = 0;
     this.#requestFreshSynchronization();
     return wait;
@@ -150,6 +153,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#subscribeInFlight = false;
     this.#epoch = null;
     this.#replacing = null;
+    this.#resyncPending = false;
     this.#awaitingEpoch = true;
     this.#setState("authorizing");
     void this.#subscribe(connection);
@@ -163,6 +167,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#subscribeInFlight = false;
     this.#awaitingEpoch = true;
     this.#replacing = null;
+    this.#resyncPending = false;
     if (this.#terminal || this.#state === "resync-required") return;
     this.#setState("stale", reason);
   }
@@ -189,6 +194,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
       if (frame.epoch === this.#epoch && !this.#awaitingEpoch) return;
       this.#epoch = frame.epoch;
       this.#replacing = null;
+      this.#resyncPending = false;
       this.#awaitingEpoch = false;
       this.#expectedSequence = 1;
       this.#epochRevision = null;
@@ -261,6 +267,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#epochRevision = event.revision;
     if (this.#lastRevision === null || compareRevisions(event.revision, this.#lastRevision) > 0) this.#lastRevision = event.revision;
     for (const listener of [...this.#listeners.data]) {
+      if (!this.#listeners.data.has(listener)) continue; // Removed during this dispatch.
       if (!this.#invoke(listener, event as StreamEvent<D>)) return;
     }
     connection.receipt({ subscriptionId: this.id, epoch: frame.epoch, sequence: frame.sequence });
@@ -342,13 +349,24 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
       this.attach(connection);
       return;
     }
-    if (this.#state === "authorizing" || this.#state === "synchronizing") return; // Joins the running synchronization.
+    // Joins the running synchronization. A stale view stays stale while its resync is pending, so the
+    // pending flag, not the state, says whether one is already on its way.
+    if (this.#state === "authorizing" || this.#state === "synchronizing" || this.#resyncPending) return;
     this.#clearRetry();
     this.#replacing = this.#epoch;
+    this.#resyncPending = true;
     this.#awaitingEpoch = true;
-    this.#setState("authorizing");
+    // A stale view stays stale until the gateway announces the attempt: while its source is
+    // unavailable the gateway holds the request, and showing authorizing would hide the outage.
+    if (this.#state !== "stale") this.#setState("authorizing");
     const replacing = this.#epoch;
-    connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }).then(result => {
+    const acknowledged = (result: { ok: boolean }) => {
+      // Frames after the acknowledgement follow the request (the socket is ordered), so from here a
+      // resync-required for the old epoch means this attempt gave up too. Runs synchronously,
+      // before frames read in the same socket read as the acknowledgement.
+      if (result.ok && connection === this.#attached && this.#replacing === replacing) this.#replacing = null;
+    };
+    connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }, acknowledged).then(result => {
       if (connection !== this.#attached || this.#terminal || result.ok) return;
       this.#lastError = result.error;
       this.#emitError(result.error);
@@ -360,6 +378,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
       // for a replacement and ask again with backoff, then give up as resync-required.
       if (this.#replacing !== replacing || this.#epoch !== replacing) return; // A new epoch already arrived.
       this.#replacing = null;
+      this.#resyncPending = false;
       this.#awaitingEpoch = true; // Frames of the kept epoch are receipted but no longer delivered.
       this.#localFailures++;
       if (this.#localFailures >= LOCAL_SYNC_ATTEMPTS) {
@@ -437,11 +456,13 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
 
   #setState(state: SubscriptionState, reason?: ErrorCode, force = false): void {
     if (this.#terminal && !force) return;
+    if (state === "resync-required") this.#resyncPending = false; // The gateway or the SDK gave up on it.
     if (this.#state === state && this.#reason === reason) return;
     this.#state = state;
     this.#reason = reason;
     const change: StateChange<SubscriptionState> = reason === undefined ? { state } : { state, reason };
     for (const listener of [...this.#listeners.state]) {
+      if (!this.#listeners.state.has(listener)) continue; // Removed during this dispatch.
       if (!this.#invoke(listener, change)) return;
     }
     if (state === "live") this.#waiters.resolveAll();
@@ -481,6 +502,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   /** Error-listener failures are logged, never re-emitted. */
   #emitError(error: StreamError): void {
     for (const listener of [...this.#listeners.error]) {
+      if (!this.#listeners.error.has(listener)) continue; // Removed during this dispatch.
       try {
         const returned = listener(error);
         if (isThenable(returned)) Promise.resolve(returned).catch((cause: unknown) => this.#owner.logListenerFailure(cause));

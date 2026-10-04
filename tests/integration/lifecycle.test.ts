@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:net";
 import { afterEach, describe, it, mock } from "node:test";
 import { createClient } from "@streamotter/client";
 import { createGateway, silentLogger } from "@streamotter/gateway";
@@ -84,6 +85,30 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     assert.equal(sub.state, "live");
   });
 
+  it("ready() times out after 30 seconds by default without cancelling the subscription", async t => {
+    h = await startHarness();
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const gate = deferred();
+    h.app.snapshotGate = () => gate.promise;
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    await waitFor(() => h!.app.snapshotCalls === 1, 5_000, "snapshot started");
+    // Mocked only from here, so the gateway's own snapshot deadline keeps its real timer.
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let outcome: string | null = null;
+    const waiting = sub.ready().then(() => { outcome = "live"; }, (error: { code?: string }) => { outcome = error.code ?? "?"; });
+    t.mock.timers.tick(29_999);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(outcome, null);
+    t.mock.timers.tick(1);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(outcome, "TIMEOUT");
+    await waiting;
+    t.mock.timers.reset();
+    gate.resolve();
+    await sub.ready();
+    assert.equal(sub.state, "live");
+  });
+
   it("concurrent resync calls join one synchronization", async () => {
     h = await startHarness();
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
@@ -142,8 +167,12 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     mock.method(console, "error", () => undefined);
     const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
     const failed = new Promise<string>(resolve => sub.on("state", ({ state }) => { if (state === "failed") resolve(state); }));
+    const errors: string[] = [];
+    sub.on("error", error => errors.push(error.code));
     sub.on("data", async () => { throw new Error("async render bug"); });
     assert.equal(await failed, "failed");
+    assert.deepEqual(errors, ["HANDLER_FAILED"]);
+    await waitFor(() => h!.internals.subscriptionCount() === 0, 5_000, "the gateway released the failed subscription");
   });
 
   it("logs error-listener failures without recursive error emission", async () => {
@@ -201,14 +230,49 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     await sub.ready();
   });
 
+  it("suspends in auth-required when getToken does not resolve within ten seconds", async t => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let signal: AbortSignal | undefined;
+    const client = createClient<TestChannels>({ origin: "http://127.0.0.1:1", getToken: context => { signal = context.signal; return new Promise<string>(() => {}); } });
+    try {
+      const sub = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+      const ready = sub.ready().then(() => null, (error: { code?: string }) => error.code);
+      const flush = () => new Promise(resolve => setImmediate(resolve));
+      await flush();
+      assert.ok(signal !== undefined, "getToken was called");
+      t.mock.timers.tick(9_999);
+      await flush();
+      assert.equal(client.state, "connecting");
+      assert.equal(signal.aborted, false);
+      t.mock.timers.tick(1);
+      await flush();
+      assert.equal(client.state, "auth-required");
+      assert.equal(signal.aborted, true, "the pending getToken call is aborted");
+      assert.equal(await ready, "UNAUTHENTICATED");
+    } finally {
+      await client.close();
+    }
+  });
+
   it("retries rate-limited subscribes with bounded backoff instead of failing", async () => {
     h = await startHarness({ limits: { controlRequestsPerSecond: 1 } });
     for (let i = 1; i <= 4; i++) h.app.put("acme", "alice", `ord_${i}`, 1, "queued", 0);
     const client = h.client();
     const subs = [1, 2, 3, 4].map(i => client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: `ord_${i}` } }));
     const seen = subs.map(observe);
+    // When each subscription was refused and when it next tried again.
+    const retryGaps: number[] = [];
+    for (const sub of subs) {
+      let refusedAt: number | null = null;
+      sub.on("state", ({ state, reason }) => {
+        if (state === "stale" && reason === "OVERLOADED") refusedAt = Date.now();
+        else if (state === "authorizing" && refusedAt !== null) { retryGaps.push(Date.now() - refusedAt); refusedAt = null; }
+      });
+    }
     await Promise.all(subs.map(sub => sub.ready({ timeoutMs: 8_000 })));
     assert.ok(seen.some(record => record.reasons.includes("OVERLOADED")), "at least one subscribe was rate limited");
+    assert.ok(retryGaps.length > 0);
+    assert.ok(retryGaps.every(gap => gap >= 900), `retries waited at least one second: ${retryGaps.join(", ")} ms`);
     assert.ok(subs.every(sub => sub.state === "live"));
   });
 
@@ -242,6 +306,29 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     await client.close();
   });
 
+  it("stop() resolves by its deadline even when shutdown work hangs", async () => {
+    h = await startHarness();
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    await sub.ready();
+    const hang = deferred();
+    h.internals.onStop(() => hang.promise);
+    const stopping = Date.now();
+    let outcome: string;
+    try {
+      outcome = await Promise.race([
+        h.gateway.stop({ timeoutMs: 300 }).then(() => "stopped"),
+        sleep(3_000).then(() => "still stopping")
+      ]);
+    } finally {
+      hang.resolve();
+    }
+    const elapsed = Date.now() - stopping;
+    assert.equal(outcome, "stopped");
+    assert.ok(elapsed >= 250 && elapsed < 1_500, `stop took ${elapsed} ms`);
+    await waitFor(() => sub.state === "stale", 5_000, "the client noticed the closed connection");
+  });
+
   it("stop() during startup rolls the start back within its own deadline", async () => {
     const base = orderConfig();
     const config = {
@@ -256,5 +343,25 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     await gateway.stop({ timeoutMs: 500 });
     assert.ok(Date.now() - stopping < 1_500, `stop took ${Date.now() - stopping} ms`);
     assert.equal(await started, "SOURCE_UNAVAILABLE");
+  });
+
+  it("releases the listening port at the stop deadline while slower shutdown work finishes in the background", async () => {
+    const infos: string[] = [];
+    const harness = await startHarness({ logger: { info(message) { infos.push(message); }, warn() {}, error() {} } });
+    const release = deferred();
+    harness.internals.onStop(() => release.promise);
+    const port = Number(new URL(harness.origin).port);
+    const stopping = Date.now();
+    await harness.gateway.stop({ timeoutMs: 200 });
+    assert.ok(Date.now() - stopping < 1_000, `stop took ${Date.now() - stopping} ms`);
+    // The port can be bound again, on every address, as soon as stop() returns, although the stop
+    // callback above has not returned.
+    await new Promise<void>((resolve, reject) => {
+      const server = createServer();
+      server.once("error", reject);
+      server.listen({ port }, () => server.close(() => resolve()));
+    });
+    release.resolve();
+    await waitFor(() => infos.includes("Shutdown work still running at the stop deadline has finished"), 2_000, "the background work's completion log");
   });
 });

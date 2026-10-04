@@ -24,7 +24,8 @@
     }
   },
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "prepack": "node build.mjs"
   },
   "devDependencies": {
     "@streamotter/client": "workspace:*",

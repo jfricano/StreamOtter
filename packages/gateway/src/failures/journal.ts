@@ -934,6 +934,10 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  pruneEvidence(storedBefore: string): number {
+    return this.#write(() => Number(this.#statement("DELETE FROM evidence WHERE stored_at < ?").run(storedBefore).changes));
+  }
+
   boundary(sourceId: string): StoredBoundary | null {
     return this.#inForceBoundary(sourceId);
   }
