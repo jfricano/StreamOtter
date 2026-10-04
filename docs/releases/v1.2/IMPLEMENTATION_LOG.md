@@ -52,3 +52,8 @@ On Node 24.21.0 at the final commit:
 - `test:load` 1, `test:kafka` 44 (single broker), `test:kafka:replicated` 2 (three brokers), `test:browser` 58, `test:deploy` 4 (Caddy), `test:install` 22: all pass.
 - The first `test:kafka` run failed the new paused-source test: partition 1 can be processed before the poison record pauses the source. The test now checks that nothing moves after the pause, instead of expecting nothing at all.
 - Node 26 was not run.
+
+### October 4, 2026 — release docs
+
+- V1.1, V1.2 and V1.2.1 ship together as `0.2.0-rc.1`. The CHANGELOG, acceptance packet, release checklist, roadmap, status page and package READMEs describe that one release.
+- Moved `docs/v2/V2_3_EVENT_JOURNEY_VERIFICATION.md` to `docs/releases/v2.3/`, so every release plan lives under `docs/releases/`. Its links and the two inbound links were updated. User-facing docs (guides, `DEPLOYMENT.md`, `V1_API.md`) stay where they are, because the READMEs already published on npm link to those paths.

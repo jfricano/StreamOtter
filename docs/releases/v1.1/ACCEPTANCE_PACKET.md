@@ -115,7 +115,7 @@ These ACLs follow from the client calls. They have not been checked against a br
 - No command prunes resolved incidents. The journal stops at 256 MiB and then holds the source rather than lose state.
 - Moving a consumer group past a record still in the topic is done with Kafka's own tools, not by StreamOtter.
 - The operator socket is not available on Windows.
-- Fixture evidence in the local spool is never deleted (review finding J7). This affects only `streamotter dev` with fixture sources; the spool is capped at 16 MiB.
+- Fixture evidence in the local spool (`streamotter dev` with fixture sources) expires seven days after it was stored (review finding J7, fixed in V1.2.1); the spool is capped at 16 MiB.
 - While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds until a restart reconciles it. This is deliberate (review finding A), but it means one uncertain advance stops every partition of that source.
 - `KafkaQuarantineReader` reports `unavailable` on a coordinator reload (`GROUP_LOAD_IN_PROGRESS`) right after a broker rejoins, instead of retrying within its deadline. It fails closed; the operator repeats the command.
 - If a source's group coordinator is lost during an advance, the assignment epoch changes and the incident becomes `uncertain`; a restart reconciles it. Seen once in an F47 development run, not covered by a test.

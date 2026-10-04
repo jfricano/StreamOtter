@@ -247,6 +247,22 @@ An independent review of V1 and V1.1 together found 15 major and 57 minor issues
 
 CI ran `pnpm verify` on Node 24 and 26.
 
+## V1.2.1 minor fixes (0.2.0-rc.1)
+
+The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolved ([docs/releases/v1.2.1](./releases/v1.2.1/README.md)). An independent review of the fixes found 19 minor issues, all fixed. On Node 24.21.0, after the review fixes, every tier passed, none skipped:
+
+| Tier | Tests passed |
+| --- | --- |
+| `pnpm verify` | 444 |
+| `test:kafka` | 48 |
+| `test:kafka:replicated` | 3 |
+| `test:browser` | 59 |
+| `test:deploy` | 5 |
+| `test:install` | 22 |
+| `test:load` | 1 |
+
+GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by hand, passed on Node 24 and 26, along with the nightly replicated-Kafka job.
+
 ## Gate A status (home site and demo plan)
 
 | Gate A condition | Status |
