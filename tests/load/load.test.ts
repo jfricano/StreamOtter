@@ -65,15 +65,26 @@ describe("declared workload: fan-out, stalled clients, and churn", () => {
       const sampler = setInterval(() => { peakPending = Math.max(peakPending, h.internals.pendingBytes()); }, 5);
       const advanceStarted = Date.now();
       let advanced = 0;
-      while (advanced < fixtures.length) advanced += await h.advance(100);
-      report["source commit of 600 records (ms)"] = Date.now() - advanceStarted;
+      while (advanced < fixtures.length) {
+        const step = await h.advance(100);
+        assert.ok(step > 0, "the fixture source stopped committing");
+        advanced += step;
+      }
+      const commitMs = Date.now() - advanceStarted;
+      // The stalled clients never acknowledge, so a source that waited on them would only finish
+      // after the receipt timeout disconnected them. Committing everything while every stalled
+      // client is still connected is what shows the source never blocked on them.
+      const stalledConnectedAtCommit = stalled.filter(client => !client.disconnected).length;
+      report["source commit of 600 records (ms)"] = commitMs;
       await waitFor(() => latest.every(revision => revision === final), 60_000, "all healthy clients converged");
       clearInterval(sampler);
       report["fan-out converged (ms)"] = Date.now() - advanceStarted;
       report["peak pending bytes"] = peakPending;
       report["frames delivered"] = CLIENTS * REVISIONS;
 
-      assert.equal(advanced, fixtures.length, "the source never blocked on slow subscribers");
+      assert.equal(advanced, fixtures.length);
+      assert.equal(stalledConnectedAtCommit, STALLED, `the source never blocked on stalled subscribers (commit took ${commitMs} ms)`);
+      assert.ok(commitMs < h.internals.limits.receiptTimeoutMs, `the source committed within the receipt timeout (${commitMs} ms)`);
       assert.deepEqual(outOfOrder, [], "no client saw a regressing revision");
       assert.ok(peakPending <= h.internals.limits.maxPendingBytesGateway, `peak ${peakPending}`);
       await waitFor(() => stalled.every(client => client.disconnected), 10_000, "stalled clients disconnected by receipt timeout");
