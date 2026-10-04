@@ -84,6 +84,8 @@ export class OrderApp {
   snapshotReads: "start" | "end" = "start";
   authorizeGate: (() => Promise<void>) | null = null;
   authenticateGate: (() => Promise<void>) | null = null;
+  /** The signal the most recent authenticate call received. */
+  authenticateSignal: AbortSignal | null = null;
   authorizeOverride: ((principal: Principal, params: OrderParams) => boolean | Promise<boolean>) | null = null;
   mapOverride: ((value: Json) => unknown) | null = null;
   /** How snapshots answer a recovery boundary (V1.1): echo its ID, omit it, or return another ID. */
@@ -109,8 +111,9 @@ export class OrderApp {
 
   handlers(): HandlerRegistry<TestChannels> {
     return {
-      authenticate: async ({ token }) => {
+      authenticate: async ({ token, signal }) => {
         this.authenticateCalls++;
+        this.authenticateSignal = signal;
         const principal = this.principalFor(token);
         if (this.authenticateGate !== null) await this.authenticateGate();
         return principal;

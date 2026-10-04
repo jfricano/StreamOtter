@@ -25,8 +25,8 @@ export interface SessionHandlers {
 }
 
 export interface TransportCallbacks {
-  /** Validates origin and credentials; resolves to a principal or a public error. */
-  authenticate(input: { auth: unknown; origin: string | undefined }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }>;
+  /** Validates origin and credentials; resolves to a principal or a public error. `signal` aborts when the client disconnects. */
+  authenticate(input: { auth: unknown; origin: string | undefined; signal: AbortSignal }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }>;
   /** Creates the session for an authenticated connection. */
   openSession(result: HandshakeResult, transport: ConnectionTransport): SessionHandlers;
 }
@@ -104,7 +104,12 @@ export function attachSocketIo(httpServer: HttpServer, options: {
 
   io.use((socket, next) => {
     const origin = socket.handshake.headers.origin;
-    options.callbacks.authenticate({ auth: socket.handshake.auth, origin }).then(result => {
+    const disconnected = new AbortController();
+    const onClose = () => disconnected.abort();
+    socket.conn.once("close", onClose);
+    options.callbacks.authenticate({ auth: socket.handshake.auth, origin, signal: disconnected.signal }).finally(() => {
+      socket.conn.off("close", onClose);
+    }).then(result => {
       if (!result.ok) {
         const error = new Error(result.error.message) as Error & { data?: StreamError };
         error.data = result.error;

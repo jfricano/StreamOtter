@@ -175,6 +175,20 @@ describe("acceptance 4: access fails closed", () => {
     assert.equal(client.state, "auth-required");
   });
 
+  it("cancels a pending authenticate when the client disconnects", async () => {
+    h = await startHarness();
+    const gate = deferred();
+    h.app.authenticateGate = () => gate.promise;
+    const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    await waitFor(() => h!.app.authenticateCalls === 1);
+    const signal = h.app.authenticateSignal!;
+    assert.equal(signal.aborted, false);
+    socket.close();
+    await waitFor(() => signal.aborted, 3_000, "authenticate signal aborted");
+    await waitFor(() => h!.internals.traces({ limit: 10, outcome: "rejected" }).items.some(trace => trace.errorCode === "CANCELLED"));
+    gate.resolve();
+  });
+
   it("revocation between authentication and connection open still closes the session", async () => {
     h = await startHarness();
     // revoke() lands a few microtask hops after authenticate returns, while socket.io is still opening

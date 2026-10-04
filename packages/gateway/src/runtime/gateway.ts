@@ -478,7 +478,7 @@ export class GatewayRuntime implements SessionOwner {
 
   // --- transport callbacks ---------------------------------------------------------
 
-  async authenticateHandshake(input: { auth: unknown; origin: string | undefined }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }> {
+  async authenticateHandshake(input: { auth: unknown; origin: string | undefined; signal?: AbortSignal }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }> {
     const requestId = newId();
     const reject = (code: ErrorCode, message?: string, retryable?: boolean) => {
       this.#traceHandshakeRejection(requestId, code);
@@ -520,9 +520,16 @@ export class GatewayRuntime implements SessionOwner {
       } else {
         const outcome = await invokeHandler(
           context => this.#handlers.authenticate({ ...context, token, origin: origin ?? "" }),
-          { timeoutMs: this.core.limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
+          {
+            timeoutMs: this.core.limits.handlerTimeoutMs,
+            requestId,
+            // A client that disconnects mid-handshake cancels authenticate as well as gateway shutdown does.
+            parent: input.signal === undefined ? this.#stopController.signal : AbortSignal.any([this.#stopController.signal, input.signal])
+          }
         );
-        if (outcome.kind === "aborted") return reject("OVERLOADED", "The gateway is shutting down.");
+        if (outcome.kind === "aborted") {
+          return input.signal?.aborted === true ? reject("CANCELLED", "The client disconnected.") : reject("OVERLOADED", "The gateway is shutting down.");
+        }
         if (outcome.kind === "timeout") {
           this.core.logger.warn("authenticate handler timed out", { requestId });
           return reject("HANDLER_FAILED", "Authentication could not be completed; try again.");
