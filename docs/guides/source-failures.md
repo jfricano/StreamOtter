@@ -220,7 +220,7 @@ A boundary stays in force until it is superseded by the next approved incident o
 | `application` | After each acknowledged snapshot, the gateway calls `handlers.sources[id].retire({ boundary })`; `true` retires it. One call at a time, 10-second limit. | Your application can prove the boundary is permanently behind it, for example a database watermark. Startup refuses this mode without `retire`. |
 | `operator` | `streamotter sources retire-boundary` (CLI or in-process only). | Rarely, and only after a person has verified the claim. |
 
-A generation change always retires the boundary, whatever the mode. No mode retires a boundary while an incident it covers is still held.
+A generation change always retires the boundary, whatever the mode. No mode retires a boundary while an incident it covers is still held, including one whose advance is not yet confirmed (`advance-pending` or `uncertain`).
 
 > **Operator retirement is the unsafe option.** Retiring a boundary tells the gateway that every future snapshot already reflects the quarantined record. StreamOtter can't check that. If the claim is wrong, subscribers can reach `live` while showing state that's missing the change the quarantined record carried, and nothing downstream will flag it.
 >
@@ -289,7 +289,7 @@ Refusals carry an `outcome` you can act on:
 | `plan-expired`, `plan-unknown`, `fingerprint-changed` | Evaluate again; see [§6.6](#66-stale-or-expired-plans). |
 | `evidence-expired`, `evidence-unavailable` | See [§6.4](#64-topic-retention-and-expired-evidence) and [§6.1](#61-credentials-and-acls). |
 | `not-replay-safe`, `integrity-fault-open`, `not-advanced` | Redrive isn't allowed for this incident; `failures show` explains the next action. |
-| `retirement-mode`, `incident-held` | Boundary retirement is off for this source, or an incident it covers is still held. |
+| `retirement-mode`, `incident-held` | Boundary retirement is off for this source, or an incident it covers is still held. `advance-unresolved` on `retire-boundary` means an incident it covers has an advance not yet confirmed; it is reconciled at the next start. |
 | `operation-id-reused`, `operation-in-progress` | Use a new `--operation-id` for a new redrive. |
 | `nothing-to-rebaseline` | `sources rebaseline` found nothing from an earlier generation; see [§6.10](#610-rebaseline-a-source). |
 | `journal-unavailable` | The operation couldn't be recorded, so nothing was done; see [§6.3](#63-full-disk-or-full-journal). |

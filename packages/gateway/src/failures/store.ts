@@ -228,8 +228,9 @@ export interface IncidentStore {
    */
   prepareAdvance(input: PrepareAdvance): { record: IncidentRecord; boundary: StoredBoundary };
   /**
-   * Retires an in-force boundary at expectedRevision. Refuses (409) while any incident it lists in failureIds is open with progress "held" or "retrying"
-   * ("incident-held"), and when it is no longer in force ("boundary-not-in-force"). Mode "superseded" is refused (400): only prepareAdvance supersedes.
+   * Retires an in-force boundary at expectedRevision. Refuses (409) while any incident it lists in failureIds is open and still held (ADR-15B §4):
+   * progress "held" or "retrying" ("incident-held"), or an advance not yet resolved, "advance-pending" or "uncertain" ("advance-unresolved").
+   * Also refuses (409) a boundary no longer in force ("boundary-not-in-force"). Mode "superseded" is refused (400): only prepareAdvance supersedes.
    */
   retireBoundary(boundaryId: string, expectedRevision: number, retirement: NonNullable<StoredBoundary["retirement"]>, at?: string): StoredBoundary;
   /** The source's circuit; a closed circuit with no advances, revision 0, when none is stored. */
@@ -464,8 +465,14 @@ export function checkRetirement(boundaryId: string, boundary: StoredBoundary | n
   if (boundary.state !== "in-force") throw conflict("boundary-not-in-force", `Recovery boundary ${boundaryId} is ${boundary.state}, not in force.`, { boundaryId, state: boundary.state });
   for (const failureId of boundary.failureIds) {
     const record = incidents(failureId);
-    if (record !== null && record.state === "open" && (record.progress === "held" || record.progress === "retrying")) {
+    if (record === null || record.state !== "open") continue;
+    if (record.progress === "held" || record.progress === "retrying") {
       throw conflict("incident-held", `Recovery boundary ${boundaryId} cannot be retired while incident ${failureId} is still ${record.progress}.`, { boundaryId, failureId });
+    }
+    // An advance that is not yet confirmed still holds its incident: it may never have happened, and is reconciled at the next start.
+    if (record.progress === "advance-pending" || record.progress === "uncertain") {
+      throw conflict("advance-unresolved",
+        `Recovery boundary ${boundaryId} cannot be retired while the advance of incident ${failureId} is unresolved (${record.progress}).`, { boundaryId, failureId });
     }
   }
   return boundary;

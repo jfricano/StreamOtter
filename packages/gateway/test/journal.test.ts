@@ -429,6 +429,19 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       store.update("f1:a", 3, { progress: "retrying" }, { event: "retrying", detail: null, operationId: null });
       assert.throws(() => store.retireBoundary("rb1:two", 1, operator), rejects("incident-held", 409));
       store.update("f1:a", 4, { progress: "advanced" }, { event: "advance-confirmed", detail: null, operationId: null });
+      // f1:b's advance was prepared but never confirmed: its incident is still held until the advance resolves.
+      assert.equal(store.get("f1:b")?.progress, "advance-pending");
+      before = recoveryState(store, ids, boundaries);
+      assert.throws(() => store.retireBoundary("rb1:two", 1, operator), (error: unknown) => {
+        rejects("advance-unresolved", 409)(error);
+        assert.equal((error as { details?: { failureId?: string } }).details?.failureId, "f1:b");
+        return true;
+      });
+      store.update("f1:b", 2, { progress: "uncertain" }, { event: "held", detail: null, operationId: null });
+      assert.throws(() => store.retireBoundary("rb1:two", 1, operator), rejects("advance-unresolved", 409));
+      assert.throws(() => store.retireBoundary("rb1:two", 1, { mode: "application", reason: null, operationId: null }), rejects("advance-unresolved", 409),
+        "application retirement is refused the same way");
+      store.update("f1:b", 3, { progress: "advanced" }, { event: "advance-confirmed", detail: null, operationId: null });
 
       before = recoveryState(store, ids, boundaries);
       assert.throws(() => store.retireBoundary("rb1:two", 2, operator), rejects("stale-revision", 409));

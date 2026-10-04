@@ -237,6 +237,23 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     assert.equal(store.getBoundary(boundary.boundaryId)?.retirement?.operationId, retired.operationId);
   });
 
+  it("retire-boundary is refused while the boundary's own advance is unresolved (ADR-15B §4)", async () => {
+    h = await startHarness({
+      failureHandling: resync({ boundaryRetirement: "operator" }), recovery: { orders: recoverable }, fixtures: [badJson()],
+      // A crash point after the commit, before its result is journaled: the incident stays advance-pending, as after a lost commit response.
+      internal: { advanceHooks: { afterAdvance: async () => { throw new Error("simulated crash point"); } } }
+    });
+    const op = getGatewayOperator(h.gateway);
+    await h.advance(1);
+    const incident = await only(h, op);
+    assert.equal(incident.progress, "advance-pending");
+    const boundary = (await op.status()).sources[0]!.boundary!;
+    const refused = await op.retireBoundary({ sourceId: "orders", boundaryId: boundary.boundaryId, expectedRevision: boundary.revision, reason: "looks fine" });
+    assert.equal(refused.result, "refused", refused.message);
+    assert.equal(refused.outcome, "advance-unresolved");
+    assert.equal((await op.status()).sources[0]!.boundary?.boundaryId, boundary.boundaryId, "the boundary stays in force");
+  });
+
   it("F31: evaluate runs the current mapping on the stored original without committing, tracing or delivering", async () => {
     const app = new OrderApp();
     h = await startHarness({ app, failureHandling: resync(), recovery: { orders: recoverable }, fixtures: [shipped(3)] });
