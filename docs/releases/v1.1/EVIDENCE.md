@@ -55,6 +55,29 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 | F47 | Replicated Kafka evidence write under leader/ISR failure | E (PR 7) | replicated | partial | `tests/kafka-replicated/01-leader-failover.test.ts` and `02-isr-below-min.test.ts` against a local three-broker KRaft cluster (`scripts/kafka/replicated-start.sh`; Kafka 4.1.2, dedicated controllers, quarantine topic replication factor 3 with `min.insync.replicas=2` and unclean election off; writer `acks=all`, idempotent). **Leader SIGKILLed:** every write acknowledged before the kill is read back byte for byte from the new leader; a write in the failover window is `unknown`, the source holds and nothing is committed past it until a retry, which is acknowledged and advances. **Two of three brokers SIGKILLed:** writes are refused (`NOT_ENOUGH_REPLICAS`), the source holds and the quarantine high watermark doesn't move; after the replicas return, a retry is acknowledged and advances. Every copy in the topic matches the test's ledger. Partial because it is one machine over loopback, one partition per topic, broker SIGKILL only: no disk or fsync loss, network partition, controller failure or TLS/SASL. Recovery needs an operator retry; the gateway holds rather than re-attempting an `unknown` write (spec §6). Six helper runs (two failed on test-fixture races, fixed) and the final run in the log, October 4 (slice E) |
 | F48 | Upgrade then downgrade with unresolved/advanced incidents | E (PR 7) | crash | partial | `tests/integration/upgrade-downgrade.test.ts` (a V1 configuration upgraded to failure handling keeps serving; the boundary survives restarts; removing `failureHandling` is refused with `failure-handling-removed` while a boundary is in force or an incident is open, and allowed once they are settled). The published `streamotter@0.1.0-rc.3` refuses a V1.1 configuration (`streamotter validate`: `/failureHandling UNKNOWN_KEY`, exit 2) and the `--state-dir` flag. Restarts are graceful, not SIGKILL; run in the log, October 4 (slice E) |
 
+## Review fixes (October 4, 2026)
+
+The [independent review](./REVIEW.md) found defects behind rows already marked implemented. Their fixes added regression tests to these rows. No row's status changed: each was already implemented, and none is verified until an independent run.
+
+| Row | Finding | Added evidence |
+| --- | --- | --- |
+| F02, F05, F06 | R1: a schema failure masked a later integrity failure | `tests/integration/failure-classes.test.ts`, "a record with several problems is classified by the most severe one" (5) |
+| F39 | O4: payload text in diagnoses | `failure-classes.test.ts`, "incident diagnoses never quote payload text" (2) |
+| F30 | A: the unexplained-position hold was lifted by another partition | `packages/gateway/test/failure-service.test.ts`, "keeps holding an unexplained position after restart…" |
+| F29, F36 | B: an incident from another Kafka cluster; J4: `init` next to a leftover WAL; J2/J6: stale and partly written locks | `failure-service.test.ts`, "cluster identity (ADR-15A §3)" (3); `journal.test.ts`, WAL and lock tests (4) |
+| F29 | J3: rebaseline in a project with several sources; R2: dropping `failureHandling` with a generation change | `tests/integration/rebaseline.test.ts`, `tests/integration/upgrade-downgrade.test.ts` |
+| F21, F23 | O3: retiring a boundary while its advance is unresolved | `tests/integration/operator.test.ts`, `journal.test.ts` |
+| F26, F41 | J1: quadratic boundary storage; H: the circuit counted re-advances twice | `journal.test.ts`, "grows linearly…", "counts an incident advanced twice once…" |
+| F17 | E: a failed journal write after a confirmed advance | `failure-service.test.ts`, "recording a confirmed advance" (2) |
+| F18, F20 | D: `guard-pending` left after stop; F: a read-back client opened after stop | `failure-service.test.ts`, "guard exits" (2); `tests/kafka/13-advance-stop.test.ts` |
+| F19 | C: a retry racing a queued disposition; O2: a retry during a quarantine write; O7: a refused retry changed the incident | `failure-service.test.ts`, "retries and queued dispositions" (3), "superseded changes"; `tests/integration/operator-races.test.ts`, O2 and O7 |
+| F13 | G: the quarantine request deadline | `quarantine-reader.test.ts`, "quarantine writer deadline" |
+| F10 | J5: invented headers for names like `constructor` | `quarantine-reader.test.ts`, "Kafka header flattening" |
+| F32, F33 | O1: one plan redriven twice; O5: unknown incident; O6: integrity faults ignored | `operator-races.test.ts`, O1, O5, O6 |
+| F35 | S1: a mutation answered after stop, and exit 4 for a lost answer | `operator-ipc.test.ts`, `operator-socket.test.ts`, `operator-cli.test.ts`, S1 (6) |
+| F21 | W1, W2: the reference guard's "never changed" and ambiguous outbox positions | `tests/integration/reference-guard.test.ts`, "incomplete or ambiguous outbox" (4) |
+| F37, F44 | W3, W4, W5, W7: the workbench's session end, non-Result bodies, `%2e` paths, out-of-order detail and export URLs | `tests/browser/workbench-host.test.ts`, `workbench-cross-origin.test.ts`, `failures.test.ts`; `packages/contracts/test/workbench.test.ts` |
+
 ## Not establishable by tests
 
 Recorded here so no row is read as more than it shows (acceptance plan §3):

@@ -11,9 +11,10 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - slice B, PR #15 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`;
 - slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`;
 - slice D, PR #17 (`feat/v1.1-operator`, on #16), which merges PR #14 and four helper branches;
-- slice E, the operations and release work (`feat/v1.1-operations-release`, on #17), which merges `feat/v1.1-docs-runbook`, `feat/v1.1-reference-guard` and `feat/v1.1-replicated-kafka`.
+- slice E, PR #18 (`feat/v1.1-operations-release`, on #17), which merges `feat/v1.1-docs-runbook`, `feat/v1.1-reference-guard` and `feat/v1.1-replicated-kafka`;
+- the review fixes (`feat/v1.1-review-fixes`, on #18), which fix the [independent review](./REVIEW.md)'s findings in #13 to #18.
 
-**Next step:** the owner reviews and merges the stack in order, retargeting each PR to `main` as its base merges. Then CI runs the extended tiers on `main`, and the owner decides on publishing; the [acceptance packet](./ACCEPTANCE_PACKET.md) recommends `0.2.0-rc.1`. Nothing is published, tagged or deployed without the owner's go. Tell the Lontra Creek thread when PR #14 merges and when a release is published.
+**Next step:** the owner reviews and merges the stack in order, ending with the review fixes, retargeting each PR to `main` as its base merges. Then CI runs the extended tiers on `main`, and the owner decides on publishing; the [acceptance packet](./ACCEPTANCE_PACKET.md) recommends `0.2.0-rc.1`. Nothing is published, tagged or deployed without the owner's go. Tell the Lontra Creek thread when PR #14 merges and when a release is published.
 
 **Owner decisions:**
 
@@ -236,8 +237,27 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - **Not done here, for the owner or a later slice:**
   - `KafkaQuarantineReader` returns `unavailable` on `GROUP_LOAD_IN_PROGRESS` instead of retrying within its deadline.
   - An advance whose group coordinator is lost becomes `uncertain`; this was seen once in a helper's development run and is not tested.
-  - The status fields `store.durable`, `openIncidents`, `circuit.reason` and `quarantine.topic` are not described in the API draft.
+  - The status fields `store.durable`, `openIncidents`, `circuit.reason` and `quarantine.topic` are not described in the API draft. (Fixed by the review fixes, S3.)
   - F45 (Firefox and WebKit) needs browsers this environment can't install.
+
+### October 4, 2026 — independent review and fixes, branch `feat/v1.1-review-fixes`
+
+- **Review.** Six reviewers, none of whom wrote the code, each took one area of #12–#18 and proved each finding with a scratch test: 13 major and 22 minor findings. R1, A, B, O3, O4 and J2 were reproduced a second time before fixing. The findings, the fix commit for each and its regression test are in [REVIEW.md](./REVIEW.md).
+- **Fixes.** Six fixers worked in parallel in their own worktrees, each limited to its own files, on branches `fix/review-runtime`, `fix/review-journal`, `fix/review-surfaces`, `fix/review-operator`, `fix/review-workbench` and `fix/review-advance`. Each branch was merged into `feat/v1.1-review-fixes` as a merge commit. One commit per finding, each with a regression test that failed before the fix. J7 (fixture evidence never deleted) is not fixed; it is listed as a limitation.
+- **Merging them:**
+  - API draft §6 conflicted twice: operator against journal (the `retireBoundary` bullet) and advance against both (a new bullet on retries waiting for queued work). Both sides' additions were kept.
+  - `quarantine-reader.test.ts` imports conflicted between the journal and advance fixes; both import sets were kept.
+  - After the advance fixes made the failure chain's `run()` re-entrant (`AsyncLocalStorage`), the operator's O2 race test failed: its retry was started from inside `store.update`, inherited the disposition's context and ran nested instead of queuing. Real operator requests arrive on their own connection, so the test now binds the call outside the chain (`619748b`). REVIEW.md §4 records the hazard.
+- **Observations, not fixed here:**
+  - `tests/integration/operator.test.ts` "F33 and F35 …" failed once in a full run during the fixes (`synchronizing` where `live` was expected). It passed alone 3 times out of 3 and in every later full run. It is not understood yet.
+  - The spec reporter's summary sometimes showed fewer tests (306, 303, 315 instead of the full count) with exit 0 while several fixers ran suites at the same time. The TAP reporter showed the full count in the same conditions. Four sequential runs of the merged branch all reported 366, and the final run 381.
+- **Commands** at `619748b`, on Node 24.21.0 and pnpm 11.19.0, from the main checkout, October 4:
+  - `pnpm build && pnpm verify`: 381 tests, 381 pass.
+  - `pnpm test:kafka` (local single broker, Kafka 4.1.2): 42 tests, 42 pass. The new one is `13-advance-stop`.
+  - `pnpm test:browser`: 56 tests, 56 pass, on headless Chromium 141.
+  - `pnpm test:install`: 22 tests, 22 pass.
+  - `pnpm test:deploy`: 4 tests, 4 pass.
+  - `./scripts/kafka/replicated-start.sh && pnpm test:kafka:replicated`: 2 tests, 2 pass.
 
 ## 3. Handoff checklist for each slice
 

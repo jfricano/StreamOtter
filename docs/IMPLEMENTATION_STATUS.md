@@ -196,14 +196,14 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 
 ### Runs recorded in the implementation log
 
-All on Node 24.21.0 and pnpm 11.19.0, on the V1.1 branches:
+All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `619748b`, after the [independent review](./releases/v1.1/REVIEW.md)'s fixes (October 4):
 
 | Command | Result |
 | --- | --- |
-| `pnpm build && pnpm verify` | 334 tests, all pass (slice E, October 4) |
-| `pnpm test:kafka` | 41 tests, all pass, against the local single-node Kafka 4.1.2 broker |
+| `pnpm build && pnpm verify` | 381 tests, all pass |
+| `pnpm test:kafka` | 42 tests, all pass, against the local single-node Kafka 4.1.2 broker |
 | `pnpm test:kafka:replicated` | 2 tests, all pass, against a local three-broker Kafka 4.1.2 cluster (F47) |
-| `pnpm test:browser` | 52 tests, all pass, in headless **Chromium 141** linked in place of Playwright 1.63's pinned Chrome Headless Shell 153, which could not be downloaded in that environment; CI's pinned browser has not run these tests yet |
+| `pnpm test:browser` | 56 tests, all pass, in headless **Chromium 141** linked in place of Playwright 1.63's pinned Chrome Headless Shell 153, which could not be downloaded in that environment; CI's pinned browser has not run these tests yet |
 | `pnpm test:install` | 22 tests, all pass, including the TLS Kafka case |
 | `pnpm test:deploy` | 4 tests, all pass (without `failureHandling`) |
 
@@ -226,6 +226,8 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 - Evidence read-back takes at least the broker's `group.initial.rebalance.delay.ms` (3 s by default). After a lost connection, KafkaJS keeps retrying for about 24 s after the read has reported `unavailable`.
 - The journal engine is `node:sqlite`, so failure handling with a state directory needs Node 24.15 or later (decision D1 in the [API draft](./releases/v1.1/V1_1_API.md#11-decisions-this-draft-adds), taken 2026-10-04).
 - The operator socket is not available on Windows.
+- Fixture evidence in the local spool (`streamotter dev` with fixture sources) is never deleted; the spool is capped at 16 MiB (review finding J7).
+- While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds, on every partition, until a restart reconciles it.
 
 ## Gate A status (home site and demo plan)
 

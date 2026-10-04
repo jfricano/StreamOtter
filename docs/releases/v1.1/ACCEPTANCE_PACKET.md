@@ -1,11 +1,11 @@
 # StreamOtter V1.1 — Acceptance packet
 
-**Status:** For the owner's review, October 4, 2026. This is the final acceptance packet the [implementation handoff](./V1_1_IMPLEMENTATION_HANDOFF.md) §7 asks for. It summarizes; the evidence itself is in the [evidence matrix](./EVIDENCE.md) and the [implementation log](./IMPLEMENTATION_LOG.md), which keeps the failed runs.
+**Status:** For the owner's review, October 4, 2026; updated the same day after the independent review and its fixes ([REVIEW.md](./REVIEW.md)). This is the final acceptance packet the [implementation handoff](./V1_1_IMPLEMENTATION_HANDOFF.md) §7 asks for. It summarizes; the evidence itself is in the [evidence matrix](./EVIDENCE.md) and the [implementation log](./IMPLEMENTATION_LOG.md), which keeps the failed runs.
 
 Three words are used strictly here:
 
 - **Implemented:** code and tests are on the V1.1 branches, and the tests passed in a recorded run in this build environment.
-- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. **Nothing in V1.1 is independently verified yet.** No V1.1 branch has merged, so CI has not run the extended tiers (Kafka, browser, deploy) on it.
+- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. **Nothing in V1.1 is independently verified yet.** No V1.1 branch has merged, so CI has not run the extended tiers (Kafka, browser, deploy) on it. The [independent review](./REVIEW.md) was a code review by reviewers who did not write the code, run in the same build environment; it found and fixed defects, but it is not an independent run of the evidence.
 - **Published:** on npm. **Nothing in V1.1 is published.** The latest release is still `0.1.0-rc.3`.
 
 ## 1. The product question
@@ -33,7 +33,8 @@ Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: the s
 | #15 | `feat/v1.1-quarantine-hold` | Slice B: incidents, the SQLite journal, quarantine-hold, transient retries |
 | #16 | `feat/v1.1-guarded-continuation` | Slice C: recovery guard, recovery boundaries, snapshot acknowledgment, circuit breaker |
 | #17 | `feat/v1.1-operator` | Slice D: operator service, local socket, CLI, Failures tab, Kafka read-back |
-| (slice E) | `feat/v1.1-operations-release` | Health listener, downgrade refusal, `sources rebaseline`, reference guard, runbook and guides, crash tests, replicated-broker test, this packet |
+| #18 | `feat/v1.1-operations-release` | Slice E: health listener, downgrade refusal, `sources rebaseline`, reference guard, runbook and guides, crash tests, replicated-broker test, this packet |
+| (review fixes) | `feat/v1.1-review-fixes` | Fixes for every review finding except J7 (fixture evidence is never deleted), one commit per finding and a regression test for every code fix; see [REVIEW.md](./REVIEW.md) |
 
 Overall against `main`: about 120 files and 20,000 lines added, about half of them in `packages/` and most of the rest tests and docs. The [CHANGELOG](../../../CHANGELOG.md) lists every user-visible change under Unreleased.
 
@@ -62,14 +63,14 @@ Of the acceptance plan's 48 scenarios, by the matrix's own rules (no row is *ver
 
 What each partial row lacks is named in the [matrix](./EVIDENCE.md) and in [implementation status](../../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased). Failed runs, and what each turned out to be, are kept in the [log](./IMPLEMENTATION_LOG.md).
 
-Final run of every tier on `feat/v1.1-operations-release` at `92cf086`, October 4 (Node 24.21.0, pnpm 11.19.0, Kafka 4.1.2, headless Chromium 141). Commands and details are in the log's slice E entry.
+Final run of every tier on `feat/v1.1-review-fixes` at `619748b`, October 4, after the review fixes (Node 24.21.0, pnpm 11.19.0, Kafka 4.1.2, headless Chromium 141). Later commits on that branch change docs only. The run before the review, at `92cf086`, is in the log's slice E entry; this one is in the review-fixes entry.
 
 | Tier | Result |
 | --- | --- |
-| `pnpm build && pnpm verify` (unit, integration, typecheck, contracts) | 334 / 334 |
-| `pnpm test:kafka` (single broker) | 41 / 41 |
+| `pnpm build && pnpm verify` (unit, integration, typecheck, contracts) | 381 / 381 |
+| `pnpm test:kafka` (single broker) | 42 / 42 |
 | `pnpm test:kafka:replicated` (three brokers, F47) | 2 / 2 |
-| `pnpm test:browser` (Chromium only) | 52 / 52 |
+| `pnpm test:browser` (Chromium only) | 56 / 56 |
 | `pnpm test:install` (packed packages, TLS Kafka) | 22 / 22 |
 | `pnpm test:deploy` (Caddy, HTTPS and WSS) | 4 / 4 |
 
@@ -109,7 +110,8 @@ These ACLs follow from the client calls. They have not been checked against a br
 - No command prunes resolved incidents. The journal stops at 256 MiB and then holds the source rather than lose state.
 - Moving a consumer group past a record still in the topic is done with Kafka's own tools, not by StreamOtter.
 - The operator socket is not available on Windows.
-- Some status fields (`store.durable`, `openIncidents`, `circuit.reason`, `quarantine.topic`) are returned but not yet described in the API draft.
+- Fixture evidence in the local spool is never deleted (review finding J7). This affects only `streamotter dev` with fixture sources; the spool is capped at 16 MiB.
+- While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds until a restart reconciles it. This is deliberate (review finding A), but it means one uncertain advance stops every partition of that source.
 - `KafkaQuarantineReader` reports `unavailable` on a coordinator reload (`GROUP_LOAD_IN_PROGRESS`) right after a broker rejoins, instead of retrying within its deadline. It fails closed; the operator repeats the command.
 - If a source's group coordinator is lost during an advance, the assignment epoch changes and the incident becomes `uncertain`; a restart reconciles it. Seen once in an F47 development run, not covered by a test.
 - The partial and not-run rows in §4.
@@ -118,7 +120,7 @@ These ACLs follow from the client calls. They have not been checked against a br
 
 **Ready to merge as a release candidate, not as a final release.** Recommended path:
 
-1. Merge the stack in order (#12, #14, #13, #15, #16, #17, then slice E), retargeting each PR to `main` as its base merges.
+1. Merge the stack in order (#12, #14, #13, #15, #16, #17, #18, then the review fixes), retargeting each PR to `main` as its base merges. The review fixes correct defects in #13 to #18, so the stack should not be released without them.
 2. Let CI run the extended tiers on `main`, including the browser tier on Playwright's pinned browser, and add the Firefox and WebKit run for F45.
 3. Publish as `0.2.0-rc.1` (a new minor: new configuration and CLI surface, no breaking change), with the owner's go.
 4. Before a final `0.2.0`: an ACL-enabled broker run, the proxy deployment with failure handling on, and one integrator walking the runbook end to end.
