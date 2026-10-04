@@ -359,6 +359,29 @@ describe("acceptance 4: access fails closed", () => {
     assert.ok(traced <= allowed, `refused handshakes are traced at a bounded rate (${traced} > ${allowed})`);
   });
 
+  it("reports the count of untraced refused handshakes within a second when no later refusal is traced", async () => {
+    const skipped: number[] = [];
+    const logger = { info() {}, error() {}, warn(message: string, fields?: Record<string, unknown>) { if (message.startsWith("Refused handshakes were not traced")) skipped.push(fields?.["count"] as number); } };
+    h = await startHarness({ logger });
+    const refused = 150;
+    await Promise.all(Array.from({ length: refused }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    const traced = () => h!.internals.traces({ limit: 500 }).items.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
+    const reported = () => skipped.reduce((sum, count) => sum + count, 0);
+    assert.ok(traced() < refused, "the flood exceeded the trace rate");
+    await waitFor(() => traced() + reported() === refused, 3_000, "every refused handshake traced or counted");
+  });
+
+  it("reports the count of untraced refused handshakes when the gateway stops", async () => {
+    const skipped: number[] = [];
+    const logger = { info() {}, error() {}, warn(message: string, fields?: Record<string, unknown>) { if (message.startsWith("Refused handshakes were not traced")) skipped.push(fields?.["count"] as number); } };
+    h = await startHarness({ logger });
+    const refused = 150;
+    await Promise.all(Array.from({ length: refused }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    const traced = h.internals.traces({ limit: 500 }).items.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
+    await h.gateway.stop();
+    assert.equal(traced + skipped.reduce((sum, count) => sum + count, 0), refused);
+  });
+
   it("closes prior subscriptions when the authenticated identity changes", async () => {
     h = await startHarness();
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);

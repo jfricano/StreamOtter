@@ -338,6 +338,8 @@ export class GatewayRuntime implements SessionOwner {
   /** Bounds the traces of refused handshakes, which anyone can trigger, so a flood can't evict the rest. */
   readonly #handshakeRejectionTraces = new TokenBucket(HANDSHAKE_REJECTION_TRACES_PER_SECOND, HANDSHAKE_REJECTION_TRACE_BURST);
   #untracedHandshakeRejections = 0;
+  /** Reports the skipped count within a second even if no later refusal is traced to report it. */
+  #untracedReportTimer: NodeJS.Timeout | null = null;
   #activeChecks = 0;
   readonly #internal: InternalGatewayOptions;
 
@@ -589,13 +591,22 @@ export class GatewayRuntime implements SessionOwner {
   #traceHandshakeRejection(requestId: string, errorCode: ErrorCode): void {
     if (!this.#handshakeRejectionTraces.take()) {
       this.#untracedHandshakeRejections++;
+      if (this.#untracedReportTimer === null) {
+        this.#untracedReportTimer = setTimeout(() => this.#reportUntracedHandshakeRejections(), 1_000);
+        this.#untracedReportTimer.unref?.();
+      }
       return;
     }
-    if (this.#untracedHandshakeRejections > 0) {
-      this.core.logger.warn("Refused handshakes were not traced; they exceeded the trace rate", { count: this.#untracedHandshakeRejections });
-      this.#untracedHandshakeRejections = 0;
-    }
+    this.#reportUntracedHandshakeRejections();
     this.core.traces.record({ requestId, stage: "authorize", outcome: "rejected", errorCode });
+  }
+
+  #reportUntracedHandshakeRejections(): void {
+    if (this.#untracedReportTimer !== null) clearTimeout(this.#untracedReportTimer);
+    this.#untracedReportTimer = null;
+    if (this.#untracedHandshakeRejections === 0) return;
+    this.core.logger.warn("Refused handshakes were not traced; they exceeded the trace rate", { count: this.#untracedHandshakeRejections });
+    this.#untracedHandshakeRejections = 0;
   }
 
   openSession(result: HandshakeResult, transport: ConnectionTransport): ClientSession {
@@ -1291,6 +1302,7 @@ export class GatewayRuntime implements SessionOwner {
       );
     }
     this.#state = "stopped";
+    this.#reportUntracedHandshakeRejections();
     if (wasRunning) this.core.logger.info("Gateway stopped");
   }
 
