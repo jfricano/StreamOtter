@@ -35,13 +35,13 @@ pnpm test:browser
 pnpm test:deploy
 pnpm kafka:stop
 ./scripts/kafka/replicated-start.sh
-pnpm test:kafka:replicated   # F47; skips when the cluster isn't running
+pnpm test:kafka:replicated   # F47; fails when the cluster isn't running (leave STREAMOTTER_ALLOW_SKIP unset)
 ./scripts/kafka/replicated-stop.sh
 ```
 
 - [ ] Every suite passes. Record new results in `docs/IMPLEMENTATION_STATUS.md` if they changed.
 - [ ] `pnpm test:install` reports the TLS Kafka case as passed, not skipped.
-- [ ] `pnpm test:kafka:replicated` reports 2 tests passed, not skipped. The first macOS run of `replicated-start.sh` and `replicated-stop.sh` is also their first check there: confirm that start ends with "Replicated Kafka 4.1.2 is ready" and that stop reports each node stopped and leaves no Kafka `java` process running.
+- [ ] `pnpm test:kafka:replicated` reports 3 tests passed (the environment check and the two failure tests), none skipped. The first macOS run of `replicated-start.sh` and `replicated-stop.sh` is also their first check there: confirm that start ends with "Replicated Kafka 4.1.2 is ready" and that stop reports each node stopped and leaves no Kafka `java` process running.
 
 ## 3. Dry run
 
