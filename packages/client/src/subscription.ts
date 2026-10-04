@@ -261,6 +261,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#epochRevision = event.revision;
     if (this.#lastRevision === null || compareRevisions(event.revision, this.#lastRevision) > 0) this.#lastRevision = event.revision;
     for (const listener of [...this.#listeners.data]) {
+      if (!this.#listeners.data.has(listener)) continue; // Removed during this dispatch.
       if (!this.#invoke(listener, event as StreamEvent<D>)) return;
     }
     connection.receipt({ subscriptionId: this.id, epoch: frame.epoch, sequence: frame.sequence });
@@ -346,9 +347,17 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#clearRetry();
     this.#replacing = this.#epoch;
     this.#awaitingEpoch = true;
-    this.#setState("authorizing");
+    // A stale view stays stale until the gateway announces the attempt: while its source is
+    // unavailable the gateway holds the request, and showing authorizing would hide the outage.
+    if (this.#state !== "stale") this.#setState("authorizing");
     const replacing = this.#epoch;
-    connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }).then(result => {
+    const acknowledged = (result: { ok: boolean }) => {
+      // Frames after the acknowledgement follow the request (the socket is ordered), so from here a
+      // resync-required for the old epoch means this attempt gave up too. Runs synchronously,
+      // before frames read in the same socket read as the acknowledgement.
+      if (result.ok && connection === this.#attached && this.#replacing === replacing) this.#replacing = null;
+    };
+    connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }, acknowledged).then(result => {
       if (connection !== this.#attached || this.#terminal || result.ok) return;
       this.#lastError = result.error;
       this.#emitError(result.error);
@@ -442,6 +451,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#reason = reason;
     const change: StateChange<SubscriptionState> = reason === undefined ? { state } : { state, reason };
     for (const listener of [...this.#listeners.state]) {
+      if (!this.#listeners.state.has(listener)) continue; // Removed during this dispatch.
       if (!this.#invoke(listener, change)) return;
     }
     if (state === "live") this.#waiters.resolveAll();
@@ -481,6 +491,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   /** Error-listener failures are logged, never re-emitted. */
   #emitError(error: StreamError): void {
     for (const listener of [...this.#listeners.error]) {
+      if (!this.#listeners.error.has(listener)) continue; // Removed during this dispatch.
       try {
         const returned = listener(error);
         if (isThenable(returned)) Promise.resolve(returned).catch((cause: unknown) => this.#owner.logListenerFailure(cause));
