@@ -5,14 +5,14 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
-  canonicalJsonPretty, validateProjectConfig,
+  canonicalJsonPretty, StreamOtterError, validateProjectConfig,
   type ConfigIssue, type DevelopmentOptions, type HandlerRegistry, type Json, type ProjectConfig
 } from "@streamotter/contracts";
 import { createGateway, type Gateway, type GatewayLogger } from "@streamotter/gateway";
 import { startManagementServer } from "@streamotter/gateway/management";
 import { getGatewayInternals, initJournal, rebaselineSource } from "@streamotter/gateway/internals";
 import { detectPackageStyle, fingerprint, generateFiles, GENERATED_MARKER } from "./generate.ts";
-import { isOperatorCommand, OPERATOR_USAGE, renderOperation, runOperatorCommand } from "./operator.ts";
+import { fail, isOperatorCommand, OPERATOR_USAGE, renderOperation, runOperatorCommand } from "./operator.ts";
 import { scaffoldFiles } from "./templates.ts";
 
 export const EXIT = { ok: 0, runtime: 1, invalid: 2 } as const;
@@ -165,11 +165,13 @@ function parseHealth(value: string): { host: string; port: number } {
 async function commandRebaseline(positionals: readonly string[], values: Record<string, unknown>, io: CliIO): Promise<number> {
   const permitted = ["config", "state-dir", "source", "reason", "confirm", "json"];
   const extra = Object.keys(values).filter(key => !permitted.includes(key));
+  const json = values["json"] === true;
   if (extra.length > 0 || positionals.length > 1) {
-    io.err(`Unexpected arguments for sources rebaseline: ${[...extra.map(key => `--${key}`), ...positionals.slice(1)].join(" ")}\n\n${USAGE}`);
+    const message = `Unexpected arguments for sources rebaseline: ${[...extra.map(key => `--${key}`), ...positionals.slice(1)].join(" ")}`;
+    if (json) return fail(io, json, EXIT.invalid, message);
+    io.err(`${message}\n\n${USAGE}`);
     return EXIT.invalid;
   }
-  const json = values["json"] === true;
   try {
     const { config } = await loadConfig(values["config"] as string | undefined);
     const stateDir = values["state-dir"];
@@ -183,12 +185,16 @@ async function commandRebaseline(positionals: readonly string[], values: Record<
     return renderOperation(io, result, json);
   } catch (error) {
     if (error instanceof CliError) {
+      if (json) return fail(io, json, error.exitCode, error.message);
       io.err(error.message);
       return error.exitCode;
     }
     const code = (error as { code?: string }).code;
+    const exitCode = code === "INVALID_REQUEST" || code === "CONFIG_INVALID" ? EXIT.invalid : EXIT.runtime;
+    // With --json, stderr carries only {"error": StreamError} (API §10).
+    if (json) return fail(io, json, exitCode, error instanceof StreamOtterError ? error : (error as Error).message);
     io.err(`${code ?? "ERROR"}: ${(error as Error).message}`);
-    return code === "INVALID_REQUEST" || code === "CONFIG_INVALID" ? EXIT.invalid : EXIT.runtime;
+    return exitCode;
   }
 }
 
@@ -400,6 +406,8 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
       }
     });
   } catch (error) {
+    // An operator command run with --json reports even an unknown flag as {"error": StreamError} (API §10).
+    if (isOperatorCommand(command) && rest.includes("--json")) return fail(io, true, EXIT.invalid, (error as Error).message);
     io.err(`${(error as Error).message}\n\n${USAGE}`);
     return EXIT.invalid;
   }

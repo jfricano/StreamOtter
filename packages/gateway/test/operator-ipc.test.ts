@@ -430,14 +430,49 @@ describe("operator socket (API §7, ADR-15C §3)", { skip: POSIX ? false : "Unix
     assert.equal(statSync(join(directory, "run")).mode & 0o777, 0o700);
   });
 
-  it("the client times out when the gateway does not answer", async () => {
+  it("the client times out when the gateway does not answer, and says the outcome is unknown", async () => {
     const { directory, operator, socket } = await serve();
     try {
       operator.delayMs = 500;
       const error = await rejection(callOperator(directory, "status", {}, { timeoutMs: 50 }));
       assert.equal(error.code, "TIMEOUT");
+      assert.equal(refusalOf(error), "no-answer");
     } finally {
       await socket.close();
     }
+  });
+
+  it("S1: close() answers a request already handed to the operator, refuses one still being read, and accepts nothing new", async () => {
+    const { directory, operator, socket } = await serve();
+    operator.delayMs = 300;
+    const inflight = callOperator(directory, "retryCurrent", ARGS.retryCurrent);
+    const partial = exchange(socket.path, '{"v":1');
+    while (operator.calls.length === 0) await new Promise(resolve => setTimeout(resolve, 5));
+    const closed = socket.close();
+    const result = await inflight;
+    assert.equal(result.result, "completed");
+    assert.equal(result.incidentRevision, 4);
+    const refused = JSON.parse((await partial).text) as OperatorIpcResponse;
+    assert.equal(errorOf(refused).code, "UNSUPPORTED_CAPABILITY");
+    assert.match(errorOf(refused).message, /closing; the request was not run/);
+    await closed;
+    assert.equal(refusalOf(await rejection(callOperator(directory, "status", {}))), "operator-not-running");
+    assert.deepEqual(operator.calledOps(), ["retryCurrent"]);
+  });
+
+  it("S1: close() waits at most drainMs for an answer, and the client then reports that the outcome is unknown", async () => {
+    const { directory, operator, logger, socket } = await serve({ drainMs: 100 });
+    operator.delayMs = 1_000;
+    const inflight = rejection(callOperator(directory, "redrive", ARGS.redrive));
+    while (operator.calls.length === 0) await new Promise(resolve => setTimeout(resolve, 5));
+    const started = performance.now();
+    await socket.close();
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed >= 90 && elapsed < 900, `closed after ${elapsed} ms`);
+    const error = await inflight;
+    assert.equal(error.code, "INTERNAL");
+    assert.equal(refusalOf(error), "no-answer");
+    assert.match(error.message, /closed before a complete answer/);
+    assert.match(logger.lines.join("\n"), /warn operator socket closed before every answer was written \{"unanswered":1,"drainMs":100\}/);
   });
 });

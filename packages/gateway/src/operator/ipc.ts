@@ -29,6 +29,8 @@ const DEFAULT_BURST = 20;
 const DEFAULT_IDLE_MS = 5_000;
 const DEFAULT_MAX_CONNECTIONS = 16;
 const DEFAULT_CLIENT_TIMEOUT_MS = 30_000;
+/** How long close() lets answers already being computed be written before it drops their connections. */
+const DEFAULT_DRAIN_MS = 5_000;
 /** Longest request ID echoed back. */
 const MAX_REQUEST_ID = 128;
 /** sun_path is 108 bytes on Linux and 104 on macOS, including the terminator. */
@@ -51,11 +53,18 @@ export interface OperatorSocketOptions {
   idleMs?: number;
   /** Concurrent connections; more are answered OVERLOADED. Default 16. */
   maxConnections?: number;
+  /** How long close() waits for answers already in progress to be written. Default 5000. */
+  drainMs?: number;
 }
 
 export interface OperatorSocket {
   path: string;
-  /** Stops serving, then removes the socket and the token file. Idempotent. */
+  /**
+   * Stops accepting connections at once and answers a request not yet handed to
+   * the operator with "closing"; a request already handed over is answered when
+   * it finishes, for at most `drainMs`. Then removes the socket and the token
+   * file. Idempotent.
+   */
   close(): Promise<void>;
 }
 
@@ -266,6 +275,7 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
   const bucket = new TokenBucket(positive(options.ratePerSecond, DEFAULT_RATE_PER_SECOND, "ratePerSecond"), positive(options.burst, DEFAULT_BURST, "burst"));
   const idleMs = positive(options.idleMs, DEFAULT_IDLE_MS, "idleMs");
   const maxConnections = positive(options.maxConnections, DEFAULT_MAX_CONNECTIONS, "maxConnections");
+  const drainMs = positive(options.drainMs, DEFAULT_DRAIN_MS, "drainMs");
 
   const runDirectory = checkRunDirectory(options.stateDirectory, path => refuse(path === options.stateDirectory ? "state-dir-missing" : "run-dir-missing",
     `${path} does not exist. Run \`streamotter init --failures\` to create the state directory.`, { path }));
@@ -279,8 +289,10 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
   const token = randomBytes(TOKEN_BYTES).toString("base64url");
   const expected = digest(token);
   const tokenIno = writeToken(runDirectory, token);
-  const connections = new Set<Socket>();
+  /** Each open connection, with what refuses its request if close() comes before the request was handed over. */
+  const connections = new Map<Socket, () => void>();
   let closing = false;
+  let drained: (() => void) | null = null;
   let lastOverloadLog = 0;
 
   const tokenMatches = (candidate: string): boolean => timingSafeEqual(digest(candidate), expected);
@@ -346,14 +358,14 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
     socket.end(`${line}\n`, () => socket.destroy());
   }
 
+  const closingError = (): StreamOtterError => new StreamOtterError("UNSUPPORTED_CAPABILITY", { message: "The operator socket is closing; the request was not run." });
+
   function serve(socket: Socket): void {
     if (closing || connections.size >= maxConnections) {
       socket.on("error", () => undefined);
-      reply(socket, failure("", closing ? new StreamOtterError("UNSUPPORTED_CAPABILITY", { message: "The operator socket is closing." })
-        : overloaded("Too many operator connections; try again shortly.")));
+      reply(socket, failure("", closing ? closingError() : overloaded("Too many operator connections; try again shortly.")));
       return;
     }
-    connections.add(socket);
     const chunks: Buffer[] = [];
     let size = 0;
     let done = false;
@@ -363,7 +375,13 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
       clearTimeout(idle);
       void Promise.resolve(response).then(value => reply(socket, value), () => reply(socket, failure("", new StreamOtterError("INTERNAL"))));
     };
-    socket.on("close", () => { clearTimeout(idle); connections.delete(socket); });
+    // Before its request is handed over, a connection is refused by close(); after, it is left to finish.
+    connections.set(socket, () => { if (!done) finish(failure("", closingError())); });
+    socket.on("close", () => {
+      clearTimeout(idle);
+      connections.delete(socket);
+      if (connections.size === 0) drained?.();
+    });
     socket.on("error", () => { done = true; clearTimeout(idle); socket.destroy(); });
     socket.on("data", (chunk: Buffer) => {
       if (done) return;
@@ -415,7 +433,18 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
       closed ??= (async () => {
         closing = true;
         const stopped = new Promise<void>(resolve => server.close(() => resolve()));
-        for (const socket of connections) socket.destroy();
+        for (const refuse of [...connections.values()]) refuse();
+        // A mutation already running is answered rather than cut off, so the caller learns its outcome.
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([
+          new Promise<void>(resolve => { drained = resolve; if (connections.size === 0) resolve(); }),
+          new Promise<void>(resolve => { timer = setTimeout(resolve, drainMs); })
+        ]);
+        clearTimeout(timer);
+        if (connections.size > 0) {
+          logger.warn("operator socket closed before every answer was written", { unanswered: connections.size, drainMs });
+        }
+        for (const socket of connections.keys()) socket.destroy();
         await stopped;
         removeIfSame(socketPath, socketIno);
         removeIfSame(tokenPath, tokenIno);
@@ -472,6 +501,17 @@ function badResponse(message: string): StreamOtterError {
   return new StreamOtterError("INTERNAL", { message: `The gateway's operator socket answered unexpectedly: ${message}.` });
 }
 
+/**
+ * `details.reason` of a client error raised after the request was sent but
+ * before a usable answer arrived (a TIMEOUT, a dropped connection, an unreadable
+ * answer): the gateway may have run the request, so its outcome is unknown.
+ */
+const NO_ANSWER = "no-answer";
+
+function unanswered(error: StreamOtterError): StreamOtterError {
+  return new StreamOtterError(error.code, { message: error.message, details: { ...error.details, reason: NO_ANSWER } });
+}
+
 /** Rebuilds the error a response carries; anything that is not a StreamError becomes INTERNAL. */
 function responseError(value: unknown): StreamOtterError {
   return isStreamError(value) ? asStreamOtterError(toStreamError(value)) : badResponse("an error without a valid shape");
@@ -499,6 +539,7 @@ export async function callOperator<O extends OperatorOperation>(
     const chunks: Buffer[] = [];
     let size = 0;
     let settled = false;
+    let sent = false;
     const socket = createConnection(socketPath);
     const settle = (error: StreamOtterError | null, data?: unknown): void => {
       if (settled) return;
@@ -508,33 +549,35 @@ export async function callOperator<O extends OperatorOperation>(
       if (error === null) resolve(data as OperatorResult<O>);
       else reject(error);
     };
-    const timer = setTimeout(() => settle(new StreamOtterError("TIMEOUT", { message: `The gateway did not answer ${op} within ${timeoutMs} ms.` })), timeoutMs);
-    socket.once("connect", () => socket.end(line));
+    /** Fails a request that may have reached the gateway: the error says its outcome is unknown. */
+    const lost = (error: StreamOtterError): void => settle(sent ? unanswered(error) : error);
+    const timer = setTimeout(() => lost(new StreamOtterError("TIMEOUT", { message: `The gateway did not answer ${op} within ${timeoutMs} ms.` })), timeoutMs);
+    socket.once("connect", () => { sent = true; socket.end(line); });
     const complete = (): void => {
       const text = Buffer.concat(chunks).toString("utf8");
       const newline = text.indexOf("\n");
       if (newline === -1) {
-        settle(badResponse("the connection closed before a complete answer"));
+        lost(badResponse("the connection closed before a complete answer"));
         return;
       }
       let response: unknown;
       try {
         response = JSON.parse(text.slice(0, newline));
       } catch {
-        settle(badResponse("not JSON"));
+        lost(badResponse("not JSON"));
         return;
       }
       if (!isPlainObject(response) || response["v"] !== OPERATOR_IPC_VERSION || typeof response["ok"] !== "boolean") {
-        settle(badResponse("not a v1 response"));
+        lost(badResponse("not a v1 response"));
         return;
       }
       if (response["ok"] === true) {
-        if (response["id"] !== id) settle(badResponse("an answer to a different request"));
+        if (response["id"] !== id) lost(badResponse("an answer to a different request"));
         else settle(null, response["data"]);
         return;
       }
       // An error the server could not tie to a request carries id "".
-      if (response["id"] !== id && response["id"] !== "") settle(badResponse("an answer to a different request"));
+      if (response["id"] !== id && response["id"] !== "") lost(badResponse("an answer to a different request"));
       else settle(responseError(response["error"]));
     };
     socket.on("error", error => {
@@ -542,11 +585,11 @@ export async function callOperator<O extends OperatorOperation>(
       if (code === "ENOENT" || code === "ECONNREFUSED") settle(notRunning(stateDirectory, `nothing answers at ${socketPath}`));
       // The server closes right after answering; a reset after a complete answer is not a failure.
       else if (code === "EPIPE" || code === "ECONNRESET") complete();
-      else settle(new StreamOtterError("INTERNAL", { message: `Cannot reach the operator socket at ${socketPath} (${code ?? "error"}).` }));
+      else lost(new StreamOtterError("INTERNAL", { message: `Cannot reach the operator socket at ${socketPath} (${code ?? "error"}).` }));
     });
     socket.on("data", (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_RESPONSE_BYTES) settle(badResponse(`a response larger than ${MAX_RESPONSE_BYTES} bytes`));
+      if (size > MAX_RESPONSE_BYTES) lost(badResponse(`a response larger than ${MAX_RESPONSE_BYTES} bytes`));
       else chunks.push(chunk);
     });
     socket.on("close", () => { if (!settled) complete(); });

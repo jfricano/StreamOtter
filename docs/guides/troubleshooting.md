@@ -80,6 +80,7 @@ Exit code `2` means invalid input or configuration; `1` means startup or runtime
 | `refused: nothing-to-rebaseline` (exit 3) | `sources rebaseline` found no incident or boundary from an earlier generation | Change the source's `generation` first; incidents of the current generation are retried or repaired, never rebaselined. |
 | `completed: held` (exit 0) | The retry ran, and the record failed again | Read the reason in the message or `failures show`; repair and retry. |
 | `unknown` (exit 4) | The gateway stopped between recording the operation and its result | Check `failures show`; never assume it ran. See [crash and restart](./source-failures.md#67-crash-and-restart). |
+| `The outcome of … is unknown: the gateway may have applied it, but its answer was lost` (exit 4) | A `retry-current`, `reassess`, `reopen-circuit`, `retire-boundary` or `redrive` reached the gateway, but no answer came back: the gateway stopped with the answer still pending for more than 5 seconds, the connection dropped, or 30 seconds passed (`TIMEOUT`) | Check `status` and `failures show` before sending it again. For a redrive, sending it again with the same `--operation-id` returns the recorded result. A read command (`status`, `failures list`, `show`, `export`, `evaluate`) that loses its answer exits 1 instead; just run it again. |
 | `OVERLOADED` | More than 10 requests per second, or 16 connections, on the socket | Slow down; don't poll in a tight loop. |
 
 Every refusal outcome is listed in the [runbook](./source-failures.md#53-exit-codes-and-refusals).

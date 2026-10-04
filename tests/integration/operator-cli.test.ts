@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { after, before, beforeEach, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it, mock } from "node:test";
+import { runCli as runCliInProcess } from "@streamotter/cli";
 import {
   StreamOtterError,
   type EvaluationResult, type IncidentDetail, type IncidentSummary, type OperationResult, type OperatorStatus, type Page, type RawEvidenceView, type ReproductionBundle
 } from "@streamotter/contracts";
 import { startOperatorSocket, type OperatorSocket } from "@streamotter/gateway/operator";
 import { BOUNDARY_ID, FAILURE_ID, FakeOperator, HOSTILE_KEY, HOSTILE_VALUE } from "../../packages/gateway/test/fake-operator.ts";
+import { orderConfig } from "./harness.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const CLI = resolve(ROOT, "packages/cli/src/main.ts");
@@ -45,6 +48,34 @@ const MUTATIONS: Record<string, string[]> = {
   "sources retire-boundary": ["--source", "orders", "--boundary", BOUNDARY_ID, "--expected-revision", "2", "--reason", "verified the repair", "--confirm", BOUNDARY_ID],
   "failures redrive": ["--failure", FAILURE_ID, "--plan", "plan-1", "--plan-fingerprint", "sha256:plan", "--expected-revision", "3", "--operation-id", "redrive-1"]
 };
+
+/**
+ * A socket at <state>/run/operator.sock that reads the request and then drops
+ * the connection (`drop`) or never answers: a gateway that stopped, or hung,
+ * after the request reached it.
+ */
+async function unansweringGateway(state: string, drop: boolean): Promise<{ received(): Promise<void>; close(): Promise<void> }> {
+  writeFileSync(join(state, "run", "operator.token"), `${"t".repeat(43)}\n`, { mode: 0o600 });
+  const sockets = new Set<Socket>();
+  let notify: (() => void) | null = null;
+  const server = createServer(socket => {
+    sockets.add(socket);
+    socket.on("error", () => undefined);
+    socket.on("data", chunk => {
+      if (!chunk.includes(0x0a)) return;
+      notify?.();
+      if (drop) socket.destroy();
+    });
+  });
+  await new Promise<void>(done => server.listen(join(state, "run", "operator.sock"), done));
+  return {
+    received: () => new Promise<void>(done => { notify = done; }),
+    async close() {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>(done => server.close(() => done()));
+    }
+  };
+}
 
 /** Characters a terminal acts on; none may reach stdout or stderr from record data. */
 const TERMINAL_CONTROL = new RegExp("[\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f]");
@@ -251,6 +282,104 @@ describe("CLI operator commands over the local socket (API §10)", { skip: POSIX
       assert.equal(run.code, 2, `${args.join(" ")}: ${run.stderr}`);
     }
     assert.deepEqual(operator.calls, []);
+  });
+
+  it("S2: with --json every error is {\"error\": StreamError} on stderr, stdout stays empty, and exit codes are unchanged", async () => {
+    const parent = resolve(directory, "..");
+    const existing = join(parent, "exists.json");
+    writeFileSync(existing, "{}");
+    const config = join(parent, "streamotter.json");
+    writeFileSync(config, JSON.stringify({ ...orderConfig(), failureHandling: { sources: { orders: { invalidJson: "quarantine-hold", invalidPublicPayload: "quarantine-hold" } } } }));
+    const retire = MUTATIONS["sources retire-boundary"]!.slice(0, -2);
+    const rebaseline = ["sources", "rebaseline", "--source", "orders", "--reason", "topic recreated", "--confirm", "orders"];
+    const cases: { name: string; args: string[]; code: number; error?: string }[] = [
+      { name: "missing --failure", args: ["failures", "show"], code: 2 },
+      { name: "unknown subcommand", args: ["failures", "purge"], code: 2 },
+      { name: "status with an argument", args: ["status", "extra"], code: 2 },
+      { name: "a flag of another subcommand", args: ["failures", "list", "--raw"], code: 2 },
+      { name: "a flag no command has", args: ["sources", "retry-current", ...MUTATIONS["sources retry-current"]!, "--force"], code: 2 },
+      { name: "a bad number", args: ["sources", "reassess", "--source", "orders", "--failure", FAILURE_ID, "--expected-revision", "-1"], code: 2 },
+      { name: "retire-boundary without --confirm", args: ["sources", "retire-boundary", ...retire], code: 2 },
+      { name: "export to an existing file", args: ["failures", "export", "--failure", FAILURE_ID, "--out", existing], code: 2 },
+      { name: "rebaseline without --config", args: rebaseline, code: 2 },
+      { name: "rebaseline with a foreign flag", args: [...rebaseline, "--config", config, "--failure", FAILURE_ID], code: 2 },
+      { name: "rebaseline without --confirm", args: [...rebaseline.slice(0, -2), "--config", config], code: 2 },
+      { name: "rebaseline without a journal", args: [...rebaseline, "--config", config], code: 2, error: "CONFIG_INVALID" }
+    ];
+    for (const { name, args, code, error: expected = "INVALID_REQUEST" } of cases) {
+      const human = await cli(...args);
+      assert.equal(human.code, code, `${name} (human): ${human.stderr}`);
+      const json = await cli(...args, "--json");
+      assert.equal(json.code, code, `${name}: ${json.stderr}`);
+      assert.equal(json.stdout, "", name);
+      const lines = json.stderr.trimEnd().split("\n");
+      assert.equal(lines.length, 1, `${name}: stderr is one JSON line, got ${json.stderr}`);
+      const error = (JSON.parse(lines[0]!) as { error: { code: string; message: string; details?: Record<string, unknown> } }).error;
+      assert.equal(error.code, expected, name);
+      assert.ok(error.message.length > 0, name);
+      if (name === "retire-boundary without --confirm") {
+        assert.match(error.message, /--confirm b1-orders/);
+        assert.match(String(error.details?.["warning"]), /StreamOtter cannot check that/);
+      }
+    }
+    assert.deepEqual(operator.calls, []);
+
+    // An error from the gateway on a retirement: the warning is not printed as text in front of the JSON.
+    operator.throwing.set("retireBoundary", new StreamOtterError("INVALID_REQUEST", { message: "No boundary b1-orders." }));
+    const refused = await cli("sources", "retire-boundary", ...MUTATIONS["sources retire-boundary"]!, "--json");
+    assert.equal(refused.code, 2);
+    assert.equal(refused.stdout, "");
+    assert.equal((JSON.parse(refused.stderr) as { error: { message: string } }).error.message, "No boundary b1-orders.");
+  });
+
+  it("S1: a mutation whose answer is lost exits 4 and says what to check; a read whose answer is lost exits 1", async () => {
+    const state = stateDirectory();
+    const gateway = await unansweringGateway(state, true);
+    try {
+      const retry = await runCli(["sources", "retry-current", "--state-dir", state, ...MUTATIONS["sources retry-current"]!]);
+      assert.equal(retry.code, 4, retry.stderr);
+      assert.match(retry.stderr, /^The outcome of sources retry-current is unknown/);
+      assert.match(retry.stderr, /Check `streamotter status` and `streamotter failures show --failure f1:orders\/0\/42`/);
+      const reopen = await runCli(["sources", "reopen-circuit", "--state-dir", state, ...MUTATIONS["sources reopen-circuit"]!]);
+      assert.equal(reopen.code, 4, reopen.stderr);
+      const redrive = await runCli(["failures", "redrive", "--state-dir", state, ...MUTATIONS["failures redrive"]!, "--json"]);
+      assert.equal(redrive.code, 4, redrive.stderr);
+      assert.equal(redrive.stdout, "");
+      const error = (JSON.parse(redrive.stderr) as { error: { message: string; details: Record<string, unknown> } }).error;
+      assert.deepEqual(error.details, { reason: "no-answer", operationId: "redrive-1" });
+      assert.match(error.message, /sending it again with --operation-id redrive-1 returns the recorded result/);
+      for (const read of [["status"], ["failures", "show", "--failure", FAILURE_ID], ["failures", "evaluate", "--failure", FAILURE_ID, "--expected-revision", "3"]]) {
+        const run = await runCli([...read, "--state-dir", state]);
+        assert.equal(run.code, 1, `${read.join(" ")}: ${run.stderr}`);
+        assert.match(run.stderr, /^INTERNAL: The gateway's operator socket answered unexpectedly: the connection closed before a complete answer\./);
+      }
+    } finally {
+      await gateway.close();
+    }
+  });
+
+  it("S1: a mutation that times out exits 4; a read that times out exits 1", async () => {
+    const state = stateDirectory();
+    const gateway = await unansweringGateway(state, false);
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const cases: [string[], number][] = [
+        [["sources", "reassess", ...MUTATIONS["sources reassess"]!], 4],
+        [["status"], 1]
+      ];
+      for (const [args, expected] of cases) {
+        const err: string[] = [];
+        const received = gateway.received();
+        const pending = runCliInProcess([...args, "--state-dir", state], { out: () => undefined, err: line => err.push(line), shutdownSignal: new Promise(() => undefined) });
+        await received;
+        mock.timers.tick(30_000);
+        assert.equal(await pending, expected, err.join("\n"));
+        assert.match(err.join("\n"), expected === 4 ? /unknown: .*TIMEOUT: The gateway did not answer reassess within 30000 ms/ : /^TIMEOUT: /);
+      }
+    } finally {
+      mock.timers.reset();
+      await gateway.close();
+    }
   });
 
   it("exits 1 with a clear message when no gateway serves the state directory", async () => {
