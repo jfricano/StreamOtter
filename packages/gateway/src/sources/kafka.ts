@@ -111,7 +111,17 @@ export function kafkaConfig(
     logCreator: () => entry => {
       // Forward only the namespace and message; KafkaJS extras can include request details.
       if (quiet()) return;
-      sink?.logger.warn("Kafka client", { namespace: entry.namespace, message: String(entry.log.message).slice(0, 300) });
+      const message = String(entry.log.message).slice(0, 300);
+      if (message.startsWith("Offset out of range, resetting")) {
+        // The consumer moved to its startFrom offset: records were skipped or will be read again.
+        const { topic, partition } = entry.log as { topic?: unknown; partition?: unknown };
+        sink?.logger.warn("Kafka offset out of range; the consumer reset to its startFrom offset, so records may be skipped or read again", {
+          namespace: entry.namespace, message,
+          ...(typeof topic === "string" ? { topic } : {}), ...(typeof partition === "number" ? { partition } : {})
+        });
+        return;
+      }
+      sink?.logger.warn("Kafka client", { namespace: entry.namespace, message });
     }
   };
   if (connection.tls) config.ssl = connection.ca === null ? true : { ca: [connection.ca] };
@@ -156,6 +166,8 @@ function nextOffset(offset: string): string {
 /** How long without fetch/heartbeat activity before a healthy source is considered degraded. */
 const WATCHDOG_MS = 12_000;
 const HEARTBEAT_INTERVAL_MS = 3_000;
+/** How long startup waits for each step of reading the group's start position before going on without it. */
+const START_POSITION_TIMEOUT_MS = 5_000;
 
 /**
  * KafkaJS adapter with explicit progress management: auto-commit and automatic
@@ -193,6 +205,14 @@ export class KafkaSourceAdapter implements SourceAdapter {
   /** Serializes offset commits so a retried commit can never land after, and move back, a later one. */
   #commits: Promise<unknown> = Promise.resolve();
   #retrying = false;
+  /**
+   * startFrom "latest": the high-water marks read before the consumer started, for partitions the group
+   * had no committed offset on. Committed once the first assignment is fetching (null after that), so a
+   * restart before the first record's commit resumes here instead of at a later "latest".
+   */
+  #startPositions: Map<string, string> | null = null;
+  #startJoin: Map<string, Set<number>> | null = null;
+  #startCommit: Promise<void> | null = null;
   readonly #sockets = new TrackedSockets();
 
   constructor(options: {
@@ -229,6 +249,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const joined = new Promise<void>(resolve => { this.#joined = resolve; });
     await consumer.connect();
     await consumer.subscribe({ topics: [...this.#source.topics], fromBeginning: this.#source.startFrom === "earliest" });
+    await this.#readStartPositions(kafka);
+    if (this.#stopping) return;
     await consumer.run({
       autoCommit: false,
       eachBatchAutoResolve: false,
@@ -240,6 +262,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
           this.#reapplyPause();
           return;
         }
+        // Nothing is processed before the start position is recorded, so a record's commit never precedes it.
+        if (this.#startCommit !== null) await this.#startCommit;
         for (const message of batch.messages) {
           if (this.#paused || this.#stopping || !isRunning() || isStale()) return;
           const position = { kind: "kafka" as const, topic: batch.topic, partition: batch.partition, offset: message.offset };
@@ -450,6 +474,75 @@ export class KafkaSourceAdapter implements SourceAdapter {
     })().finally(() => { this.#retrying = false; });
   }
 
+  /**
+   * Reads the group's committed offsets and each partition's retained range
+   * before the consumer starts. Warns about a committed offset outside that
+   * range, which Kafka silently resets to startFrom (records skipped or read
+   * again). With startFrom "latest", remembers the high-water mark of every
+   * partition with nothing committed: it is at or before wherever the consumer
+   * will start, so committing it can never skip a record. Best effort; a
+   * failure only logs.
+   */
+  async #readStartPositions(kafka: KafkaClient): Promise<void> {
+    const admin = kafka.admin();
+    const latest = this.#source.startFrom === "latest";
+    const starts = new Map<string, string>();
+    try {
+      await withDeadline(admin.connect(), Date.now() + START_POSITION_TIMEOUT_MS, "Kafka connect");
+      const deadline = Date.now() + START_POSITION_TIMEOUT_MS;
+      const committed = await withDeadline(admin.fetchOffsets({ groupId: this.#source.consumerGroup, topics: [...this.#source.topics] }), deadline, "offset fetch");
+      for (const { topic, partitions } of committed) {
+        const ranges = new Map((await withDeadline(admin.fetchTopicOffsets(topic), deadline, "topic offsets")).map(entry => [entry.partition, entry]));
+        for (const { partition, offset } of partitions) {
+          const range = ranges.get(partition);
+          if (range === undefined) continue;
+          if (offset === "-1") {
+            if (latest) starts.set(`${topic}:${partition}`, range.high);
+          } else if (BigInt(offset) < BigInt(range.low) || BigInt(offset) > BigInt(range.high)) {
+            this.#sink.logger.warn("The consumer group's committed offset is outside the partition's retained range; Kafka resets it to the startFrom offset, so records may be skipped or read again", {
+              sourceId: this.#sourceId, topic, partition, committed: offset, low: range.low, high: range.high, startFrom: this.#source.startFrom
+            });
+          }
+        }
+      }
+      if (latest && starts.size > 0) this.#startPositions = starts;
+    } catch (error) {
+      if (!this.#stopping) {
+        this.#sink.logger.warn("The consumer group's start position could not be read; a restart before the first commit starts from the latest offset again", {
+          sourceId: this.#sourceId, error: (error as Error).name
+        });
+      }
+    } finally {
+      await admin.disconnect().catch(() => undefined);
+    }
+  }
+
+  /** Commits the start positions read before the consumer started, for the partitions of the first assignment that still have none. */
+  #commitStartPositions(consumer: Consumer): void {
+    const starts = this.#startPositions;
+    const assignment = this.#startJoin;
+    this.#startPositions = null;
+    this.#startJoin = null;
+    if (starts === null || assignment === null) return;
+    const offsets = [...assignment].flatMap(([topic, partitions]) => [...partitions]
+      .filter(partition => starts.has(`${topic}:${partition}`))
+      .map(partition => ({ topic, partition, offset: starts.get(`${topic}:${partition}`) as string })));
+    if (offsets.length === 0) return;
+    const commit = this.#commits.then(async () => {
+      if (this.#stopping) return;
+      try {
+        await consumer.commitOffsets(offsets);
+        this.#sink.logger.info("Recorded the latest start position for partitions with no committed offset", { sourceId: this.#sourceId, partitions: offsets.length });
+      } catch (error) {
+        this.#sink.logger.warn("The start position could not be committed; a restart before the first commit starts from the latest offset again", {
+          sourceId: this.#sourceId, error: (error as Error).name
+        });
+      }
+    }).finally(() => { if (this.#startCommit === commit) this.#startCommit = null; });
+    this.#startCommit = commit;
+    this.#commits = commit;
+  }
+
   #reapplyPause(): void {
     this.#consumer?.pause(this.#source.topics.map(name => ({ topic: name })));
   }
@@ -488,6 +581,9 @@ export class KafkaSourceAdapter implements SourceAdapter {
       this.#assignment = new Map(Object.entries(event.payload.memberAssignment).map(([topic, partitions]) => [topic, new Set(partitions)]));
       this.#assignmentEpoch++;
       this.#rebalancing = false;
+      // Only the first assignment: positions read at startup say nothing about partitions gained later.
+      if (this.#startPositions !== null && this.#startJoin === null) this.#startJoin = this.#assignment;
+      else this.#startPositions = null;
       this.#lastActivity = Date.now();
       if (this.#paused) this.#reapplyPause();
       this.#setStatus("healthy");
@@ -502,6 +598,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
       this.#assignmentEpoch++;
       this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
+    // KafkaJS ignores a commit until the consumer is running, which it is once it fetches.
+    consumer.on(events.FETCH_START, () => { if (this.#startJoin !== null) this.#commitStartPositions(consumer); });
     consumer.on(events.FETCH, () => this.#activity());
     consumer.on(events.HEARTBEAT, () => this.#activity());
     consumer.on(events.COMMIT_OFFSETS, () => this.#activity());
