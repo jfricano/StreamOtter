@@ -82,12 +82,18 @@ export class TrackedSockets {
   }
 }
 
-function kafkaConfig(
+/** Client settings a caller may override; the quarantine writer uses a shorter request deadline (ADR-15A §5). */
+export interface KafkaClientOverrides {
+  requestTimeout?: number;
+}
+
+export function kafkaConfig(
   clientId: string,
   connection: ResolvedKafkaConnection,
   sink: Pick<SourceSink, "logger"> | null,
   sockets: TrackedSockets,
-  quiet: () => boolean = () => false
+  quiet: () => boolean = () => false,
+  overrides: KafkaClientOverrides = {}
 ): KafkaConfig {
   const config: KafkaConfig = {
     clientId,
@@ -95,7 +101,7 @@ function kafkaConfig(
     brokers: [...connection.brokers],
     connectionTimeout: 3_000,
     authenticationTimeout: 10_000,
-    requestTimeout: 30_000,
+    requestTimeout: overrides.requestTimeout ?? 30_000,
     retry: { initialRetryTime: 300, maxRetryTime: 5_000, retries: 8 },
     logLevel: logLevel.ERROR,
     logCreator: () => entry => {
@@ -112,9 +118,11 @@ function kafkaConfig(
 }
 
 /** A KafkaJS client on a resolved profile with socket tracking, for clients other than the source consumer. */
-export function createTrackedKafka(clientId: string, connection: ResolvedKafkaConnection, logger: GatewayLogger): { kafka: KafkaClient; sockets: TrackedSockets } {
+export function createTrackedKafka(
+  clientId: string, connection: ResolvedKafkaConnection, logger: GatewayLogger, overrides: KafkaClientOverrides = {}
+): { kafka: KafkaClient; sockets: TrackedSockets } {
   const sockets = new TrackedSockets();
-  return { kafka: new Kafka(kafkaConfig(clientId, connection, { logger }, sockets)), sockets };
+  return { kafka: new Kafka(kafkaConfig(clientId, connection, { logger }, sockets, () => false, overrides)), sockets };
 }
 
 /**
