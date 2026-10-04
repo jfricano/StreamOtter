@@ -65,6 +65,8 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   #terminal = false;
   #attached: Connection | null = null;
   #serverKnows = false;
+  /** A subscribe request is on the wire; the gateway may hold the subscription before it answers. */
+  #subscribeInFlight = false;
   #epoch: string | null = null;
   /** Set after we ask the gateway to replace `#epoch`; old-epoch progress is ignored. */
   #replacing: string | null = null;
@@ -128,7 +130,8 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   unsubscribe(): Promise<void> {
     if (this.#unsubscribing !== null) return this.#unsubscribing;
     const connection = this.#attached;
-    const serverKnows = this.#serverKnows;
+    // The socket is ordered, so an unsubscribe sent while the subscribe is unanswered arrives after it.
+    const serverKnows = this.#serverKnows || this.#subscribeInFlight;
     this.#terminate("closed", undefined, new StreamOtterError("CANCELLED", { message: "The subscription was unsubscribed." }));
     this.#unsubscribing = serverKnows && connection !== null && connection.connected
       ? this.#sendUnsubscribe(connection)
@@ -144,6 +147,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#clearRetry();
     this.#attached = connection;
     this.#serverKnows = false;
+    this.#subscribeInFlight = false;
     this.#epoch = null;
     this.#replacing = null;
     this.#awaitingEpoch = true;
@@ -156,6 +160,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#clearRetry();
     this.#attached = null;
     this.#serverKnows = false;
+    this.#subscribeInFlight = false;
     this.#awaitingEpoch = true;
     this.#replacing = null;
     if (this.#terminal || this.#state === "resync-required") return;
@@ -224,7 +229,12 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   handleData(connection: Connection, frame: DataFrame): void {
     if (this.#terminal || connection !== this.#attached) return;
     this.#serverKnows = true;
-    if (this.#awaitingEpoch || frame.epoch !== this.#epoch) return;
+    if (this.#awaitingEpoch || frame.epoch !== this.#epoch) {
+      // An epoch this subscription has asked to replace is no longer delivered, but its frames are
+      // still receipted: if the gateway keeps it, an unreceipted frame would drop the connection.
+      if (frame.epoch === this.#epoch && this.#epoch !== null) connection.receipt({ subscriptionId: this.id, epoch: frame.epoch, sequence: frame.sequence });
+      return;
+    }
     if (frame.sequence !== this.#expectedSequence) {
       this.#localSyncFailure("INVALID_REQUEST", `Expected sequence ${this.#expectedSequence} but received ${frame.sequence}.`);
       return;
@@ -277,6 +287,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
 
   async #subscribe(connection: Connection): Promise<void> {
     let result;
+    this.#subscribeInFlight = true;
     try {
       result = await connection.request<{ subscriptionId: string }>(EVENTS.subscribe, {
         requestId: this.#owner.randomId(),
@@ -289,6 +300,8 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
       if (connection !== this.#attached || this.#terminal) return;
       if ((error as StreamError).code === "TIMEOUT") this.#owner.controlTimedOut(connection);
       return;
+    } finally {
+      if (connection === this.#attached || this.#attached === null) this.#subscribeInFlight = false;
     }
     if (connection !== this.#attached || this.#terminal) return;
     if (result.ok) {
@@ -330,14 +343,34 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
       return;
     }
     if (this.#state === "authorizing" || this.#state === "synchronizing") return; // Joins the running synchronization.
+    this.#clearRetry();
     this.#replacing = this.#epoch;
     this.#awaitingEpoch = true;
     this.#setState("authorizing");
+    const replacing = this.#epoch;
     connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }).then(result => {
       if (connection !== this.#attached || this.#terminal || result.ok) return;
       this.#lastError = result.error;
       this.#emitError(result.error);
-      if (result.error.code === "INVALID_REQUEST") this.attach(connection); // The gateway no longer knows it.
+      if (result.error.code === "INVALID_REQUEST") {
+        this.attach(connection); // The gateway no longer knows it.
+        return;
+      }
+      // The gateway refused (for example over its rate limit) and kept the current epoch. Stop waiting
+      // for a replacement and ask again with backoff, then give up as resync-required.
+      if (this.#replacing !== replacing || this.#epoch !== replacing) return; // A new epoch already arrived.
+      this.#replacing = null;
+      this.#awaitingEpoch = true; // Frames of the kept epoch are receipted but no longer delivered.
+      this.#localFailures++;
+      if (this.#localFailures >= LOCAL_SYNC_ATTEMPTS) {
+        this.#setState("resync-required", result.error.code);
+        return;
+      }
+      this.#setState("stale", result.error.code);
+      this.#retryTimer = setTimeout(() => {
+        this.#retryTimer = null;
+        if (this.#attached === connection && connection.connected && !this.#terminal) this.#requestFreshSynchronization();
+      }, 1_000 * 2 ** (this.#localFailures - 1));
     }, (error: StreamError) => {
       if (connection === this.#attached && !this.#terminal && error.code === "TIMEOUT") this.#owner.controlTimedOut(connection);
     });
@@ -362,12 +395,29 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#requestFreshSynchronization();
   }
 
+  /** Resolves once the gateway confirms, or after UNSUBSCRIBE_TIMEOUT_MS. A refusal over its rate limit is retried. */
   #sendUnsubscribe(connection: Connection): Promise<void> {
     return new Promise<void>(resolve => {
-      const timer = setTimeout(resolve, UNSUBSCRIBE_TIMEOUT_MS);
-      connection.request(EVENTS.unsubscribe, { requestId: this.#owner.randomId(), subscriptionId: this.id })
-        .then(() => undefined, () => undefined)
-        .finally(() => { clearTimeout(timer); resolve(); });
+      let retry: ReturnType<typeof setTimeout> | null = null;
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(deadline);
+        if (retry !== null) clearTimeout(retry);
+        resolve();
+      };
+      const deadline = setTimeout(finish, UNSUBSCRIBE_TIMEOUT_MS);
+      const send = (attempt: number) => {
+        connection.request(EVENTS.unsubscribe, { requestId: this.#owner.randomId(), subscriptionId: this.id }).then(result => {
+          if (!result.ok && result.error.code === "OVERLOADED" && connection.connected && !done) {
+            retry = setTimeout(() => { retry = null; send(attempt + 1); }, Math.min(250 * 2 ** attempt, 2_000));
+            return;
+          }
+          finish();
+        }, finish);
+      };
+      send(0);
     });
   }
 
@@ -421,7 +471,8 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
       requestId: this.#owner.randomId()
     });
     const connection = this.#attached;
-    const serverKnows = this.#serverKnows;
+    // The socket is ordered, so an unsubscribe sent while the subscribe is unanswered arrives after it.
+    const serverKnows = this.#serverKnows || this.#subscribeInFlight;
     this.#emitError(error);
     this.#terminate("failed", "HANDLER_FAILED", error);
     if (serverKnows && connection !== null && connection.connected) void this.#sendUnsubscribe(connection);

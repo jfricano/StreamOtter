@@ -178,6 +178,9 @@ export class ClientSession implements SubscriptionHost {
 
   handleUnsubscribe(payload: unknown, reply: unknown): void {
     if (this.#closed || this.#stalled()) return;
+    // Releasing an existing subscription is never rate-limited: a client refused here would keep a
+    // subscription it no longer reads, and its next unreceipted frame would drop the whole connection.
+    const releases = isPlainObject(payload) && typeof payload["subscriptionId"] === "string" && this.#subscriptions.has(payload["subscriptionId"]);
     this.#control("so:unsubscribe", payload, reply, CONTROL_KEYS, (request, requestId) => {
       const subscriptionId = request["subscriptionId"];
       if (!isUuid(subscriptionId)) return this.#err("INVALID_REQUEST", requestId, "subscriptionId must be a UUID.");
@@ -187,7 +190,7 @@ export class ClientSession implements SubscriptionHost {
         this.#subscriptions.delete(subscriptionId);
       }
       return { ok: true, requestId, data: null };
-    });
+    }, releases);
   }
 
   handleResync(payload: unknown, reply: unknown): void {
@@ -292,7 +295,8 @@ export class ClientSession implements SubscriptionHost {
     payload: unknown,
     reply: unknown,
     allowedKeys: ReadonlySet<string>,
-    operation: (request: Record<string, unknown>, requestId: string) => Result<unknown> & { after?: () => void }
+    operation: (request: Record<string, unknown>, requestId: string) => Result<unknown> & { after?: () => void },
+    exemptFromRate = false
   ): void {
     if (typeof reply !== "function") {
       if (this.#protocolErrorAllowed()) this.sendError({ error: streamError("INVALID_REQUEST", { message: `${event} requires an acknowledgement callback.`, requestId: newId() }) });
@@ -300,7 +304,7 @@ export class ClientSession implements SubscriptionHost {
     }
     const respond = reply as Reply;
     const requestId = isPlainObject(payload) && isUuid(payload["requestId"]) ? payload["requestId"] : newId();
-    if (!this.#bucket.take()) {
+    if (!exemptFromRate && !this.#bucket.take()) {
       respond(this.#err("OVERLOADED", requestId, "Too many control requests; slow down."));
       return;
     }
