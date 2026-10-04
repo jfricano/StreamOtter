@@ -4,21 +4,23 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 
 ## 1. Resume here
 
-**Current state (October 3, 2026):** these PRs are open and stacked:
+**Current state (October 4, 2026):** V1.1 is implemented. These PRs are open and stacked:
 - planning, PR #12;
 - the workbench seam, PR #14 (`feat/v1.1-workbench-host`, on #12);
 - slice A, PR #13 (`feat/v1.1-contracts`, on #12);
 - slice B, PR #15 (`feat/v1.1-quarantine-hold`, on #13), which includes the journal branch `feat/v1.1-journal`;
 - slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`;
-- slice D, the operator workflow (`feat/v1.1-operator`, on #16), PR #17, which merges PR #14 and the helper branches `feat/v1.1-operation-store`, `feat/v1.1-operator-ipc`, `feat/v1.1-failures-view` and `feat/v1.1-quarantine-reader`.
+- slice D, PR #17 (`feat/v1.1-operator`, on #16), which merges PR #14 and four helper branches;
+- slice E, the operations and release work (`feat/v1.1-operations-release`, on #17), which merges `feat/v1.1-docs-runbook`, `feat/v1.1-reference-guard` and `feat/v1.1-replicated-kafka`.
 
-**Next step:** slice E (PR 7): the health listener, the reference guard in the order-dashboard example, the runbook, the remaining evidence rows and the acceptance packet. Tell the Lontra Creek thread when PR #14 changes or merges and when a release is published.
+**Next step:** the owner reviews and merges the stack in order, retargeting each PR to `main` as its base merges. Then CI runs the extended tiers on `main`, and the owner decides on publishing; the [acceptance packet](./ACCEPTANCE_PACKET.md) recommends `0.2.0-rc.1`. Nothing is published, tagged or deployed without the owner's go. Tell the Lontra Creek thread when PR #14 merges and when a release is published.
 
-**Open owner decisions:**
+**Owner decisions:**
 
 | ID | Question | Asked | Answer |
 | --- | --- | --- | --- |
-| D1 | Journal engine given `node:sqlite` warns on Node 24.0–24.14 ([API draft](./V1_1_API.md) §11) | October 3, 2026 | pending |
+| D1 | Journal engine given `node:sqlite` warns on Node 24.0–24.14 ([API draft](./V1_1_API.md) §11) | October 3, 2026 | October 4: `node:sqlite`, Node 24.15 or later |
+| — | Add a command to close an incident whose record can never be processed | October 3, 2026 | October 4: yes, `streamotter sources rebaseline` |
 
 **Environment notes for a fresh session:**
 
@@ -200,6 +202,42 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - `pnpm test:install`: 21 tests, 21 pass; the packed tarball contains `workbench-host.css` with a matching integrity value, and `entry.hostStyle` resolves through the package exports.
 - Failed or adjusted runs: the first `pnpm test:install` failed its TLS Kafka case only because a local broker was running but this worktree had no `.local/kafka-certs/ca.pem`; with the broker's CA copied into the gitignored `.local/`, it passed. The first run of the transformer's own test failed because the nested-rule check saw a `{` inside a quoted `content` value; the check now ignores strings. Browser tests ran on the preinstalled headless Chromium 141 as in the entry above. Both new browser files were checked against deliberate breakage (linking the unscoped `styles.css`; sending `credentials: "same-origin"` and following redirects) and failed as expected.
 - Not done here: `EVIDENCE.md` still cites the revision 0.2 counts.
+
+### October 3–4, 2026 — slice E (operations and release), branch `feat/v1.1-operations-release`
+
+- **Shape.** Slice E is stacked on `feat/v1.1-operator` (#17). The health listener, the downgrade refusal, the crash tests and the rebaseline command were written here. Three helpers worked in parallel in their own worktrees, each limited to its own files, and each branch was merged as a merge commit:
+  - `feat/v1.1-docs-runbook`: the operator runbook [docs/guides/source-failures.md](../../guides/source-failures.md); failure handling in the deployment, Kafka and troubleshooting guides and the package READMEs; and the V1.1 section of implementation status. It left five `<!-- lead: -->` questions, all resolved before this entry.
+  - `feat/v1.1-reference-guard`: the order-dashboard example's outbox and watermark (`domain.ts` `OrderStore`, `decideRecovery`, `acknowledgeRecovery`), the `quarantine-resync` configuration `streamotter.kafka-resync.json` with `pnpm dev:kafka-resync`, `tests/integration/reference-guard.test.ts` (5) and `tests/kafka/12-reference-guard.test.ts` (1).
+  - `feat/v1.1-replicated-kafka`: a local three-broker KRaft cluster (`scripts/kafka/replicated-{start,stop}.sh`) and `pnpm test:kafka:replicated` (F47). The helper's settings, observations and runs are in EVIDENCE F47 and below.
+- **Health listener** (`6134aab`; API draft §8, now normative): `GatewayOptions.health` and `start --health`. Readiness reasons are evaluated in the fixed order `starting`, `source-held`, `source-unavailable`, `journal`, `quarantine`. The listener opens first in `start()`, so a probe sees `starting` during the startup deadline, and it closes first in `stop()`. A port in use fails startup with its own message (`Health port <host>:<port> is already in use`) and rolls everything back.
+- **Downgrade refusal** (`4e5504a`; API draft §4 slice E note): without `failureHandling`, a `stateDirectory` journal with an open incident or a boundary in force refuses startup with `failure-handling-removed`.
+- **Rebaseline** (`efcc62c`; API draft §10 slice E note; runbook §6.10). The owner chose a command over a manual-only procedure (October 4). `sources rebaseline` runs offline after a deliberate `generation` change. It closes the earlier generation's incidents with the reason and an operation ID, then calls `claim()`, which retires the old boundary. It never touches current-generation incidents and never moves a group. The generation-change refusals in `journal.ts` and `service.ts` now name the command.
+- **Crash tests:** `tests/kafka/11-operator.test.ts` adds F35. It SIGKILLs a child gateway (`tests/kafka/operator-crash-child.ts`) between a redrive's recorded intent and its result. `tests/install/install.test.ts` SIGKILLs the installed `streamotter start --operator-socket` and restarts it on the same state directory.
+- **Deviations and decisions:**
+  - D1 is decided (owner, October 4): `node:sqlite` with a Node 24.15 floor. The code already assumed it, so nothing changed.
+  - Rebaseline operations are not recorded in the operations table. No gateway runs, so no `unknown` outcome can be reported; the incident history carries the operation ID.
+  - F47 uses dedicated controllers. With combined broker and controller nodes, killing two of three loses the KRaft quorum, and the ISR never shrinks.
+  - F47 recovery needs an operator retry. The gateway holds after an `unknown` quarantine write rather than re-attempting it, one of the two outcomes spec §6 allows.
+- **Failed or adjusted runs:**
+  - The first deploy run after merging the reference guard failed 3/4. The graceful-restart test saw Chromium log `WebSocket … Unexpected response code: 502` while the gateway was down. Bisecting showed it was not the guard. On the slice D head it passed 2/2. On the health commit it failed 1/2, and that commit changes nothing when `--health` is off. The race is in the test: the SDK's full-jitter backoff (0–500 ms first) can land a reconnect attempt while no gateway listens. It became frequent while the three-broker cluster loaded the machine. The test now allows exactly that console error, on the gateway socket and only during the restart (`5ddadcd`); every other problem still fails it. Three runs after the change: 4/4 each.
+  - The first rebaseline test expected `CONFIG_INVALID` at startup; the journal's generation refusal is `SOURCE_UNAVAILABLE`. The test was wrong.
+  - Backticks inside template literals in the new refusal messages broke the build; the messages use double quotes instead.
+  - The health port's `EADDRINUSE` first surfaced as the gateway port's message (reported by the runbook helper); it now has its own catch.
+  - F47 helper runs: 6. Runs 1 and 2 each failed the ISR test on fixture problems. One was a start script misreading an empty `/proc/<pid>/cmdline` during `exec` (`3b65f57`); the other was the reader cross-check meeting `GROUP_LOAD_IN_PROGRESS` right after the brokers rejoined (`88013f2`, which retries and reports). Runs 3–6 passed 2/2.
+- **Commands** at `92cf086`, on Node 24.21.0 and pnpm 11.19.0, from the main checkout, October 4:
+  - `pnpm build && pnpm verify`: 334 tests, 334 pass, 0 fail.
+  - `pnpm test:kafka` (local single broker, Kafka 4.1.2): 41 tests, 41 pass.
+  - `pnpm test:browser`: 52 tests, 52 pass, on the preinstalled headless Chromium 141 linked as in the slice D entry.
+  - `pnpm test:install`: 22 tests, 22 pass, with the TLS Kafka case run.
+  - `pnpm test:deploy`: 4 tests, 4 pass.
+  - `./scripts/kafka/replicated-start.sh && pnpm test:kafka:replicated`: 2 tests, 2 pass, in 139 s.
+    - Leader case: the in-window write was `unknown` after 989 ms, and the new leader was visible after 8.2 s. All 7 pre-kill acknowledgments were read back byte for byte from broker 2 while broker 1 was down. 17 copies for 16 bad records, the only duplicate being the retried record.
+    - ISR case: `NOT_ENOUGH_REPLICAS` at 11.2 s. The source held for 5.8 s with the committed offset and the quarantine high watermark unchanged. The full ISR was back 8.0 s after the restarts began, and the retry advanced in 2.2 s.
+- **Not done here, for the owner or a later slice:**
+  - `KafkaQuarantineReader` returns `unavailable` on `GROUP_LOAD_IN_PROGRESS` instead of retrying within its deadline.
+  - An advance whose group coordinator is lost becomes `uncertain`; this was seen once in a helper's development run and is not tested.
+  - The status fields `store.durable`, `openIncidents`, `circuit.reason` and `quarantine.topic` are not described in the API draft.
+  - F45 (Firefox and WebKit) needs browsers this environment can't install.
 
 ## 3. Handoff checklist for each slice
 

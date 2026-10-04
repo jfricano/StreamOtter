@@ -200,10 +200,12 @@ All on Node 24.21.0 and pnpm 11.19.0, on the V1.1 branches:
 
 | Command | Result |
 | --- | --- |
-| `pnpm build && pnpm verify` | 316 tests, all pass (slice D after merging WHC-1 revision 0.3) |
-| `pnpm test:kafka` | 39 tests, all pass, against the local single-node Kafka 4.1.2 broker (slice D with the quarantine reader) |
+| `pnpm build && pnpm verify` | 334 tests, all pass (slice E, October 4) |
+| `pnpm test:kafka` | 41 tests, all pass, against the local single-node Kafka 4.1.2 broker |
+| `pnpm test:kafka:replicated` | 2 tests, all pass, against a local three-broker Kafka 4.1.2 cluster (F47) |
 | `pnpm test:browser` | 52 tests, all pass, in headless **Chromium 141** linked in place of Playwright 1.63's pinned Chrome Headless Shell 153, which could not be downloaded in that environment; CI's pinned browser has not run these tests yet |
-| `pnpm test:install` | 21 tests, all pass |
+| `pnpm test:install` | 22 tests, all pass, including the TLS Kafka case |
+| `pnpm test:deploy` | 4 tests, all pass (without `failureHandling`) |
 
 The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.10.0. On Node 24.14.0 the journal refuses to open (`node-version`) and its SQLite suites skip.
 

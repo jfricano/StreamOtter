@@ -62,7 +62,16 @@ Of the acceptance plan's 48 scenarios, by the matrix's own rules (no row is *ver
 
 What each partial row lacks is named in the [matrix](./EVIDENCE.md) and in [implementation status](../../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased). Failed runs, and what each turned out to be, are kept in the [log](./IMPLEMENTATION_LOG.md).
 
-Final run of every tier on `feat/v1.1-operations-release` (Node 24.21.0, pnpm 11.19.0, Kafka 4.1.2, headless Chromium 141): see the log's slice E entry for commands and counts.
+Final run of every tier on `feat/v1.1-operations-release` at `92cf086`, October 4 (Node 24.21.0, pnpm 11.19.0, Kafka 4.1.2, headless Chromium 141). Commands and details are in the log's slice E entry.
+
+| Tier | Result |
+| --- | --- |
+| `pnpm build && pnpm verify` (unit, integration, typecheck, contracts) | 334 / 334 |
+| `pnpm test:kafka` (single broker) | 41 / 41 |
+| `pnpm test:kafka:replicated` (three brokers, F47) | 2 / 2 |
+| `pnpm test:browser` (Chromium only) | 52 / 52 |
+| `pnpm test:install` (packed packages, TLS Kafka) | 22 / 22 |
+| `pnpm test:deploy` (Caddy, HTTPS and WSS) | 4 / 4 |
 
 ## 5. Dependency and resource changes
 
