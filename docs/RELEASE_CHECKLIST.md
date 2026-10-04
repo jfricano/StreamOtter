@@ -14,7 +14,7 @@ Applies to every release, starting with `0.1.0-rc.1`. The six public packages (`
 ## 1. Prepare the release commit
 
 - [ ] `node scripts/release/set-version.mjs <version>` sets the version in all six manifests. The install test fails if they differ.
-- [ ] `CHANGELOG.md`: complete the entry and replace "not yet published" with the date.
+- [ ] `CHANGELOG.md`: complete the entry and replace "not yet published" with the date. One entry per version, even when it carries several milestones (V1.1 and V1.2 both ship in `0.2.0-rc.1`); link each milestone's `docs/releases/` folder from it rather than giving it its own entry.
 - [ ] Package READMEs (`packages/*/README.md`, `apps/workbench/README.md`): the status line must match the release. Remove the release-candidate notice for a stable release. npm shows the README of the version tagged `latest`, so README changes reach npm only with a new version.
 - [ ] `README.md` and `docs/IMPLEMENTATION_STATUS.md` state accurately what is published.
 - [ ] Commit.

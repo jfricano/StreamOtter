@@ -3,6 +3,8 @@
 This directory owns native package behavior, APIs/configuration, CLI/workbench tooling, compatibility, acceptance evidence, and npm release gates. It does not own Lontra Creek hosting or visitor sessions.
 
 - [V1.1 — Contain, explain, recover](v1.1/README.md): the approved source-failure increment, renamed from V1.5, plus the planned published workbench frontend/integration contract.
+- [V1.2 — Quality review](v1.2/README.md): an independent review of V1 and V1.1 together, and its fixes.
+- **Next release:** V1.1 and V1.2 ship together as `0.2.0-rc.1`, with one CHANGELOG entry. The milestone folders keep each increment's plan, evidence and log.
 - [V2.0 delivery-store outline](v2.0/STORE_DESIGN_OUTLINE.md): a separate future design.
 - [Release process](../RELEASE_PLAN.md) and [checklist](../RELEASE_CHECKLIST.md).
 - [Future-strategy research](../research/2026-09-future-strategy/README.md): advisory background and historical evidence.

@@ -6,7 +6,7 @@ September 24, 2026 · Planning revision 0.2
 
 > **Owner amendment (October 1, reconciled October 2, 2026):** The increment previously labeled V1.5 is now V1.1. Preserve the approved source-failure decisions and V2/V3 sequencing. Lontra Creek owns the separate hosted Workbench sandbox; the library owns its published frontend/integration contract. Neither milestone label asserts a new npm version.
 
-> **Current status (September 29, 2026):** V1 release candidates are published on npm; see [implementation status](./IMPLEMENTATION_STATUS.md). V1.1 is approved and specified in [releases/v1.1](./releases/v1.1/README.md). The rest of this document is the original plan.
+> **Current status (September 29, 2026):** V1 release candidates are published on npm; see [implementation status](./IMPLEMENTATION_STATUS.md). V1.1 is approved and specified in [releases/v1.1](./releases/v1.1/README.md). V1.2 is an independent quality review of V1 and V1.1 together ([releases/v1.2](./releases/v1.2/README.md)). Both ship in `0.2.0-rc.1`. The rest of this document is the original plan.
 
 ## Purpose and authority
 
@@ -25,7 +25,7 @@ We are making these decisions from public research and product judgment. Intervi
 | **V3 — Act and operate together** | Send authorized application commands and manage integrations across teams and environments. | A governed application event interface with shared operational workflows. | Named commands, scoped access, versioned configuration, and controlled deployment. |
 | **Beyond V3 — Extend the reach** | Apply the same model to more ecosystems and operating environments. | Additional adapters, SDKs, and optional managed services. | Added only as separately scoped increments. |
 
-V1.1 (Contain, explain, recover) is an increment inside V1, not a fourth version. It gives source failures explicit policies, protected quarantine evidence, and controlled recovery for state channels; see the [V1.1 specification](./releases/v1.1/README.md). Its consequences for V2 and V3 are noted in those sections.
+V1.1 (Contain, explain, recover) is an increment inside V1, not a fourth version. It gives source failures explicit policies, protected quarantine evidence, and controlled recovery for state channels; see the [V1.1 specification](./releases/v1.1/README.md). Its consequences for V2 and V3 are noted in those sections. V1.2 adds no features: it is the quality review that fixes V1 and V1.1 before they ship together as `0.2.0-rc.1`.
 
 The progression is cumulative. V1 state channels continue working in V2 and V3. A developer should not need durable history, multiple servers, or team administration merely to receive an order-status update.
 

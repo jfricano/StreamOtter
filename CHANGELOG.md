@@ -4,6 +4,8 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ## Unreleased
 
+Planned as `0.2.0-rc.1`, one release that carries two internal milestones: V1.1, source-failure handling and the workbench host contract ([docs/releases/v1.1](docs/releases/v1.1/README.md)), and V1.2, an independent quality review of V1 and V1.1 together ([docs/releases/v1.2](docs/releases/v1.2/README.md)). Milestone labels are not package versions. Configurations without `failureHandling` behave as in `0.1.0-rc.3`, apart from the fixes below.
+
 ### Added
 
 - V1.1 groundwork (no behavior change for existing configurations): `@streamotter/contracts` types and validation for the optional `failureHandling` configuration section, recovery-guard and snapshot-acknowledgment handler types, the internal `FailureClass` vocabulary, and `TransientMappingError` (also exported by `@streamotter/gateway`). Every V1.1 policy is now accepted. See [docs/releases/v1.1](docs/releases/v1.1/README.md).
@@ -49,6 +51,39 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 ### Changed
 
 - Development management API: an unknown route answers 404 before its request body is read (it could previously answer 400 or 413 for a malformed body first).
+- Configuration validation refuses a `limits` timeout above 2,147,483,647 ms (Node would fire it after 1 ms), and an `enum` whose values break the schema's own `minLength` or `maxLength`. `generateFiles` validates its input like the CLI does.
+
+### Fixed
+
+From the V1.2 review ([findings and log](docs/releases/v1.2/README.md)):
+
+- Gateway:
+  - A client that stops reading is disconnected once its unsent output passes `maxPendingBytesPerConnection`, instead of growing gateway memory without limit.
+  - Malformed and unknown frames count against the control rate limit.
+  - A session revoked while its connection was being set up is refused.
+  - `stop()` and SIGINT/SIGTERM interrupt a startup in progress and honor the stop deadline. Before, they waited for startup to finish, or forever if a handler module never loaded.
+  - A mapped property or snapshot property set to `undefined` is treated as absent, as JSON does. Before, it paused the source as an integrity failure.
+  - A configuration with schemas nested 8 or more levels deep no longer crashes `validate`, `generate` or startup.
+- Kafka source:
+  - A paused source stays paused through a consumer crash and restart. Before, it fetched in a busy loop.
+  - A record that takes longer than the group session timeout keeps heartbeating, so it is committed once instead of being reprocessed forever.
+- `@streamotter/client`:
+  - Unsubscribing before a subscribe is acknowledged now unsubscribes on the gateway.
+  - A rate-limited resync retries after 1 s and then 2 s instead of freezing in `authorizing`.
+  - A rate-limited unsubscribe is retried instead of being reported as done.
+  - The React provider in the README works under StrictMode.
+- `@streamotter/cli`:
+  - Generated example code escapes U+2028 and U+2029, which could otherwise inject code.
+  - `generate` refuses symbolic links and a non-directory `--out` (exit code 2).
+  - `init` checks its paths before writing anything.
+  - Command names such as `constructor` are rejected as unknown.
+  - `--json=…` and malformed `--management-port` values are handled.
+  - `sources rebaseline` is in the usage text.
+- `@streamotter/workbench`:
+  - Preview keeps drawing after a tab switch, and a second Start no longer leaks a preview.
+  - Export URLs are released.
+  - Connect shows the latest status.
+- The order-dashboard example no longer shows one order's data under another's header after quick clicks, and it reports failed requests.
 
 ## [0.1.0-rc.3] — 2026-09-25
 
