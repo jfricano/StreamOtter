@@ -1,6 +1,6 @@
 # StreamOtter V1.2.1 — Deferred minor fixes
 
-V1.2.1 fixes the 33 minor findings the [V1.2 quality review](../v1.2/README.md) deferred and the [V1.1 review](../v1.1/REVIEW.md)'s deferred J7, tracked as issues #21 to #54. It adds no features. V1.2.1 is a milestone label, not a package version; whether it ships in `0.2.0-rc.1` with V1.1 and V1.2 is the owner's decision.
+V1.2.1 fixes the 33 minor findings the [V1.2 quality review](../v1.2/README.md) deferred and the [V1.1 review](../v1.1/REVIEW.md)'s deferred J7, tracked as issues #21 to #54. It adds no features. V1.2.1 is a milestone label, not a package version. It ships in `0.2.0-rc.1` together with V1.1 and V1.2 (the owner's decision, October 4, 2026), under that release's single CHANGELOG entry.
 
 | Document | Contents |
 | --- | --- |

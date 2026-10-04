@@ -4,8 +4,8 @@ This directory owns native package behavior, APIs/configuration, CLI/workbench t
 
 - [V1.1 — Contain, explain, recover](v1.1/README.md): the approved source-failure increment, renamed from V1.5, plus the planned published workbench frontend/integration contract.
 - [V1.2 — Quality review](v1.2/README.md): an independent review of V1 and V1.1 together, and its fixes.
-- [V1.2.1 — Deferred minor fixes](v1.2.1/README.md): fixes for the 33 minor findings V1.2 deferred and the V1.1 review's J7 (issues #21 to #54). Whether it joins `0.2.0-rc.1` is the owner's call.
-- **Next release:** V1.1 and V1.2 ship together as `0.2.0-rc.1`, with one CHANGELOG entry. The milestone folders keep each increment's plan, evidence and log.
+- [V1.2.1 — Deferred minor fixes](v1.2.1/README.md): fixes for the 33 minor findings V1.2 deferred and the V1.1 review's J7 (issues #21 to #54).
+- **Next release:** V1.1, V1.2 and V1.2.1 ship together as `0.2.0-rc.1`, with one CHANGELOG entry. The milestone folders keep each increment's plan, evidence and log.
 - [V2.0 delivery-store outline](v2.0/STORE_DESIGN_OUTLINE.md): a separate future design.
 - [Release process](../RELEASE_PLAN.md) and [checklist](../RELEASE_CHECKLIST.md).
 - [Future-strategy research](../research/2026-09-future-strategy/README.md): advisory background and historical evidence.
