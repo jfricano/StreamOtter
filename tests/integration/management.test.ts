@@ -3,10 +3,11 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import { canonicalJson, canonicalJsonPretty, type Result } from "@streamotter/contracts";
+import { canonicalJson, canonicalJsonPretty, StreamOtterError, type Result } from "@streamotter/contracts";
 import { createGateway, silentLogger } from "@streamotter/gateway";
 import { startManagementServer, type ManagementServer } from "@streamotter/gateway/management";
-import { FAR_FUTURE, observe, OrderApp, orderConfig, orderRecord, startHarness, waitFor, type Harness } from "./harness.ts";
+import { createGatewayRuntime } from "@streamotter/gateway/internals";
+import { deferred, FAR_FUTURE, observe, sleep, OrderApp, orderConfig, orderRecord, startHarness, waitFor, type Harness, type TestChannels } from "./harness.ts";
 import { createHash } from "node:crypto";
 
 const PRINCIPALS = {
@@ -154,7 +155,83 @@ describe("management API (development only)", () => {
     assert.deepEqual(checks.body.ok && checks.body.data.steps.map(step => step.stage), ["resolve", "connect", "tls", "authenticate", "metadata"]);
   });
 
-  it("reports 409 for fixture advancement while the source is paused, then resumes", async () => {
+  it("answers 429 past the request rate, and 503 and 504 for an unavailable dependency and a deadline", async () => {
+    const local = await startHarness();
+    const server = await startManagementServer({ gateway: local.gateway, port: 0, workbenchDir: null });
+    try {
+      const request = (method: string, path: string, body?: unknown) => fetch(`${server.origin}${path}`, {
+        method, headers: { authorization: `Bearer ${server.token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+      // The internals object is shared with the router, so a dependency failure surfaces through the real server.
+      const realCheck = local.internals.checkSource;
+      try {
+        local.internals.checkSource = async () => { throw new StreamOtterError("SOURCE_UNAVAILABLE", { message: "The broker is unreachable." }); };
+        const unavailable = await request("POST", "/management/v1/source-checks", { sourceId: "orders" });
+        assert.equal(unavailable.status, 503);
+        const unavailableBody = await unavailable.json() as Result<unknown>;
+        assert.equal(!unavailableBody.ok && unavailableBody.error.code, "SOURCE_UNAVAILABLE");
+        local.internals.checkSource = async () => { throw new StreamOtterError("TIMEOUT", { message: "The source check exceeded its deadline." }); };
+        const timedOut = await request("POST", "/management/v1/source-checks", { sourceId: "orders" });
+        assert.equal(timedOut.status, 504);
+        const timedOutBody = await timedOut.json() as Result<unknown>;
+        assert.equal(!timedOutBody.ok && timedOutBody.error.code, "TIMEOUT");
+        assert.equal(timedOut.headers.get("cache-control"), "no-store");
+      } finally {
+        local.internals.checkSource = realCheck;
+      }
+      // 100 requests per second with a burst of 200: a burst of 300 must be refused in part.
+      const statuses = await Promise.all(Array.from({ length: 300 }, () => request("GET", "/management/v1/health").then(async response => {
+        const body = await response.json() as Result<unknown>;
+        return response.status === 429 ? (!body.ok && body.error.code) : response.status;
+      })));
+      assert.ok(statuses.includes("OVERLOADED"), "some requests were rate limited with OVERLOADED");
+      assert.ok(statuses.includes(200));
+      assert.deepEqual(new Set(statuses), new Set([200, "OVERLOADED"]));
+    } finally {
+      await server.close();
+      await local.close();
+    }
+  });
+
+  it("runs at most two source checks at once and answers a third with 429", async () => {
+    const app = new OrderApp();
+    const { gateway, runtime } = createGatewayRuntime<TestChannels>({
+      config: orderConfig(), handlers: app.handlers(), mode: "development",
+      development: { principals: {}, fixtures: { orders: [] } }, logger: silentLogger
+    });
+    await gateway.start();
+    const server = await startManagementServer({ gateway, port: 0, workbenchDir: null });
+    const release = deferred();
+    let running = 0;
+    const realCheck = runtime.checkSource.bind(runtime);
+    runtime.checkSource = async source => {
+      running++;
+      await release.promise;
+      return realCheck(source);
+    };
+    try {
+      const check = () => fetch(`${server.origin}/management/v1/source-checks`, {
+        method: "POST", headers: { authorization: `Bearer ${server.token}`, "content-type": "application/json" }, body: JSON.stringify({ sourceId: "orders" })
+      });
+      const first = [check(), check()];
+      await waitFor(() => running === 2, 5_000, "two checks running");
+      const third = await Promise.race([check(), sleep(3_000).then(() => null)]);
+      assert.ok(third !== null, "the third check was answered without waiting for a slot");
+      assert.equal(third.status, 429);
+      const thirdBody = await third.json() as Result<unknown>;
+      assert.equal(!thirdBody.ok && thirdBody.error.code, "OVERLOADED");
+      release.resolve();
+      assert.deepEqual((await Promise.all(first)).map(response => response.status), [200, 200]);
+      assert.equal((await check()).status, 200, "a slot frees once a check finishes");
+    } finally {
+      release.resolve();
+      await server.close();
+      await gateway.stop({ timeoutMs: 2_000 });
+    }
+  });
+
+  it("reports 409 for fixture advancement and a 200 ready:false health while the source is paused, then resumes", async () => {
     const local = await startHarness({ fixtures: [orderRecord("acme", "ord_9", 1, "queued", 0), orderRecord("acme", "ord_9", 2, "done", 100)] });
     let broken = true;
     local.app.mapOverride = value => {
@@ -168,6 +245,11 @@ describe("management API (development only)", () => {
     });
     assert.deepEqual(await (await post("/management/v1/dev/fixtures/advance", { sourceId: "orders", count: 2 })).json().then(r => (r as { data: unknown }).data), { advanced: 0 });
     assert.equal((await post("/management/v1/dev/fixtures/advance", { sourceId: "orders", count: 1 })).status, 409);
+    const health = await fetch(`${server.origin}/management/v1/health`, { headers: { authorization: `Bearer ${server.token}` } });
+    assert.equal(health.status, 200, "health answers 200 even when not ready");
+    const healthBody = await health.json() as Result<{ ready: boolean; sources: { sourceId: string; status: string }[] }>;
+    assert.equal(healthBody.ok && healthBody.data.ready, false);
+    assert.deepEqual(healthBody.ok && healthBody.data.sources.map(source => [source.sourceId, source.status]), [["orders", "paused"]]);
     broken = false;
     const resumed = await (await post("/management/v1/sources/resume", { sourceId: "orders" })).json() as Result<unknown>;
     assert.deepEqual(resumed.ok && resumed.data, { sourceId: "orders", kind: "fixture", status: "healthy" });

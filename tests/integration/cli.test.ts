@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -161,6 +162,30 @@ describe("CLI: init, validate, generate, dev, start", () => {
     const invalid = await runCli(["validate", "--config", "bad.json"], app);
     assert.equal(invalid.code, 2);
     assert.match(invalid.stderr, /\/configVersion\s+UNSUPPORTED_FEATURE/);
+  });
+
+  it("uses exit code 1 for startup and runtime failures", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "so-exit1-"));
+    const project = join(dir, "app");
+    assert.equal((await runCli(["init", project])).code, 0);
+    await writeFile(join(project, "server/broken.mjs"), "throw new Error(\"handler module failed to initialize\");\n");
+    const broken = await runCli(["dev", "--config", "streamotter.json", "--handlers", "server/broken.mjs", "--management-port", "0"], project);
+    assert.equal(broken.code, 1, broken.stderr);
+    assert.match(broken.stderr, /Failed to load handler module server\/broken\.mjs: handler module failed to initialize/);
+
+    // The gateway's own port is taken, so start() fails after the configuration and handlers were accepted.
+    const blocker = createServer();
+    await new Promise<void>(done => blocker.listen(0, "127.0.0.1", done));
+    try {
+      const port = (blocker.address() as AddressInfo).port;
+      const config = JSON.parse(await readFile(join(project, "streamotter.json"), "utf8")) as { gateway: { host: string; port: number } };
+      await writeFile(join(project, "streamotter.json"), JSON.stringify({ ...config, gateway: { ...config.gateway, host: "127.0.0.1", port } }));
+      const taken = await runCli(["dev", "--config", "streamotter.json", "--handlers", "server/handlers.mjs", "--management-port", "0"], project);
+      assert.equal(taken.code, 1, taken.stderr);
+      assert.match(taken.stderr, /Gateway startup failed/);
+    } finally {
+      await new Promise(done => blocker.close(done));
+    }
   });
 
   it("stops on SIGTERM while still loading handlers, with exit 0", async () => {

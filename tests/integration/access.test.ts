@@ -54,6 +54,34 @@ describe("acceptance 4: access fails closed", () => {
     assert.equal(h.app.snapshotCalls, 0);
   });
 
+  it("runs authorize again before delivering the snapshot: a denial then delivers nothing", async () => {
+    h = await startHarness();
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    h.app.authorizeOverride = () => h!.app.authorizeCalls === 1;
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    const seen = observe(sub);
+    await assert.rejects(sub.ready(), { code: "FORBIDDEN" });
+    assert.equal(h.app.snapshotCalls, 1, "the snapshot was loaded after the first authorize");
+    assert.equal(h.app.authorizeCalls, 2);
+    assert.equal(seen.events.length, 0, "the loaded snapshot was never delivered");
+    assert.ok(!seen.states.includes("live"));
+  });
+
+  it("runs authorize again on resync: access withdrawn after live fails the resync", async () => {
+    h = await startHarness();
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    const seen = observe(sub);
+    await sub.ready();
+    assert.equal(h.app.authorizeCalls, 2, "at subscribe and before snapshot delivery");
+    h.app.authorizeOverride = () => false;
+    await assert.rejects(sub.resync(), { code: "FORBIDDEN" });
+    assert.equal(h.app.authorizeCalls, 3);
+    assert.equal(h.app.snapshotCalls, 1, "no snapshot is loaded for the denied resync");
+    assert.equal(sub.state, "failed");
+    assert.equal(seen.events.length, 1);
+  });
+
   it("rejects an expired token and suspends retries until reconnect()", async () => {
     h = await startHarness();
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
