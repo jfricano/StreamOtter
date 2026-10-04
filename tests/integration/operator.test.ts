@@ -386,6 +386,37 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     await assert.rejects(op.redrive({ ...base, failureId: "*" , expectedRevision: -1 }), (error: { code: string }) => error.code === "INVALID_REQUEST");
   });
 
+  it("J7: local fixture evidence past its seven days is expired at restart and evaluate reports evidence-expired", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {
+    const state = await mkdtemp(join(tmpdir(), "so-operator-"));
+    initJournal(state, "order-dashboard", [{ sourceId: "orders", generation: "fixture-1", kind: "fixture" }]);
+    h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures: [badJson()] });
+    // The record is held, and its evidence stored, eight days ago.
+    mock.timers.enable({ apis: ["Date"], now: Date.now() - 8 * 24 * 60 * 60 * 1000 });
+    await h.advance(1);
+    const held = await only(h, getGatewayOperator(h.gateway));
+    mock.timers.reset();
+    await h.close();
+    h = undefined;
+
+    h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures: [badJson()] });
+    assert.equal((h.internals.incidentStore() as IncidentStore).getEvidence(held.failureId), null, "pruned when the gateway starts");
+    const evaluation = await getGatewayOperator(h.gateway).evaluate({ failureId: held.failureId, expectedRevision: held.revision });
+    assert.equal(evaluation.eligible, false);
+    assert.equal(evaluation.ineligibleReason, "evidence-expired");
+    assert.match(evaluation.errors[0]?.message ?? "", /expired; it is kept for 7 days/);
+  });
+
+  it("J7: local fixture evidence gone before its seven days reports evidence-unavailable", async () => {
+    h = await startHarness({ failureHandling: HOLD, fixtures: [badJson()] });
+    const op = getGatewayOperator(h.gateway);
+    await h.advance(1);
+    const held = await only(h, op);
+    const store = h.internals.incidentStore() as IncidentStore;
+    assert.equal(store.pruneEvidence(new Date(Date.now() + 1_000).toISOString()), 1);
+    const evaluation = await op.evaluate({ failureId: held.failureId, expectedRevision: held.revision });
+    assert.equal(evaluation.ineligibleReason, "evidence-unavailable");
+  });
+
   it("F35: an operation interrupted between intent and result is unknown after a restart and never rerun", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {
     const state = await mkdtemp(join(tmpdir(), "so-operator-"));
     initJournal(state, "order-dashboard", [{ sourceId: "orders", generation: "fixture-1", kind: "fixture" }]);

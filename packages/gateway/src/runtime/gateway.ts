@@ -333,9 +333,13 @@ export class GatewayRuntime implements SessionOwner {
   #http: HttpServer | null = null;
   #io: IoServer | null = null;
   #pendingHandshakes = 0;
+  /** Cancelled handshakes whose authenticate call ignored its signal and is still running. */
+  #abandonedAuthenticates = 0;
   /** Bounds the traces of refused handshakes, which anyone can trigger, so a flood can't evict the rest. */
   readonly #handshakeRejectionTraces = new TokenBucket(HANDSHAKE_REJECTION_TRACES_PER_SECOND, HANDSHAKE_REJECTION_TRACE_BURST);
   #untracedHandshakeRejections = 0;
+  /** Reports the skipped count within a second even if no later refusal is traced to report it. */
+  #untracedReportTimer: NodeJS.Timeout | null = null;
   #activeChecks = 0;
   readonly #internal: InternalGatewayOptions;
 
@@ -508,7 +512,7 @@ export class GatewayRuntime implements SessionOwner {
     if (typeof token !== "string" || token.length === 0 || utf8ByteLength(token) > MAX_TOKEN_BYTES) {
       return reject("UNAUTHENTICATED", "A non-empty token of at most 8 KiB is required.", false);
     }
-    if (this.#sessions.size + this.#pendingHandshakes >= this.core.limits.maxConnections) {
+    if (this.#sessions.size + this.#pendingHandshakes + this.#abandonedAuthenticates >= this.core.limits.maxConnections) {
       return reject("OVERLOADED", "The gateway has reached its connection limit.");
     }
     this.#pendingHandshakes++;
@@ -523,8 +527,10 @@ export class GatewayRuntime implements SessionOwner {
         principal = preview.principal;
         previewSessionId = previewId;
       } else {
+        let running: Promise<unknown> | undefined;
+        const invokedAt = performance.now();
         const outcome = await invokeHandler(
-          context => this.#handlers.authenticate({ ...context, token, origin: origin ?? "" }),
+          context => (running = Promise.resolve(this.#handlers.authenticate({ ...context, token, origin: origin ?? "" }))),
           {
             timeoutMs: this.core.limits.handlerTimeoutMs,
             requestId,
@@ -533,6 +539,7 @@ export class GatewayRuntime implements SessionOwner {
           }
         );
         if (outcome.kind === "aborted") {
+          if (running !== undefined) this.#holdAbandonedAuthenticate(running, this.core.limits.handlerTimeoutMs - (performance.now() - invokedAt));
           return input.signal?.aborted === true ? reject("CANCELLED", "The client disconnected.") : reject("OVERLOADED", "The gateway is shutting down.");
         }
         if (outcome.kind === "timeout") {
@@ -562,16 +569,44 @@ export class GatewayRuntime implements SessionOwner {
     }
   }
 
+  /**
+   * A cancelled handshake ends at once, but an authenticate call that ignores its signal keeps running.
+   * It keeps counting against maxConnections until it settles or its timeout passes, so clients that
+   * connect and disconnect can't pile up unbounded authenticate calls.
+   */
+  #holdAbandonedAuthenticate(running: Promise<unknown>, remainingMs: number): void {
+    this.#abandonedAuthenticates++;
+    let held = true;
+    const release = () => {
+      if (!held) return;
+      held = false;
+      clearTimeout(timer);
+      this.#abandonedAuthenticates--;
+    };
+    const timer = setTimeout(release, Math.max(0, remainingMs));
+    timer.unref?.();
+    running.then(release, release);
+  }
+
   #traceHandshakeRejection(requestId: string, errorCode: ErrorCode): void {
     if (!this.#handshakeRejectionTraces.take()) {
       this.#untracedHandshakeRejections++;
+      if (this.#untracedReportTimer === null) {
+        this.#untracedReportTimer = setTimeout(() => this.#reportUntracedHandshakeRejections(), 1_000);
+        this.#untracedReportTimer.unref?.();
+      }
       return;
     }
-    if (this.#untracedHandshakeRejections > 0) {
-      this.core.logger.warn("Refused handshakes were not traced; they exceeded the trace rate", { count: this.#untracedHandshakeRejections });
-      this.#untracedHandshakeRejections = 0;
-    }
+    this.#reportUntracedHandshakeRejections();
     this.core.traces.record({ requestId, stage: "authorize", outcome: "rejected", errorCode });
+  }
+
+  #reportUntracedHandshakeRejections(): void {
+    if (this.#untracedReportTimer !== null) clearTimeout(this.#untracedReportTimer);
+    this.#untracedReportTimer = null;
+    if (this.#untracedHandshakeRejections === 0) return;
+    this.core.logger.warn("Refused handshakes were not traced; they exceeded the trace rate", { count: this.#untracedHandshakeRejections });
+    this.#untracedHandshakeRejections = 0;
   }
 
   openSession(result: HandshakeResult, transport: ConnectionTransport): ClientSession {
@@ -1255,7 +1290,9 @@ export class GatewayRuntime implements SessionOwner {
       this.core.logger.warn("Stop deadline expired; forcing closure without committing incomplete records");
       this.#http?.closeAllConnections();
       // Release the listening port now rather than when the remaining work reaches it, so a replacement
-      // gateway can bind it as soon as stop() returns. What is still running is logged when it ends.
+      // gateway can bind it as soon as stop() returns. The listener closes here, synchronously, because
+      // io.close() reaches it only a few microtasks later. What is still running is logged when it ends.
+      this.#http?.close();
       const io = this.#io;
       if (io !== null) io.close();
       const expiredAt = Date.now();
@@ -1265,6 +1302,7 @@ export class GatewayRuntime implements SessionOwner {
       );
     }
     this.#state = "stopped";
+    this.#reportUntracedHandshakeRejections();
     if (wasRunning) this.core.logger.info("Gateway stopped");
   }
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { deferred, observe, orderRecord, sleep, startHarness, waitFor, type Harness } from "./harness.ts";
-import { rawConnectError, rawSocket } from "./raw.ts";
+import { rawConnect, rawConnectError, rawSocket } from "./raw.ts";
 
 describe("acceptance 4: access fails closed", () => {
   let h: Harness | undefined;
@@ -149,11 +149,15 @@ describe("acceptance 4: access fails closed", () => {
     t.mock.timers.enable({ apis: ["Date"], now: start + 121_000 });
     try {
       assert.equal(await h.advance(1), 1);
+      // The frame may wait for the snapshot's receipt before the gateway tries to send it, so Date stays
+      // moved until the client either sees the expiry or receives the record. (waitFor reads Date.)
+      const updates = () => seen.events.filter(event => event.kind === "update");
+      for (let i = 0; i < 500 && !seen.states.includes("stale") && updates().length === 0; i++) await sleep(10);
     } finally {
       t.mock.timers.reset();
     }
-    await sleep(100);
-    assert.deepEqual(seen.events.map(event => event.revision), ["1"], "no record is delivered after expiry");
+    // Under load the resync snapshot after reauthentication can already have arrived, so only updates count.
+    assert.deepEqual(seen.events.filter(event => event.kind === "update").map(event => event.revision), [], "no record is delivered as an update after expiry");
     await waitFor(() => seen.states.includes("stale"), 5_000, "stale at expiry");
     assert.equal(seen.reasons[seen.states.indexOf("stale")], "UNAUTHENTICATED");
     await waitFor(() => seen.states.lastIndexOf("live") > seen.states.indexOf("stale"), 5_000, "live after reauthentication");
@@ -258,6 +262,48 @@ describe("acceptance 4: access fails closed", () => {
     gate.resolve();
   });
 
+  it("counts an authenticate that ignores its signal against maxConnections after the client disconnects", { timeout: 10_000 }, async () => {
+    h = await startHarness({ limits: { maxConnections: 2, handlerTimeoutMs: 60_000 } });
+    const gate = deferred();
+    let running = 0;
+    // Like an identity-provider call made without the signal: cancelling the handshake doesn't stop it.
+    h.app.authenticateGate = async () => { running++; try { await gate.promise; } finally { running--; } };
+    const cancelled = () => h!.internals.traces({ limit: 100, outcome: "rejected" }).items.filter(trace => trace.errorCode === "CANCELLED").length;
+    for (let i = 1; i <= 2; i++) {
+      const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+      await waitFor(() => h!.app.authenticateCalls === i);
+      socket.close();
+      await waitFor(() => cancelled() === i, 3_000, "handshake traced CANCELLED at once");
+    }
+    assert.equal(running, 2);
+    const third = rawConnectError(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    third.catch(() => undefined);
+    const outcome = await Promise.race([
+      third.then(error => error.code),
+      waitFor(() => h!.app.authenticateCalls > 2, 5_000).then(() => "a third authenticate call started", () => "")
+    ]);
+    assert.equal(outcome, "OVERLOADED", "no third authenticate call while two still run");
+    h.app.authenticateGate = null;
+    gate.resolve();
+    await waitFor(() => running === 0);
+    const { socket } = await rawConnect(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    socket.close();
+  });
+
+  it("frees a cancelled handshake's connection slot when authenticate's timeout passes", { timeout: 10_000 }, async () => {
+    h = await startHarness({ limits: { maxConnections: 1, handlerTimeoutMs: 300 } });
+    h.app.authenticateGate = () => new Promise<void>(() => undefined);
+    const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    await waitFor(() => h!.app.authenticateCalls === 1);
+    socket.close();
+    await waitFor(() => h!.internals.traces({ limit: 10, outcome: "rejected" }).items.some(trace => trace.errorCode === "CANCELLED"));
+    assert.equal((await rawConnectError(h.origin, { token: "alice@acme", protocolVersion: 1 })).code, "OVERLOADED");
+    await sleep(350);
+    h.app.authenticateGate = null;
+    const { socket: next } = await rawConnect(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    next.close();
+  });
+
   it("closes a connection that sends a second CONNECT instead of opening an unreachable session", async () => {
     h = await startHarness();
     const gate = deferred();
@@ -300,6 +346,8 @@ describe("acceptance 4: access fails closed", () => {
   });
 
   it("keeps operator traces when unauthenticated handshakes flood the gateway", async () => {
+    // The trace bucket starts full when the gateway is built and refills at 10 per second from then.
+    const built = performance.now();
     h = await startHarness({ limits: { maxTraceEntries: 200 } });
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
     await h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }).ready();
@@ -310,7 +358,32 @@ describe("acceptance 4: access fails closed", () => {
     }
     const traces = h.internals.traces({ limit: 500 }).items;
     assert.equal(traces.filter(trace => trace.channel === "orderStatus").length, before, "the subscription's traces survive");
-    assert.ok(traces.filter(trace => trace.errorCode === "UNAUTHENTICATED").length <= 110, "refused handshakes are traced at a bounded rate");
+    const traced = traces.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
+    const allowed = 100 + 10 * Math.ceil((performance.now() - built) / 1_000) + 2;
+    assert.ok(traced <= allowed, `refused handshakes are traced at a bounded rate (${traced} > ${allowed})`);
+  });
+
+  it("reports the count of untraced refused handshakes within a second when no later refusal is traced", async () => {
+    const skipped: number[] = [];
+    const logger = { info() {}, error() {}, warn(message: string, fields?: Record<string, unknown>) { if (message.startsWith("Refused handshakes were not traced")) skipped.push(fields?.["count"] as number); } };
+    h = await startHarness({ logger });
+    const refused = 150;
+    await Promise.all(Array.from({ length: refused }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    const traced = () => h!.internals.traces({ limit: 500 }).items.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
+    const reported = () => skipped.reduce((sum, count) => sum + count, 0);
+    assert.ok(traced() < refused, "the flood exceeded the trace rate");
+    await waitFor(() => traced() + reported() === refused, 3_000, "every refused handshake traced or counted");
+  });
+
+  it("reports the count of untraced refused handshakes when the gateway stops", async () => {
+    const skipped: number[] = [];
+    const logger = { info() {}, error() {}, warn(message: string, fields?: Record<string, unknown>) { if (message.startsWith("Refused handshakes were not traced")) skipped.push(fields?.["count"] as number); } };
+    h = await startHarness({ logger });
+    const refused = 150;
+    await Promise.all(Array.from({ length: refused }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    const traced = h.internals.traces({ limit: 500 }).items.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
+    await h.gateway.stop();
+    assert.equal(traced + skipped.reduce((sum, count) => sum + count, 0), refused);
   });
 
   it("closes prior subscriptions when the authenticated identity changes", async () => {

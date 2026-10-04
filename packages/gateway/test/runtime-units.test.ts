@@ -122,21 +122,33 @@ describe("client session", () => {
   const paramsSchema: Schema = {
     type: "object", additionalProperties: false, required: ["orderId"], properties: { orderId: { type: "string", minLength: 1, maxLength: 128 } }
   };
-  function session(mode: GatewayCore["mode"]) {
+  const auditSchema: Schema = {
+    type: "object", additionalProperties: false, required: ["auditScope"], properties: { auditScope: { type: "string", minLength: 1, maxLength: 128 } }
+  };
+  function session(mode: GatewayCore["mode"], limits: Partial<typeof DEFAULT_LIMITS> = {}) {
     const traces = new TraceBuffer(100, 1_000_000);
-    const core = { mode, limits: DEFAULT_LIMITS, traces, logger: silentLogger, gatewayBudget: new ByteBudget(1_000_000) } as unknown as GatewayCore;
-    const channel = { name: "orderStatus", version: 1, paramsSchema, source: { id: "orders" } } as unknown as ChannelRuntime;
+    const core = {
+      mode, limits: { ...DEFAULT_LIMITS, ...limits }, traces, logger: silentLogger, gatewayBudget: new ByteBudget(1_000_000)
+    } as unknown as GatewayCore;
+    const channels: Record<string, ChannelRuntime> = {
+      orderStatus: { name: "orderStatus", version: 1, paramsSchema, source: { id: "orders" } } as unknown as ChannelRuntime,
+      adminAudit: { name: "adminAudit", version: 1, paramsSchema: auditSchema, source: { id: "audit" } } as unknown as ChannelRuntime
+    };
     const transport = { sendHello() {}, sendState() {}, sendData() {}, sendError() {}, bufferedBytes: () => 0, close() {} };
     const client = new ClientSession({
-      owner: { core, channel: name => (name === "orderStatus" ? channel : undefined), sessionClosed() {} },
+      owner: { core, channel: name => channels[name], sessionClosed() {} },
       transport, principal, identityKey: "k", previewSessionId: null
     });
-    const subscribe = (channelName: string, params: unknown) => {
+    const subscribe = (channelName: string, params: unknown, subscriptionId: string = crypto.randomUUID()) => {
       let result: Result<unknown> | undefined;
-      client.handleSubscribe(
-        { requestId: crypto.randomUUID(), subscriptionId: crypto.randomUUID(), channel: channelName, channelVersion: 1, params },
-        (value: Result<unknown>) => { result = value; }
-      );
+      try {
+        client.handleSubscribe(
+          { requestId: crypto.randomUUID(), subscriptionId, channel: channelName, channelVersion: 1, params },
+          (value: Result<unknown>) => { result = value; }
+        );
+      } catch {
+        // Starting an accepted subscription needs a real core; only the reply matters here.
+      }
       return result!.ok ? null : result!.error;
     };
     return { subscribe, traces };
@@ -154,5 +166,31 @@ describe("client session", () => {
     const development = session("development").subscribe("orderStatus", {});
     assert.equal(development?.code, "INVALID_PARAMS");
     assert.match(development?.message ?? "", /orderId/);
+  });
+
+  it("answers a reused subscription ID the same way for known and unknown channels", () => {
+    const production = session("production");
+    const held = crypto.randomUUID();
+    assert.equal(production.subscribe("orderStatus", { orderId: "o1" }, held), null);
+    const answers = [
+      production.subscribe("doesNotExist", {}, held),
+      production.subscribe("adminAudit", { scope: "x" }, held),
+      production.subscribe("adminAudit", { auditScope: "x" }, held)
+    ];
+    assert.deepEqual(answers.map(error => error?.code), ["INVALID_REQUEST", "INVALID_REQUEST", "INVALID_REQUEST"]);
+    assert.ok(answers.every(error => error?.message === answers[0]?.message), "no channel or parameter names are revealed");
+    assert.equal(production.subscribe("orderStatus", { orderId: "o2" }, held)?.code, "INVALID_REQUEST", "the held channel with other parameters");
+    assert.equal(production.subscribe("orderStatus", { orderId: "o1" }, held), null, "an identical retry is idempotent");
+  });
+
+  it("answers the subscription limit the same way for known and unknown channels", () => {
+    const production = session("production", { maxSubscriptionsPerConnection: 1 });
+    assert.equal(production.subscribe("orderStatus", { orderId: "o1" }), null);
+    const answers = [
+      production.subscribe("doesNotExist", {}),
+      production.subscribe("adminAudit", { scope: "x" }),
+      production.subscribe("adminAudit", { auditScope: "x" })
+    ];
+    assert.deepEqual(answers.map(error => error?.code), ["OVERLOADED", "OVERLOADED", "OVERLOADED"]);
   });
 });
