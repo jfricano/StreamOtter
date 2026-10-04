@@ -270,6 +270,8 @@ Startup restores the boundary in force before any source can be ready. It reconc
 - at or below the record's offset means the advance never happened, and the incident returns to `held`;
 - anything further on is unexplained, and the source holds.
 
+While an incident is `uncertain` (unexplained at startup, or an advance that could not be confirmed), every record of the source is held, on every partition, until a restart reconciles it. Commits on other partitions never clear it.
+
 ## 6. Operator service (slices C, D)
 
 One `OperatorService` (ADR-15C §1), reached in-process, over the local socket, and through development management routes. Every method returns a promise of the shape below or throws a `StreamOtterError`.

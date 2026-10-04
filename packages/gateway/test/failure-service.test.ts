@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { GatewayLogger, ProjectConfig } from "@streamotter/contracts";
+import type { GatewayLogger, ProjectConfig, SourceRecoveryHandlers } from "@streamotter/contracts";
 import type { QuarantineOutcome, QuarantineWrite, QuarantineWriter } from "../src/failures/quarantine.ts";
 import { FailureService, type FailureSource } from "../src/failures/service.ts";
-import { MemoryIncidentStore } from "../src/failures/store.ts";
-import type { SourceInput } from "../src/sources/types.ts";
+import { MemoryIncidentStore, type IncidentStore } from "../src/failures/store.ts";
+import type { AdvanceResult, HeldPosition, SourceAdapter, SourceInput } from "../src/sources/types.ts";
 
 /** F14 and F11 at the unit tier: quarantine outcomes drive incident state, and nothing is ever reported as success without an acknowledgment. */
 
@@ -115,5 +115,76 @@ describe("FailureService quarantine outcomes", () => {
     assert.equal(failures.positionProblem("orders", { kind: "kafka", topic: "orders", partition: 0, offset: "41" }), null);
     assert.equal(failures.positionProblem("orders", { kind: "kafka", topic: "orders", partition: 1, offset: "99" }), null);
     assert.match(failures.positionProblem("orders", { kind: "kafka", topic: "orders", partition: 0, offset: "42" }) ?? "", /past the held record at offset 41/);
+  });
+});
+
+// --- guarded continuation and progress watching -----------------------------------------
+
+type Policy = "quarantine-hold" | "quarantine-resync" | "pause";
+
+function configFor(policy: Policy): ProjectConfig {
+  return { ...config, failureHandling: { quarantine: { topic: "orders.quarantine", capture: "full-record" }, sources: { orders: { invalidJson: policy } } } } as unknown as ProjectConfig;
+}
+
+const plain: SourceInput = { key: "ord_1", bytes: Buffer.from("{not json"), keyBytes: Buffer.from("ord_1"), headers: [], timestamp: null, position: { kind: "kafka", topic: "orders", partition: 0, offset: "41" } };
+const at = (partition: number, offset: string) => ({ kind: "kafka" as const, topic: "orders", partition, offset });
+
+class FakeAdapter implements SourceAdapter {
+  readonly kind = "kafka" as const;
+  readonly calls: HeldPosition[] = [];
+  result: AdvanceResult;
+  resumed = 0;
+  constructor(result: AdvanceResult) { this.result = result; }
+  async start(): Promise<void> {}
+  async stop(): Promise<void> {}
+  async resume(): Promise<void> { this.resumed++; }
+  async check(): Promise<[]> { return []; }
+  async advancePast(held: HeldPosition): Promise<AdvanceResult> {
+    this.calls.push(held);
+    if (this.result === "advanced") this.resumed++;
+    return this.result;
+  }
+}
+
+const recoverable: SourceRecoveryHandlers = { recover: async () => ({ decision: "recoverable", context: { watermark: 1 }, evidenceRef: "outbox:1" }) };
+
+function resync(store: IncidentStore, options: {
+  policy?: Policy; adapter?: SourceAdapter | null; guard?: SourceRecoveryHandlers | null; clusterId?: string | null; writer?: QuarantineWriter;
+  stopSignal?: AbortSignal; logger?: GatewayLogger;
+} = {}): { failures: FailureService; source: FailureSource } {
+  const policyConfig = configFor(options.policy ?? "quarantine-resync");
+  const failures = new FailureService({
+    config: policyConfig, store, logger: options.logger ?? silent, quarantine: options.writer ?? new ScriptedWriter(Array.from({ length: 10 }, (_, offset) => ({ kind: "acknowledged" as const, partition: 0, offset: String(offset) }))),
+    configFingerprint: "c".repeat(64), handlerBuildId: "build-7", maxSourceRecordBytes: 1_048_576,
+    guards: options.guard === null ? {} : { orders: options.guard ?? recoverable },
+    ...(options.stopSignal === undefined ? {} : { stopSignal: options.stopSignal })
+  });
+  if (options.clusterId !== null) failures.setClusterId("orders", options.clusterId ?? "cluster-a");
+  return { failures, source: { id: "orders", config: policyConfig.sources["orders"] as FailureSource["config"], adapter: options.adapter === undefined ? new FakeAdapter("advanced") : options.adapter } };
+}
+
+function claimed(): MemoryIncidentStore {
+  const store = new MemoryIncidentStore();
+  store.claim("order-dashboard", [{ sourceId: "orders", generation: "orders-1", kind: "kafka" }]);
+  return store;
+}
+
+describe("FailureService progress watching", () => {
+  it("keeps holding an unexplained position after restart when another partition commits (spec §6)", async () => {
+    const store = claimed();
+    const first = resync(store, { adapter: new FakeAdapter("uncertain") });
+    await first.failures.held(first.source, plain, pause);
+    assert.equal(store.open("orders")[0]?.progress, "uncertain");
+
+    // Restart: the group's committed offset is 50, past 42, which this gateway never recorded.
+    const second = resync(store, { adapter: null });
+    await second.failures.start([second.source], async () => "50");
+    assert.match(store.open("orders")[0]?.diagnosis ?? "", /^Source progress moved/);
+    assert.notEqual(second.failures.positionProblem("orders", at(0, "50")), null);
+    assert.notEqual(second.failures.positionProblem("orders", at(1, "7")), null, "an uncertain advance holds the whole source");
+    // Even if a record on another partition had committed, the unexplained position stays watched.
+    second.failures.committed("orders", at(1, "7"));
+    assert.notEqual(second.failures.positionProblem("orders", at(0, "50")), null);
+    assert.equal(store.open("orders")[0]?.progress, "uncertain");
   });
 });

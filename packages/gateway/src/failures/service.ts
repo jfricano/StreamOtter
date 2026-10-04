@@ -28,8 +28,8 @@ export interface AdvanceHooks {
   afterAdvance?: (failureId: string) => Promise<void>;
 }
 
-/** Progress states that mean the record is still held at its position. */
-const WATCHED_PROGRESS = new Set<IncidentRecord["progress"]>(["held", "retrying", "uncertain"]);
+/** Progress states that mean the record is still held at its position, or that its advance is unresolved. */
+const WATCHED_PROGRESS = new Set<IncidentRecord["progress"]>(["held", "retrying", "advance-pending", "uncertain"]);
 
 type GuardOutcome =
   | { decision: "recoverable"; context: Json; result: GuardResult }
@@ -218,7 +218,9 @@ export class FailureService {
 
   /**
    * A record at a held position was processed and committed after a retry or a
-   * restart. The incident is resolved as processed; nothing was skipped.
+   * restart. The incident is resolved as processed; nothing was skipped. The
+   * source stays watched while any other incident is open, including an
+   * advance that is pending or uncertain, which a commit never resolves.
    */
   committed(sourceId: string, position: SourceRecord["position"]): void {
     if (!this.#watched.has(sourceId)) return;
@@ -230,12 +232,11 @@ export class FailureService {
     }
     let remaining = 0;
     for (const incident of open) {
-      if (incident.progress !== "held" && incident.progress !== "retrying") continue;
-      if (!samePosition(incident.position, position)) {
+      if ((incident.progress === "held" || incident.progress === "retrying") && samePosition(incident.position, position)) {
+        this.#update(incident, { progress: "processed", state: "resolved", resolution: "processed after retry" }, "resolved", "the original record processed successfully");
+      } else {
         remaining++;
-        continue;
       }
-      this.#update(incident, { progress: "processed", state: "resolved", resolution: "processed after retry" }, "resolved", "the original record processed successfully");
     }
     if (remaining === 0) this.#watched.delete(sourceId);
   }
@@ -245,7 +246,9 @@ export class FailureService {
    * later offset on the partition of a held record means the group position
    * moved without an advance this gateway recorded (retention removed the held
    * record, an offset reset, or another consumer committed): the source holds
-   * instead of silently treating the gap as progress (F27, F30). Returns why, or null.
+   * instead of silently treating the gap as progress (F27, F30). An uncertain
+   * advance (unconfirmed, or unexplained at startup) holds every record of the
+   * source until a restart reconciles it (spec §6). Returns why, or null.
    */
   positionProblem(sourceId: string, position: SourceRecord["position"]): string | null {
     if (!this.#watched.has(sourceId) || position.kind !== "kafka") return null;
@@ -254,6 +257,10 @@ export class FailureService {
       open = this.store.open(sourceId);
     } catch (error) {
       return `the failure journal could not be read: ${(error as Error).message.slice(0, 200)}`;
+    }
+    const uncertain = open.find(incident => incident.progress === "uncertain");
+    if (uncertain !== undefined) {
+      return `incident ${uncertain.failureId} has an unresolved advance (uncertain); the source stays held until a restart reconciles it from the group's committed offset`;
     }
     for (const incident of open) {
       const held = incident.position;
