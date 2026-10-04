@@ -282,3 +282,32 @@ describe("FailureService retries and queued dispositions", () => {
     assert.equal(store.open("orders")[0]?.progress, "retrying");
   });
 });
+
+describe("FailureService guard exits", () => {
+  it("puts recovery back to held when the gateway stops while the guard runs", async () => {
+    const store = claimed();
+    const controller = new AbortController();
+    const guard: SourceRecoveryHandlers = { recover: () => new Promise(() => { controller.abort(); }) };
+    const adapter = new FakeAdapter("advanced");
+    const { failures, source } = resync(store, { guard, adapter, stopSignal: controller.signal });
+    await failures.held(source, plain, pause);
+    const [incident] = store.open("orders");
+    assert.equal(incident?.progress, "held");
+    assert.equal(incident?.recovery, "held", "not left guard-pending, which refuses operator actions");
+    assert.equal(adapter.calls.length, 0);
+  });
+
+  it("puts recovery back to held when the advance cannot be prepared", async () => {
+    const store = claimed();
+    const errors: string[] = [];
+    const logger: GatewayLogger = { info: () => undefined, warn: () => undefined, error: message => { errors.push(message); } };
+    const adapter = new FakeAdapter("advanced");
+    const { failures, source } = resync(store, { adapter, logger });
+    store.prepareAdvance = () => { throw new Error("disk I/O error"); };
+    await failures.held(source, plain, pause);
+    const [incident] = store.open("orders");
+    assert.equal(incident?.recovery, "held");
+    assert.equal(adapter.calls.length, 0);
+    assert.ok(errors.some(message => /recovery boundary could not be persisted/.test(message)));
+  });
+});

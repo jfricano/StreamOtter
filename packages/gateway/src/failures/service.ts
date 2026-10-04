@@ -11,7 +11,7 @@ import { describeError, invokeHandler, newId, nowIso, sha256Hex } from "../runti
 import type { ProcessOutcome, SourceAdapter, SourceInput } from "../sources/types.ts";
 import { evidenceHash, keyAndHeaderBytes, MAX_CAPTURED_KEY_AND_HEADER_BYTES } from "./evidence.ts";
 import type { QuarantineOutcome, QuarantineWriter } from "./quarantine.ts";
-import type { EvidenceSummary, GuardResult, IncidentEventName, IncidentRecord, IncidentStore, RawEvidence, StoredBoundary } from "./store.ts";
+import { StaleRevisionError, type EvidenceSummary, type GuardResult, type IncidentEventName, type IncidentRecord, type IncidentStore, type RawEvidence, type StoredBoundary } from "./store.ts";
 
 /** Spec §13: the recovery guard's budget, independent of handlerTimeoutMs. */
 export const GUARD_TIMEOUT_MS = 10_000;
@@ -480,7 +480,10 @@ export class FailureService {
     const pending = this.#update(record, { recovery: "guard-pending" }, "held", "running the recovery guard");
     if (pending === record) return;
     const outcome = await this.#runGuard(guard, source, pending, prior);
-    if (this.#stopSignal.aborted) return;
+    if (this.#stopSignal.aborted) {
+      this.#releaseGuard(pending, "the gateway stopped while the recovery guard ran; the record stays held");
+      return;
+    }
 
     // Recheck after the await: a stop, a newer observation or an operator action wins over this result (F18, F25).
     const current = this.store.get(pending.failureId);
@@ -507,10 +510,16 @@ export class FailureService {
       }).record;
       this.#journalError = null;
     } catch (error) {
-      this.#journalError = (error as Error).message;
-      this.#logger.error("The recovery boundary could not be persisted; the record stays held and the offset does not move", {
-        failureId: current.failureId, error: (error as Error).message.slice(0, 200)
-      });
+      if (error instanceof StaleRevisionError) {
+        // The incident or the source's boundary changed since the guard ran; that change decides what happens next.
+        this.#logger.warn("The advance was not prepared because the incident or boundary changed meanwhile", { failureId: current.failureId });
+      } else {
+        this.#journalError = (error as Error).message;
+        this.#logger.error("The recovery boundary could not be persisted; the record stays held and the offset does not move", {
+          failureId: current.failureId, error: (error as Error).message.slice(0, 200)
+        });
+      }
+      this.#releaseGuard(current, "the advance could not be prepared; the record stays held");
       return;
     }
     this.#emit(prepared, "advance-pending", boundaryId);
@@ -541,6 +550,23 @@ export class FailureService {
         this.#update(prepared, { progress: "uncertain" }, "held", "the advance could not be confirmed; the source stays paused until it is reconciled");
         return;
     }
+  }
+
+  /**
+   * Puts recovery back to "held" when the guard's turn ended without an
+   * advance, so the incident does not read as guard-pending (which refuses
+   * operator actions) after a stop or a failed prepare. Best effort: a journal
+   * that cannot be written leaves it as it is, and a changed incident is left alone.
+   */
+  #releaseGuard(pending: IncidentRecord, detail: string): void {
+    let current: IncidentRecord | null;
+    try {
+      current = this.store.get(pending.failureId);
+    } catch {
+      return;
+    }
+    if (current === null || current.revision !== pending.revision || current.recovery !== "guard-pending") return;
+    this.#update(current, { recovery: "held" }, "held", detail);
   }
 
   /**
