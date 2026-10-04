@@ -257,20 +257,20 @@ export class OperatorService implements OperatorApi {
 
   async retryCurrent(request: RetryCurrentRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("retryCurrent", request);
-    return this.#mutate("retry-current", input.sourceId, input.failureId, input, undefined, async operationId => {
+    return this.#mutate("retry-current", input.sourceId, input.failureId, input, undefined, operationId => this.#redeliver(input.sourceId, operationId, () => {
       const checked = this.#heldIncident(input.sourceId, input.failureId, input.expectedRevision);
       if ("result" in checked) return checked;
       const policy = this.#failures.policy(input.sourceId);
       if (usesResync(policy) && this.#failures.store.circuit(input.sourceId).state === "open") {
         return refused("circuit-open", "The source's automatic-continuation circuit is open. Reopen it after correcting the cause, then retry.", checked.revision);
       }
-      return this.#redeliver(checked, operationId, `retry-current${input.reason === undefined ? "" : `: ${input.reason}`}`);
-    });
+      return { record: checked, detail: `retry-current${input.reason === undefined ? "" : `: ${input.reason}`}` };
+    }));
   }
 
   async reassess(request: ReassessRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("reassess", request);
-    return this.#mutate("reassess", input.sourceId, input.failureId, input, undefined, async operationId => {
+    return this.#mutate("reassess", input.sourceId, input.failureId, input, undefined, operationId => this.#redeliver(input.sourceId, operationId, () => {
       const checked = this.#heldIncident(input.sourceId, input.failureId, input.expectedRevision);
       if ("result" in checked) return checked;
       if (!QUARANTINE_ELIGIBLE_CLASSES.includes(checked.failureClass)) {
@@ -286,8 +286,8 @@ export class OperatorService implements OperatorApi {
         return refused("circuit-open", "The automatic-continuation circuit is open. Reopen it after correcting the cause, then reassess.", checked.revision);
       }
       // Reassessment redelivers the held record: a fresh quarantine copy is written and acknowledged, then the guard runs again (spec §6 step 4).
-      return this.#redeliver(checked, operationId, "reassess: run the recovery guard again");
-    });
+      return { record: checked, detail: "reassess: run the recovery guard again" };
+    }));
   }
 
   async reopenCircuit(request: ReopenCircuitRequest): Promise<OperationResult> {
@@ -396,16 +396,33 @@ export class OperatorService implements OperatorApi {
     return record;
   }
 
-  /** Retries the held record (redelivery) and reports where it settled. */
-  async #redeliver(record: IncidentRecord, operationId: string, detail: string): Promise<Draft> {
-    this.#note(record, operationId, detail);
-    try {
-      await this.#host.retry(record.sourceId);
-    } catch (error) {
-      const latest = this.#failures.store.get(record.failureId);
-      return refused(error instanceof StreamOtterError && typeof error.details?.["reason"] === "string" ? error.details["reason"] as string : "not-held",
-        (error as Error).message, latest?.revision ?? null);
-    }
+  /**
+   * Retries the held record (redelivery) and reports where it settled. The
+   * checks, the operator event and the resume run in the source's failure chain,
+   * so they queue behind a disposition already in flight (a quarantine write, the
+   * guard) instead of interleaving with it. The wait for the record to settle runs
+   * outside the chain, because the redelivered record's own disposition needs it.
+   */
+  async #redeliver(sourceId: string, operationId: string, check: () => Draft | { record: IncidentRecord; detail: string }): Promise<Draft> {
+    const started = await this.#failures.run(sourceId, async (): Promise<Draft | IncidentRecord> => {
+      const checked = check();
+      if ("result" in checked) return checked;
+      const { record, detail } = checked;
+      // The refusals the resume itself would give are checked first, so a refused retry leaves no event and keeps the revision.
+      const blocked = this.#retryBlocker(record);
+      if (blocked !== null) return blocked;
+      this.#note(record, operationId, detail);
+      try {
+        await this.#host.retry(record.sourceId);
+      } catch (error) {
+        const reason = error instanceof StreamOtterError && typeof error.details?.["reason"] === "string" ? error.details["reason"] as string : "not-held";
+        const revision = this.#note(record, operationId, `refused (${reason}); the record was not retried`) ?? this.#failures.store.get(record.failureId)?.revision ?? null;
+        return refused(reason, (error as Error).message, revision);
+      }
+      return record;
+    });
+    if ("result" in started) return started;
+    const record = started;
     const settled = await this.#settle(record.failureId, record.sourceId);
     const revision = settled?.revision ?? null;
     if (settled === null) return { result: "unknown", outcome: "unknown", incidentRevision: null, message: "The incident could not be read after the retry." };
@@ -419,6 +436,16 @@ export class OperatorService implements OperatorApi {
       return { result: "completed", outcome: "held", incidentRevision: revision, message: `The record is held again: ${settled.diagnosis.slice(0, 300)}` };
     }
     return { result: "completed", outcome: settled.progress === "retrying" ? "retrying" : settled.progress, incidentRevision: revision, message: "The record was redelivered and has not settled yet; check its status." };
+  }
+
+  /** Why the gateway would refuse to resume the source now, checked before anything is recorded; or null. */
+  #retryBlocker(record: IncidentRecord): Draft | null {
+    if (this.#host.state() !== "running") return refused("gateway-not-running", "The gateway is not running.", record.revision);
+    const unresolved = this.#failures.store.open(record.sourceId).find(incident => incident.progress === "advance-pending" || incident.progress === "uncertain");
+    if (unresolved !== undefined) {
+      return refused("advance-unresolved", `An advance of incident ${unresolved.failureId} on this source is unresolved; it is reconciled from the group's committed offset at restart.`, record.revision);
+    }
+    return null;
   }
 
   async #settle(failureId: string, sourceId: string): Promise<IncidentRecord | null> {

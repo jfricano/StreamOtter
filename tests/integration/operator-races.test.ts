@@ -82,6 +82,40 @@ describe("operator races (fixture tier)", () => {
     assert.equal(result.operationId, "op-missing");
   });
 
+  it("O2: a retry sent while the quarantine copy is being written waits for that disposition and is then refused as stale", async () => {
+    const app = new OrderApp();
+    const port = await freePort();
+    h = await startHarness({ app, failureHandling: HOLD, fixtures: [shipped(3)], health: { port } });
+    const op = getGatewayOperator(h.gateway);
+    const store = h.internals.incidentStore()! as IncidentStore;
+    const update = store.update.bind(store);
+    let retry: Promise<Awaited<ReturnType<OperatorApi["retryCurrent"]>>> | null = null;
+    // The operator acts in the quarantine-write window: right after "captured", before "quarantined".
+    store.update = (failureId, revision, patch, event) => {
+      const updated = update(failureId, revision, patch, event);
+      if (event.event === "captured" && retry === null) {
+        app.mapOverride = repairedMap;
+        retry = op.retryCurrent({ sourceId: "orders", failureId, expectedRevision: updated.revision, reason: "mapping fixed" });
+      }
+      return updated;
+    };
+    await h.advance(1);
+    const result = await retry!;
+    assert.equal(result.result, "refused", result.message);
+    assert.equal(result.outcome, "stale-revision");
+    const incident = await op.showFailure({ failureId: (await only(h, op)).failureId });
+    assert.equal(incident.quarantine, "acknowledged");
+    assert.equal(incident.progress, "held");
+    assert.equal(incident.revision, result.incidentRevision);
+    assert.deepEqual(incident.history.map(event => event.event), ["detected", "captured", "quarantined"]);
+    const ready = await fetch(`http://127.0.0.1:${port}/health/ready`);
+    const body = await ready.text();
+    assert.ok(!body.includes("journal"), body);
+
+    const retried = await op.retryCurrent({ sourceId: "orders", failureId: incident.failureId, expectedRevision: incident.revision, reason: "mapping fixed" });
+    assert.equal(retried.outcome, "retried", retried.message);
+  });
+
   it("O6: evaluate and redrive are blocked while another incident on the source has an evidence conflict or an uncertain advance", async () => {
     const app = new OrderApp();
     h = await startHarness({ app, failureHandling: RESYNC, recovery: { orders: recoverable }, fixtures: [shipped(3)] });
@@ -106,5 +140,23 @@ describe("operator races (fixture tier)", () => {
     store.update(uncertain.failureId, uncertain.revision, { progress: "uncertain" }, { event: "held", detail: "the advance could not be confirmed", operationId: null });
     const again = await op.evaluate({ failureId: advanced.failureId, expectedRevision: advanced.revision });
     assert.equal(again.ineligibleReason, "integrity-fault-open");
+  });
+
+  it("O7: a retry the gateway refuses records no operator event and leaves the incident's revision as it was", async () => {
+    h = await startHarness({ failureHandling: HOLD, fixtures: [shipped(3)] });
+    const op = getGatewayOperator(h.gateway);
+    await h.advance(1);
+    const held = await only(h, op);
+    const store = h.internals.incidentStore()! as IncidentStore;
+    const other = otherIncident(store, store.get(held.failureId)!);
+    store.update(other.failureId, other.revision, { progress: "uncertain" }, { event: "held", detail: "the advance could not be confirmed", operationId: null });
+
+    const result = await op.retryCurrent({ sourceId: "orders", failureId: held.failureId, expectedRevision: held.revision });
+    assert.equal(result.result, "refused");
+    assert.equal(result.outcome, "advance-unresolved");
+    assert.equal(result.incidentRevision, held.revision);
+    const after = await op.showFailure({ failureId: held.failureId });
+    assert.equal(after.revision, held.revision, "the console's revision still holds");
+    assert.ok(!after.history.some(event => event.event === "operator"), "no event for an action that did not happen");
   });
 });
