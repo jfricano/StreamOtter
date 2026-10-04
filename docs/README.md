@@ -30,6 +30,6 @@ Package guides, also shown on npm: [`streamotter`](../packages/streamotter/READM
 - [Library release plans](./releases/README.md): native package milestones; site/demo scope lives in Lontra Creek.
 - [V1.1 specification](./releases/v1.1/README.md): source-failure quarantine and recovery. Approved and implemented; ships in `0.2.0-rc.1` ([plan](./releases/v1.1/IMPLEMENTATION_PLAN.md), [evidence](./releases/v1.1/EVIDENCE.md), [runbook](./guides/source-failures.md)).
 - [V2.0 delivery store outline](./releases/v2.0/STORE_DESIGN_OUTLINE.md): what the V2.0 storage decision must settle. An outline only.
-- [V2.3 event journey verification](./v2/V2_3_EVENT_JOURNEY_VERIFICATION.md): verifying that an event survived its declared downstream journey. A proposal, not approved.
+- [V2.3 event journey verification](./releases/v2.3/V2_3_EVENT_JOURNEY_VERIFICATION.md): verifying that an event survived its declared downstream journey. A proposal, not approved.
 - [Future strategy research](./research/2026-09-future-strategy/README.md): the September 2026 advisory package, with [research status](./research/2026-09-future-strategy/STATUS.md).
 - [Contributing](../CONTRIBUTING.md) and the [security policy](../SECURITY.md).
