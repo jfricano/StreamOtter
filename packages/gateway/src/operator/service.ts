@@ -215,8 +215,10 @@ export class OperatorService implements OperatorApi {
   async redrive(request: RedriveRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("redrive", request);
     const record = this.#failures.store.get(input.failureId);
+    // An unknown incident has no source to journal the operation under; it is refused before anything is recorded.
+    if (record === null) return { operationId: input.operationId ?? `op1:${randomBytes(16).toString("hex")}`, ...refused("not-found", `No incident ${input.failureId}.`) };
     const { operationId: _supplied, ...rest } = input;
-    return this.#mutate("redrive", record?.sourceId ?? "", input.failureId, rest, input.operationId, async operationId => {
+    return this.#mutate("redrive", record.sourceId, input.failureId, rest, input.operationId, async operationId => {
       const plan = this.#plans.get(input.planId);
       if (plan === undefined) return refused("plan-unknown", "No such plan. Plans are kept in memory for 5 minutes and end when the gateway restarts; evaluate again.");
       if (plan.failureId !== input.failureId) return refused("plan-mismatch", "That plan was issued for a different incident.");
