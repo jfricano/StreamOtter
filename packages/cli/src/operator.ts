@@ -361,9 +361,18 @@ export function isOperatorCommand(command: string): boolean {
   return Object.hasOwn(COMMANDS, command);
 }
 
-function fail(io: CliIO, json: boolean, code: number, error: StreamOtterError | string): number {
-  if (json && error instanceof StreamOtterError) io.err(JSON.stringify({ error: toStreamError(error) }).replace(UNSAFE_JSON, escape));
-  else io.err(clean(typeof error === "string" ? error : `${error.code}: ${error.message}`));
+/**
+ * Reports an error and returns `code`. With --json, stderr gets only
+ * `{"error": StreamError}`: a plain message becomes INVALID_REQUEST for usage
+ * errors (exit 2) and INTERNAL otherwise. `usage` is appended in human form only.
+ */
+export function fail(io: CliIO, json: boolean, code: number, error: StreamOtterError | string, usage?: string): number {
+  if (json) {
+    const wire = typeof error === "string" ? new StreamOtterError(code === INVALID ? "INVALID_REQUEST" : "INTERNAL", { message: error }) : error;
+    io.err(JSON.stringify({ error: toStreamError(wire) }).replace(UNSAFE_JSON, escape));
+  } else {
+    io.err(clean(typeof error === "string" ? error : `${error.code}: ${error.message}`) + (usage === undefined ? "" : `\n\n${usage}`));
+  }
   return code;
 }
 
@@ -395,13 +404,11 @@ export async function runOperatorCommand(command: string, positionals: readonly 
   const json = values["json"] === true;
   if (spec === undefined || positionals.length > (command === "status" ? 0 : 1)) {
     const choices = Object.keys(group).join("|");
-    io.err(`${command === "status" ? `Unexpected arguments for status: ${positionals.join(" ")}` : `Usage: streamotter ${command} ${choices} ...`}\n\n${usage}`);
-    return INVALID;
+    return fail(io, json, INVALID, command === "status" ? `Unexpected arguments for status: ${positionals.join(" ")}` : `Usage: streamotter ${command} ${choices} ...`, usage);
   }
   const extra = Object.keys(values).filter(key => !COMMON.includes(key) && !spec.flags.includes(key));
   if (extra.length > 0) {
-    io.err(`Unexpected arguments for ${label}: ${extra.map(key => `--${key}`).join(" ")}\n\n${usage}`);
-    return INVALID;
+    return fail(io, json, INVALID, `Unexpected arguments for ${label}: ${extra.map(key => `--${key}`).join(" ")}`, usage);
   }
 
   let args: Record<string, unknown>;
@@ -411,10 +418,12 @@ export async function runOperatorCommand(command: string, positionals: readonly 
     args = spec.build(values);
     validateOperatorRequest(spec.op, args);
     if (spec.op === "retireBoundary") {
-      io.err(RETIREMENT_WARNING);
+      // With --json, stderr carries only a JSON error; the warning goes into the refusal's details instead.
+      if (!json) io.err(RETIREMENT_WARNING);
       const confirm = text(values, "confirm", false);
       if (confirm !== args["boundaryId"]) {
-        throw new UsageError(`Not sent: repeat the boundary ID with --confirm ${clean(args["boundaryId"])} to retire it.`);
+        const message = `${label}: Not sent: repeat the boundary ID with --confirm ${clean(args["boundaryId"])} to retire it.`;
+        return fail(io, json, INVALID, json ? new StreamOtterError("INVALID_REQUEST", { message, details: { warning: RETIREMENT_WARNING } }) : message);
       }
     }
     if (spec.op === "exportFailure") {

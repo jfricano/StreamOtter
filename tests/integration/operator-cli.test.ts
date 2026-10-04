@@ -12,6 +12,7 @@ import {
 } from "@streamotter/contracts";
 import { startOperatorSocket, type OperatorSocket } from "@streamotter/gateway/operator";
 import { BOUNDARY_ID, FAILURE_ID, FakeOperator, HOSTILE_KEY, HOSTILE_VALUE } from "../../packages/gateway/test/fake-operator.ts";
+import { orderConfig } from "./harness.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const CLI = resolve(ROOT, "packages/cli/src/main.ts");
@@ -281,6 +282,54 @@ describe("CLI operator commands over the local socket (API §10)", { skip: POSIX
       assert.equal(run.code, 2, `${args.join(" ")}: ${run.stderr}`);
     }
     assert.deepEqual(operator.calls, []);
+  });
+
+  it("S2: with --json every error is {\"error\": StreamError} on stderr, stdout stays empty, and exit codes are unchanged", async () => {
+    const parent = resolve(directory, "..");
+    const existing = join(parent, "exists.json");
+    writeFileSync(existing, "{}");
+    const config = join(parent, "streamotter.json");
+    writeFileSync(config, JSON.stringify({ ...orderConfig(), failureHandling: { sources: { orders: { invalidJson: "quarantine-hold", invalidPublicPayload: "quarantine-hold" } } } }));
+    const retire = MUTATIONS["sources retire-boundary"]!.slice(0, -2);
+    const rebaseline = ["sources", "rebaseline", "--source", "orders", "--reason", "topic recreated", "--confirm", "orders"];
+    const cases: { name: string; args: string[]; code: number; error?: string }[] = [
+      { name: "missing --failure", args: ["failures", "show"], code: 2 },
+      { name: "unknown subcommand", args: ["failures", "purge"], code: 2 },
+      { name: "status with an argument", args: ["status", "extra"], code: 2 },
+      { name: "a flag of another subcommand", args: ["failures", "list", "--raw"], code: 2 },
+      { name: "a flag no command has", args: ["sources", "retry-current", ...MUTATIONS["sources retry-current"]!, "--force"], code: 2 },
+      { name: "a bad number", args: ["sources", "reassess", "--source", "orders", "--failure", FAILURE_ID, "--expected-revision", "-1"], code: 2 },
+      { name: "retire-boundary without --confirm", args: ["sources", "retire-boundary", ...retire], code: 2 },
+      { name: "export to an existing file", args: ["failures", "export", "--failure", FAILURE_ID, "--out", existing], code: 2 },
+      { name: "rebaseline without --config", args: rebaseline, code: 2 },
+      { name: "rebaseline with a foreign flag", args: [...rebaseline, "--config", config, "--failure", FAILURE_ID], code: 2 },
+      { name: "rebaseline without --confirm", args: [...rebaseline.slice(0, -2), "--config", config], code: 2 },
+      { name: "rebaseline without a journal", args: [...rebaseline, "--config", config], code: 2, error: "CONFIG_INVALID" }
+    ];
+    for (const { name, args, code, error: expected = "INVALID_REQUEST" } of cases) {
+      const human = await cli(...args);
+      assert.equal(human.code, code, `${name} (human): ${human.stderr}`);
+      const json = await cli(...args, "--json");
+      assert.equal(json.code, code, `${name}: ${json.stderr}`);
+      assert.equal(json.stdout, "", name);
+      const lines = json.stderr.trimEnd().split("\n");
+      assert.equal(lines.length, 1, `${name}: stderr is one JSON line, got ${json.stderr}`);
+      const error = (JSON.parse(lines[0]!) as { error: { code: string; message: string; details?: Record<string, unknown> } }).error;
+      assert.equal(error.code, expected, name);
+      assert.ok(error.message.length > 0, name);
+      if (name === "retire-boundary without --confirm") {
+        assert.match(error.message, /--confirm b1-orders/);
+        assert.match(String(error.details?.["warning"]), /StreamOtter cannot check that/);
+      }
+    }
+    assert.deepEqual(operator.calls, []);
+
+    // An error from the gateway on a retirement: the warning is not printed as text in front of the JSON.
+    operator.throwing.set("retireBoundary", new StreamOtterError("INVALID_REQUEST", { message: "No boundary b1-orders." }));
+    const refused = await cli("sources", "retire-boundary", ...MUTATIONS["sources retire-boundary"]!, "--json");
+    assert.equal(refused.code, 2);
+    assert.equal(refused.stdout, "");
+    assert.equal((JSON.parse(refused.stderr) as { error: { message: string } }).error.message, "No boundary b1-orders.");
   });
 
   it("S1: a mutation whose answer is lost exits 4 and says what to check; a read whose answer is lost exits 1", async () => {

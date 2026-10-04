@@ -425,12 +425,12 @@ Exit codes extend the existing `0` ok, `1` runtime, `2` invalid: `3` refused (th
 
 Slice D notes (normative, as implemented in `packages/cli/src/operator.ts`):
 
-- `INVALID_REQUEST` from the gateway exits 2; a gateway that is not running exits 1. With `--json`, errors go to stderr as `{"error": StreamError}` and stdout stays empty.
+- `INVALID_REQUEST` from the gateway exits 2; a gateway that is not running exits 1. With `--json`, every error, usage errors included, goes to stderr as one line `{"error": StreamError}` and stdout stays empty; a usage error is `INVALID_REQUEST`, and `sources rebaseline` reports the journal's own code (for example `CONFIG_INVALID`). Exit codes are the same with or without `--json`.
 - A mutation (`retry-current`, `reassess`, `reopen-circuit`, `retire-boundary`, `redrive`) whose answer is lost after it was sent (`details.reason: "no-answer"`, §7) exits 4, unknown outcome: the message says to check `status` and `failures show` and, for a redrive with `--operation-id`, that sending it again with the same ID returns the recorded result. With `--json` the error's `details` carry `reason: "no-answer"` and the `operationId` when one was supplied. A read command that loses its answer exits 1.
 - Each subcommand accepts only its own flags; `--force` does not exist.
 - Raw bytes appear in human output only as base64 with a 64-byte hex preview. Every printed string, `--json` included, has control and bidirectional-override characters escaped as `\uXXXX` (F39).
 - `failures export --out <file>` creates the file with mode 0600, refuses an existing file before contacting the gateway, and removes a partial file if the write fails. With `--json` it prints `{ path, bundleVersion, rawIncluded }` rather than the bundle.
-- `sources retire-boundary` exits 2 before connecting unless `--confirm` equals `--boundary`.
+- `sources retire-boundary` exits 2 before connecting unless `--confirm` equals `--boundary`. With `--json` the warning is not printed as text; a refusal for a missing `--confirm` carries it in `details.warning`.
 - `start` and `dev` accept `--operator-socket`, which requires `--state-dir`.
 - Slice E: `start` accepts `--health <host:port>` (§8). `dev` does not; the development management server already serves `GET /management/v1/health`.
 
