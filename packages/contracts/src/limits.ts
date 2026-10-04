@@ -1,8 +1,12 @@
+import { MAX_TOKEN_BYTES } from "./protocol.ts";
 import { pointer } from "./schema.ts";
 import type { ConfigIssue, Limits } from "./types.ts";
 
 /** The longest delay setTimeout honors. */
 const MAX_TIMER_MS = 2_147_483_647;
+
+/** Room for the Socket.IO CONNECT frame around a token at MAX_TOKEN_BYTES (packet type, JSON keys, protocolVersion). */
+const MIN_CONTROL_FRAME_BYTES = MAX_TOKEN_BYTES + 1_024;
 
 /** Starting bounds from the specification; not published capacity claims. */
 export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -78,8 +82,13 @@ export function validateLimits(input: unknown, path: string, issues: ConfigIssue
       });
     }
   }
-  if (limits.maxControlFrameBytes < 1_024) {
-    issues.push({ path: pointer(path, "maxControlFrameBytes"), code: "INCONSISTENT_LIMITS", message: "maxControlFrameBytes must be at least 1024." });
+  // The CONNECT frame carries the token and is bounded by the same transport limit, so a smaller value refuses valid tokens.
+  if (limits.maxControlFrameBytes < MIN_CONTROL_FRAME_BYTES) {
+    issues.push({
+      path: pointer(path, "maxControlFrameBytes"),
+      code: "INCONSISTENT_LIMITS",
+      message: `maxControlFrameBytes must be at least ${MIN_CONTROL_FRAME_BYTES} so a token of up to ${MAX_TOKEN_BYTES} bytes fits in the connection handshake.`
+    });
   }
   if (limits.maxDataFrameBytes < 1_024) {
     issues.push({ path: pointer(path, "maxDataFrameBytes"), code: "INCONSISTENT_LIMITS", message: "maxDataFrameBytes must be at least 1024." });

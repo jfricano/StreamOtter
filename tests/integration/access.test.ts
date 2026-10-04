@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { deferred, observe, orderRecord, sleep, startHarness, waitFor, type Harness } from "./harness.ts";
-import { rawSocket } from "./raw.ts";
+import { rawConnectError, rawSocket } from "./raw.ts";
 
 describe("acceptance 4: access fails closed", () => {
   let h: Harness | undefined;
@@ -175,6 +175,38 @@ describe("acceptance 4: access fails closed", () => {
     assert.equal(client.state, "auth-required");
   });
 
+  it("cancels a pending authenticate when the client disconnects", async () => {
+    h = await startHarness();
+    const gate = deferred();
+    h.app.authenticateGate = () => gate.promise;
+    const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    await waitFor(() => h!.app.authenticateCalls === 1);
+    const signal = h.app.authenticateSignal!;
+    assert.equal(signal.aborted, false);
+    socket.close();
+    await waitFor(() => signal.aborted, 3_000, "authenticate signal aborted");
+    await waitFor(() => h!.internals.traces({ limit: 10, outcome: "rejected" }).items.some(trace => trace.errorCode === "CANCELLED"));
+    gate.resolve();
+  });
+
+  it("closes a connection that sends a second CONNECT instead of opening an unreachable session", async () => {
+    h = await startHarness();
+    const gate = deferred();
+    h.app.authenticateGate = () => gate.promise;
+    const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    let disconnected = false;
+    socket.io.on("close", () => { disconnected = true; });
+    await waitFor(() => h!.app.authenticateCalls === 1);
+    // A second Socket.IO CONNECT packet for "/" on the same engine.io connection.
+    (socket.io.engine as unknown as { write(data: string): void }).write(`0${JSON.stringify({ token: "alice@acme#other", protocolVersion: 1 })}`);
+    await waitFor(() => disconnected, 3_000, "connection closed");
+    gate.resolve();
+    await sleep(50);
+    assert.equal(h.app.authenticateCalls, 1, "the second CONNECT is not authenticated");
+    assert.equal(h.internals.connectionCount(), 0);
+    socket.close();
+  });
+
   it("revocation between authentication and connection open still closes the session", async () => {
     h = await startHarness();
     // revoke() lands a few microtask hops after authenticate returns, while socket.io is still opening
@@ -196,6 +228,20 @@ describe("acceptance 4: access fails closed", () => {
       assert.notEqual(outcome, "still connected", `revocation ${hops} hops after authentication was missed`);
     }
     h.app.authenticateGate = null;
+  });
+
+  it("keeps operator traces when unauthenticated handshakes flood the gateway", async () => {
+    h = await startHarness({ limits: { maxTraceEntries: 200 } });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    await h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }).ready();
+    const before = h.internals.traces({ limit: 500, channel: "orderStatus" }).items.length;
+    assert.ok(before > 0);
+    for (let batch = 0; batch < 8; batch++) {
+      await Promise.all(Array.from({ length: 50 }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    }
+    const traces = h.internals.traces({ limit: 500 }).items;
+    assert.equal(traces.filter(trace => trace.channel === "orderStatus").length, before, "the subscription's traces survive");
+    assert.ok(traces.filter(trace => trace.errorCode === "UNAUTHENTICATED").length <= 110, "refused handshakes are traced at a bounded rate");
   });
 
   it("closes prior subscriptions when the authenticated identity changes", async () => {

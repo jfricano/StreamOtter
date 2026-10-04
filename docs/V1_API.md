@@ -183,7 +183,7 @@ Socket auth is `{token, protocolVersion: 1}`. Tokens are sent in the Socket.IO a
 
 Authorize on subscribe, every resynchronization, and before each data-frame send. The `authorize` handler runs at subscribe, at every synchronization attempt, and again immediately before the snapshot is delivered; the check before every data frame is synchronous (connection open, token unexpired, subscription not revoked), because revocation invalidates matching subscriptions immediately. Recheck expiration and local revocation state after asynchronous authorization. Policy failure discards pending data and terminates the subscription. Exceptions fail closed. SDK receipt does not bypass these checks. A trusted mapper may broadcast within a tenant, but only individually authorized subscribers receive data.
 
-Unrecognized channels/versions and unauthorized channel access all produce public `FORBIDDEN`. `CHANNEL_NOT_FOUND` and `CHANNEL_VERSION_UNSUPPORTED` are available only to trusted operators/local generated-contract diagnostics. Request identifiers and public messages must not reveal topic names, secrets, handler stack traces, or protected payloads.
+Unrecognized channels/versions and unauthorized channel access all produce public `FORBIDDEN`. Parameters are validated against the channel's schema before `authorize`, so in production a schema mismatch also produces public `FORBIDDEN` (traced as `INVALID_PARAMS`); a development gateway answers `INVALID_PARAMS` with the failing path. Parameters that are not a JSON object or exceed `maxParamsBytes` produce `INVALID_PARAMS` in both modes, before the channel is looked up. `CHANNEL_NOT_FOUND` and `CHANNEL_VERSION_UNSUPPORTED` are available only to trusted operators/local generated-contract diagnostics. Request identifiers and public messages must not reveal topic names, secrets, handler stack traces, or protected payloads.
 
 ## 8. Socket.IO protocol v1
 
@@ -243,7 +243,7 @@ The `ManagementOperations` interface defines exact request and response bodies f
 | `POST /dev/disconnect` | Disconnect only the named preview session; never arbitrary application connections. |
 | `GET /dev/principals` | List registered development principal refs with their tenant and subject (added in revision 0.2 so the workbench can offer them); no claims. |
 
-Every route above is prefixed `/management/v1`. Unknown body/query keys fail validation. Trace pagination uses an ephemeral sequence scoped to the gateway run; it is not a data-recovery cursor. Traces retain metadata only in V1. No payload capture is exposed.
+Every route above is prefixed `/management/v1`. Unknown body/query keys fail validation. Trace pagination uses an ephemeral sequence scoped to the gateway run; it is not a data-recovery cursor. Refused handshakes are traced at most 10 per second after a burst of 100, so unauthenticated connection floods cannot evict other traces; the gateway logs a count of the ones it skipped. Traces retain metadata only in V1. No payload capture is exposed.
 
 Development principals and fixture records are provided through `createGateway.development`, not portable production configuration. Fixture records advance deterministically in array order. Preview tokens use the same authorization/snapshot/delivery path after the development identity resolver establishes their principal. Reject the `development` option in production. Preview creation returns `previewSessionId`, a separate preview handle used by the dev disconnect operation; it is not an arbitrary application session identifier.
 

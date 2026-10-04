@@ -8,6 +8,7 @@ import { createGateway, silentLogger } from "@streamotter/gateway";
 import { startManagementServer, type ManagementServer } from "@streamotter/gateway/management";
 import { FAR_FUTURE, observe, OrderApp, orderConfig, orderRecord, startHarness, waitFor, type Harness } from "./harness.ts";
 import { createHash } from "node:crypto";
+import { request as httpRequest } from "node:http";
 
 const PRINCIPALS = {
   alice: { subject: "alice", tenantId: "acme", sessionId: "dev-alice", expiresAt: FAR_FUTURE, claims: { plan: "pro" } },
@@ -150,6 +151,17 @@ describe("management API (development only)", () => {
     assert.equal(await statusOf("POST", "/management/v1/config/validate", "{not json"), 400);
     assert.equal(await statusOf("POST", "/management/v1/config/validate", { config: {}, padding: "x".repeat(1_100_000) }), 413);
     assert.equal(await statusOf("DELETE", "/management/v1/health"), 404);
+    // fetch refuses a GET body, so send one directly.
+    const getWithBody = await new Promise<number>((resolve, reject) => {
+      const body = JSON.stringify({ ignored: true });
+      const request = httpRequest(`${m.origin}/management/v1/health`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${m.token}`, "content-type": "application/json", "content-length": String(Buffer.byteLength(body)) }
+      }, response => { response.resume(); resolve(response.statusCode ?? 0); });
+      request.on("error", reject);
+      request.end(body);
+    });
+    assert.equal(getWithBody, 400);
     const checks = await call<{ steps: { stage: string; outcome: string }[] }>("POST", "/management/v1/source-checks", { sourceId: "orders" });
     assert.deepEqual(checks.body.ok && checks.body.data.steps.map(step => step.stage), ["resolve", "connect", "tls", "authenticate", "metadata"]);
   });

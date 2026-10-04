@@ -94,6 +94,12 @@ async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise
   }
 }
 
+/** True when the request declares a body: a non-zero Content-Length or any Transfer-Encoding. */
+function hasBody(request: IncomingMessage): boolean {
+  const length = request.headers["content-length"];
+  return request.headers["transfer-encoding"] !== undefined || (length !== undefined && length !== "0");
+}
+
 /** Requires an object with exactly the listed keys (optional keys may be absent). */
 function shape(value: unknown, required: readonly string[], optional: readonly string[] = []): Record<string, unknown> {
   if (!isPlainObject(value)) throw new HttpError(400, "INVALID_REQUEST", "The body must be a JSON object.");
@@ -362,6 +368,8 @@ export function createRouter(options: RouterOptions): ManagementRouter {
         throw new HttpError(403, "FORBIDDEN", "Requests that change state must carry the X-StreamOtter-Workbench: 1 header.");
       }
       body = await readJsonBody(request, route.operator === true ? Math.min(options.maxBodyBytes, MAX_OPERATOR_BODY_BYTES) : options.maxBodyBytes);
+    } else if (hasBody(request)) {
+      throw new HttpError(400, "INVALID_REQUEST", "GET requests must not carry a body.");
     }
     return route.run({ internals: options.internals, query: values, body, param, operator, discovery: () => discovery(operator !== null) });
   };
