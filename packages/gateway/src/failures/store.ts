@@ -203,6 +203,12 @@ export interface IncidentStore {
   putEvidence(failureId: string, evidence: RawEvidence): void;
   getEvidence(failureId: string): RawEvidence | null;
   deleteEvidence(failureId: string): void;
+  /**
+   * Deletes stored evidence last written before `storedBefore` (an ISO
+   * timestamp) and returns how many were deleted. Local fixture evidence
+   * expires like a quarantine topic's copy does (LOCAL_EVIDENCE_RETENTION_MS).
+   */
+  pruneEvidence(storedBefore: string): number;
 
   // --- recovery state (slice C) ---------------------------------------------------
 
@@ -323,6 +329,11 @@ export const OPERATION_KINDS: readonly OperationKind[] = ["retry-current", "reas
 export const JOURNAL_LIMIT_BYTES = 256 * 1024 * 1024;
 export const SPOOL_LIMIT_BYTES = 16 * 1024 * 1024;
 export const MAX_EVENTS_PER_INCIDENT = 200;
+/**
+ * How long local fixture evidence is kept: seven days, Kafka's default
+ * retention.ms, so it expires much as a quarantine topic's copy would.
+ */
+export const LOCAL_EVIDENCE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** A mutation named a revision (of an incident, boundary or circuit) or a prior boundary that is no longer current. */
 export class StaleRevisionError extends StreamOtterError {
@@ -611,6 +622,7 @@ export class MemoryIncidentStore implements IncidentStore {
   readonly #incidents = new Map<string, IncidentRecord>();
   readonly #events = new Map<string, IncidentEvent[]>();
   readonly #evidence = new Map<string, RawEvidence>();
+  readonly #evidenceStoredAt = new Map<string, string>();
   readonly #order: string[] = [];
   readonly #boundaries = new Map<string, StoredBoundary>();
   /** The in-force boundary ID of each source. */
@@ -743,6 +755,7 @@ export class MemoryIncidentStore implements IncidentStore {
     const used = [...this.#evidence.values()].reduce((sum, item) => sum + evidenceBytes(item), 0) - (replaced === undefined ? 0 : evidenceBytes(replaced));
     if (used + evidenceBytes(evidence) > this.#spoolLimitBytes) throw storeFull("The raw evidence spool is full.");
     this.#evidence.set(failureId, structuredClone(evidence));
+    this.#evidenceStoredAt.set(failureId, new Date().toISOString());
   }
 
   getEvidence(failureId: string): RawEvidence | null {
@@ -752,6 +765,17 @@ export class MemoryIncidentStore implements IncidentStore {
 
   deleteEvidence(failureId: string): void {
     this.#evidence.delete(failureId);
+    this.#evidenceStoredAt.delete(failureId);
+  }
+
+  pruneEvidence(storedBefore: string): number {
+    let pruned = 0;
+    for (const [failureId, storedAt] of this.#evidenceStoredAt) {
+      if (storedAt >= storedBefore) continue;
+      this.deleteEvidence(failureId);
+      pruned++;
+    }
+    return pruned;
   }
 
   boundary(sourceId: string): StoredBoundary | null {

@@ -10,7 +10,7 @@ import {
 import { evidenceHash } from "../failures/evidence.ts";
 import type { QuarantineReader, QuarantineTopicReport } from "../failures/quarantine.ts";
 import { gatewayVersion, type BoundaryInForce, type FailureService } from "../failures/service.ts";
-import { StaleRevisionError, type CircuitState, type IncidentRecord, type OperationKind, type RawEvidence, type StoredOperation } from "../failures/store.ts";
+import { LOCAL_EVIDENCE_RETENTION_MS, StaleRevisionError, type CircuitState, type IncidentRecord, type OperationKind, type RawEvidence, type StoredOperation } from "../failures/store.ts";
 import { getGatewayInternals, type OperatorPrepared, type RedriveOutcome } from "../runtime/gateway.ts";
 import type { TraceQuery } from "../runtime/traces.ts";
 import { nowIso, sha256Hex } from "../runtime/util.ts";
@@ -522,7 +522,12 @@ export class OperatorService implements OperatorApi {
     if (record.evidence.completeness !== "complete") return missing("evidence-unavailable", `Evidence was ${record.evidence.completeness} at capture, so the original bytes are not available.`);
     if (record.evidence.location === "local") {
       const raw = this.#failures.store.getEvidence(record.failureId);
-      if (raw === null) return missing("evidence-unavailable", "The local fixture evidence is no longer stored.");
+      if (raw === null) {
+        // Expired like a quarantine topic's copy: evidence is kept LOCAL_EVIDENCE_RETENTION_MS from when it was stored, never before the first capture.
+        return Date.now() - Date.parse(record.firstObservedAt) >= LOCAL_EVIDENCE_RETENTION_MS
+          ? missing("evidence-expired", `The local fixture evidence has expired; it is kept for ${LOCAL_EVIDENCE_RETENTION_MS / 86_400_000} days.`)
+          : missing("evidence-unavailable", "The local fixture evidence is no longer stored.");
+      }
       if (evidenceHash(raw) !== record.evidence.hash) return missing("evidence-unavailable", "The stored local evidence does not match the captured evidence hash.");
       return { kind: "found", raw };
     }

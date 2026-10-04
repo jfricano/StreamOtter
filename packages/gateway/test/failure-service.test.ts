@@ -50,6 +50,22 @@ function service(writer: QuarantineWriter, maxSourceRecordBytes = 1_048_576): Fa
   return failures;
 }
 
+describe("FailureService local evidence retention", () => {
+  it("expires local fixture evidence older than seven days when it starts", t => {
+    const store = new MemoryIncidentStore();
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() - 8 * 24 * 60 * 60 * 1000 });
+    store.putEvidence("f1:old", { key: null, value: new Uint8Array(4), headers: [] });
+    t.mock.timers.reset();
+    store.putEvidence("f1:recent", { key: null, value: new Uint8Array(4), headers: [] });
+    new FailureService({
+      config, store, logger: silent, quarantine: null,
+      configFingerprint: "c".repeat(64), handlerBuildId: "build-7", maxSourceRecordBytes: 1_048_576
+    });
+    assert.equal(store.getEvidence("f1:old"), null);
+    assert.notEqual(store.getEvidence("f1:recent"), null);
+  });
+});
+
 describe("FailureService quarantine outcomes", () => {
   it("F14: an unknown write is never success; a later acknowledged write completes the same incident", async () => {
     const writer = new ScriptedWriter([{ kind: "unknown", reason: "REQUEST_TIMEOUT" }, { kind: "acknowledged", partition: 2, offset: "9" }]);
