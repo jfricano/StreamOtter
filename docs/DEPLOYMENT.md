@@ -1,6 +1,6 @@
 # Run StreamOtter in production
 
-September 25, 2026, updated October 2026 · Applies to the `0.1.0` release candidates; the [health checks](#health-checks) and [source-failure handling](#source-failure-handling-v11) sections describe unreleased V1.1 features
+September 25, 2026, updated October 2026 · Applies to the `0.1.0` release candidates and to `0.2.0-rc.1`; the [health checks](#health-checks) and [source-failure handling](#source-failure-handling-v11) sections describe V1.1 features that are new in `0.2.0-rc.1`
 
 In production, StreamOtter is one gateway process (`streamotter start`), behind the reverse proxy that serves your application, consuming Kafka over TLS. This guide covers installing, starting, supervising, and proxying it, and what it doesn't do. For development, see [Getting started](./guides/getting-started.md).
 

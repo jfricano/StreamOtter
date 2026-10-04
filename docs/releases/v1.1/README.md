@@ -2,7 +2,7 @@
 
 **Owner amendment — October 1, 2026; reconciled October 2:** The next planned increment is **V1.1**, renamed from V1.5. The approved revision 1.0 source-failure specification and September 29 decisions remain in force. ADR-15A/B/C keep their stable decision IDs. This milestone label does not change npm or protocol versions. Lontra Creek separately owns replacing its existing `/workbench/` tour with the actual workbench UI in an isolated synthetic visitor sandbox; no new page is added.
 
-**Status:** approved, revision 1.0 (September 29, 2026). Implementation started October 3, 2026; see the [log](./IMPLEMENTATION_LOG.md). Not released. On the roadmap between the V1 launch and V2.0.
+**Status:** approved, revision 1.0 (September 29, 2026). Implementation started October 3, 2026; see the [log](./IMPLEMENTATION_LOG.md). Implemented and reviewed; ships in `0.2.0-rc.1` together with V1.2 and V1.2.1, not yet published. On the roadmap between the V1 launch and V2.0.
 
 | Document | What it is |
 | --- | --- |

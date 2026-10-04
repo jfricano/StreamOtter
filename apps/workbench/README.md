@@ -2,7 +2,7 @@
 
 # @streamotter/workbench
 
-The static assets of the StreamOtter local workbench. You don't usually use this package directly: [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) depends on it, and `streamotter dev` serves it from the loopback management origin (default `http://127.0.0.1:7401/`) behind a per-run token and a restrictive Content Security Policy. In the workbench you can check source connections, edit and validate candidate configuration, preview a live subscription as a development principal, inspect payload-free delivery traces, and export the canonical `streamotter.json`. With a `failureHandling` section configured (unreleased V1.1), a **Failures** tab lists source-failure incidents, explains them, and offers retry, reassess, reopen-circuit, evaluate and redrive against the development gateway; see the [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md#54-in-the-workbench-development). `streamotter start` (production) never serves it. See the [CLI guide](https://www.npmjs.com/package/@streamotter/cli) for the walkthrough.
+The static assets of the StreamOtter local workbench. You don't usually use this package directly: [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) depends on it, and `streamotter dev` serves it from the loopback management origin (default `http://127.0.0.1:7401/`) behind a per-run token and a restrictive Content Security Policy. In the workbench you can check source connections, edit and validate candidate configuration, preview a live subscription as a development principal, inspect payload-free delivery traces, and export the canonical `streamotter.json`. With a `failureHandling` section configured (V1.1, new in 0.2.0-rc.1), a **Failures** tab lists source-failure incidents, explains them, and offers retry, reassess, reopen-circuit, evaluate and redrive against the development gateway; see the [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md#54-in-the-workbench-development). `streamotter start` (production) never serves it. See the [CLI guide](https://www.npmjs.com/package/@streamotter/cli) for the walkthrough.
 
 Workbench is development tooling, not a required stage between the gateway and production frontends. Production subscriptions use the browser SDK connected to a compatible running gateway. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements).
 
@@ -26,7 +26,7 @@ The same assets can run under a route of your own site, such as `https://example
 <script type="application/json" id="streamotter-workbench-host">
 { "hostContract": 1, "apiBase": "/workbench/api/v1", "auth": { "mode": "session" },
   "gateway": { "origin": "https://example.com", "path": "/sandbox/socket.io" },
-  "environment": { "kind": "sandbox", "label": "Synthetic fixture", "packageVersion": "0.1.0-rc.3" } }
+  "environment": { "kind": "sandbox", "label": "Synthetic fixture", "packageVersion": "0.2.0-rc.1" } }
 </script>
 <div id="app"></div>
 <link rel="stylesheet" href="/workbench/assets/workbench-host.css" integrity="sha384-…">

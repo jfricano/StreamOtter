@@ -77,7 +77,7 @@ A listener that throws, or returns a rejected promise, fails its subscription wi
 
 ## Source failures on the server (V1.1)
 
-The unreleased V1.1 source-failure handling changes nothing in the browser: no new state, error code, or protocol message. A source held at a bad record looks like any unavailable source: views go `stale` and recover by themselves once it is repaired. The [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) is for whoever runs the gateway.
+The source-failure handling new in 0.2.0-rc.1 (V1.1) changes nothing in the browser: no new state, error code, or protocol message. A source held at a bad record looks like any unavailable source: views go `stale` and recover by themselves once it is repaired. The [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) is for whoever runs the gateway.
 
 ## Clean up
 

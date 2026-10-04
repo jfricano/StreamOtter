@@ -1,6 +1,6 @@
 # StreamOtter V1.2 — Quality review
 
-V1 never had an independent review. V1.2 is that review, run on V1 and V1.1 together so that its fixes can't break V1.1. It adds no features. V1.1 and V1.2 ship together as `0.2.0-rc.1`, with one [CHANGELOG](../../../CHANGELOG.md) entry. V1.2 is a milestone label, not a package version.
+V1 never had an independent review. V1.2 is that review, run on V1 and V1.1 together so that its fixes can't break V1.1. It adds no features. V1.1, V1.2 and V1.2.1 (the fixes for the minors deferred here) ship together as `0.2.0-rc.1`, with one [CHANGELOG](../../../CHANGELOG.md) entry. V1.2 is a milestone label, not a package version.
 
 | Document | Contents |
 | --- | --- |

@@ -50,7 +50,7 @@ Open the workbench URL that `dev` prints, paste its one-time token, then preview
 | [Add live state to an existing app](./docs/guides/existing-app.md) | Your sessions, your database, Kafka events, revocation, and React |
 | [Connect to Kafka](./docs/guides/kafka.md) | Topic shape, TLS and SASL, progress, bad records, crashes, and diagnostics |
 | [Run in production](./docs/DEPLOYMENT.md) | `streamotter start`, supervision, and the reverse-proxy recipe |
-| [Handle bad records](./docs/guides/source-failures.md) | V1.1 (unreleased): failure policies, quarantine, recovery guards, operator commands, and the runbook |
+| [Handle bad records](./docs/guides/source-failures.md) | V1.1 (new in 0.2.0-rc.1): failure policies, quarantine, recovery guards, operator commands, and the runbook |
 | [Troubleshooting](./docs/guides/troubleshooting.md) | Symptoms, causes, and fixes |
 
 ## Packages
@@ -77,16 +77,16 @@ All six are released together with the same version; see the [changelog](./CHANG
 
 **Limits in V1, by design:** one gateway per project, no durable replay or history, no durable revocation store, and no production health endpoint (V1.1 adds an optional one). Chromium is the only browser that is automatically tested. Kafka is verified against Apache Kafka 4.1.2.
 
-## Coming in V1.1: contain, explain, recover
+## New in 0.2.0-rc.1: contain, explain, recover
 
-Unreleased, and opt-in: a configuration without `failureHandling` behaves exactly as above.
+V1.1, opt-in: a configuration without `failureHandling` behaves exactly as above.
 
 - **Every bad record gets a durable incident** in a local journal: its class, position, evidence and history, kept across restarts.
 - **Quarantine.** For invalid JSON and payload-schema failures, the original record is copied byte for byte to a Kafka topic you provide. The source stays held, or moves past the record only when your application's recovery guard approves and every later snapshot acknowledges it. Nothing is skipped silently, and integrity failures are never skipped.
 - **Operator commands.** `streamotter status`, `failures list|show|export|evaluate|redrive` and `sources retry-current|reassess|reopen-circuit|retire-boundary` over a local socket, the same operations in-process, and a Failures tab in the workbench during development.
 - **Health probes.** `streamotter start --health 127.0.0.1:7402` serves read-only `/health/live` and `/health/ready`, with or without failure handling.
 
-Failure handling with a durable journal needs Node.js 24.15 or later. Start with [Handle bad records](./docs/guides/source-failures.md). What is tested so far, and what isn't: [implementation status](./docs/IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased).
+Failure handling with a durable journal needs Node.js 24.15 or later. Start with [Handle bad records](./docs/guides/source-failures.md). What is tested so far, and what isn't: [implementation status](./docs/IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1).
 
 ## Documentation
 
