@@ -258,6 +258,8 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - `pnpm test:install`: 22 tests, 22 pass.
   - `pnpm test:deploy`: 4 tests, 4 pass.
   - `./scripts/kafka/replicated-start.sh && pnpm test:kafka:replicated`: 2 tests, 2 pass.
+- **Second review and later fixes.** A fresh reviewer checked the fix diff and found three minor gaps (H, B with O6, D after a crash), fixed in `ab6bcb6`, `05ef737` and `483eb82`. The V1.2 review found that the replicated-Kafka scripts relied on `/proc`, which macOS lacks (`bdf1445`). Details are in [REVIEW.md](./REVIEW.md) §5 and §6.
+- **Final commands** at `483eb82`, run the same way: `pnpm verify` 384/384, `test:kafka` 42/42, `test:browser` 56/56, `test:install` 22/22, `test:deploy` 4/4, `test:kafka:replicated` 2/2 (with the `ps`-based scripts).
 
 ## 3. Handoff checklist for each slice
 

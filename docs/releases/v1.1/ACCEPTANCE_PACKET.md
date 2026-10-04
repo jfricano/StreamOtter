@@ -63,11 +63,11 @@ Of the acceptance plan's 48 scenarios, by the matrix's own rules (no row is *ver
 
 What each partial row lacks is named in the [matrix](./EVIDENCE.md) and in [implementation status](../../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased). Failed runs, and what each turned out to be, are kept in the [log](./IMPLEMENTATION_LOG.md).
 
-Final run of every tier on `feat/v1.1-review-fixes` at `619748b`, October 4, after the review fixes (Node 24.21.0, pnpm 11.19.0, Kafka 4.1.2, headless Chromium 141). Later commits on that branch change docs only. The run before the review, at `92cf086`, is in the log's slice E entry; this one is in the review-fixes entry.
+Final run of every tier on `feat/v1.1-review-fixes` at `483eb82`, October 4, after the review fixes and the second review's follow-ups (Node 24.21.0, pnpm 11.19.0, Kafka 4.1.2, headless Chromium 141). Later commits on that branch change docs only. The run before the review, at `92cf086`, is in the log's slice E entry; this one is in the review-fixes entry.
 
 | Tier | Result |
 | --- | --- |
-| `pnpm build && pnpm verify` (unit, integration, typecheck, contracts) | 381 / 381 |
+| `pnpm build && pnpm verify` (unit, integration, typecheck, contracts) | 384 / 384 |
 | `pnpm test:kafka` (single broker) | 42 / 42 |
 | `pnpm test:kafka:replicated` (three brokers, F47) | 2 / 2 |
 | `pnpm test:browser` (Chromium only) | 56 / 56 |
