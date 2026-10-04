@@ -9,4 +9,4 @@ V1 never had an independent review. V1.2 is that review, run on V1 and V1.1 toge
 | [PHASE_B_FINDINGS.md](./PHASE_B_FINDINGS.md) | V1 code that V1.1 changed: 5 major, 24 minor |
 | [IMPLEMENTATION_LOG.md](./IMPLEMENTATION_LOG.md) | Log, the minors fixed and deferred, and test runs |
 
-**Status (October 4, 2026):** every major is fixed with a regression test, and so are 25 minors, in PR #20 (stacked on the V1.1 review fixes, #19). Not released.
+**Status (October 4, 2026):** every major is fixed with a regression test, and so are 25 minors, in PR #20, stacked on V1.1 (#55, branch `review/v1.1`). Not released.

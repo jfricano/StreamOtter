@@ -4,7 +4,7 @@ Working record for the V1.2 quality review. Anyone resuming starts with §1. New
 
 ## 1. Resume here
 
-**Current state (October 4, 2026):** the review is done and fixed. Phase A found 10 major and 33 minor issues ([findings](./PHASE_A_FINDINGS.md)), phase B 5 major and 24 minor ([findings](./PHASE_B_FINDINGS.md)). All 15 majors are fixed on `feat/v1.2-quality-fixes`, each with a regression test that fails without its fix, along with the cheap minors (§3). The branch is stacked on `feat/v1.1-review-fixes` (PR #19). Nothing merges to `main` without the owner.
+**Current state (October 4, 2026):** the review is done and fixed. Phase A found 10 major and 33 minor issues ([findings](./PHASE_A_FINDINGS.md)), phase B 5 major and 24 minor ([findings](./PHASE_B_FINDINGS.md)). All 15 majors are fixed on `feat/v1.2-quality-fixes`, each with a regression test that fails without its fix, along with the cheap minors (§3). The branch is stacked on `review/v1.1` (PR #55, all of V1.1; it replaced the closed stack ending at #19 and is the same commit as `feat/v1.1-review-fixes`). Nothing merges to `main` without the owner.
 
 **Next step:** drive the V1.2 PR's CI to green and answer review. The deferred minors in §3 are candidates for a later release.
 
