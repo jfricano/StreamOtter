@@ -4,10 +4,10 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, afterEach, describe, it } from "node:test";
-import type { FailureHandlingConfig, IncidentSummary, OperatorStatus, Page } from "@streamotter/contracts";
+import type { FailureHandlingConfig, IncidentSummary, Json, OperatorStatus, Page } from "@streamotter/contracts";
 import { initJournal, nodeSupportsJournal } from "@streamotter/gateway/internals";
 import { callOperator } from "@streamotter/gateway/operator";
-import { startHarness, type Harness } from "./harness.ts";
+import { deferred, orderRecord, OrderApp, startHarness, type Harness } from "./harness.ts";
 
 /**
  * The operator socket served by a real gateway (API §10): it starts with the
@@ -72,6 +72,34 @@ describe("operator socket on a running gateway (API §10)", { skip }, () => {
     const stopped = await runCli(["status", "--state-dir", state]);
     assert.notEqual(stopped.code, 0);
     assert.match(stopped.stderr, /^UNSUPPORTED_CAPABILITY: No gateway is serving the operator socket/);
+  });
+
+  it("S1: answers a mutation still running when the gateway stops, before the socket goes away", async () => {
+    const state = stateDirectory();
+    const app = new OrderApp();
+    // "shipped" is outside the channel's payload schema: a payload-schema hold.
+    h = await startHarness({ app, stateDirectory: state, operatorSocket: true, failureHandling: HOLD, fixtures: [orderRecord("acme", "ord_1", 3, "shipped" as "done", 100)] });
+    await h.advance(1);
+    await h.internals.failuresSettled();
+    const [held] = h.internals.incidentStore()!.open("orders");
+    assert.equal(held?.progress, "held");
+    // The retried record maps slowly, so the retry is still waiting for it to settle when stop begins.
+    const mapping = deferred();
+    app.mapOverride = async (value: Json) => {
+      mapping.resolve();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const record = value as { tenantId: string; revision: string; order: { orderId: string } };
+      return [{ tenantId: record.tenantId, params: { orderId: record.order.orderId }, revision: record.revision, data: { ...record.order, status: "done" } }];
+    };
+    const answer = callOperator(state, "retryCurrent", { sourceId: "orders", failureId: held!.failureId, expectedRevision: held!.revision });
+    await mapping.promise;
+    const stopping = h.close();
+    h = undefined;
+    const result = await answer;
+    assert.equal(result.result, "completed", result.message);
+    assert.match(result.operationId, /^op1:[0-9a-f]{32}$/);
+    await stopping;
+    assert.equal(existsSync(join(state, "run", "operator.sock")), false, "socket removed on stop");
   });
 
   it("is not started unless operatorSocket is true", async () => {

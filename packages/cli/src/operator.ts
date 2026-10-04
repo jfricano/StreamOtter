@@ -23,6 +23,12 @@ import type { CliIO } from "./cli.ts";
 const OK = 0;
 const RUNTIME = 1;
 const INVALID = 2;
+const UNKNOWN = 4;
+
+/** The operations that change something; when their answer is lost, the outcome is unknown, not failed. */
+const MUTATIONS: ReadonlySet<OperatorOperation> = new Set(["retryCurrent", "reassess", "reopenCircuit", "retireBoundary", "redrive"]);
+/** `details.reason` the operator client puts on an error raised after the request was sent but before an answer arrived. */
+const NO_ANSWER = "no-answer";
 
 export const OPERATOR_USAGE = `  streamotter status --state-dir <dir> [--json]
   streamotter failures list --state-dir <dir> [--source <id>] [--state open|resolved|all] [--limit <n>] [--cursor <c>] [--json]
@@ -361,6 +367,25 @@ function fail(io: CliIO, json: boolean, code: number, error: StreamOtterError | 
   return code;
 }
 
+/**
+ * A mutation sent to the gateway whose answer never came (the gateway stopped,
+ * the connection dropped, or TIMEOUT): it may or may not have been applied, so
+ * the exit is 4 (D7), with what to check before trying again.
+ */
+function unknownOutcome(io: CliIO, json: boolean, label: string, error: StreamOtterError, args: Record<string, unknown>): number {
+  const operationId = typeof args["operationId"] === "string" ? args["operationId"] : null;
+  const failureId = typeof args["failureId"] === "string" ? args["failureId"] : null;
+  const check = [
+    "`streamotter status`",
+    ...(failureId === null ? [] : [`\`streamotter failures show --failure ${failureId}\``])
+  ].join(" and ");
+  const message = `The outcome of ${label} is unknown: the gateway may have applied it, but its answer was lost (${error.code}: ${error.message}). ` +
+    `Check ${check} before trying again` +
+    (operationId === null ? "." : `; sending it again with --operation-id ${operationId} returns the recorded result.`);
+  const details = { ...error.details, reason: NO_ANSWER, ...(operationId === null ? {} : { operationId }) };
+  return fail(io, json, UNKNOWN, json ? new StreamOtterError(error.code, { message, details }) : message);
+}
+
 /** Runs `status`, `failures <sub>` or `sources <sub>` and returns the exit code. */
 export async function runOperatorCommand(command: string, positionals: readonly string[], values: Values, io: CliIO, usage: string): Promise<number> {
   const group = COMMANDS[command] ?? {};
@@ -407,6 +432,9 @@ export async function runOperatorCommand(command: string, positionals: readonly 
     return await spec.render(io, data, values, json);
   } catch (error) {
     if (error instanceof UsageError) return fail(io, json, INVALID, `${label}: ${error.message}`);
+    if (error instanceof StreamOtterError && MUTATIONS.has(spec.op) && error.details?.["reason"] === NO_ANSWER) {
+      return unknownOutcome(io, json, label, error, args);
+    }
     if (error instanceof StreamOtterError) return fail(io, json, error.code === "INVALID_REQUEST" ? INVALID : RUNTIME, error);
     return fail(io, json, RUNTIME, `${label}: unexpected failure: ${(error as Error).message}`);
   }
