@@ -47,3 +47,42 @@ describe("H: the circuit gate counts an incident advanced again once", () => {
     assert.equal(store.circuit("orders").state, "closed", "only 2 distinct incidents were ever advanced (limit 2)");
   });
 });
+
+describe("B with O6: a cluster mismatch blocks redrive", () => {
+  it("a cluster-mismatch incident is an open integrity fault that blocks redrive", async () => {
+    const cfg = JSON.parse(JSON.stringify(config)) as ProjectConfig;
+    (cfg.failureHandling as any).sources.orders.replaySafeMapping = true;
+    (cfg.failureHandling as any).sources.orders.automaticAdvanceLimit = { incidents: 5, windowMs: 60_000 };
+    const store = new MemoryIncidentStore();
+    store.claim("order-dashboard", [{ sourceId: "orders", generation: "orders-1", kind: "kafka" }]);
+    const g: SourceRecoveryHandlers = { recover: async (ctx: any) => ctx.incident.position.offset === "10"
+      ? { decision: "recoverable", context: { watermark: 1 }, evidenceRef: "x" } : { decision: "hold", reason: "not yet" } };
+    const make = (cluster: string) => {
+      const f = new FailureService({ config: cfg, store, logger: silent, quarantine: writer, configFingerprint: "c".repeat(64), handlerBuildId: "b", maxSourceRecordBytes: 1 << 20, guards: { orders: g } });
+      f.setClusterId("orders", cluster);
+      return f;
+    };
+    const source: FailureSource = { id: "orders", config: cfg.sources["orders"] as FailureSource["config"], adapter: new Adapter() };
+    const f1 = make("cluster-a");
+    await f1.held(source, rec("10"), pause);
+    await f1.held(source, rec("20"), pause);
+    const f2 = make("cluster-b");
+    await f2.start([source], async () => "21");
+    await f2.held(source, rec("20"), pause);
+    const all = store.list({ state: "all" }).items;
+    const a = all.find(i => (i.position as any).offset === "10")!;
+    const b = all.find(i => (i.position as any).offset === "20")!;
+    const host: OperatorHost = {
+      mode: "development", config: cfg, fingerprint: "c", handlerBuildId: "b", logger: silent, state: () => "running",
+      source: () => ({ sourceId: "orders", status: "paused" } as any), traces: () => ({ items: [], nextCursor: null }),
+      quarantineReport: () => null,
+      quarantineReader: () => ({ read: async () => ({ kind: "found", evidence: { key: Buffer.from("k"), value: Buffer.from("{bad10"), headers: [] } }), stop: async () => undefined }) as any,
+      retry: async () => undefined,
+      evaluateRecord: async () => ({ kind: "ok", outputs: [{ channel: "c", channelVersion: 1, revision: "1" }], outputHash: "h" }) as any,
+      redriveRecord: async () => ({ kind: "abandon" }) as any, setBoundary: () => undefined
+    };
+    const op = new OperatorService(host, f2);
+    const evaluation = await op.evaluate({ failureId: a.failureId, expectedRevision: a.revision });
+    assert.equal(evaluation.eligible, false, "redrive must be refused while a cluster-mismatch integrity fault is open");
+  });
+});

@@ -632,11 +632,14 @@ export class OperatorService implements OperatorApi {
 /**
  * Event details the failure service records for a source-integrity fault on an
  * eligible-class incident: redelivered bytes that differ from the captured
- * evidence, and group progress that moved past a held record with no recorded advance.
+ * evidence, group progress that moved past a held record with no recorded advance,
+ * and a record captured on a different Kafka cluster than the source now reads.
  */
 const INTEGRITY_EVENT_DETAILS: ReadonlyMap<string, string> = new Map([
   ["evidence-conflict", "the redelivered bytes differ from the captured evidence"],
-  ["position-moved", "the source position moved past a held record without a recorded advance"]
+  ["position-moved", "the source position moved past a held record without a recorded advance"],
+  ["cluster-mismatch", "a record captured on another Kafka cluster"],
+  ["cluster-mismatch at startup", "a record captured on another Kafka cluster"]
 ]);
 
 /** Why an open incident is an unresolved source-integrity fault (spec §8.3), or null. */
