@@ -57,3 +57,4 @@ On Node 24.21.0 at the final commit:
 
 - V1.1, V1.2 and V1.2.1 ship together as `0.2.0-rc.1`. The CHANGELOG, acceptance packet, release checklist, roadmap, status page and package READMEs describe that one release.
 - Moved `docs/v2/V2_3_EVENT_JOURNEY_VERIFICATION.md` to `docs/releases/v2.3/`, so every release plan lives under `docs/releases/`. Its links and the two inbound links were updated. User-facing docs (guides, `DEPLOYMENT.md`, `V1_API.md`) stay where they are, because the READMEs already published on npm link to those paths.
+- Added the [0.2.0-rc.1 release handoff](../0.2.0-rc.1/RELEASE_HANDOFF.md) for the coordinated deployment checklist. The planned site domain is now `streamotter.dev`, so the release plan, status, site plan and the host contract's examples use it; logs keep `streamotter.app`.

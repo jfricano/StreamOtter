@@ -273,4 +273,4 @@ GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by han
 | Auth, revocation, synchronization, cleanup, overload/resource limits, broker authentication paths have results and explicit limitations | Met |
 | No unresolved failure contradicts a promised V1 behavior | No known contradiction; limitations are listed above |
 
-Gate A is met. The home site and live demo are a separate project, Lontra Creek, planned for `streamotter.app`; it uses the published packages, and its launch criteria (Gate B) are maintained with it. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md).
+Gate A is met. The home site and live demo are a separate project, Lontra Creek, planned for `streamotter.dev`; it uses the published packages, and its launch criteria (Gate B) are maintained with it. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md).
