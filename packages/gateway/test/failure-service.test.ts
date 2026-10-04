@@ -239,3 +239,46 @@ describe("FailureService cluster identity (ADR-15A §3)", () => {
     assert.match(incident?.diagnosis ?? "", /^Kafka cluster mismatch/);
   });
 });
+
+describe("FailureService retries and queued dispositions", () => {
+  it("opens no incident for a record that processed and committed before its disposition ran", async () => {
+    const store = claimed();
+    const { failures, source } = resync(store, { policy: "pause", adapter: null, guard: null });
+    const pending = failures.held(source, plain, pause);
+    failures.committed("orders", plain.position);
+    await pending;
+    assert.deepEqual(store.open("orders"), []);
+    assert.equal(failures.positionProblem("orders", at(0, "42")), null, "the next record is not held as progress moved");
+  });
+
+  it("a retry waits for the queued disposition, so the held record's incident exists and is marked retrying", async () => {
+    const store = claimed();
+    let release!: () => void;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    const writer: QuarantineWriter = {
+      publish: async () => { await released; return { kind: "acknowledged", partition: 0, offset: "1" }; },
+      stop: async () => undefined
+    };
+    const { failures, source } = resync(store, { policy: "quarantine-hold", writer, adapter: null, guard: null });
+    void failures.held(source, plain, pause);
+    let retried = false;
+    const retry = failures.beforeRetry("orders", "operator retry").then(() => { retried = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(retried, false, "the retry waits while the quarantine write is in flight");
+    release();
+    await retry;
+    const [incident] = store.open("orders");
+    assert.equal(incident?.progress, "retrying");
+    assert.equal(incident?.quarantine, "acknowledged");
+    failures.committed("orders", plain.position);
+    assert.deepEqual(store.open("orders"), [], "the retried record resolves its incident when it commits");
+  });
+
+  it("an operator action already in the source's chain can retry without waiting on itself", async () => {
+    const store = claimed();
+    const { failures, source } = resync(store, { policy: "pause", adapter: null, guard: null });
+    await failures.held(source, plain, pause);
+    await failures.run("orders", () => failures.beforeRetry("orders", "operator retry"));
+    assert.equal(store.open("orders")[0]?.progress, "retrying");
+  });
+});

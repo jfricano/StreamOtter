@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
@@ -71,6 +72,10 @@ export class FailureService {
   readonly #fingerprints: IncidentRecord["fingerprints"];
   readonly #maxSourceRecordBytes: number;
   readonly #chains = new Map<string, Promise<void>>();
+  /** The sources whose failure chain the current async context is running in, so run() can nest without waiting on itself. */
+  readonly #inChain = new AsyncLocalStorage<ReadonlySet<string>>();
+  /** Positions handed to held() whose disposition has not started, and whether the record committed meanwhile. */
+  readonly #queued = new Map<string, boolean>();
   readonly #policies = new Map<string, ResolvedSourcePolicy>();
   /** Sources with an incident that a later successful commit could resolve; keeps the commit path cheap. */
   readonly #watched = new Set<string>();
@@ -197,8 +202,9 @@ export class FailureService {
 
   /** Called by the adapter once it is paused at the failing record. Serialized per source. */
   held(source: FailureSource, input: SourceInput, outcome: Pause): Promise<void> {
+    this.#queued.set(positionKey(source.id, input.position), false);
     const previous = this.#chains.get(source.id) ?? Promise.resolve();
-    const next = previous.then(() => this.#dispose(source, input, outcome)).catch(error => {
+    const next = previous.then(() => this.#inSource(source.id, () => this.#dispose(source, input, outcome))).catch(error => {
       this.#logger.error("Failure handling stopped with an unexpected error; the source stays paused", { sourceId: source.id, error: (error as Error).name });
     });
     this.#chains.set(source.id, next);
@@ -208,13 +214,20 @@ export class FailureService {
   /**
    * Runs operator work in the source's failure chain, after any disposition
    * already queued and before any queued later, so an operator action never
-   * interleaves with the guarded continuation of the same source.
+   * interleaves with the guarded continuation of the same source. Work that
+   * already runs in the source's chain (an operator action that retries the
+   * source, which calls beforeRetry) runs directly instead of waiting on itself.
    */
   run<T>(sourceId: string, work: () => Promise<T> | T): Promise<T> {
+    if (this.#inChain.getStore()?.has(sourceId) === true) return Promise.resolve().then(work);
     const previous = this.#chains.get(sourceId) ?? Promise.resolve();
-    const result = previous.then(work);
+    const result = previous.then(() => this.#inSource(sourceId, work));
     this.#chains.set(sourceId, result.then(() => undefined, () => undefined));
     return result;
+  }
+
+  #inSource<T>(sourceId: string, work: () => Promise<T> | T): Promise<T> | T {
+    return this.#inChain.run(new Set([...(this.#inChain.getStore() ?? []), sourceId]), work);
   }
 
   /** Resolves when every queued disposition has finished; for tests and shutdown. */
@@ -229,6 +242,10 @@ export class FailureService {
    * advance that is pending or uncertain, which a commit never resolves.
    */
   committed(sourceId: string, position: SourceRecord["position"]): void {
+    if (this.#queued.size > 0) {
+      const key = positionKey(sourceId, position);
+      if (this.#queued.has(key)) this.#queued.set(key, true);
+    }
     if (!this.#watched.has(sourceId)) return;
     let open: IncidentRecord[];
     try {
@@ -286,8 +303,14 @@ export class FailureService {
    * The guarded form of resumeSource for a source with failure handling
    * (ADR-15C §6): it retries the held record and never skips it. Refused while an
    * advance is pending or uncertain, and while a quarantine-resync source's circuit is open.
+   * Runs in the source's failure chain, so a disposition already queued for the
+   * held record opens its incident before the retry marks it retrying.
    */
-  beforeRetry(sourceId: string, reason: string): void {
+  beforeRetry(sourceId: string, reason: string): Promise<void> {
+    return this.run(sourceId, () => this.#markRetrying(sourceId, reason));
+  }
+
+  #markRetrying(sourceId: string, reason: string): void {
     const open = this.store.open(sourceId);
     const blocking = open.find(incident => incident.progress === "advance-pending" || incident.progress === "uncertain");
     if (blocking !== undefined) {
@@ -319,6 +342,14 @@ export class FailureService {
   // --- disposition ----------------------------------------------------------------
 
   async #dispose(source: FailureSource, input: SourceInput, outcome: Pause): Promise<void> {
+    const key = positionKey(source.id, input.position);
+    const processed = this.#queued.get(key) === true;
+    this.#queued.delete(key);
+    if (processed) {
+      // A retry processed and committed the record before this disposition ran: the source is no longer paused at it.
+      this.#logger.info("A held record processed before its failure was recorded; no incident is opened", { sourceId: source.id, failureClass: outcome.failureClass });
+      return;
+    }
     const failureClass = outcome.failureClass;
     const policy = policyFor(this.policy(source.id), failureClass);
     const raw = rawEvidence(input);
@@ -697,6 +728,10 @@ function rawEvidence(input: SourceInput): RawEvidence | null {
   else if (input.value !== undefined) value = encoder.encode(JSON.stringify(input.value));
   else return null;
   return { key: key === null ? null : new Uint8Array(key), value: value === null ? null : new Uint8Array(value), headers: (input.headers ?? []).map(header => ({ name: header.name, value: new Uint8Array(header.value) })) };
+}
+
+function positionKey(sourceId: string, position: SourceRecord["position"]): string {
+  return position.kind === "kafka" ? `${sourceId}\u0000${position.topic}\u0000${position.partition}\u0000${position.offset}` : `${sourceId}\u0000${position.index}`;
 }
 
 function samePosition(a: SourceRecord["position"], b: SourceRecord["position"]): boolean {
