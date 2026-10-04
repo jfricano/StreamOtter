@@ -1279,7 +1279,9 @@ export class GatewayRuntime implements SessionOwner {
       this.core.logger.warn("Stop deadline expired; forcing closure without committing incomplete records");
       this.#http?.closeAllConnections();
       // Release the listening port now rather than when the remaining work reaches it, so a replacement
-      // gateway can bind it as soon as stop() returns. What is still running is logged when it ends.
+      // gateway can bind it as soon as stop() returns. The listener closes here, synchronously, because
+      // io.close() reaches it only a few microtasks later. What is still running is logged when it ends.
+      this.#http?.close();
       const io = this.#io;
       if (io !== null) io.close();
       const expiredAt = Date.now();
