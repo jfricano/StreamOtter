@@ -312,17 +312,21 @@ export interface EvaluationResult {
 
 export interface OperatorStatus {
   gateway: { mode: "development" | "production"; version: string; configFingerprint: string; handlerBuildId: string; state: string };
-  store: { kind: "sqlite" | "memory"; path: string | null; sizeBytes: number; limitBytes: number; schemaVersion: number };
-  quarantine: { topicConfigured: boolean; maxMessageBytes: number | null; minInsyncReplicas: number | null; replicationFactor: number | null } | null;
-  sources: readonly {
-    sourceId: string;
-    status: SourceStatus["status"];
-    reason?: ErrorCode;
-    policy: { invalidJson: FailurePolicy; invalidPublicPayload: FailurePolicy; transientMapperRetries: number };
-    heldIncident: { failureId: string; revision: number } | null;
-    circuit: { state: "closed" | "open"; revision: number; recentIncidents: number; windowMs: number; limit: number };
-    boundary: { boundaryId: string; revision: number; retirement: BoundaryRetirement; since: string } | null;
-  }[];
+  store: { kind: "sqlite" | "memory"; durable: boolean; path: string | null; sizeBytes: number; limitBytes: number; schemaVersion: number };
+  // null when no quarantine topic is configured; the Kafka fields are null until the topic has been described.
+  quarantine: { topic: string | null; maxMessageBytes: number | null; minInsyncReplicas: number | null; replicationFactor: number | null } | null;
+  sources: readonly OperatorSourceStatus[];
+}
+
+export interface OperatorSourceStatus {
+  sourceId: string;
+  status: SourceStatus["status"];
+  reason?: ErrorCode;
+  policy: { invalidJson: FailurePolicy; invalidPublicPayload: FailurePolicy; transientMapperRetries: number; replaySafeMapping: boolean; boundaryRetirement: BoundaryRetirement };
+  heldIncident: { failureId: string; revision: number } | null;
+  openIncidents: number;
+  circuit: { state: "closed" | "open"; revision: number; recentIncidents: number; windowMs: number; limit: number; reason: string | null };
+  boundary: { boundaryId: string; revision: number; retirement: BoundaryRetirement; since: string } | null;
 }
 ```
 
