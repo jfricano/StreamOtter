@@ -373,3 +373,29 @@ describe("FailureService recording a confirmed advance", () => {
     assert.equal(fixture.position.paused, true, "the fixture stays paused while the advance is unrecorded");
   });
 });
+
+describe("FailureService superseded changes", () => {
+  it("a quarantine write that finishes after an operator retry is recorded, and is not a journal failure", async () => {
+    const store = claimed();
+    let failures!: FailureService;
+    const writer: QuarantineWriter = {
+      publish: async write => {
+        // While the write is in flight, an operator retries (revision bump) and the retried record processes and commits.
+        const current = store.get(write.failureId) as NonNullable<ReturnType<IncidentStore["get"]>>;
+        store.update(current.failureId, current.revision, { progress: "retrying" }, { event: "operator", detail: "retry-current", operationId: "op-1" });
+        failures.committed("orders", plain.position);
+        return { kind: "acknowledged", partition: 3, offset: "17" };
+      },
+      stop: async () => undefined
+    };
+    const built = resync(store, { policy: "quarantine-hold", writer, adapter: null, guard: null });
+    failures = built.failures;
+    await failures.held(built.source, plain, pause);
+    const [incident] = store.list({ state: "all" }).items;
+    assert.equal(failures.journalError, null, "readiness does not report a journal failure");
+    assert.equal(incident?.state, "resolved");
+    assert.equal(incident?.progress, "processed");
+    assert.equal(incident?.quarantine, "acknowledged", "the copy that was written is recorded, not left pending");
+    assert.deepEqual(incident?.quarantineCoordinates, { partition: 3, offset: "17" });
+  });
+});

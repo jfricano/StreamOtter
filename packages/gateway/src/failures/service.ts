@@ -414,20 +414,40 @@ export class FailureService {
     const outcomeOfWrite = await this.#write(source, record, raw);
     switch (outcomeOfWrite.kind) {
       case "acknowledged": {
-        const quarantined = this.#update(record, {
+        const quarantined = this.#recordQuarantine(record, {
           quarantine: "acknowledged",
           quarantineCoordinates: outcomeOfWrite.partition < 0 ? null : { partition: outcomeOfWrite.partition, offset: outcomeOfWrite.offset }
         }, "quarantined", summary.location === "local" ? "stored as local fixture evidence, not Kafka" : `acknowledged at partition ${outcomeOfWrite.partition}`);
-        if (policy === "quarantine-resync" && quarantined !== record) await this.#continue(source, quarantined);
+        if (policy === "quarantine-resync" && quarantined !== null) await this.#continue(source, quarantined);
         return;
       }
       case "unknown":
-        this.#update(record, { quarantine: "unknown" }, "quarantine-unknown", outcomeOfWrite.reason);
+        this.#recordQuarantine(record, { quarantine: "unknown" }, "quarantine-unknown", outcomeOfWrite.reason);
         return;
       case "failed":
-        this.#update(record, { quarantine: "failed" }, "held", `quarantine write refused: ${outcomeOfWrite.reason}`);
+        this.#recordQuarantine(record, { quarantine: "failed" }, "held", `quarantine write refused: ${outcomeOfWrite.reason}`);
         return;
     }
+  }
+
+  /**
+   * Records a quarantine write's outcome. The write can outlast a change to the
+   * incident (an operator retry, or the retried record processing): the outcome
+   * is then applied to the current incident while its quarantine is still
+   * pending, because the write happened either way, and nothing continues from
+   * it. Returns the updated incident, or null when it was superseded or not recorded.
+   */
+  #recordQuarantine(record: IncidentRecord, patch: Parameters<IncidentStore["update"]>[2], event: IncidentEventName, detail: string): IncidentRecord | null {
+    const updated = this.#update(record, patch, event, detail);
+    if (updated !== record) return updated;
+    let current: IncidentRecord | null;
+    try {
+      current = this.store.get(record.failureId);
+    } catch {
+      return null;
+    }
+    if (current !== null && current.revision !== record.revision && current.quarantine === "pending") this.#update(current, patch, event, detail);
+    return null;
   }
 
   // --- guarded continuation (quarantine-resync, ADR-15B) ----------------------------
@@ -741,6 +761,11 @@ export class FailureService {
       this.#emit(updated, event, detail);
       return updated;
     } catch (error) {
+      if (error instanceof StaleRevisionError) {
+        // Not a journal failure: a newer change (an operator action, a commit of the retried record) won, and it decides what happens next.
+        this.#logger.warn("A failure-handling state change was superseded by a newer change to the incident; it was not applied", { failureId: record.failureId, event });
+        return record;
+      }
       this.#journalError = (error as Error).message;
       this.#logger.error("The failure journal could not record a state change; the source stays paused", {
         failureId: record.failureId, event, error: (error as Error).message.slice(0, 200)
