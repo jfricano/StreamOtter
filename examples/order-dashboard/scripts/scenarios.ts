@@ -73,8 +73,11 @@ export async function runScenarios(): Promise<ScenarioResult[]> {
       await waitFor(() => view.states.includes("synchronizing"), 5_000, "synchronizing");
       // The fixture's next record moves acme/ord_1001 to "picking" (revision 2) mid-snapshot.
       if (await internals.advanceFixture("orders", 1) !== 1) throw new Error("fixture did not advance");
-      await view.subscription.ready({ timeoutMs: 10_000 });
-      process.env["ORDER_SNAPSHOT_DELAY_MS"] = "0";
+      try {
+        await view.subscription.ready({ timeoutMs: 10_000 });
+      } finally {
+        process.env["ORDER_SNAPSHOT_DELAY_MS"] = "0"; // Later scenarios must not inherit the delay.
+      }
       const expected = ["state:authorizing", "state:synchronizing", "snapshot:r1", "update:r2", "state:live"];
       if (JSON.stringify(view.timeline) !== JSON.stringify(expected)) throw new Error(`timeline ${view.timeline.join(" → ")}`);
       return view.timeline.join(" → ");

@@ -69,9 +69,10 @@ function renderSignIn(): void {
 }
 
 async function renderDashboard(session: Session): Promise<void> {
-  const client: Client<AppChannels> = createClient<AppChannels>({ origin: gatewayOrigin(), getToken: () => currentToken(session) });
   const response = await fetch("/api/orders", { headers: { authorization: `Bearer ${session.token}` } });
+  if (!response.ok) throw new Error(`Your orders could not be loaded (${response.status}).`);
   const { orders, restrictedOrderId } = await response.json() as { orders: { orderId: string; status: string }[]; restrictedOrderId: string };
+  const client: Client<AppChannels> = createClient<AppChannels>({ origin: gatewayOrigin(), getToken: () => currentToken(session) });
 
   const connection = el("span", { class: "badge info", role: "status" }, "Connecting");
   const signOut = el("button", { type: "button" }, "Sign out");
@@ -101,9 +102,14 @@ async function renderDashboard(session: Session): Promise<void> {
       const advance = el("button", { type: "button", class: "primary" }, "Advance order");
       advance.addEventListener("click", async () => {
         advance.disabled = true;
-        const result = await fetch(`/api/orders/${current?.orderId ?? ""}/advance`, { method: "POST", headers: { authorization: `Bearer ${session.token}` } });
-        note(result.ok ? "The store changed and the application published the new state to Kafka." : `Advance refused (${result.status}).`);
-        advance.disabled = false;
+        try {
+          const result = await fetch(`/api/orders/${encodeURIComponent(current?.orderId ?? "")}/advance`, { method: "POST", headers: { authorization: `Bearer ${session.token}` } });
+          note(result.ok ? "The store changed and the application published the new state to Kafka." : `Advance refused (${result.status}).`);
+        } catch {
+          note("Advance failed: the application server could not be reached.");
+        } finally {
+          advance.disabled = false;
+        }
       });
       actions.append(advance);
     }
