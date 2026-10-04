@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AsyncResource } from "node:async_hooks";
 import { createServer } from "node:net";
 import { afterEach, describe, it } from "node:test";
 import type { FailureHandlingConfig, FixtureRecord, IncidentSummary, Json, OperatorApi, SourceRecoveryHandlers } from "@streamotter/gateway";
@@ -90,12 +91,17 @@ describe("operator races (fixture tier)", () => {
     const store = h.internals.incidentStore()! as IncidentStore;
     const update = store.update.bind(store);
     let retry: Promise<Awaited<ReturnType<OperatorApi["retryCurrent"]>>> | null = null;
+    // A real operator request arrives on its own connection, outside the failure
+    // chain's async context; bind the call here so it doesn't inherit the
+    // disposition's context when it is made from inside store.update.
+    const retryFromOutside = AsyncResource.bind((failureId: string, expectedRevision: number) =>
+      op.retryCurrent({ sourceId: "orders", failureId, expectedRevision, reason: "mapping fixed" }));
     // The operator acts in the quarantine-write window: right after "captured", before "quarantined".
     store.update = (failureId, revision, patch, event) => {
       const updated = update(failureId, revision, patch, event);
       if (event.event === "captured" && retry === null) {
         app.mapOverride = repairedMap;
-        retry = op.retryCurrent({ sourceId: "orders", failureId, expectedRevision: updated.revision, reason: "mapping fixed" });
+        retry = retryFromOutside(failureId, updated.revision);
       }
       return updated;
     };
