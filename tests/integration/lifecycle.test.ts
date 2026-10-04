@@ -166,8 +166,12 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     mock.method(console, "error", () => undefined);
     const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
     const failed = new Promise<string>(resolve => sub.on("state", ({ state }) => { if (state === "failed") resolve(state); }));
+    const errors: string[] = [];
+    sub.on("error", error => errors.push(error.code));
     sub.on("data", async () => { throw new Error("async render bug"); });
     assert.equal(await failed, "failed");
+    assert.deepEqual(errors, ["HANDLER_FAILED"]);
+    await waitFor(() => h!.internals.subscriptionCount() === 0, 5_000, "the gateway released the failed subscription");
   });
 
   it("logs error-listener failures without recursive error emission", async () => {
@@ -255,8 +259,19 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     const client = h.client();
     const subs = [1, 2, 3, 4].map(i => client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: `ord_${i}` } }));
     const seen = subs.map(observe);
+    // When each subscription was refused and when it next tried again.
+    const retryGaps: number[] = [];
+    for (const sub of subs) {
+      let refusedAt: number | null = null;
+      sub.on("state", ({ state, reason }) => {
+        if (state === "stale" && reason === "OVERLOADED") refusedAt = Date.now();
+        else if (state === "authorizing" && refusedAt !== null) { retryGaps.push(Date.now() - refusedAt); refusedAt = null; }
+      });
+    }
     await Promise.all(subs.map(sub => sub.ready({ timeoutMs: 8_000 })));
     assert.ok(seen.some(record => record.reasons.includes("OVERLOADED")), "at least one subscribe was rate limited");
+    assert.ok(retryGaps.length > 0);
+    assert.ok(retryGaps.every(gap => gap >= 900), `retries waited at least one second: ${retryGaps.join(", ")} ms`);
     assert.ok(subs.every(sub => sub.state === "live"));
   });
 
