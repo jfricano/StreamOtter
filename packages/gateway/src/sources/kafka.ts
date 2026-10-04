@@ -10,7 +10,9 @@ import { flattenKafkaHeaders } from "../failures/evidence.ts";
 import type { AdvanceResult, HeldPosition, SourceAdapter, SourceInput, SourceSink } from "./types.ts";
 
 const { Kafka, logLevel } = kafkajs;
-patchKafkaJsRequestQueue();
+if (!patchKafkaJsRequestQueue()) {
+  process.emitWarning("StreamOtter's KafkaJS request-queue fix applies only to kafkajs 2.2.4; idle Kafka connections may spin a 1 ms timer.", { code: "STREAMOTTER_KAFKAJS_PATCH" });
+}
 
 export interface ResolvedKafkaConnection {
   readonly brokers: readonly string[];
@@ -23,9 +25,11 @@ export interface ResolvedKafkaConnection {
 export async function resolveKafkaConnection(profile: KafkaConnection, configDir: string): Promise<ResolvedKafkaConnection> {
   let sasl: ResolvedKafkaConnection["sasl"] = null;
   if (profile.sasl !== undefined) {
+    // process.env inherits Object.prototype, so a name like "constructor" must not count as set.
+    const read = (name: string) => Object.hasOwn(process.env, name) ? process.env[name] : undefined;
     const missing = [profile.sasl.username.env, profile.sasl.password.env].filter(name => {
-      const value = process.env[name];
-      return value === undefined || value === "";
+      const value = read(name);
+      return typeof value !== "string" || value === "";
     });
     if (missing.length > 0) {
       throw new StreamOtterError("CONFIG_INVALID", {
@@ -34,8 +38,8 @@ export async function resolveKafkaConnection(profile: KafkaConnection, configDir
     }
     sasl = {
       mechanism: profile.sasl.mechanism,
-      username: process.env[profile.sasl.username.env] as string,
-      password: process.env[profile.sasl.password.env] as string
+      username: read(profile.sasl.username.env) as string,
+      password: read(profile.sasl.password.env) as string
     };
   }
   let ca: string | null = null;
@@ -285,6 +289,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
       }
     });
     await joined;
+    if (this.#stopping) return; // stop() released the wait; it has already cleared any watchdog.
     this.#watchdog = setInterval(() => this.#checkWatchdog(), 1_000);
     this.#watchdog.unref();
   }
