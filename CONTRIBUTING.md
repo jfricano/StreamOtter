@@ -41,7 +41,7 @@ With the broker running, `pnpm test:install` also runs the installed `streamotte
 
 The nightly tiers don't run on pull requests. To run them for a branch, start the "Extended checks" workflow by hand from the Actions tab and pick the branch.
 
-The setup scripts download pinned, checksum-verified tools into the gitignored `.local/` folder: Apache Kafka 4.1.2 (plus a Temurin 21 JDK on Apple silicon and on x64 or arm64 Linux; elsewhere they use Java 17+ from `PATH`), headless Chromium, and Caddy. Stop the broker with `pnpm kafka:stop`, and delete `.local/` to remove everything.
+The setup scripts download pinned, checksum-verified tools into the gitignored `.local/` folder: Apache Kafka 4.1.2 (plus a Temurin 21 JDK on Apple silicon and on x64 or arm64 Linux; elsewhere they use Java 17+ from `PATH`), headless Chromium, and Caddy. `pnpm kafka:start` refuses to start if ports 19092–19095 are already taken (by another checkout's broker, say), and `pnpm kafka:start` and `pnpm kafka:stop` act on the pid file only when that process was started with this checkout's broker configuration; a stale pid file is removed. Stop the broker with `pnpm kafka:stop`, and delete `.local/` to remove everything.
 
 ## Repository layout
 
@@ -65,6 +65,7 @@ The setup scripts download pinned, checksum-verified tools into the gitignored `
 - Add or update tests with every behavior change. Failure and recovery paths matter as much as the happy path.
 - Keep the documents accurate. When behavior or types change, update [V1_API.md](./docs/V1_API.md) (§13 records implementation refinements). When features or verified results change, update [README.md](./README.md) and [IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md), recording the commands you ran and the results you saw. Never add capacity or performance claims that no test measured.
 - Add a line to [CHANGELOG.md](./CHANGELOG.md) for user-visible changes.
+- In `.github/workflows`, pin each action by its full commit SHA, with the release tag in a comment.
 
 In a pull request, say what changed, why, and which test tiers you ran.
 

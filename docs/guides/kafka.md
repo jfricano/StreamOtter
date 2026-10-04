@@ -60,7 +60,7 @@ Then point your channel at the source (`"source": "orders"`) and write a `map` h
 
 ## Progress and commits
 
-The gateway commits a record's offset only after it has fully processed it: validated, mapped, and admitted to (or explicitly invalidated for) every interested subscription. A record that no subscription cares about, or that `map` filters out with `[]`, is committed too. A commit never means that a browser received the data, and source progress never waits for browsers. A slow client is disconnected rather than allowed to hold up the topic.
+The gateway commits a record's offset only after it has fully processed it: validated, mapped, and admitted to (or explicitly invalidated for) every interested subscription. A record that no subscription cares about, or that `map` filters out with `[]`, is committed too. A commit never means that a browser received the data, and source progress never waits for browsers. A slow client is disconnected rather than allowed to hold up the topic. If a commit fails, the gateway logs a warning and retries it every second until it succeeds or a later commit or a rebalance replaces it; until then, a restart can redeliver that record, which revisions make harmless.
 
 ## When a record is bad
 
@@ -71,6 +71,8 @@ To recover, fix the cause (usually your `map` handler: correct it, or have it re
 - in development, press **Resume** in the workbench's Connect tab;
 - from code, call `gateway.resumeSource("orders")`;
 - with `streamotter start`, deploy the fix and restart the gateway. It resumes from the last committed offset, which is the paused record.
+
+A conflicting duplicate revision is different: when the source paused, its views went `stale` and the state the record conflicted with was discarded, so a resume compares the record only with current state and usually admits it. Decide which data is correct before resuming; the gateway logs a warning when it resumes after a revision conflict.
 
 That is the default. V1.1 adds opt-in failure policies: every bad record becomes a durable incident, and for invalid JSON and payload-schema failures the original record can be copied to a quarantine topic, then held, or moved past only when your application's recovery guard approves. Nothing is ever skipped silently. See [Handle bad records](./source-failures.md).
 

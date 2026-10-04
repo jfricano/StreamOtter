@@ -325,3 +325,22 @@ These decisions were made while implementing V1. They refine the text above; whe
 - Kafka:
   - A paused source stays paused through a consumer restart.
   - The consumer heartbeats every 3 seconds while a record is being processed.
+
+**V1.2.1 minor fixes** (new in 0.2.0-rc.1; [V1.2.1 fixes](./releases/v1.2.1/FIXES.md)). Two change what a user can see:
+
+- `limits.maxControlFrameBytes` must be at least 9,216 (§6); a value between 1,024 and 9,215, accepted before, now fails validation with `INCONSISTENT_LIMITS`. The default is unchanged.
+- In production, parameters that fail the channel's `paramsSchema` are answered `FORBIDDEN`, like an unknown channel, and traced as `INVALID_PARAMS`; development still answers `INVALID_PARAMS` with the failing path. Parameters that are not a JSON object or exceed `maxParamsBytes`, the per-connection subscription limit, and a subscription ID reused for a different channel or version are checked before the channel lookup (§7).
+
+The rest:
+
+- `on()` removal takes effect immediately, as with DOM `EventTarget`: a listener removed during a dispatch is not called for that event or later ones (§4). This applies to subscription and client listeners alike.
+- `streamotter init` removes the files and directories it created and exits 2 if a write fails partway through; a dangling symbolic link counts as an existing file.
+- `test:kafka`, `test:kafka:replicated` and `test:deploy` fail when their broker or proxy isn't running, instead of passing with every test skipped, unless `STREAMOTTER_ALLOW_SKIP=1` is set ([CONTRIBUTING](../CONTRIBUTING.md#test-tiers)).
+- Handshake: a client that disconnects aborts `authenticate`'s signal and the handshake is traced `CANCELLED`; an `authenticate` call that keeps running still counts against `maxConnections` until it settles or `handlerTimeoutMs` passes. A second CONNECT on the same connection, while one is pending or open, closes the connection. Refused handshakes are traced at most 10 per second after a burst of 100 (§10).
+- `stop()` past its deadline closes the listening port before it returns; remaining shutdown work finishes in the background and is logged (§3).
+- A management GET that declares a body (a non-zero `Content-Length`, or any `Transfer-Encoding`) is answered 400 `INVALID_REQUEST`.
+- SDK: `resync()` on a `stale` subscription keeps it `stale` until the gateway announces `authorizing` for the new attempt, so a paused source still shows as `stale`; concurrent calls still join one request. A resync that runs out of attempts before a new epoch ends in `resync-required` and rejects with `RESYNC_REQUIRED`. A connection found closed when its hello is handled counts as a failed, retryable handshake, and the client reconnects.
+- Kafka: a failed offset commit is retried every second until a later commit or a rebalance replaces it, and counts only once KafkaJS reports it. With `startFrom: "latest"`, the start position of each partition without a committed offset is committed before its first record is processed. A committed offset outside the retained range, and a start position lost to an early rebalance, are logged as warnings. When the watchdog marks a source degraded during a slow record, its warning says heartbeats are not being acknowledged and names the record's position. Resuming after a revision conflict logs a warning (§6).
+- Fixture evidence in the local store expires seven days after it was stored; `evaluate` then reports `evidence-expired`.
+- `streamotter generate` suffixes colliding type names in sorted schema-ID order, so reordering schemas doesn't rename types.
+- Workbench: a response for an earlier Inspect filter, or a validation result for text since edited, is dropped.
