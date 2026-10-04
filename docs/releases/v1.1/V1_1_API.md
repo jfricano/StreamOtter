@@ -263,7 +263,7 @@ Slice C note, continuation order (spec §6; ADR-15A ordering step 5). For an eli
 4. One journal transaction installs the new boundary (superseding the prior one), sets the incident to `advance-pending`, records the guard result and counts the advance in the circuit. The circuit counts distinct incidents: an incident advanced again (after an attempt that found the source no longer paused at it) keeps one entry, at its latest advance.
 5. The boundary is applied to the runtime, so later snapshots must acknowledge it.
 6. `advancePast` commits offset + 1 and reads it back.
-7. The incident is then recorded as `advanced` (and resolved). If the source was no longer paused at the record, it goes back to `held`; if the result could not be confirmed, it becomes `uncertain`.
+7. The incident is then recorded as `advanced` (and resolved), and only then does the source resume past the record. If that journal write fails, the source stays paused with the offset moved and the incident `advance-pending`; a restart confirms the advance from the group's committed offset. If the source was no longer paused at the record, the incident goes back to `held`; if the result could not be confirmed, it becomes `uncertain`.
 
 Startup restores the boundary in force before any source can be ready. It reconciles each `advance-pending` or `uncertain` incident against the group's committed offset:
 - offset + 1 confirms the advance;

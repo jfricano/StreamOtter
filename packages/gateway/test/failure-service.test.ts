@@ -4,7 +4,8 @@ import type { GatewayLogger, ProjectConfig, SourceRecoveryHandlers } from "@stre
 import type { QuarantineOutcome, QuarantineWrite, QuarantineWriter } from "../src/failures/quarantine.ts";
 import { FailureService, type FailureSource } from "../src/failures/service.ts";
 import { MemoryIncidentStore, type IncidentStore } from "../src/failures/store.ts";
-import type { AdvanceResult, HeldPosition, SourceAdapter, SourceInput } from "../src/sources/types.ts";
+import { FixtureSourceAdapter } from "../src/sources/fixture.ts";
+import type { AdvanceResult, HeldPosition, SourceAdapter, SourceInput, SourceSink } from "../src/sources/types.ts";
 
 /** F14 and F11 at the unit tier: quarantine outcomes drive incident state, and nothing is ever reported as success without an acknowledgment. */
 
@@ -141,7 +142,11 @@ class FakeAdapter implements SourceAdapter {
   async check(): Promise<[]> { return []; }
   async advancePast(held: HeldPosition): Promise<AdvanceResult> {
     this.calls.push(held);
-    if (this.result === "advanced") this.resumed++;
+    if (this.result === "advanced") {
+      // Like the real adapters: the advance is committed, then the caller records it, and only then does consumption resume.
+      if (held.confirmed !== undefined && !(await held.confirmed())) return "advanced";
+      this.resumed++;
+    }
     return this.result;
   }
 }
@@ -309,5 +314,62 @@ describe("FailureService guard exits", () => {
     assert.equal(incident?.recovery, "held");
     assert.equal(adapter.calls.length, 0);
     assert.ok(errors.some(message => /recovery boundary could not be persisted/.test(message)));
+  });
+});
+
+describe("FailureService recording a confirmed advance", () => {
+  /** Fails the journal write that records the advance, like a full or broken journal at that moment. */
+  function failAdvanceRecord(store: IncidentStore): void {
+    const update = store.update.bind(store);
+    store.update = (failureId, revision, patch, event) => {
+      if (event.event === "advance-confirmed") throw new Error("disk I/O error");
+      return update(failureId, revision, patch, event);
+    };
+  }
+
+  it("keeps the source paused when the advance cannot be journaled, and a restart confirms it", async () => {
+    const store = claimed();
+    const adapter = new FakeAdapter("advanced");
+    const { failures, source } = resync(store, { adapter });
+    const update = store.update;
+    failAdvanceRecord(store);
+    await failures.held(source, plain, pause);
+    assert.equal(adapter.calls.length, 1);
+    assert.equal(adapter.resumed, 0, "nothing after the record is consumed while the journal says advance-pending");
+    assert.equal(store.open("orders")[0]?.progress, "advance-pending");
+
+    store.update = update;
+    const restarted = resync(store, { adapter: null });
+    await restarted.failures.start([restarted.source], async () => "42");
+    const [incident] = store.list({ state: "all" }).items;
+    assert.equal(incident?.progress, "advanced", "offset + 1 confirms the gateway's own advance, never 'progress moved'");
+  });
+
+  it("the fixture adapter resumes only after the advance is recorded", async () => {
+    const fixtureConfig = {
+      ...configFor("quarantine-resync"),
+      sources: { orders: { kind: "fixture", generation: "orders-1", fixtureRef: "orders" } }
+    } as unknown as ProjectConfig;
+    const store = new MemoryIncidentStore();
+    store.claim("order-dashboard", [{ sourceId: "orders", generation: "orders-1", kind: "fixture" }]);
+    const failures = new FailureService({
+      config: fixtureConfig, store, logger: silent, quarantine: null, configFingerprint: "c".repeat(64), handlerBuildId: "build-7",
+      maxSourceRecordBytes: 1_048_576, guards: { orders: recoverable }
+    });
+    let source!: FailureSource;
+    const sink: SourceSink = {
+      process: async () => ({ kind: "pause", code: "INVALID_PAYLOAD", failureClass: "invalid-json", stage: "validate", channel: null, diagnosis: "bad JSON" }),
+      setStatus: () => undefined,
+      held: (input, outcome) => { void failures.held(source, input, outcome); },
+      logger: silent,
+      stopSignal: new AbortController().signal
+    };
+    const fixture = new FixtureSourceAdapter([{ key: "ord_1", raw: "{not json" }, { key: "ord_2", raw: "{}" }], sink, position => failures.committed("orders", position));
+    source = { id: "orders", config: fixtureConfig.sources["orders"] as FailureSource["config"], adapter: fixture };
+    failAdvanceRecord(store);
+    await fixture.advance(1);
+    await failures.settled();
+    assert.equal(store.open("orders")[0]?.progress, "advance-pending");
+    assert.equal(fixture.position.paused, true, "the fixture stays paused while the advance is unrecorded");
   });
 });

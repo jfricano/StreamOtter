@@ -65,14 +65,18 @@ export class FixtureSourceAdapter implements SourceAdapter {
     await run;
   }
 
-  /** Moves past the held record without processing it, then resumes; later records advance on request as usual. */
+  /**
+   * Moves past the held record without processing it, then resumes once the
+   * caller has recorded the advance; later records advance on request as usual.
+   */
   advancePast(held: HeldPosition): Promise<AdvanceResult> {
-    const run = this.#chain.then((): AdvanceResult => {
+    const run = this.#chain.then(async (): Promise<AdvanceResult> => {
       const position = held.position;
       if (this.#stopped || !this.#paused || position.kind !== "fixture" || position.index !== String(this.#index)) return "not-held";
       this.#index++;
-      this.#paused = false;
       this.#onCommit(position);
+      if (held.confirmed !== undefined && !(await held.confirmed().catch(() => false))) return "advanced";
+      this.#paused = false;
       this.#sink.setStatus("healthy");
       return "advanced";
     });

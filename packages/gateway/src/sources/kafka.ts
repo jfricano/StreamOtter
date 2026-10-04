@@ -311,8 +311,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
 
   /**
    * Commits exactly offset + 1 for the held record, reads the group's committed
-   * offset back through the admin client, and only then seeks past the record and
-   * resumes. Any doubt (a failed commit, a failed or different read-back, or a
+   * offset back through the admin client, lets the caller record the advance, and
+   * only then seeks past the record and resumes. Any doubt (a failed commit, a failed or different read-back, or a
    * rebalance while waiting) is "uncertain" and the source stays paused. This is
    * deliberately stricter than the ordinary commit path, where a failed commit
    * only means a record may be redelivered.
@@ -360,6 +360,14 @@ export class KafkaSourceAdapter implements SourceAdapter {
       return "uncertain";
     }
     this.#onCommit(position);
+    // The caller records the advance before anything after the record can be consumed (spec §6).
+    if (held.confirmed !== undefined && !(await held.confirmed().catch(() => false))) {
+      this.#sink.logger.warn("The advance is committed but was not recorded; the source stays paused until a restart reconciles it", {
+        sourceId: this.#sourceId, topic: position.topic, partition: position.partition, offset: position.offset
+      });
+      return "advanced";
+    }
+    if (this.#stopping) return "advanced";
     this.#held = null;
     this.#paused = false;
     consumer.seek({ topic: position.topic, partition: position.partition, offset: next });

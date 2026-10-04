@@ -23,7 +23,7 @@ export type BoundaryInForce = { id: string; context: Json } | null;
 /** Reads a consumer group's committed offset for one partition ("-1" or null when none). */
 export type CommittedOffsetReader = (source: FailureSource, topic: string, partition: number) => Promise<string | null>;
 
-/** Test-only instrumentation: awaited just before advancePast and just after it reports "advanced". */
+/** Test-only instrumentation: awaited just before advancePast, and just after the adapter confirms the advance (before it is journaled). */
 export interface AdvanceHooks {
   beforeAdvance?: (failureId: string) => Promise<void>;
   afterAdvance?: (failureId: string) => Promise<void>;
@@ -527,19 +527,37 @@ export class FailureService {
     this.#onBoundary(sourceId, { id: boundaryId, context: outcome.context });
 
     await this.#hooks.beforeAdvance?.(prepared.failureId);
+    // The adapter resumes only after "advanced" is journaled. If that write fails the source stays paused with the
+    // offset moved, and a restart confirms the advance from the group's committed offset (offset + 1), so no later
+    // record is consumed while the journal still says advance-pending (which would read as unexplained progress).
+    let recorded: IncidentRecord | null = null;
+    let asked = false;
+    const confirmed = async (): Promise<boolean> => {
+      asked = true;
+      await this.#hooks.afterAdvance?.(prepared.failureId);
+      const advanced = this.#update(prepared, { progress: "advanced", state: "resolved", resolution: `advanced past under recovery boundary ${boundaryId}` },
+        "advance-confirmed", "committed past the record and confirmed by read-back; snapshots must acknowledge the boundary");
+      if (advanced === prepared) return false;
+      recorded = advanced;
+      return true;
+    };
     const adapter = source.adapter;
     let result: Awaited<ReturnType<NonNullable<FailureSource["adapter"]>["advancePast"]>>;
     try {
-      result = adapter === null ? "not-held" : await adapter.advancePast({ position: prepared.position });
+      result = adapter === null ? "not-held" : await adapter.advancePast({ position: prepared.position, confirmed });
     } catch {
       result = "uncertain";
     }
-    if (result === "advanced") await this.#hooks.afterAdvance?.(prepared.failureId);
     switch (result) {
       case "advanced":
-        this.#update(prepared, { progress: "advanced", state: "resolved", resolution: `advanced past under recovery boundary ${boundaryId}` },
-          "advance-confirmed", "committed past the record and confirmed by read-back; snapshots must acknowledge the boundary");
-        this.#emit(prepared, "snapshot-recovery-required", boundaryId);
+        if (!asked) await confirmed();
+        if (recorded === null) {
+          this.#logger.error("The advance is committed and confirmed, but the journal could not record it; the source stays paused and a restart confirms it", {
+            failureId: prepared.failureId
+          });
+          return;
+        }
+        this.#emit(recorded, "snapshot-recovery-required", boundaryId);
         return;
       case "not-held":
         // Nothing was committed (stop or rebalance). The cumulative boundary stays in force, which only adds obligations.

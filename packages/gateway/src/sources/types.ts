@@ -21,10 +21,17 @@ export interface SourceInput {
 /** Where a held record sits, as the adapter knows it. */
 export interface HeldPosition {
   position: SourceRecord["position"];
+  /**
+   * Awaited once the advance is committed and confirmed, before consumption
+   * resumes, so the caller can record it first. False (or a rejection) keeps the
+   * source paused: the offset has moved, and a restart reconciles the advance.
+   */
+  confirmed?: () => Promise<boolean>;
 }
 
 /**
- * advanced: the next offset was committed, read back, and consumption resumed past the record.
+ * advanced: the next offset was committed and read back; consumption resumed past the record
+ *   unless `confirmed` returned false, in which case the source stays paused.
  * not-held: the adapter is not paused at exactly that position in its current assignment; nothing changed.
  * uncertain: the commit outcome could not be confirmed; the source stays paused.
  */
