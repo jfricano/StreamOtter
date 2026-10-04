@@ -7,7 +7,7 @@ import type { Server as IoServer } from "socket.io";
 import {
   MAX_CONFIG_DEPTH, assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
-  resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
+  resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue, withoutUndefinedProperties,
   QUARANTINE_ELIGIBLE_CLASSES, type FailureClass, type OperatorApi,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
   type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry, type HealthReason,
@@ -818,7 +818,8 @@ export class GatewayRuntime implements SessionOwner {
         return { ...routing(`unexpected field "${key}"`), diagnosis: "unexpected field" };
       }
     }
-    const { tenantId, params, revision, data } = item;
+    const { tenantId, params, revision } = item;
+    const data = withoutUndefinedProperties(item["data"]);
     if (typeof tenantId !== "string" || tenantId.length === 0 || tenantId.length > 512) return routing("tenantId must be a non-empty string");
     const canonical = canonicalizeParams(channel.paramsSchema, params);
     if (!canonical.ok) return { ...routing(`params ${canonical.issue.path}: ${canonical.issue.message}`), diagnosis: issueDiagnosis("params", canonical.issue) };

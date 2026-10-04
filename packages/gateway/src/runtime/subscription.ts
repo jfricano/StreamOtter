@@ -1,5 +1,5 @@
 import {
-  compareRevisions, isJsonValue, isPlainObject, isRevision, streamError, validateValue,
+  compareRevisions, isJsonValue, isPlainObject, isRevision, streamError, validateValue, withoutUndefinedProperties,
   type ErrorCode, type Params, type Revision, type StreamEvent, type SubscriptionState
 } from "@streamotter/contracts";
 import { SubscriptionBudget } from "./budget.ts";
@@ -317,7 +317,9 @@ export class ServerSubscription {
       this.fail("HANDLER_FAILED", requestId);
       return;
     }
-    const snapshot: unknown = outcome.value;
+    const snapshot: unknown = isPlainObject(outcome.value) && Object.hasOwn(outcome.value, "data")
+      ? { ...outcome.value, data: withoutUndefinedProperties(outcome.value["data"]) }
+      : outcome.value;
     const problem = this.#snapshotProblem(snapshot, boundary !== null);
     if (problem !== null) {
       this.#trace("snapshot", "rejected", "INVALID_PAYLOAD");

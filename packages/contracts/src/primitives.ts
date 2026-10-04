@@ -85,6 +85,24 @@ export function isJsonValue(value: unknown, depth = 1): value is Json {
 }
 
 /**
+ * Drops object properties whose value is undefined, as JSON.stringify does, so `{ note: row.note }`
+ * with no note means "no note" rather than non-JSON data. TypeScript's optional properties accept
+ * undefined unless exactOptionalPropertyTypes is on. Anything else is returned unchanged for
+ * isJsonValue to judge, including undefined array items.
+ */
+export function withoutUndefinedProperties(value: unknown, depth = 1): unknown {
+  if (depth > MAX_NESTING_DEPTH) return value;
+  if (Array.isArray(value)) return value.map(item => withoutUndefinedProperties(item, depth + 1));
+  if (!isPlainObject(value)) return value;
+  const copy: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item === undefined) continue;
+    Object.defineProperty(copy, key, { value: withoutUndefinedProperties(item, depth + 1), enumerable: true, writable: true, configurable: true });
+  }
+  return copy;
+}
+
+/**
  * Canonical JSON: sorted object keys, -0 normalized to 0, no whitespace.
  * Throws on values that are not JSON data.
  */

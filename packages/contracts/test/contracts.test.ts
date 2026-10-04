@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  canonicalJson, canonicalizeParams, compareRevisions, isRevision, isUuid, StreamOtterError,
-  streamError, utf8ByteLength, validateProjectConfig, validateSchemaDefinition, validateValue,
+  canonicalJson, canonicalizeParams, compareRevisions, isJsonValue, isRevision, isUuid, StreamOtterError,
+  streamError, utf8ByteLength, validateProjectConfig, validateSchemaDefinition, validateValue, withoutUndefinedProperties,
   type ConfigIssue, type Schema
 } from "@streamotter/contracts";
 
@@ -78,6 +78,15 @@ describe("canonical JSON", () => {
     assert.equal(utf8ByteLength("€"), 3);
     assert.equal(utf8ByteLength("🦦"), 4);
     assert.equal(utf8ByteLength("🦦"), Buffer.byteLength("🦦"));
+  });
+});
+
+describe("undefined properties", () => {
+  it("are dropped from objects at any depth, like JSON.stringify, and nothing else changes", () => {
+    const value = { a: 1, b: undefined, nested: { c: undefined, d: [1, { e: undefined, f: "x" }] } };
+    assert.deepEqual(withoutUndefinedProperties(value), { a: 1, nested: { d: [1, { f: "x" }] } });
+    assert.equal(isJsonValue(withoutUndefinedProperties([1, undefined])), false, "array holes stay invalid");
+    assert.equal(withoutUndefinedProperties("text"), "text");
   });
 });
 
