@@ -342,6 +342,8 @@ describe("acceptance 4: access fails closed", () => {
   });
 
   it("keeps operator traces when unauthenticated handshakes flood the gateway", async () => {
+    // The trace bucket starts full when the gateway is built and refills at 10 per second from then.
+    const built = performance.now();
     h = await startHarness({ limits: { maxTraceEntries: 200 } });
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
     await h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }).ready();
@@ -352,7 +354,9 @@ describe("acceptance 4: access fails closed", () => {
     }
     const traces = h.internals.traces({ limit: 500 }).items;
     assert.equal(traces.filter(trace => trace.channel === "orderStatus").length, before, "the subscription's traces survive");
-    assert.ok(traces.filter(trace => trace.errorCode === "UNAUTHENTICATED").length <= 110, "refused handshakes are traced at a bounded rate");
+    const traced = traces.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
+    const allowed = 100 + 10 * Math.ceil((performance.now() - built) / 1_000) + 2;
+    assert.ok(traced <= allowed, `refused handshakes are traced at a bounded rate (${traced} > ${allowed})`);
   });
 
   it("closes prior subscriptions when the authenticated identity changes", async () => {
