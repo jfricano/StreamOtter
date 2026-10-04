@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -391,11 +391,12 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       assert.equal(second.boundary.supersedes, "rb1:one");
       assert.deepEqual(store.getBoundary("rb1:one"), {
         boundaryId: "rb1:one", sourceId: "orders", generation: "g1", context: { watermark: 1 }, revision: 2, state: "superseded",
-        failureIds: ["f1:a"], supersedes: null, createdAt: t1, retiredAt: t2, retirement: { mode: "superseded", reason: null, operationId: null }
-      });
+        failureIds: [], supersedes: null, createdAt: t1, retiredAt: t2, retirement: { mode: "superseded", reason: null, operationId: null }
+      }, "a superseded boundary hands its list to the new one rather than keeping a copy");
       const third = store.prepareAdvance(advance("f1:c", 1, "rb1:three", "rb1:two", { watermark: 3 }, t3));
       assert.deepEqual(third.boundary.failureIds, ["f1:a", "f1:b", "f1:c"]);
       assert.equal(store.getBoundary("rb1:two")?.state, "superseded");
+      assert.deepEqual(store.getBoundary("rb1:two")?.failureIds, []);
       assert.deepEqual(store.boundary("orders"), third.boundary);
       assert.equal(store.get("f1:a")?.boundaryId, "rb1:one", "each incident keeps the boundary its advance installed");
       assert.equal(store.get("f1:b")?.boundaryId, "rb1:two");
@@ -428,6 +429,19 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       store.update("f1:a", 3, { progress: "retrying" }, { event: "retrying", detail: null, operationId: null });
       assert.throws(() => store.retireBoundary("rb1:two", 1, operator), rejects("incident-held", 409));
       store.update("f1:a", 4, { progress: "advanced" }, { event: "advance-confirmed", detail: null, operationId: null });
+      // f1:b's advance was prepared but never confirmed: its incident is still held until the advance resolves.
+      assert.equal(store.get("f1:b")?.progress, "advance-pending");
+      before = recoveryState(store, ids, boundaries);
+      assert.throws(() => store.retireBoundary("rb1:two", 1, operator), (error: unknown) => {
+        rejects("advance-unresolved", 409)(error);
+        assert.equal((error as { details?: { failureId?: string } }).details?.failureId, "f1:b");
+        return true;
+      });
+      store.update("f1:b", 2, { progress: "uncertain" }, { event: "held", detail: null, operationId: null });
+      assert.throws(() => store.retireBoundary("rb1:two", 1, operator), rejects("advance-unresolved", 409));
+      assert.throws(() => store.retireBoundary("rb1:two", 1, { mode: "application", reason: null, operationId: null }), rejects("advance-unresolved", 409),
+        "application retirement is refused the same way");
+      store.update("f1:b", 3, { progress: "advanced" }, { event: "advance-confirmed", detail: null, operationId: null });
 
       before = recoveryState(store, ids, boundaries);
       assert.throws(() => store.retireBoundary("rb1:two", 2, operator), rejects("stale-revision", 409));
@@ -675,6 +689,35 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     assert.throws(() => initJournal(stateDirectory(), PROJECT, [SOURCES[0]!, SOURCES[0]!]), refusal("duplicate-source"));
   });
 
+  it("refuses to create a journal next to a leftover WAL or shared-memory file, and consumes neither", () => {
+    // A crashed gateway's commits can live only in journal.sqlite-wal. Moving journal.sqlite aside but not the WAL must not let
+    // init adopt or delete that WAL: SQLite would discard it as not matching the new file, and those commits would be gone.
+    const directory = stateDirectory();
+    initJournal(directory, PROJECT, SOURCES);
+    const child = spawnSync(process.execPath, ["--conditions=streamotter-source", "--input-type=module", "-e", `
+      const { openJournal } = await import(${JSON.stringify(JOURNAL_MODULE)});
+      const store = openJournal(process.env.JOURNAL_DIR);
+      store.observe(JSON.parse(process.env.OBSERVATION));
+      process.kill(process.pid, "SIGKILL");
+    `], { encoding: "utf8", env: { ...process.env, JOURNAL_DIR: directory, OBSERVATION: JSON.stringify(observation("f1:crash")) } });
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    const journal = join(directory, "journal.sqlite");
+    const wal = readFileSync(`${journal}-wal`);
+    assert.ok(wal.byteLength > 0, "the crashed gateway's commit is in the WAL");
+    renameSync(journal, join(directory, "..", "journal.sqlite.aside"));
+    rmSync(join(directory, "journal.lock"));
+    assert.throws(() => initJournal(directory, PROJECT, SOURCES), (error: Error) => refusal("journal-exists", "CONFIG_INVALID")(error) && /journal\.sqlite-wal/.test(error.message));
+    assert.equal(existsSync(journal), false, "nothing was created");
+    assert.ok(readFileSync(`${journal}-wal`).equals(wal), "the leftover WAL is untouched");
+
+    const shmOnly = stateDirectory();
+    mkdirSync(shmOnly, { mode: 0o700 });
+    writeFileSync(join(shmOnly, "journal.sqlite-shm"), "", { mode: 0o600 });
+    assert.throws(() => initJournal(shmOnly, PROJECT, SOURCES), refusal("journal-exists", "CONFIG_INVALID"));
+    assert.ok(existsSync(join(shmOnly, "journal.sqlite-shm")));
+    assert.equal(existsSync(join(shmOnly, "journal.sqlite")), false);
+  });
+
   it("keeps incidents, events, evidence and revisions across close and reopen", () => {
     const { directory, store } = freshJournal();
     store.observe(observation("f1:a"));
@@ -882,6 +925,98 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     openJournal(directory).close();
   });
 
+  it("treats a lock naming this process's own pid as stale unless this process holds the journal", () => {
+    // A container restarted in place keeps its hostname and usually its pid (often 1), so a killed gateway's lock names the new process.
+    const { directory, store } = freshJournal();
+    store.close();
+    const lockPath = join(directory, "journal.lock");
+    const leftover: JournalLock = { pid: process.pid, projectId: PROJECT, startedAt: "2026-10-01T00:00:00.000Z", hostname: hostname() };
+    writeFileSync(lockPath, JSON.stringify(leftover), { mode: 0o600 });
+    const replaced: JournalLock[] = [];
+    const recovered = openJournal(directory, { onStaleLock: stale => replaced.push(stale) });
+    assert.deepEqual(replaced, [leftover]);
+    assert.deepEqual(recovered.replacedLock, leftover);
+    assert.notEqual((JSON.parse(readFileSync(lockPath, "utf8")) as JournalLock).startedAt, leftover.startedAt);
+    assert.throws(() => openJournal(directory), refusal("journal-locked"), "a second open in the same process is still refused");
+    assert.ok(existsSync(lockPath));
+    recovered.close();
+    assert.equal(existsSync(lockPath), false);
+    openJournal(directory).close();
+  });
+
+  it("never replaces a lock while another process still holds the journal open", async () => {
+    // Liveness by pid cannot see an owner in another pid namespace (a second container on the same volume); SQLite's lock can.
+    const { directory, store } = freshJournal();
+    store.close();
+    const holder = spawn(process.execPath, ["--conditions=streamotter-source", "--input-type=module", "-e", `
+      const { openJournal } = await import(${JSON.stringify(JOURNAL_MODULE)});
+      const store = openJournal(process.env.JOURNAL_DIR);
+      process.stdout.write("open");
+      process.stdin.once("data", () => { store.close(); process.exit(0); });
+    `], { env: { ...process.env, JOURNAL_DIR: directory }, stdio: ["pipe", "pipe", "inherit"] });
+    try {
+      await new Promise<void>((resolve, reject) => { holder.stdout.once("data", () => resolve()); holder.once("exit", code => reject(new Error(`holder exited ${code}`))); });
+      const lockPath = join(directory, "journal.lock");
+      const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+      const misleading = JSON.stringify({ pid: Number(dead.stdout), projectId: PROJECT, startedAt: "2026-10-01T00:00:00.000Z", hostname: hostname() });
+      writeFileSync(lockPath, misleading, { mode: 0o600 });
+      const replaced: JournalLock[] = [];
+      assert.throws(() => openJournal(directory, { onStaleLock: stale => replaced.push(stale) }), refusal("journal-locked", "SOURCE_UNAVAILABLE"));
+      assert.deepEqual(replaced, [], "the lock was not reported as replaced");
+      assert.equal(readFileSync(lockPath, "utf8"), misleading, "the lock is left as it was");
+    } finally {
+      holder.stdin.write("close\n");
+      await new Promise(resolve => holder.once("exit", resolve));
+    }
+  });
+
+  it("never leaves a partly written lock when the gateway dies while writing it", () => {
+    const { directory, store } = freshJournal();
+    store.close();
+    const lockPath = join(directory, "journal.lock");
+    // Dies at the n-th lock write: the first takes the lock, the second records the project read from the journal.
+    for (const write of [1, 2]) {
+      const child = spawnSync(process.execPath, ["--conditions=streamotter-source", "--input-type=module", "-e", `
+        import fs from "node:fs";
+        import { syncBuiltinESMExports } from "node:module";
+        const writeSync = fs.writeSync;
+        let writes = 0;
+        fs.writeSync = (...args) => { if (++writes === ${write}) process.kill(process.pid, "SIGKILL"); return writeSync(...args); };
+        syncBuiltinESMExports();
+        const { openJournal } = await import(${JSON.stringify(JOURNAL_MODULE)});
+        openJournal(process.env.JOURNAL_DIR);
+      `], { encoding: "utf8", env: { ...process.env, JOURNAL_DIR: directory } });
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+      if (existsSync(lockPath)) {
+        const lock = JSON.parse(readFileSync(lockPath, "utf8")) as JournalLock;
+        assert.equal(lock.pid, child.pid, "a lock that exists is complete");
+      }
+      const reopened = openJournal(directory);
+      reopened.close();
+    }
+  });
+
+  it("runs several writes as one transaction: all of them commit, or none", () => {
+    const { store } = freshJournal();
+    store.claim(PROJECT, SOURCES);
+    store.observe(observation("f1:a"));
+    assert.throws(() => store.atomically(() => {
+      store.update("f1:a", 1, { state: "resolved", resolution: "closed" }, { event: "resolved", detail: null, operationId: null });
+      store.claim("another-project", SOURCES);
+    }), refusal("project-mismatch"));
+    assert.equal(store.get("f1:a")?.state, "open", "the first write was rolled back with the failed one");
+    assert.equal(store.get("f1:a")?.revision, 1);
+    assert.deepEqual(store.events("f1:a").map(event => event.event), ["detected"]);
+    // A failed write caught inside the transaction undoes only itself.
+    store.atomically(() => {
+      store.update("f1:a", 1, { progress: "retrying" }, { event: "retrying", detail: null, operationId: null });
+      assert.throws(() => store.update("f1:a", 1, { progress: "held" }, { event: "held", detail: null, operationId: null }), rejects("stale-revision"));
+    });
+    assert.equal(store.get("f1:a")?.progress, "retrying");
+    assert.deepEqual(store.sources(), SOURCES);
+    store.close();
+  });
+
   it("refuses writes past the journal limit and evicts nothing", () => {
     const directory = stateDirectory();
     initJournal(directory, PROJECT, SOURCES);
@@ -914,6 +1049,28 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     // Transitions on existing incidents still go through, so an operator can resolve them.
     store.update("f1:0", 1, { state: "resolved", resolution: "done" }, { event: "resolved", detail: null, operationId: null });
     assert.ok(store.usage().sizeBytes <= baseline + 48 * 1024);
+    store.close();
+  });
+
+  it("grows linearly with automatic advances: superseded boundaries keep no copy of the list", () => {
+    const { store } = freshJournal();
+    const id = (i: number): string => `f1:${i.toString(16).padStart(64, "0")}`;
+    let prior: string | null = null;
+    const sizes: number[] = [store.usage().sizeBytes];
+    for (const until of [300, 600]) {
+      for (let i = sizes.length === 1 ? 0 : 300; i < until; i++) {
+        store.observe(observation(id(i), { position: { kind: "kafka", topic: "orders", partition: 0, offset: String(i) } }));
+        const boundaryId = `rb1:${i}`;
+        store.prepareAdvance(advance(id(i), 1, boundaryId, prior, { watermark: i }));
+        prior = boundaryId;
+      }
+      sizes.push(store.usage().sizeBytes);
+    }
+    const [start, half, full] = sizes as [number, number, number];
+    // Quadratic growth (every superseded row keeping its cumulative list) makes the second 300 advances cost about three times the first.
+    assert.ok(full - half <= 1.5 * (half - start), `the second 300 advances took ${full - half} bytes, the first ${half - start}`);
+    assert.equal(store.boundary("orders")?.failureIds.length, 600, "the boundary in force still lists every incident");
+    assert.deepEqual(store.getBoundary("rb1:0")?.failureIds, []);
     store.close();
   });
 

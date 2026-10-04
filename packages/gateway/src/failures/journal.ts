@@ -1,6 +1,6 @@
-import { closeSync, fsyncSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, unlinkSync, writeSync, type Stats } from "node:fs";
+import { closeSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, unlinkSync, writeSync, type Stats } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { StreamOtterError, type ErrorCode, type Json, type Page } from "@streamotter/contracts";
 import {
@@ -300,6 +300,15 @@ export function initJournal(stateDirectory: string, projectId: string, sources: 
   checkProtected(runDirectory, lstatSync(runDirectory), "directory", "state-dir-insecure");
 
   const path = join(stateDirectory, JOURNAL_FILE);
+  // A leftover WAL can hold a crashed journal's last commits, and SQLite would discard it against a new file; a
+  // leftover shared-memory file belongs to that WAL. Either means a journal's files are still here.
+  for (const suffix of ["-wal", "-shm"]) {
+    if (lstatOrNull(path + suffix) !== null) {
+      throw refuse("CONFIG_INVALID", "journal-exists",
+        `${path}${suffix} exists: files of an earlier journal are still here and are never overwritten. ` +
+        `To start a new journal, move every journal file (${JOURNAL_FILE}, ${JOURNAL_FILE}-wal and ${JOURNAL_FILE}-shm) aside together.`, { path: path + suffix });
+    }
+  }
   // Creating the empty file with wx makes "never overwrite" atomic and sets owner-only mode before any data lands.
   try {
     closeSync(openSync(path, "wx", 0o600));
@@ -331,7 +340,8 @@ export function initJournal(stateDirectory: string, projectId: string, sources: 
     db.close();
     db = null;
   } catch (error) {
-    // The file is ours (created with wx above), so a half-initialized journal is removed rather than left to be mistaken for a real one.
+    // These files are ours: the journal was created with wx above, and its -wal and -shm did not exist before it, so they are
+    // SQLite's for this new file. A half-initialized journal is removed rather than left to be mistaken for a real one.
     try { db?.close(); } catch { /* already failing */ }
     for (const suffix of ["", "-wal", "-shm"]) rmSync(path + suffix, { force: true });
     throw error;
@@ -339,28 +349,46 @@ export function initJournal(stateDirectory: string, projectId: string, sources: 
   return path;
 }
 
-function writeLockFile(path: string, lock: JournalLock): void {
-  const fd = openSync(path, "wx", 0o600);
+/**
+ * Writes the lock's content to a temporary file next to it, synced, so the
+ * lock itself only ever appears complete: a gateway that dies mid-write leaves
+ * at most this temporary file, never an empty or partial journal.lock. The
+ * name is fixed per pid, so repeated crashes leave at most one per pid.
+ */
+function writeTemporaryLock(path: string, lock: JournalLock): string {
+  const temporary = `${path}.${process.pid}.tmp`;
+  rmSync(temporary, { force: true });
+  const fd = openSync(temporary, "wx", 0o600);
   try {
     writeSync(fd, JSON.stringify(lock));
     fsyncSync(fd);
   } catch (error) {
     closeSync(fd);
-    rmSync(path, { force: true });
+    rmSync(temporary, { force: true });
     throw error;
   }
   closeSync(fd);
+  return temporary;
 }
 
-/** Rewrites this process's own lock without ever removing it, so there is no moment with no lock. */
-function rewriteLockFile(path: string, lock: JournalLock): void {
-  const fd = openSync(path, "r+");
+/** Creates the lock, complete, or fails with EEXIST: link() is as exclusive as `wx` but publishes the content at once. */
+function writeLockFile(path: string, lock: JournalLock): void {
+  const temporary = writeTemporaryLock(path, lock);
   try {
-    ftruncateSync(fd, 0);
-    writeSync(fd, JSON.stringify(lock), 0);
-    fsyncSync(fd);
+    linkSync(temporary, path);
   } finally {
-    closeSync(fd);
+    rmSync(temporary, { force: true });
+  }
+}
+
+/** Rewrites this process's own lock by renaming a complete copy over it, so there is no moment with no lock or a partial one. */
+function rewriteLockFile(path: string, lock: JournalLock): void {
+  const temporary = writeTemporaryLock(path, lock);
+  try {
+    renameSync(temporary, path);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
   }
 }
 
@@ -385,6 +413,14 @@ function readLockFile(path: string): JournalLock | undefined {
     `${path} exists but cannot be read as a StreamOtter lock. If no gateway is running on this state directory, remove it and start again.`, { path });
 }
 
+/**
+ * Lock paths this process holds, so a lock naming this pid can be told apart:
+ * held here means a second open in the same process, which is refused; not held
+ * means a dead gateway that had the same pid (a container restarted in place,
+ * often pid 1), whose lock is stale.
+ */
+const heldLocks = new Set<string>();
+
 function ownerAlive(lock: JournalLock): boolean {
   try {
     process.kill(lock.pid, 0);
@@ -402,16 +438,40 @@ function lockHeld(path: string, lock: JournalLock): StreamOtterError {
 }
 
 /**
+ * True when another connection holds the journal's SQLite lock. A gateway in
+ * another pid namespace (a second container on the same volume and hostname)
+ * looks dead to ownerAlive, but its exclusive lock still shows here. Any other
+ * error is left for the real open to report.
+ */
+function journalInUse(journalPath: string): boolean {
+  const { DatabaseSync } = requireNodeSqlite();
+  let db: DatabaseSync | null = null;
+  try {
+    db = new DatabaseSync(journalPath);
+    db.exec("PRAGMA busy_timeout = 0");
+    db.prepare("SELECT count(*) AS tables FROM sqlite_schema").get();
+    return false;
+  } catch (error) {
+    const errcode = sqliteErrcode(error);
+    return errcode === SQLITE_BUSY || errcode === SQLITE_LOCKED;
+  } finally {
+    try { db?.close(); } catch { /* the probe only reads */ }
+  }
+}
+
+/**
  * Takes journal.lock. On EEXIST the existing lock is read: a live owner, or one
  * on another host whose liveness cannot be checked, refuses; a dead owner on
- * this host is replaced once. A second EEXIST means another process won the
- * race, which also refuses.
+ * this host is replaced once, after SQLite confirms nobody holds the journal. A
+ * lock naming this process's own pid is a live owner only if this process holds
+ * it. A second EEXIST means another process won the race, which also refuses.
  */
-function acquireLock(path: string, mine: JournalLock): JournalLock | null {
+function acquireLock(path: string, mine: JournalLock, journalPath: string): JournalLock | null {
   let replaced: JournalLock | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       writeLockFile(path, mine);
+      heldLocks.add(resolve(path));
       return replaced;
     } catch (error) {
       if (errnoCode(error) !== "EEXIST") throw error;
@@ -423,7 +483,8 @@ function acquireLock(path: string, mine: JournalLock): JournalLock | null {
         `${path} names a gateway on host ${existing.hostname} (pid ${existing.pid}), which cannot be checked from ${mine.hostname}. ` +
         "If that gateway is not running, remove the lock and start again.", { path, pid: existing.pid, hostname: existing.hostname });
     }
-    if (ownerAlive(existing) || replaced !== null) throw lockHeld(path, existing);
+    const alive = existing.pid === process.pid ? heldLocks.has(resolve(path)) : ownerAlive(existing);
+    if (alive || replaced !== null || journalInUse(journalPath)) throw lockHeld(path, existing);
     try {
       unlinkSync(path);
     } catch (error) {
@@ -436,6 +497,7 @@ function acquireLock(path: string, mine: JournalLock): JournalLock | null {
 
 /** Removes journal.lock only if it is still the one this process wrote. */
 function releaseLock(path: string, mine: JournalLock): void {
+  heldLocks.delete(resolve(path));
   try {
     const current = readLockFile(path);
     if (current !== undefined && current.pid === mine.pid && current.startedAt === mine.startedAt) unlinkSync(path);
@@ -462,7 +524,7 @@ export function openJournal(stateDirectory: string, options: OpenJournalOptions 
 
   const lockPath = join(stateDirectory, LOCK_FILE);
   const lock: JournalLock = { pid: process.pid, projectId: options.projectId ?? null, startedAt: new Date().toISOString(), hostname: hostname() };
-  const replaced = acquireLock(lockPath, lock);
+  const replaced = acquireLock(lockPath, lock, path);
   if (replaced !== null) options.onStaleLock?.(replaced);
 
   let db: DatabaseSync | null = null;
@@ -895,8 +957,10 @@ export class SqliteIncidentStore implements IncidentStore {
       const advanced = advancedIncident(input, record);
       const recordJson = JSON.stringify(advanced.record);
       const failureIds = JSON.stringify(boundary.failureIds);
-      // A new boundary row is growth, so it is admitted like a new incident; the rest rewrites existing rows.
-      this.#admit(Buffer.byteLength(context) + Buffer.byteLength(failureIds) + Math.max(0, Buffer.byteLength(recordJson) - Buffer.byteLength((row as IncidentRow).record))
+      // A new boundary row is growth, so it is admitted like a new incident; the rest rewrites existing rows. The prior's
+      // list moves to the new row (endBoundary empties it), so only the growth of the list counts.
+      const listGrowth = Buffer.byteLength(failureIds) - (prior === null ? 0 : Buffer.byteLength(JSON.stringify(prior.failureIds)));
+      this.#admit(Buffer.byteLength(context) + Math.max(0, listGrowth) + Math.max(0, Buffer.byteLength(recordJson) - Buffer.byteLength((row as IncidentRow).record))
         + 2 * ROW_OVERHEAD_BYTES, "record a recovery boundary");
       if (prior !== null) this.#saveBoundary(endBoundary(prior, { mode: "superseded", reason: null, operationId: null }, input.at));
       this.#statement(`INSERT INTO boundaries (${BOUNDARY_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -1017,16 +1081,41 @@ export class SqliteIncidentStore implements IncidentStore {
     }
   }
 
-  /** Runs fn in one BEGIN IMMEDIATE transaction; any error rolls everything back. */
+  /**
+   * Runs fn, and every store call it makes, in one transaction: everything
+   * commits together, or an error escaping fn rolls all of it back. A store
+   * call that fails inside fn undoes only its own writes. For offline tools
+   * (rebaseline) whose steps must land together.
+   */
+  atomically<T>(fn: () => T): T {
+    return this.#write(fn);
+  }
+
+  /** The sources recorded in the journal, by ID. */
+  sources(): SourceIdentity[] {
+    return (this.#statement("SELECT source_id, generation, kind FROM sources ORDER BY source_id").all() as { source_id: string; generation: string; kind: SourceIdentity["kind"] }[])
+      .map(row => ({ sourceId: row.source_id, generation: row.generation, kind: row.kind }));
+  }
+
+  /**
+   * Runs fn in one BEGIN IMMEDIATE transaction; any error rolls everything back.
+   * Inside another write (atomically) it runs in a savepoint instead, so its own
+   * failure undoes only its own writes and the enclosing transaction decides.
+   */
   #write<T>(fn: () => T): T {
     if (this.#closed) throw refuse("SOURCE_UNAVAILABLE", "journal-closed", `The journal at ${this.path} is closed.`);
-    this.#db.exec("BEGIN IMMEDIATE");
+    const nested = this.#db.isTransaction;
+    this.#db.exec(nested ? "SAVEPOINT nested_write" : "BEGIN IMMEDIATE");
     try {
       const result = fn();
-      this.#db.exec("COMMIT");
+      this.#db.exec(nested ? "RELEASE nested_write" : "COMMIT");
       return result;
     } catch (error) {
-      if (this.#db.isTransaction) this.#db.exec("ROLLBACK");
+      if (nested) {
+        if (this.#db.isTransaction) this.#db.exec("ROLLBACK TO nested_write; RELEASE nested_write");
+      } else if (this.#db.isTransaction) {
+        this.#db.exec("ROLLBACK");
+      }
       if (sqliteErrcode(error) === SQLITE_FULL) {
         throw storeFull(`The failure journal at ${this.path} reached its ${this.#journalLimitBytes}-byte limit or the disk is full; nothing was evicted.`);
       }
@@ -1065,12 +1154,12 @@ export class SqliteIncidentStore implements IncidentStore {
     return row === undefined ? null : boundaryFromRow(row);
   }
 
-  /** Rewrites a boundary's mutable fields; context, failureIds and links never change after insert. */
+  /** Rewrites a boundary's mutable fields; context and links never change after insert, and failureIds only empties on supersede. */
   #saveBoundary(boundary: StoredBoundary): void {
-    this.#statement(`UPDATE boundaries SET state = ?, revision = ?, retired_at = ?, retirement_mode = ?, retirement_reason = ?, retirement_operation_id = ?
-      WHERE boundary_id = ?`)
-      .run(boundary.state, boundary.revision, boundary.retiredAt, boundary.retirement?.mode ?? null, boundary.retirement?.reason ?? null,
-        boundary.retirement?.operationId ?? null, boundary.boundaryId);
+    this.#statement(`UPDATE boundaries SET state = ?, revision = ?, failure_ids = ?, retired_at = ?, retirement_mode = ?, retirement_reason = ?,
+      retirement_operation_id = ? WHERE boundary_id = ?`)
+      .run(boundary.state, boundary.revision, JSON.stringify(boundary.failureIds), boundary.retiredAt, boundary.retirement?.mode ?? null,
+        boundary.retirement?.reason ?? null, boundary.retirement?.operationId ?? null, boundary.boundaryId);
   }
 
   /** Inserts or replaces a circuit; a source the journal does not know is refused like an observation of one. */

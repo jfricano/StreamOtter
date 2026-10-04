@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import type { FailureHandlingConfig, FixtureRecord, OperationResult, ProjectConfig, SourceRecoveryHandlers } from "@streamotter/gateway";
-import { initJournal, nodeSupportsJournal, openJournal, rebaselineSource } from "@streamotter/gateway/internals";
+import { initJournal, nodeSupportsJournal, openJournal, rebaselineSource, type IncidentStore } from "@streamotter/gateway/internals";
 import { orderConfig, startHarness, type Harness } from "./harness.ts";
 
 /**
@@ -127,4 +127,50 @@ describe("sources rebaseline", { skip: !nodeSupportsJournal() && "the journal ne
     const again = await runCli([...base, "--reason", "new topic", "--confirm", "orders"]);
     assert.equal(again.code, 3, "nothing left: refused");
   });
+
+  it("rebaselines one source of several and leaves the others' open incidents and generations alone", async () => {
+    const state = await mkdtemp(join(tmpdir(), "so-rebaseline-"));
+    const stored = [
+      { sourceId: "orders", generation: "g1", kind: "kafka" as const },
+      { sourceId: "payments", generation: "g1", kind: "kafka" as const },
+      { sourceId: "refunds", generation: "g1", kind: "kafka" as const }
+    ];
+    initJournal(state, "p", stored);
+    let store = openJournal(state, { projectId: "p" });
+    store.claim("p", stored);
+    for (const source of stored) store.observe(openIncident(`f1:${source.sourceId}`, source.sourceId));
+    store.close();
+    // The operator re-created the orders and payments topics; refunds was removed from the configuration but still has an open incident.
+    const config = {
+      projectId: "p",
+      sources: { orders: { kind: "kafka", generation: "g2" }, payments: { kind: "kafka", generation: "g2" } }
+    } as unknown as ProjectConfig;
+
+    const orders = rebaselineSource({ stateDirectory: state, config, sourceId: "orders", reason: "orders topic re-created" });
+    assert.equal(orders.result, "completed", orders.message);
+    assert.deepEqual(orders.closed, ["f1:orders"]);
+    store = openJournal(state, { projectId: "p" });
+    assert.equal(store.get("f1:orders")?.state, "resolved");
+    assert.equal(store.get("f1:payments")?.state, "open", "another source's incident is not touched");
+    assert.equal(store.get("f1:refunds")?.state, "open");
+    assert.deepEqual(store.sources(), [{ ...stored[0]!, generation: "g2" }, stored[1], stored[2]], "only the rebaselined source's generation changed");
+    store.close();
+
+    // The other changed source can be rebaselined in turn: neither blocks the other.
+    const payments = rebaselineSource({ stateDirectory: state, config, sourceId: "payments", reason: "payments topic re-created" });
+    assert.equal(payments.result, "completed", payments.message);
+    store = openJournal(state, { projectId: "p" });
+    assert.equal(store.get("f1:payments")?.state, "resolved");
+    assert.equal(store.get("f1:refunds")?.state, "open", "a removed source is the gateway's startup check to refuse, not rebaseline's");
+    store.close();
+  });
 });
+
+function openIncident(failureId: string, sourceId: string): Parameters<IncidentStore["observe"]>[0] {
+  return {
+    failureId, sourceId, generation: "g1", position: { kind: "kafka", topic: sourceId, partition: 0, offset: "42" }, clusterId: "c", timestamp: null,
+    failureClass: "invalid-json", stage: "validate", errorCode: "INVALID_PAYLOAD", channel: null, policy: "quarantine-hold", diagnosis: "bad json",
+    evidence: { location: "kafka", completeness: "complete", valueBytes: 1, keyBytes: null, headerCount: 0, hash: `sha256:${"a".repeat(64)}` },
+    fingerprints: { config: "c", handlerBuildId: "h", policyRevision: "p", gatewayVersion: "v" }, observedAt: "2026-10-03T00:00:00.000Z"
+  };
+}

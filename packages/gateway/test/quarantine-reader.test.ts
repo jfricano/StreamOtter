@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { IHeaders } from "kafkajs";
 import type { GatewayLogger } from "@streamotter/contracts";
-import { evidenceHash, sourceHeadersFromQuarantine } from "../src/failures/evidence.ts";
+import { evidenceHash, flattenKafkaHeaders, sourceHeadersFromQuarantine } from "../src/failures/evidence.ts";
 import { KafkaQuarantineReader, quarantineCoordinateIssue, verifyQuarantineRecord } from "../src/failures/quarantine.ts";
 import type { RawEvidence } from "../src/failures/store.ts";
 
@@ -76,6 +76,22 @@ describe("quarantine header reconstruction", () => {
     });
     assert.deepEqual(headers.map(header => [header.name, Buffer.from(header.value).toString("utf8")]), [["src.inner", "1"], ["text", "é"]]);
     assert.deepEqual(sourceHeadersFromQuarantine(undefined), []);
+  });
+});
+
+describe("Kafka header flattening", () => {
+  it("keeps exactly the wire headers when a name matches an Object.prototype property", () => {
+    // KafkaJS 2.2.4 (protocol/recordBatch/record/v0/decoder.js) folds headers with `obj[key] === undefined ? value : [obj[key], value]`,
+    // so a header named like an inherited property arrives as [inherited, value] even when it occurs once on the wire.
+    const wire = [["constructor", "abc"], ["toString", "x"], ["__proto__", "p"], ["toString", "y"]] as const;
+    const decoded = wire.reduce<Record<string, unknown>>((headers, [key, text]) => {
+      const value = Buffer.from(text);
+      const current = headers[key];
+      return { ...headers, [key]: current === undefined ? value : Array.isArray(current) ? [...current, value] : [current, value] };
+    }, {});
+    const flattened = flattenKafkaHeaders(decoded as Parameters<typeof flattenKafkaHeaders>[0]);
+    assert.deepEqual(flattened.map(header => [header.name, Buffer.from(header.value).toString("utf8")]),
+      [["constructor", "abc"], ["toString", "x"], ["toString", "y"], ["__proto__", "p"]]);
   });
 });
 

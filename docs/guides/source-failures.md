@@ -52,7 +52,7 @@ Create it yourself; the gateway never creates topics. Its `max.message.bytes` mu
 npx streamotter init --failures --config streamotter.json --state-dir /var/lib/streamotter/orders-app
 ```
 
-This creates the state directory (mode 0700) if needed, its `run/` subdirectory (0700), and `journal.sqlite` (0600). It refuses to overwrite an existing journal. The configuration must already have a `failureHandling` section.
+This creates the state directory (mode 0700) if needed, its `run/` subdirectory (0700), and `journal.sqlite` (0600). It refuses to overwrite an existing journal, and refuses (`journal-exists`) while a `journal.sqlite-wal` or `journal.sqlite-shm` is still in the directory, because a leftover WAL can hold an earlier journal's last commits. The configuration must already have a `failureHandling` section.
 
 Run it as the user the gateway runs as. Ordinary startup never creates a journal, so a missing one is always a visible error, never a silent fresh start.
 
@@ -222,7 +222,7 @@ A boundary stays in force until it is superseded by the next approved incident o
 | `application` | After each acknowledged snapshot, the gateway calls `handlers.sources[id].retire({ boundary })`; `true` retires it. One call at a time, 10-second limit. | Your application can prove the boundary is permanently behind it, for example a database watermark. Startup refuses this mode without `retire`. |
 | `operator` | `streamotter sources retire-boundary` (CLI or in-process only). | Rarely, and only after a person has verified the claim. |
 
-A generation change always retires the boundary, whatever the mode. No mode retires a boundary while an incident it covers is still held.
+A generation change always retires the boundary, whatever the mode. No mode retires a boundary while an incident it covers is still held, including one whose advance is not yet confirmed (`advance-pending` or `uncertain`).
 
 > **Operator retirement is the unsafe option.** Retiring a boundary tells the gateway that every future snapshot already reflects the quarantined record. StreamOtter can't check that. If the claim is wrong, subscribers can reach `live` while showing state that's missing the change the quarantined record carried, and nothing downstream will flag it.
 >
@@ -291,7 +291,7 @@ Refusals carry an `outcome` you can act on:
 | `plan-expired`, `plan-unknown`, `fingerprint-changed` | Evaluate again; see [§6.6](#66-stale-or-expired-plans). |
 | `evidence-expired`, `evidence-unavailable` | See [§6.4](#64-topic-retention-and-expired-evidence) and [§6.1](#61-credentials-and-acls). |
 | `not-replay-safe`, `integrity-fault-open`, `not-advanced` | Redrive isn't allowed for this incident; `failures show` explains the next action. |
-| `retirement-mode`, `incident-held` | Boundary retirement is off for this source, or an incident it covers is still held. |
+| `retirement-mode`, `incident-held` | Boundary retirement is off for this source, or an incident it covers is still held. `advance-unresolved` on `retire-boundary` means an incident it covers has an advance not yet confirmed; it is reconciled at the next start. |
 | `operation-id-reused`, `operation-in-progress` | Use a new `--operation-id` for a new redrive. |
 | `nothing-to-rebaseline` | `sources rebaseline` found nothing from an earlier generation; see [§6.10](#610-rebaseline-a-source). |
 | `journal-unavailable` | The operation couldn't be recorded, so nothing was done; see [§6.3](#63-full-disk-or-full-journal). |
@@ -424,7 +424,7 @@ Restart after a crash as in V1: wait for the dead consumer's 30-second session t
 
 On start, before any source is ready, the gateway:
 
-- **Takes the journal lock.** `journal.lock` names the owning pid and host. A lock left by a dead process on the same host is replaced. A lock naming another host is refused, because its owner can't be checked: confirm that gateway is stopped, remove the lock, and start again.
+- **Takes the journal lock.** `journal.lock` names the owning pid and host. A lock left by a dead process on the same host is replaced, including one that names the new gateway's own pid (a container restarted in place often reuses pid 1), but only once SQLite confirms no other process holds the journal open. A lock naming another host is refused, because its owner can't be checked: confirm that gateway is stopped, remove the lock, and start again.
 - **Restores the boundary in force**, so no snapshot after a restart skips it.
 - **Reconciles unresolved advances** (`advance-pending`, `uncertain`) against the consumer group's committed offset. Offset + 1 confirms the advance. At or below the record means it never happened, and the incident is `held` again. Anything further is unexplained, and the source holds. If the committed offset can't be read, the incident stays `uncertain` and held; restart once the broker is reachable.
 - **Marks interrupted operator operations `unknown`.** They're logged ("An operator operation was interrupted by a restart; its outcome is unknown and it is not rerun") and never rerun. A CLI command that was waiting may have exited 1 or 4.
@@ -450,11 +450,11 @@ The journal is the only record of incidents, decisions and recovery boundaries. 
 
 The gateway never recreates, repairs or replaces a journal on its own. Don't run `init --failures` as a quick fix: an empty journal forgets every boundary, so snapshots would stop being asked to cover records that were skipped.
 
-**Restore from a backup** when you have one. Back up the state directory with the gateway stopped (`journal.sqlite` and any `journal.sqlite-wal`; skip `run/` and `journal.lock`). A backup older than the latest changes can lack incidents and boundaries created since. The gateway holds a source whose position moved past a held record it knows about, but it can't detect a boundary it never saw. Check `status` after restoring and compare it with what you know happened.
+**Restore from a backup** when you have one. Back up the state directory with the gateway stopped (`journal.sqlite` and any `journal.sqlite-wal`; skip `run/`, `journal.lock` and any leftover `journal.lock.*.tmp`). A backup older than the latest changes can lack incidents and boundaries created since. The gateway holds a source whose position moved past a held record it knows about, but it can't detect a boundary it never saw. Check `status` after restoring and compare it with what you know happened.
 
 **Start a new journal** only when there is no usable backup. If the journal is intact and an incident just can't be closed any other way, don't replace the journal: rebaseline the source with the journal you have ([§6.10](#610-rebaseline-a-source)). A new journal is a deliberate decision about application consistency, not a reset button:
 
-1. Stop the gateway. Move the old journal files aside; don't delete them.
+1. Stop the gateway. Move all the old journal files aside together: `journal.sqlite`, `journal.sqlite-wal` and `journal.sqlite-shm` (whichever exist). Don't delete them. After a crash the WAL can hold the last commits, so the journal is only complete with it. `init --failures` refuses (`journal-exists`) while a `-wal` or `-shm` file is left behind.
 2. Write down, from the old journal if it can still be read and from your logs, every source that had a boundary in force or an open incident, and its positions.
 3. For each, confirm that your authoritative store already reflects what those records carried, or repair it, and that your snapshots read it.
 4. If a record that can never be processed is still in the topic, the new journal won't help: the gateway would stop on it again. Move the source's consumer group past it with Kafka's own tools while the gateway is stopped, as in [§6.10](#610-rebaseline-a-source) step 4. That is a skip you decide on, outside StreamOtter; it needs step 3's review like any other.
@@ -481,7 +481,7 @@ Some incidents can't be closed by a retry or a repair: source retention deleted 
      --source orders --reason "orders.status re-created after retention loss; store checked against outbox" --confirm orders
    ```
 
-   It closes each open incident from an earlier generation as `resolved`, with resolution `rebaselined to generation <new>`, your reason and an operation ID in its history, and records the new generation, which retires that generation's recovery boundary. It exits 0 and prints what it closed. It refuses (exit 3, outcome `nothing-to-rebaseline`) when there is nothing from an earlier generation, and leaves incidents of the configured generation alone: those are still yours to retry or repair. Without `--confirm <sourceId>` it changes nothing.
+   It closes each open incident from an earlier generation as `resolved`, with resolution `rebaselined to generation <new>`, your reason and an operation ID in its history, and records the new generation, which retires that generation's recovery boundary. All of that is one journal transaction: if any of it is refused, nothing changes. Only the named source changes; other sources' incidents and generations are left as they are, so in a project with several changed sources you rebaseline each in turn. It exits 0 and prints what it closed. It refuses (exit 3, outcome `nothing-to-rebaseline`) when there is nothing from an earlier generation, and leaves incidents of the configured generation alone: those are still yours to retry or repair. Without `--confirm <sourceId>` it changes nothing.
 7. **Start the gateway** and check `status`. The source runs from wherever its consumer group now points.
 
 A rebaseline never moves a consumer group, never skips a record of the current generation, and never touches the quarantine topic.

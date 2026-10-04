@@ -32,31 +32,36 @@ export function rebaselineSource(options: {
   const generation = source.generation;
   const store = openJournal(options.stateDirectory, { projectId: config.projectId });
   try {
-    const open = store.open(sourceId);
-    const stale = open.filter(incident => incident.generation !== generation);
-    const before = store.boundary(sourceId);
-    const staleBoundary = before !== null && before.generation !== generation ? before.boundaryId : null;
-    if (stale.length === 0 && staleBoundary === null) {
-      const current = open.length;
+    // One transaction: the incidents close and the generation is recorded together, or nothing changes.
+    return store.atomically(() => {
+      const open = store.open(sourceId);
+      const stale = open.filter(incident => incident.generation !== generation);
+      const before = store.boundary(sourceId);
+      const staleBoundary = before !== null && before.generation !== generation ? before.boundaryId : null;
+      if (stale.length === 0 && staleBoundary === null) {
+        const current = open.length;
+        return {
+          operationId, result: "refused", outcome: "nothing-to-rebaseline", incidentRevision: null, closed: [], retiredBoundary: null, generation,
+          message: current > 0
+            ? `Source ${sourceId} has ${current} open incident(s) in its configured generation "${generation}". Rebaselining applies only after the generation changes; resolve these with retry-current or a repair.`
+            : `Source ${sourceId} has nothing from an earlier generation to rebaseline.`
+        };
+      }
+      for (const incident of stale) {
+        store.update(incident.failureId, incident.revision, { state: "resolved", resolution: `rebaselined to generation ${generation}` }, {
+          at, event: "operator", detail: `rebaseline from generation ${incident.generation}: ${reason}`, operationId
+        });
+      }
+      // Recording the new generation retires the old generation's boundaries (ADR-15B §4). Every other source is claimed as the
+      // journal already records it, so this changes only this source: another source's changed generation or removal is the
+      // gateway's startup check (and its own rebaseline), never a reason to refuse or alter this one.
+      store.claim(config.projectId, store.sources().map(stored => stored.sourceId === sourceId ? { sourceId, generation, kind: source.kind } : stored));
       return {
-        operationId, result: "refused", outcome: "nothing-to-rebaseline", incidentRevision: null, closed: [], retiredBoundary: null, generation,
-        message: current > 0
-          ? `Source ${sourceId} has ${current} open incident(s) in its configured generation "${generation}". Rebaselining applies only after the generation changes; resolve these with retry-current or a repair.`
-          : `Source ${sourceId} has nothing from an earlier generation to rebaseline.`
+        operationId, result: "completed", outcome: "rebaselined", incidentRevision: null, closed: stale.map(incident => incident.failureId),
+        retiredBoundary: staleBoundary, generation,
+        message: `Closed ${stale.length} incident(s) from earlier generations of ${sourceId}${staleBoundary === null ? "" : ` and retired boundary ${staleBoundary}`}; the source now runs as generation "${generation}".`
       };
-    }
-    for (const incident of stale) {
-      store.update(incident.failureId, incident.revision, { state: "resolved", resolution: `rebaselined to generation ${generation}` }, {
-        at, event: "operator", detail: `rebaseline from generation ${incident.generation}: ${reason}`, operationId
-      });
-    }
-    // Recording the new generation retires the old generation's boundaries (ADR-15B §4).
-    store.claim(config.projectId, [{ sourceId, generation, kind: source.kind }]);
-    return {
-      operationId, result: "completed", outcome: "rebaselined", incidentRevision: null, closed: stale.map(incident => incident.failureId),
-      retiredBoundary: staleBoundary, generation,
-      message: `Closed ${stale.length} incident(s) from earlier generations of ${sourceId}${staleBoundary === null ? "" : ` and retired boundary ${staleBoundary}`}; the source now runs as generation "${generation}".`
-    };
+    });
   } finally {
     store.close();
   }
