@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it, type TestContext } from "node:test";
-import kafkajs, { type Consumer } from "kafkajs";
+import kafkajs, { type Admin, type Consumer, type EachBatchPayload } from "kafkajs";
 import { KafkaSourceAdapter } from "../src/sources/kafka.ts";
 import type { SourceSink } from "../src/sources/types.ts";
 
+type Outcome = Awaited<ReturnType<SourceSink["process"]>>;
+
 /**
  * The degraded watchdog (V1_API §13: 12 seconds without fetch/heartbeat activity marks the source
- * degraded), driven through a fake KafkaJS consumer and mocked timers, so no broker is needed.
+ * degraded), driven through a fake KafkaJS consumer and admin client and mocked timers, so no broker
+ * is needed.
  */
 
 const EVENTS = {
@@ -26,23 +29,45 @@ class FakeConsumer {
   }
   async connect(): Promise<void> {}
   async subscribe(): Promise<void> {}
-  async run(): Promise<void> {
+  #eachBatch: ((payload: EachBatchPayload) => Promise<void>) | null = null;
+  async run(config: { eachBatch: (payload: EachBatchPayload) => Promise<void> }): Promise<void> {
+    this.#eachBatch = config.eachBatch;
     this.emit(EVENTS.GROUP_JOIN, { memberAssignment: { orders: [0] } });
   }
   async disconnect(): Promise<void> {}
+  /** Delivers one record the way KafkaJS does; its heartbeat reaches no broker, so it emits no HEARTBEAT event. */
+  deliver(offset: string): Promise<void> {
+    assert.ok(this.#eachBatch !== null, "the consumer is running");
+    const batch = { topic: "orders", partition: 0, messages: [{ offset, key: null, value: Buffer.from("{}"), timestamp: "0", headers: {} }] };
+    return this.#eachBatch({
+      batch, resolveOffset: () => undefined, heartbeat: async () => undefined, isRunning: () => true, isStale: () => false
+    } as unknown as EachBatchPayload);
+  }
 }
 
-async function startAdapter(t: TestContext): Promise<{ adapter: KafkaSourceAdapter; consumer: FakeConsumer; statuses: string[] }> {
+/** The start-position read at startup; it finds nothing committed, without waiting on a real connection. */
+const fakeAdmin = {
+  connect: async () => undefined,
+  disconnect: async () => undefined,
+  fetchOffsets: async () => [],
+  fetchTopicOffsets: async () => []
+};
+
+async function startAdapter(t: TestContext, process: () => Promise<Outcome> = async () => ({ kind: "commit" })): Promise<{
+  adapter: KafkaSourceAdapter; consumer: FakeConsumer; statuses: string[]; warnings: [string, Record<string, unknown> | undefined][];
+}> {
   t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000_000 });
   const consumer = new FakeConsumer();
   t.mock.method(kafkajs.Kafka.prototype, "consumer", () => consumer as unknown as Consumer);
+  t.mock.method(kafkajs.Kafka.prototype, "admin", () => fakeAdmin as unknown as Admin);
   const statuses: string[] = [];
+  const warnings: [string, Record<string, unknown> | undefined][] = [];
   const quiet = () => undefined;
   const sink: SourceSink = {
-    process: async () => ({ kind: "commit" }),
+    process,
     setStatus: (status, reason) => { statuses.push(reason === undefined ? status : `${status}:${reason}`); },
     held: () => undefined,
-    logger: { info: quiet, warn: quiet, error: quiet },
+    logger: { info: quiet, warn: (message, fields) => { warnings.push([message, fields]); }, error: quiet },
     stopSignal: new AbortController().signal
   };
   const adapter = new KafkaSourceAdapter({
@@ -54,7 +79,7 @@ async function startAdapter(t: TestContext): Promise<{ adapter: KafkaSourceAdapt
     onCommit: () => undefined
   });
   await adapter.start();
-  return { adapter, consumer, statuses };
+  return { adapter, consumer, statuses, warnings };
 }
 
 function idle(t: TestContext, ms: number): void {
@@ -89,6 +114,22 @@ describe("Kafka source degraded watchdog", () => {
       assert.deepEqual(statuses, ["healthy", "degraded:SOURCE_UNAVAILABLE"]);
       consumer.emit(EVENTS.FETCH);
       assert.deepEqual(statuses, ["healthy", "degraded:SOURCE_UNAVAILABLE", "healthy"]);
+    } finally {
+      await adapter.stop(Date.now() + 1_000);
+    }
+  });
+
+  it("names the record and how long it has been processing when the watchdog fires during processing", async t => {
+    let finish: (outcome: Outcome) => void = () => undefined;
+    const { adapter, consumer, statuses, warnings } = await startAdapter(t, () => new Promise(resolve => { finish = resolve; }));
+    try {
+      const delivered = consumer.deliver("41");
+      idle(t, 13_000);
+      assert.deepEqual(statuses, ["healthy", "degraded:SOURCE_UNAVAILABLE"]);
+      assert.equal(warnings.length, 1);
+      assert.deepEqual(warnings[0]?.[1], { sourceId: "orders", topic: "orders", partition: 0, offset: "41", processingMs: 13_000 });
+      finish({ kind: "abandon" });
+      await delivered;
     } finally {
       await adapter.stop(Date.now() + 1_000);
     }
