@@ -192,7 +192,9 @@ export type FailureClass =
   | "routing-invalid" | "revision-conflict" | "tombstone" | "oversize";
 ```
 
-Where each class is raised, as implemented: `invalid-json` for UTF-8 decode, JSON parse or nesting failures (and a fixture value that isn't JSON); `tombstone` and `oversize` at validation; `mapper-error`, `mapper-timeout` and `mapper-transient` (a `TransientMappingError`, matched by brand) from `map`; `routing-invalid` for a non-array result, too many outputs, a non-object output, an unexpected field, an invalid tenant, parameters or revision, data that isn't JSON, and a frame above `maxDataFrameBytes`; `payload-schema` only when routing passed and the data fails the channel's payload schema; `revision-conflict` for an equal revision with different data.
+Where each class is raised, as implemented: `invalid-json` for UTF-8 decode, JSON parse or nesting failures (and a fixture value that isn't JSON); `tombstone` and `oversize` at validation; `mapper-error`, `mapper-timeout` and `mapper-transient` (a `TransientMappingError`, matched by brand) from `map`; `routing-invalid` for a non-array result, too many outputs, a non-object output, an unexpected field, an invalid tenant, parameters or revision, data that isn't JSON, and a frame above `maxDataFrameBytes`; `payload-schema` only when routing passed (including the frame-size check) and the data fails the channel's payload schema; `revision-conflict` for an equal revision with different data.
+
+Precedence (normative; INV-03): with `failureHandling` configured, a `payload-schema` problem does not end a record's evaluation. Every remaining output and channel is still mapped and checked, and so is the revision-conflict pass; any other class found outranks `payload-schema`, so a record with an integrity or mapper problem anywhere is classified by that problem and is never quarantined and advanced past. This calls every channel's `map` once, as a valid record would. Without `failureHandling` the first problem is reported, as in V1. Evaluation and redrive use the same rule.
 
 Only `invalid-json` and `payload-schema` can take a quarantine policy. Infrastructure failures (broker outage, rebalance, shutdown, journal or quarantine failure) are not failure classes; they keep V1's outage handling and never create a skippable incident (spec §4).
 
@@ -248,6 +250,8 @@ export interface IncidentEvent {
   operationId?: string;
 }
 ```
+
+`diagnosis.message` (and the evaluation and redrive messages built from the same text) never quotes record data: a `map` error is named by its `name` and, when it has one, its `code`, never its message (a `JSON.parse` error quotes its input), and a schema issue about a property the schema doesn't allow leaves the property's name out. The V1 "Source paused" log line keeps its full reason.
 
 The `event` names are spec §11.2's structured lifecycle events. They are emitted to the gateway logger as `{ failureId, sourceId, event }` with metadata only.
 

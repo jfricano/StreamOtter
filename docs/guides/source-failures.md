@@ -127,6 +127,8 @@ Which class can take which policy:
 | `revision-conflict` | The same revision maps to different data | Pause; never skipped |
 | `tombstone`, `oversize` | A null value, or a record over `maxSourceRecordBytes` | Pause |
 
+A record can have more than one problem, for example one output that fails the payload schema and another with an empty tenant. The record is classified by the most serious one: any class other than `invalid-json` or `payload-schema` wins, so a quarantine policy never skips a record that also has a mapping or integrity problem. To find it, StreamOtter still runs every channel's `map` for the record, as it would for a valid one.
+
 Broker outages, rebalances, shutdown, journal failures and quarantine failures are not failure classes. They keep V1's outage handling and never create a skippable incident.
 
 Per-source options, all optional:
