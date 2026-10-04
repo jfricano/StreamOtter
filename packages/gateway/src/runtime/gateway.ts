@@ -30,7 +30,7 @@ import {
 import { ClientSession, type SessionOwner } from "./session.ts";
 import { FRAME_OVERHEAD_BYTES, type PendingFrame, type ServerSubscription } from "./subscription.ts";
 import { TraceBuffer, type TraceQuery } from "./traces.ts";
-import { consoleLogger, describeError, invokeHandler, newId, nowIso, Semaphore, sha256Hex } from "./util.ts";
+import { consoleLogger, describeError, invokeHandler, newId, nowIso, Semaphore, sha256Hex, TokenBucket } from "./util.ts";
 import { FixtureSourceAdapter, type FixtureRecord } from "../sources/fixture.ts";
 import { createKafkaSourceAdapter, readCommittedOffset, resolveKafkaConnection, runKafkaDiagnostics, type ResolvedKafkaConnection } from "../sources/kafka.ts";
 import type { ProcessOutcome, SourceAdapter, SourceInput, SourceSink } from "../sources/types.ts";
@@ -150,6 +150,9 @@ function storedInput(raw: RawEvidence, position: SourceRecord["position"]): Sour
 
 /** Waits before re-running a mapping that threw TransientMappingError (spec §6). */
 const TRANSIENT_RETRY_DELAYS_MS = [250, 1_000] as const;
+/** Refused handshakes traced per second (after the burst); the rest are counted in a log line. */
+const HANDSHAKE_REJECTION_TRACES_PER_SECOND = 10;
+const HANDSHAKE_REJECTION_TRACE_BURST = 100;
 
 function abortableDelay(ms: number, signal: AbortSignal): Promise<boolean> {
   if (signal.aborted) return Promise.resolve(false);
@@ -330,6 +333,9 @@ export class GatewayRuntime implements SessionOwner {
   #http: HttpServer | null = null;
   #io: IoServer | null = null;
   #pendingHandshakes = 0;
+  /** Bounds the traces of refused handshakes, which anyone can trigger, so a flood can't evict the rest. */
+  readonly #handshakeRejectionTraces = new TokenBucket(HANDSHAKE_REJECTION_TRACES_PER_SECOND, HANDSHAKE_REJECTION_TRACE_BURST);
+  #untracedHandshakeRejections = 0;
   #activeChecks = 0;
   readonly #internal: InternalGatewayOptions;
 
@@ -475,7 +481,7 @@ export class GatewayRuntime implements SessionOwner {
   async authenticateHandshake(input: { auth: unknown; origin: string | undefined }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }> {
     const requestId = newId();
     const reject = (code: ErrorCode, message?: string, retryable?: boolean) => {
-      this.core.traces.record({ requestId, stage: "authorize", outcome: "rejected", errorCode: code });
+      this.#traceHandshakeRejection(requestId, code);
       const options: { requestId: string; message?: string; retryable?: boolean } = { requestId };
       if (message !== undefined) options.message = message;
       if (retryable !== undefined) options.retryable = retryable;
@@ -542,6 +548,18 @@ export class GatewayRuntime implements SessionOwner {
     } finally {
       this.#pendingHandshakes--;
     }
+  }
+
+  #traceHandshakeRejection(requestId: string, errorCode: ErrorCode): void {
+    if (!this.#handshakeRejectionTraces.take()) {
+      this.#untracedHandshakeRejections++;
+      return;
+    }
+    if (this.#untracedHandshakeRejections > 0) {
+      this.core.logger.warn("Refused handshakes were not traced; they exceeded the trace rate", { count: this.#untracedHandshakeRejections });
+      this.#untracedHandshakeRejections = 0;
+    }
+    this.core.traces.record({ requestId, stage: "authorize", outcome: "rejected", errorCode });
   }
 
   openSession(result: HandshakeResult, transport: ConnectionTransport): ClientSession {

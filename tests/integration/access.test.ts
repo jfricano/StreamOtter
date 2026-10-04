@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { deferred, observe, orderRecord, sleep, startHarness, waitFor, type Harness } from "./harness.ts";
-import { rawSocket } from "./raw.ts";
+import { rawConnectError, rawSocket } from "./raw.ts";
 
 describe("acceptance 4: access fails closed", () => {
   let h: Harness | undefined;
@@ -196,6 +196,20 @@ describe("acceptance 4: access fails closed", () => {
       assert.notEqual(outcome, "still connected", `revocation ${hops} hops after authentication was missed`);
     }
     h.app.authenticateGate = null;
+  });
+
+  it("keeps operator traces when unauthenticated handshakes flood the gateway", async () => {
+    h = await startHarness({ limits: { maxTraceEntries: 200 } });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    await h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }).ready();
+    const before = h.internals.traces({ limit: 500, channel: "orderStatus" }).items.length;
+    assert.ok(before > 0);
+    for (let batch = 0; batch < 8; batch++) {
+      await Promise.all(Array.from({ length: 50 }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    }
+    const traces = h.internals.traces({ limit: 500 }).items;
+    assert.equal(traces.filter(trace => trace.channel === "orderStatus").length, before, "the subscription's traces survive");
+    assert.ok(traces.filter(trace => trace.errorCode === "UNAUTHENTICATED").length <= 110, "refused handshakes are traced at a bounded rate");
   });
 
   it("closes prior subscriptions when the authenticated identity changes", async () => {

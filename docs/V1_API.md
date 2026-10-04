@@ -243,7 +243,7 @@ The `ManagementOperations` interface defines exact request and response bodies f
 | `POST /dev/disconnect` | Disconnect only the named preview session; never arbitrary application connections. |
 | `GET /dev/principals` | List registered development principal refs with their tenant and subject (added in revision 0.2 so the workbench can offer them); no claims. |
 
-Every route above is prefixed `/management/v1`. Unknown body/query keys fail validation. Trace pagination uses an ephemeral sequence scoped to the gateway run; it is not a data-recovery cursor. Traces retain metadata only in V1. No payload capture is exposed.
+Every route above is prefixed `/management/v1`. Unknown body/query keys fail validation. Trace pagination uses an ephemeral sequence scoped to the gateway run; it is not a data-recovery cursor. Refused handshakes are traced at most 10 per second after a burst of 100, so unauthenticated connection floods cannot evict other traces; the gateway logs a count of the ones it skipped. Traces retain metadata only in V1. No payload capture is exposed.
 
 Development principals and fixture records are provided through `createGateway.development`, not portable production configuration. Fixture records advance deterministically in array order. Preview tokens use the same authorization/snapshot/delivery path after the development identity resolver establishes their principal. Reject the `development` option in production. Preview creation returns `previewSessionId`, a separate preview handle used by the dev disconnect operation; it is not an arbitrary application session identifier.
 
