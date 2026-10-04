@@ -23,6 +23,8 @@ import type { Browser, Page } from "playwright";
 const WORKBENCH = resolve(import.meta.dirname, "../../apps/workbench/dist");
 const API_BASE = "/workbench/api/v1";
 const REDIRECT_API = "/redirect-api/v1";
+/** Answers every request with the JSON body `null`, with the status in the path. */
+const NULL_API = (status: number) => `/null-api/${status}/v1`;
 const OPERATIONS: readonly WorkbenchOperation[] = ["health", "sources", "channels", "config", "config.validate", "config.export", "source-checks", "traces"];
 const COOKIE = "demo_session";
 
@@ -160,6 +162,13 @@ await import("/workbench/assets/${manifest.entry.script}");
         response.end();
         return;
       }
+      const nullStatus = /^\/null-api\/(\d{3})\/v1\//.exec(url.pathname)?.[1];
+      if (nullStatus !== undefined) {
+        response.statusCode = Number(nullStatus);
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.end("null");
+        return;
+      }
       if (url.pathname.startsWith(`${API_BASE}/`)) {
         void handler(request, response, url.pathname.slice(API_BASE.length));
         return;
@@ -218,6 +227,8 @@ await import("/workbench/assets/${manifest.entry.script}");
     boots["scripted"] = { config: main, target: () => apiOrigin };
     boots["redirect"] = { config: { ...main, apiBase: REDIRECT_API }, target: () => apiOrigin };
     boots["no-cors"] = { config: { ...main, apiOrigin: bareOrigin }, target: () => bareOrigin };
+    boots["null-unauthenticated"] = { config: { ...main, apiBase: NULL_API(401) }, target: () => apiOrigin };
+    boots["null-ok"] = { config: { ...main, apiBase: NULL_API(200) }, target: () => apiOrigin };
 
     browser = await launch();
     ({ page, problems } = await openPage(browser));
@@ -319,6 +330,16 @@ await import("/workbench/assets/${manifest.entry.script}");
     assert.deepEqual(apiSeen.filter(entry => entry.path.startsWith("/redirected")), [], "the redirect target was never requested");
     assert.deepEqual(pageErrors(), []);
     problems.length = 0;
+  });
+
+  it("a 401 whose JSON body is not a Result still ends the session, and a 200 with one is an unexpected response", async () => {
+    await page.goto(`${siteOrigin}/workbench/null-unauthenticated/`);
+    await page.getByRole("heading", { name: "Session ended" }).waitFor();
+    assert.equal(apiSeen.filter(entry => entry.path.startsWith(`${NULL_API(401)}/`) && entry.method !== "OPTIONS").length, 1, "nothing after the 401");
+    await page.goto(`${siteOrigin}/workbench/null-ok/`);
+    await page.getByText("The workbench API is unavailable: Unexpected response (200).").waitFor();
+    assert.deepEqual(pageErrors(), []);
+    problems.length = 0; // Chromium logged the deliberate 401.
   });
 
   it("an API origin that does not answer CORS shows as unavailable, not as a crash", async () => {
