@@ -137,15 +137,17 @@ describe("CLI: init, validate, generate, dev, start", () => {
   it("removes a partial scaffold and exits 2 when a write fails partway through", async () => {
     const dir = await mkdtemp(join(tmpdir(), "so-init-fail-"));
     // Fails the third write (web/example.ts), after server/ was created and two files were written.
+    // Like a full disk, the failing write creates the file and part of its content before it throws.
     const preload = join(dir, "fail-third-write.mjs");
     await writeFile(preload, [
       "import fs from \"node:fs\";",
       "import { syncBuiltinESMExports } from \"node:module\";",
       "const original = fs.promises.writeFile;",
       "let calls = 0;",
-      "fs.promises.writeFile = async (...args) => {",
-      "  if (++calls === 3) throw Object.assign(new Error(\"ENOSPC: no space left on device\"), { code: \"ENOSPC\" });",
-      "  return original(...args);",
+      "fs.promises.writeFile = async (path, data, options) => {",
+      "  if (++calls !== 3) return original(path, data, options);",
+      "  await original(path, String(data).slice(0, 10), options);",
+      "  throw Object.assign(new Error(\"ENOSPC: no space left on device\"), { code: \"ENOSPC\" });",
       "};",
       "syncBuiltinESMExports();"
     ].join("\n"));
