@@ -420,6 +420,7 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
     const change: StateChange<ConnectionState> = reason === undefined ? { state } : { state, reason };
     for (const listener of [...this.#internalStateListeners]) listener(state);
     for (const listener of [...this.#stateListeners]) {
+      if (!this.#stateListeners.has(listener)) continue; // Removed during this dispatch.
       try {
         listener(change);
       } catch (error) {
@@ -430,6 +431,7 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
 
   #emitError(error: StreamError): void {
     for (const listener of [...this.#errorListeners]) {
+      if (!this.#errorListeners.has(listener)) continue; // Removed during this dispatch.
       try {
         listener(error);
       } catch (cause) {

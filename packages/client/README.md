@@ -44,7 +44,7 @@ job.on("error", error => console.warn(`[${error.code}] ${error.message}`));
 await job.ready({ timeoutMs: 30_000 });               // resolves at the next `live`
 ```
 
-`subscribe()` returns immediately and starts in the next microtask, so listeners attached synchronously never miss the snapshot. Data events are not replayed to listeners added later. Each `data` event carries `kind` (`"snapshot"` or `"update"`), `revision` (a decimal string), `data`, and `receivedAt`.
+`subscribe()` returns immediately and starts in the next microtask, so listeners attached synchronously never miss the snapshot. Data events are not replayed to listeners added later. `on()` returns a function that removes the listener; once removed, it is not called again, even for an event that is already being dispatched. Each `data` event carries `kind` (`"snapshot"` or `"update"`), `revision` (a decimal string), `data`, and `receivedAt`.
 
 The gateway decides who may see what. `getToken` supplies your application's own session token, which the gateway's `authenticate` handler verifies. The browser never chooses its tenant.
 

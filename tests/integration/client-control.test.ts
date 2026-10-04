@@ -106,6 +106,26 @@ describe("client control requests stay in step with the gateway", () => {
     assert.equal(sub.state, "live");
   });
 
+  it("a listener removed during dispatch is not called again, even for the event being dispatched", async () => {
+    h = await startHarness();
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const client = h.client();
+    const sub = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    const calls: string[] = [];
+    let removeSecondData = () => {};
+    let removeSecondState = () => {};
+    sub.on("data", () => { calls.push("data 1"); removeSecondData(); });
+    removeSecondData = sub.on("data", () => { calls.push("data 2"); });
+    sub.on("state", () => { calls.push("state 1"); removeSecondState(); });
+    removeSecondState = sub.on("state", () => { calls.push("state 2"); });
+    let removeSecondClient = () => {};
+    client.on("state", () => { calls.push("client 1"); removeSecondClient(); });
+    removeSecondClient = client.on("state", () => { calls.push("client 2"); });
+    await sub.ready({ timeoutMs: 5_000 });
+    assert.ok(calls.includes("data 1") && calls.includes("state 1") && calls.includes("client 1"));
+    assert.deepEqual(calls.filter(call => call.endsWith(" 2")), []);
+  });
+
   it("a hello and a close read together reconnect instead of leaving the client connected to nothing", async () => {
     const io = new Server({ path: DEFAULT_SOCKET_PATH });
     let connections = 0;

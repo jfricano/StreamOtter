@@ -261,6 +261,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#epochRevision = event.revision;
     if (this.#lastRevision === null || compareRevisions(event.revision, this.#lastRevision) > 0) this.#lastRevision = event.revision;
     for (const listener of [...this.#listeners.data]) {
+      if (!this.#listeners.data.has(listener)) continue; // Removed during this dispatch.
       if (!this.#invoke(listener, event as StreamEvent<D>)) return;
     }
     connection.receipt({ subscriptionId: this.id, epoch: frame.epoch, sequence: frame.sequence });
@@ -450,6 +451,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#reason = reason;
     const change: StateChange<SubscriptionState> = reason === undefined ? { state } : { state, reason };
     for (const listener of [...this.#listeners.state]) {
+      if (!this.#listeners.state.has(listener)) continue; // Removed during this dispatch.
       if (!this.#invoke(listener, change)) return;
     }
     if (state === "live") this.#waiters.resolveAll();
@@ -489,6 +491,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   /** Error-listener failures are logged, never re-emitted. */
   #emitError(error: StreamError): void {
     for (const listener of [...this.#listeners.error]) {
+      if (!this.#listeners.error.has(listener)) continue; // Removed during this dispatch.
       try {
         const returned = listener(error);
         if (isThenable(returned)) Promise.resolve(returned).catch((cause: unknown) => this.#owner.logListenerFailure(cause));
