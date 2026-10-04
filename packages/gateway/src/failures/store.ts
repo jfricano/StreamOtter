@@ -95,7 +95,12 @@ export interface StoredBoundary {
   /** Increments on every change; retirement names the revision it expects. */
   revision: number;
   state: "in-force" | "superseded" | "retired";
-  /** Incidents whose advance installed or carried this boundary, oldest first. */
+  /**
+   * Incidents whose advance installed or carried this boundary, oldest first.
+   * Empty once superseded: the boundary that superseded it carries the list
+   * forward, so each list is stored once and the chain grows linearly (each
+   * incident still names the boundary its advance installed).
+   */
   failureIds: string[];
   /** The boundary this one replaced, if any. */
   supersedes: string | null;
@@ -208,8 +213,8 @@ export interface IncidentStore {
    * In one transaction (ADR-15A ordering step 5, spec §6 step 6):
    * - checks the incident is at expectedRevision and open, and that the source's
    *   in-force boundary is boundary.expectedPrior;
-   * - marks the prior boundary superseded and inserts the new one in force, with
-   *   failureIds = prior.failureIds + this incident;
+   * - marks the prior boundary superseded (emptying its failureIds) and inserts
+   *   the new one in force, with failureIds = prior.failureIds + this incident;
    * - sets the incident's progress "advance-pending", recovery "boundary-in-force",
    *   guard and boundaryId, with an "advance-pending" event;
    * - appends `at` to the source's circuit advances (dropping entries beyond 20).
@@ -466,11 +471,18 @@ export function checkRetirement(boundaryId: string, boundary: StoredBoundary | n
   return boundary;
 }
 
-/** A boundary moved out of force (retired or superseded). */
+/**
+ * A boundary moved out of force (retired or superseded). A superseded boundary
+ * drops its failureIds: the new boundary carries them, and only the list of a
+ * boundary in force is ever read, so keeping a copy on every superseded row
+ * would grow the chain quadratically.
+ */
 export function endBoundary(boundary: StoredBoundary, retirement: NonNullable<StoredBoundary["retirement"]>, at: string): StoredBoundary {
+  const superseded = retirement.mode === "superseded";
   return {
     ...boundary,
-    state: retirement.mode === "superseded" ? "superseded" : "retired",
+    state: superseded ? "superseded" : "retired",
+    failureIds: superseded ? [] : boundary.failureIds,
     revision: boundary.revision + 1,
     retiredAt: at,
     retirement: structuredClone(retirement)

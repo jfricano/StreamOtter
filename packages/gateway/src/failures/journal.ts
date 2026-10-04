@@ -895,8 +895,10 @@ export class SqliteIncidentStore implements IncidentStore {
       const advanced = advancedIncident(input, record);
       const recordJson = JSON.stringify(advanced.record);
       const failureIds = JSON.stringify(boundary.failureIds);
-      // A new boundary row is growth, so it is admitted like a new incident; the rest rewrites existing rows.
-      this.#admit(Buffer.byteLength(context) + Buffer.byteLength(failureIds) + Math.max(0, Buffer.byteLength(recordJson) - Buffer.byteLength((row as IncidentRow).record))
+      // A new boundary row is growth, so it is admitted like a new incident; the rest rewrites existing rows. The prior's
+      // list moves to the new row (endBoundary empties it), so only the growth of the list counts.
+      const listGrowth = Buffer.byteLength(failureIds) - (prior === null ? 0 : Buffer.byteLength(JSON.stringify(prior.failureIds)));
+      this.#admit(Buffer.byteLength(context) + Math.max(0, listGrowth) + Math.max(0, Buffer.byteLength(recordJson) - Buffer.byteLength((row as IncidentRow).record))
         + 2 * ROW_OVERHEAD_BYTES, "record a recovery boundary");
       if (prior !== null) this.#saveBoundary(endBoundary(prior, { mode: "superseded", reason: null, operationId: null }, input.at));
       this.#statement(`INSERT INTO boundaries (${BOUNDARY_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -1065,12 +1067,12 @@ export class SqliteIncidentStore implements IncidentStore {
     return row === undefined ? null : boundaryFromRow(row);
   }
 
-  /** Rewrites a boundary's mutable fields; context, failureIds and links never change after insert. */
+  /** Rewrites a boundary's mutable fields; context and links never change after insert, and failureIds only empties on supersede. */
   #saveBoundary(boundary: StoredBoundary): void {
-    this.#statement(`UPDATE boundaries SET state = ?, revision = ?, retired_at = ?, retirement_mode = ?, retirement_reason = ?, retirement_operation_id = ?
-      WHERE boundary_id = ?`)
-      .run(boundary.state, boundary.revision, boundary.retiredAt, boundary.retirement?.mode ?? null, boundary.retirement?.reason ?? null,
-        boundary.retirement?.operationId ?? null, boundary.boundaryId);
+    this.#statement(`UPDATE boundaries SET state = ?, revision = ?, failure_ids = ?, retired_at = ?, retirement_mode = ?, retirement_reason = ?,
+      retirement_operation_id = ? WHERE boundary_id = ?`)
+      .run(boundary.state, boundary.revision, JSON.stringify(boundary.failureIds), boundary.retiredAt, boundary.retirement?.mode ?? null,
+        boundary.retirement?.reason ?? null, boundary.retirement?.operationId ?? null, boundary.boundaryId);
   }
 
   /** Inserts or replaces a circuit; a source the journal does not know is refused like an observation of one. */

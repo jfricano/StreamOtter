@@ -391,11 +391,12 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       assert.equal(second.boundary.supersedes, "rb1:one");
       assert.deepEqual(store.getBoundary("rb1:one"), {
         boundaryId: "rb1:one", sourceId: "orders", generation: "g1", context: { watermark: 1 }, revision: 2, state: "superseded",
-        failureIds: ["f1:a"], supersedes: null, createdAt: t1, retiredAt: t2, retirement: { mode: "superseded", reason: null, operationId: null }
-      });
+        failureIds: [], supersedes: null, createdAt: t1, retiredAt: t2, retirement: { mode: "superseded", reason: null, operationId: null }
+      }, "a superseded boundary hands its list to the new one rather than keeping a copy");
       const third = store.prepareAdvance(advance("f1:c", 1, "rb1:three", "rb1:two", { watermark: 3 }, t3));
       assert.deepEqual(third.boundary.failureIds, ["f1:a", "f1:b", "f1:c"]);
       assert.equal(store.getBoundary("rb1:two")?.state, "superseded");
+      assert.deepEqual(store.getBoundary("rb1:two")?.failureIds, []);
       assert.deepEqual(store.boundary("orders"), third.boundary);
       assert.equal(store.get("f1:a")?.boundaryId, "rb1:one", "each incident keeps the boundary its advance installed");
       assert.equal(store.get("f1:b")?.boundaryId, "rb1:two");
@@ -914,6 +915,28 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     // Transitions on existing incidents still go through, so an operator can resolve them.
     store.update("f1:0", 1, { state: "resolved", resolution: "done" }, { event: "resolved", detail: null, operationId: null });
     assert.ok(store.usage().sizeBytes <= baseline + 48 * 1024);
+    store.close();
+  });
+
+  it("grows linearly with automatic advances: superseded boundaries keep no copy of the list", () => {
+    const { store } = freshJournal();
+    const id = (i: number): string => `f1:${i.toString(16).padStart(64, "0")}`;
+    let prior: string | null = null;
+    const sizes: number[] = [store.usage().sizeBytes];
+    for (const until of [300, 600]) {
+      for (let i = sizes.length === 1 ? 0 : 300; i < until; i++) {
+        store.observe(observation(id(i), { position: { kind: "kafka", topic: "orders", partition: 0, offset: String(i) } }));
+        const boundaryId = `rb1:${i}`;
+        store.prepareAdvance(advance(id(i), 1, boundaryId, prior, { watermark: i }));
+        prior = boundaryId;
+      }
+      sizes.push(store.usage().sizeBytes);
+    }
+    const [start, half, full] = sizes as [number, number, number];
+    // Quadratic growth (every superseded row keeping its cumulative list) makes the second 300 advances cost about three times the first.
+    assert.ok(full - half <= 1.5 * (half - start), `the second 300 advances took ${full - half} bytes, the first ${half - start}`);
+    assert.equal(store.boundary("orders")?.failureIds.length, 600, "the boundary in force still lists every incident");
+    assert.deepEqual(store.getBoundary("rb1:0")?.failureIds, []);
     store.close();
   });
 
