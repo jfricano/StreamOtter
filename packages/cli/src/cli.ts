@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, statSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -248,15 +248,32 @@ async function commandInit(positionals: string[], io: CliIO): Promise<number> {
     for (let parent = dirname(join(target, path)); parent.startsWith(target) && parent !== target; parent = dirname(parent)) {
       if (existsSync(parent) && !statSync(parent).isDirectory()) return true;
     }
-    return existsSync(join(target, path));
+    // lstat, so a dangling symbolic link counts as an existing file.
+    return lstatSync(join(target, path), { throwIfNoEntry: false }) !== undefined;
   };
   const conflicts = files.filter(file => blockedBy(file.path)).map(file => file.path);
   if (conflicts.length > 0) throw new CliError(EXIT.invalid, `Refusing to overwrite existing files: ${conflicts.join(", ")}`);
-  for (const file of files) {
-    await mkdir(dirname(join(target, file.path)), { recursive: true });
-    await writeFile(join(target, file.path), file.content, { flag: "wx" });
-    io.out(`  created ${join(directory, file.path)}`);
+  // A file-system error partway through (permissions, disk full) removes what this run created.
+  const created: { path: string; directory: boolean }[] = [];
+  try {
+    for (const file of files) {
+      const path = join(target, file.path);
+      const first = await mkdir(dirname(path), { recursive: true });
+      if (first !== undefined) {
+        const chain = [];
+        for (let dir = dirname(path); dir !== first && dir.startsWith(first); dir = dirname(dir)) chain.unshift(dir);
+        created.push(...[first, ...chain].map(dir => ({ path: dir, directory: true })));
+      }
+      await writeFile(path, file.content, { flag: "wx" });
+      created.push({ path, directory: false });
+    }
+  } catch (error) {
+    for (const entry of created.reverse()) {
+      await (entry.directory ? rmdir(entry.path) : unlink(entry.path)).catch(() => undefined);
+    }
+    throw new CliError(EXIT.invalid, `Could not create the project in ${directory}, and removed the files it had written: ${(error as Error).message}`);
   }
+  for (const file of files) io.out(`  created ${join(directory, file.path)}`);
   io.out(`\nNext:\n  cd ${directory}\n  streamotter dev --config streamotter.json --handlers server/handlers.mjs`);
   return EXIT.ok;
 }

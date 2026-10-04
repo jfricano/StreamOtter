@@ -253,7 +253,7 @@ Configuration edits are candidates until exported and restarted. The workbench m
 
 | Command | Behavior |
 | --- | --- |
-| `streamotter init <directory>` | Create config, server-handler entry, schemas/example, and development fixtures. Refuse to overwrite existing files. |
+| `streamotter init <directory>` | Create config, server-handler entry, schemas/example, and development fixtures. Refuse to overwrite existing files; a write that fails partway through removes what it created (exit 2). |
 | `streamotter validate --config <path>` | Validate portable config; no network or handler execution. |
 | `streamotter generate --config <path> --out <directory>` | Generate channel types and integration examples; only overwrite files bearing the generator’s manifest. |
 | `streamotter dev --config <path> --handlers <module>` | Start the gateway, local workbench, management session, and registered development fixtures. |
