@@ -42,6 +42,9 @@ export const SEED_ORDERS: readonly { tenantId: string; owner: string; orderId: s
   { tenantId: "globex", owner: "bob", orderId: "ord_1001" }
 ];
 
+/** The revision every order is created at. An order still at it has never changed state. */
+export const SEED_REVISION = "1";
+
 export function initialOrders(now = "2026-09-24T09:00:00.000Z"): Map<string, StoredOrder> {
   const orders = new Map<string, StoredOrder>();
   for (const seed of SEED_ORDERS) {
@@ -49,7 +52,7 @@ export function initialOrders(now = "2026-09-24T09:00:00.000Z"): Map<string, Sto
     orders.set(orderKey(seed.tenantId, seed.orderId), {
       tenantId: seed.tenantId,
       owner: seed.owner,
-      revision: "1",
+      revision: SEED_REVISION,
       state: { orderId: seed.orderId, status: step.status, progress: step.progress, updatedAt: now, note: step.note }
     });
   }
@@ -277,9 +280,12 @@ const hold = (reason: string): RecoveryDecision => ({ decision: "hold", reason: 
  *    order ID names one order per tenant, so every tenant's order with that ID);
  * 2. answers recoverable only when every such order was re-published after the
  *    failed record (a published outbox row later in the same stream) or, for a
- *    record the application did not publish, never changed state (no outbox row);
- * 3. returns the newest re-publish's sequence as the watermark, carried forward from
- *    the prior boundary, so snapshots acknowledge only from a read that holds it.
+ *    record the application did not publish, never changed state: the order is
+ *    still at its seed revision. The absence of outbox rows alone proves nothing,
+ *    since an outbox restored without its history or pruned has none either;
+ * 3. returns the newest re-publish's sequence as the watermark (at least the failed
+ *    row's), carried forward from the prior boundary, so snapshots acknowledge only
+ *    from a read that holds it.
  *
  * Anything it cannot establish holds the record for an operator. A guard that
  * always answers recoverable would let subscribers reach live on a state that is
@@ -291,8 +297,13 @@ export function decideRecovery(evidence: RecoveryEvidence): RecoveryDecision {
   const carried = prior === null ? 0 : boundaryWatermark(prior.context);
   if (carried === null) return hold(`The boundary in force (${prior?.id ?? "none"}) has no outbox watermark this application wrote, so it cannot be carried forward.`);
 
-  const failed = outbox.find(entry => entry.position !== null && samePosition(entry.position, incident.position));
-  let affected: { tenantId: string; orderId: string }[];
+  const atPosition = outbox.filter(entry => entry.position !== null && samePosition(entry.position, incident.position));
+  if (atPosition.length > 1) {
+    // For example a topic re-created while the outbox was kept: offsets restart, and the position no longer names one row.
+    return hold(`Outbox rows ${atPosition.map(entry => entry.seq).join(", ")} all record ${where}, so the record there cannot be attributed to one of them.`);
+  }
+  const failed = atPosition[0];
+  let affected: { tenantId: string; orderId: string; revision?: string }[];
   if (failed !== undefined) {
     if (sourceKey !== undefined && sourceKey !== failed.orderId) {
       return hold(`The record at ${where} is keyed ${JSON.stringify(sourceKey)}, but outbox row ${failed.seq} published order ${failed.orderId} there.`);
@@ -303,16 +314,17 @@ export function decideRecovery(evidence: RecoveryEvidence): RecoveryDecision {
   } else if (sourceKey === null || !ORDER_ID.test(sourceKey)) {
     return hold(`The record at ${where} ${sourceKey === null ? "has no key" : "has a key that is not an order ID"}, and no outbox row was published there, so the affected order is unknown.`);
   } else {
-    affected = [...evidence.orders].filter(order => order.state.orderId === sourceKey).map(order => ({ tenantId: order.tenantId, orderId: sourceKey }));
+    affected = [...evidence.orders].filter(order => order.state.orderId === sourceKey).map(order => ({ tenantId: order.tenantId, orderId: sourceKey, revision: order.revision }));
     if (affected.length === 0) return hold(`The record at ${where} names order ${sourceKey}, which does not exist, so the outbox cannot vouch for it.`);
   }
 
-  let watermark = carried;
+  let watermark = Math.max(carried, failed?.seq ?? 0);
   const evidenceRefs: string[] = [];
   for (const order of affected) {
     const rows = outbox.filter(entry => entry.tenantId === order.tenantId && entry.orderId === order.orderId);
     const name = `${order.tenantId}/${order.orderId}`;
-    if (failed === undefined && rows.length === 0) {
+    if (failed === undefined && order.revision === SEED_REVISION) {
+      // The order's own state, not the outbox, shows it never changed: nothing the record could carry is missing from snapshots.
       evidenceRefs.push(`${name} never changed`);
       continue;
     }

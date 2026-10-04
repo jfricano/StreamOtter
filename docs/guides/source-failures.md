@@ -186,6 +186,8 @@ sources: {
 }
 ```
 
+The guard is only as good as the outbox behind it. Keep every row from the moment an entity was created (or at least from the oldest position the guard may still be asked about); a pruned or restored-without-history outbox makes a changed entity look unchanged. Decide "never changed" from the entity's own state (for example, still at its creation revision), never from finding no rows. And when more than one row recorded the same position, as after a topic was re-created with the outbox kept, hold.
+
 A guard that always returns `recoverable` is not a guard. If invalid bytes hide which entity changed and your snapshots can lag the topic, the right answer is `hold`. The order dashboard has a complete guard to copy: [`decideRecovery`](../../examples/order-dashboard/src/server/domain.ts) checks an outbox watermark and the published position, and its README [explains each check](../../examples/order-dashboard/README.md#source-failures-quarantine-resync-and-the-recovery-guard).
 
 ### 4.2 Acknowledge the boundary in every snapshot
