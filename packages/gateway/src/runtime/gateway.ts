@@ -333,6 +333,8 @@ export class GatewayRuntime implements SessionOwner {
   #http: HttpServer | null = null;
   #io: IoServer | null = null;
   #pendingHandshakes = 0;
+  /** Cancelled handshakes whose authenticate call ignored its signal and is still running. */
+  #abandonedAuthenticates = 0;
   /** Bounds the traces of refused handshakes, which anyone can trigger, so a flood can't evict the rest. */
   readonly #handshakeRejectionTraces = new TokenBucket(HANDSHAKE_REJECTION_TRACES_PER_SECOND, HANDSHAKE_REJECTION_TRACE_BURST);
   #untracedHandshakeRejections = 0;
@@ -508,7 +510,7 @@ export class GatewayRuntime implements SessionOwner {
     if (typeof token !== "string" || token.length === 0 || utf8ByteLength(token) > MAX_TOKEN_BYTES) {
       return reject("UNAUTHENTICATED", "A non-empty token of at most 8 KiB is required.", false);
     }
-    if (this.#sessions.size + this.#pendingHandshakes >= this.core.limits.maxConnections) {
+    if (this.#sessions.size + this.#pendingHandshakes + this.#abandonedAuthenticates >= this.core.limits.maxConnections) {
       return reject("OVERLOADED", "The gateway has reached its connection limit.");
     }
     this.#pendingHandshakes++;
@@ -523,8 +525,10 @@ export class GatewayRuntime implements SessionOwner {
         principal = preview.principal;
         previewSessionId = previewId;
       } else {
+        let running: Promise<unknown> | undefined;
+        const invokedAt = performance.now();
         const outcome = await invokeHandler(
-          context => this.#handlers.authenticate({ ...context, token, origin: origin ?? "" }),
+          context => (running = Promise.resolve(this.#handlers.authenticate({ ...context, token, origin: origin ?? "" }))),
           {
             timeoutMs: this.core.limits.handlerTimeoutMs,
             requestId,
@@ -533,6 +537,7 @@ export class GatewayRuntime implements SessionOwner {
           }
         );
         if (outcome.kind === "aborted") {
+          if (running !== undefined) this.#holdAbandonedAuthenticate(running, this.core.limits.handlerTimeoutMs - (performance.now() - invokedAt));
           return input.signal?.aborted === true ? reject("CANCELLED", "The client disconnected.") : reject("OVERLOADED", "The gateway is shutting down.");
         }
         if (outcome.kind === "timeout") {
@@ -560,6 +565,25 @@ export class GatewayRuntime implements SessionOwner {
     } finally {
       this.#pendingHandshakes--;
     }
+  }
+
+  /**
+   * A cancelled handshake ends at once, but an authenticate call that ignores its signal keeps running.
+   * It keeps counting against maxConnections until it settles or its timeout passes, so clients that
+   * connect and disconnect can't pile up unbounded authenticate calls.
+   */
+  #holdAbandonedAuthenticate(running: Promise<unknown>, remainingMs: number): void {
+    this.#abandonedAuthenticates++;
+    let held = true;
+    const release = () => {
+      if (!held) return;
+      held = false;
+      clearTimeout(timer);
+      this.#abandonedAuthenticates--;
+    };
+    const timer = setTimeout(release, Math.max(0, remainingMs));
+    timer.unref?.();
+    running.then(release, release);
   }
 
   #traceHandshakeRejection(requestId: string, errorCode: ErrorCode): void {

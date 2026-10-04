@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { deferred, observe, orderRecord, sleep, startHarness, waitFor, type Harness } from "./harness.ts";
-import { rawConnectError, rawSocket } from "./raw.ts";
+import { rawConnect, rawConnectError, rawSocket } from "./raw.ts";
 
 describe("acceptance 4: access fails closed", () => {
   let h: Harness | undefined;
@@ -256,6 +256,48 @@ describe("acceptance 4: access fails closed", () => {
     await waitFor(() => signal.aborted, 3_000, "authenticate signal aborted");
     await waitFor(() => h!.internals.traces({ limit: 10, outcome: "rejected" }).items.some(trace => trace.errorCode === "CANCELLED"));
     gate.resolve();
+  });
+
+  it("counts an authenticate that ignores its signal against maxConnections after the client disconnects", { timeout: 10_000 }, async () => {
+    h = await startHarness({ limits: { maxConnections: 2, handlerTimeoutMs: 60_000 } });
+    const gate = deferred();
+    let running = 0;
+    // Like an identity-provider call made without the signal: cancelling the handshake doesn't stop it.
+    h.app.authenticateGate = async () => { running++; try { await gate.promise; } finally { running--; } };
+    const cancelled = () => h!.internals.traces({ limit: 100, outcome: "rejected" }).items.filter(trace => trace.errorCode === "CANCELLED").length;
+    for (let i = 1; i <= 2; i++) {
+      const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+      await waitFor(() => h!.app.authenticateCalls === i);
+      socket.close();
+      await waitFor(() => cancelled() === i, 3_000, "handshake traced CANCELLED at once");
+    }
+    assert.equal(running, 2);
+    const third = rawConnectError(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    third.catch(() => undefined);
+    const outcome = await Promise.race([
+      third.then(error => error.code),
+      waitFor(() => h!.app.authenticateCalls > 2, 5_000).then(() => "a third authenticate call started", () => "")
+    ]);
+    assert.equal(outcome, "OVERLOADED", "no third authenticate call while two still run");
+    h.app.authenticateGate = null;
+    gate.resolve();
+    await waitFor(() => running === 0);
+    const { socket } = await rawConnect(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    socket.close();
+  });
+
+  it("frees a cancelled handshake's connection slot when authenticate's timeout passes", { timeout: 10_000 }, async () => {
+    h = await startHarness({ limits: { maxConnections: 1, handlerTimeoutMs: 300 } });
+    h.app.authenticateGate = () => new Promise<void>(() => undefined);
+    const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    await waitFor(() => h!.app.authenticateCalls === 1);
+    socket.close();
+    await waitFor(() => h!.internals.traces({ limit: 10, outcome: "rejected" }).items.some(trace => trace.errorCode === "CANCELLED"));
+    assert.equal((await rawConnectError(h.origin, { token: "alice@acme", protocolVersion: 1 })).code, "OVERLOADED");
+    await sleep(350);
+    h.app.authenticateGate = null;
+    const { socket: next } = await rawConnect(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    next.close();
   });
 
   it("closes a connection that sends a second CONNECT instead of opening an unreachable session", async () => {
