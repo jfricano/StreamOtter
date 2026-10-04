@@ -413,7 +413,7 @@ Slice D notes (normative, as implemented in `packages/gateway/src/management/rou
 
 | Command | Behavior |
 | --- | --- |
-| `streamotter init --failures --config <path> --state-dir <dir>` | Creates the journal for an existing project; refuses if one exists (ADR-15A §2). |
+| `streamotter init --failures --config <path> --state-dir <dir>` | Creates the journal for an existing project; refuses (`journal-exists`) if one exists, including a leftover `journal.sqlite-wal` or `-shm` (ADR-15A §2). |
 | `streamotter start ... [--state-dir <dir>] [--operator-socket] [--handler-build-id <id>] [--health <host:port>]` | New flags (ADR-15C §2). |
 | `streamotter status --state-dir <dir> [--json]` | `status()` over IPC. |
 | `streamotter failures list\|show\|export\|evaluate\|redrive --state-dir <dir> ...` | §6 over IPC. `show --raw` and `export --include-raw --out <file>` are explicit. |

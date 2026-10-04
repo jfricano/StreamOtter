@@ -52,7 +52,7 @@ Create it yourself; the gateway never creates topics. Its `max.message.bytes` mu
 npx streamotter init --failures --config streamotter.json --state-dir /var/lib/streamotter/orders-app
 ```
 
-This creates the state directory (mode 0700) if needed, its `run/` subdirectory (0700), and `journal.sqlite` (0600). It refuses to overwrite an existing journal. The configuration must already have a `failureHandling` section.
+This creates the state directory (mode 0700) if needed, its `run/` subdirectory (0700), and `journal.sqlite` (0600). It refuses to overwrite an existing journal, and refuses (`journal-exists`) while a `journal.sqlite-wal` or `journal.sqlite-shm` is still in the directory, because a leftover WAL can hold an earlier journal's last commits. The configuration must already have a `failureHandling` section.
 
 Run it as the user the gateway runs as. Ordinary startup never creates a journal, so a missing one is always a visible error, never a silent fresh start.
 
@@ -452,7 +452,7 @@ The gateway never recreates, repairs or replaces a journal on its own. Don't run
 
 **Start a new journal** only when there is no usable backup. If the journal is intact and an incident just can't be closed any other way, don't replace the journal: rebaseline the source with the journal you have ([§6.10](#610-rebaseline-a-source)). A new journal is a deliberate decision about application consistency, not a reset button:
 
-1. Stop the gateway. Move the old journal files aside; don't delete them.
+1. Stop the gateway. Move all the old journal files aside together: `journal.sqlite`, `journal.sqlite-wal` and `journal.sqlite-shm` (whichever exist). Don't delete them. After a crash the WAL can hold the last commits, so the journal is only complete with it. `init --failures` refuses (`journal-exists`) while a `-wal` or `-shm` file is left behind.
 2. Write down, from the old journal if it can still be read and from your logs, every source that had a boundary in force or an open incident, and its positions.
 3. For each, confirm that your authoritative store already reflects what those records carried, or repair it, and that your snapshots read it.
 4. If a record that can never be processed is still in the topic, the new journal won't help: the gateway would stop on it again. Move the source's consumer group past it with Kafka's own tools while the gateway is stopped, as in [§6.10](#610-rebaseline-a-source) step 4. That is a skip you decide on, outside StreamOtter; it needs step 3's review like any other.

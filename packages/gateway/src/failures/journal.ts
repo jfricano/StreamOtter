@@ -300,6 +300,15 @@ export function initJournal(stateDirectory: string, projectId: string, sources: 
   checkProtected(runDirectory, lstatSync(runDirectory), "directory", "state-dir-insecure");
 
   const path = join(stateDirectory, JOURNAL_FILE);
+  // A leftover WAL can hold a crashed journal's last commits, and SQLite would discard it against a new file; a
+  // leftover shared-memory file belongs to that WAL. Either means a journal's files are still here.
+  for (const suffix of ["-wal", "-shm"]) {
+    if (lstatOrNull(path + suffix) !== null) {
+      throw refuse("CONFIG_INVALID", "journal-exists",
+        `${path}${suffix} exists: files of an earlier journal are still here and are never overwritten. ` +
+        `To start a new journal, move every journal file (${JOURNAL_FILE}, ${JOURNAL_FILE}-wal and ${JOURNAL_FILE}-shm) aside together.`, { path: path + suffix });
+    }
+  }
   // Creating the empty file with wx makes "never overwrite" atomic and sets owner-only mode before any data lands.
   try {
     closeSync(openSync(path, "wx", 0o600));
@@ -331,7 +340,8 @@ export function initJournal(stateDirectory: string, projectId: string, sources: 
     db.close();
     db = null;
   } catch (error) {
-    // The file is ours (created with wx above), so a half-initialized journal is removed rather than left to be mistaken for a real one.
+    // These files are ours: the journal was created with wx above, and its -wal and -shm did not exist before it, so they are
+    // SQLite's for this new file. A half-initialized journal is removed rather than left to be mistaken for a real one.
     try { db?.close(); } catch { /* already failing */ }
     for (const suffix of ["", "-wal", "-shm"]) rmSync(path + suffix, { force: true });
     throw error;

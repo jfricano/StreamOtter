@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -687,6 +687,35 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     assert.throws(() => initJournal(directory, PROJECT, SOURCES), refusal("journal-exists", "CONFIG_INVALID"));
     assert.ok(readFileSync(path).equals(before), "the existing journal is untouched");
     assert.throws(() => initJournal(stateDirectory(), PROJECT, [SOURCES[0]!, SOURCES[0]!]), refusal("duplicate-source"));
+  });
+
+  it("refuses to create a journal next to a leftover WAL or shared-memory file, and consumes neither", () => {
+    // A crashed gateway's commits can live only in journal.sqlite-wal. Moving journal.sqlite aside but not the WAL must not let
+    // init adopt or delete that WAL: SQLite would discard it as not matching the new file, and those commits would be gone.
+    const directory = stateDirectory();
+    initJournal(directory, PROJECT, SOURCES);
+    const child = spawnSync(process.execPath, ["--conditions=streamotter-source", "--input-type=module", "-e", `
+      const { openJournal } = await import(${JSON.stringify(JOURNAL_MODULE)});
+      const store = openJournal(process.env.JOURNAL_DIR);
+      store.observe(JSON.parse(process.env.OBSERVATION));
+      process.kill(process.pid, "SIGKILL");
+    `], { encoding: "utf8", env: { ...process.env, JOURNAL_DIR: directory, OBSERVATION: JSON.stringify(observation("f1:crash")) } });
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    const journal = join(directory, "journal.sqlite");
+    const wal = readFileSync(`${journal}-wal`);
+    assert.ok(wal.byteLength > 0, "the crashed gateway's commit is in the WAL");
+    renameSync(journal, join(directory, "..", "journal.sqlite.aside"));
+    rmSync(join(directory, "journal.lock"));
+    assert.throws(() => initJournal(directory, PROJECT, SOURCES), (error: Error) => refusal("journal-exists", "CONFIG_INVALID")(error) && /journal\.sqlite-wal/.test(error.message));
+    assert.equal(existsSync(journal), false, "nothing was created");
+    assert.ok(readFileSync(`${journal}-wal`).equals(wal), "the leftover WAL is untouched");
+
+    const shmOnly = stateDirectory();
+    mkdirSync(shmOnly, { mode: 0o700 });
+    writeFileSync(join(shmOnly, "journal.sqlite-shm"), "", { mode: 0o600 });
+    assert.throws(() => initJournal(shmOnly, PROJECT, SOURCES), refusal("journal-exists", "CONFIG_INVALID"));
+    assert.ok(existsSync(join(shmOnly, "journal.sqlite-shm")));
+    assert.equal(existsSync(join(shmOnly, "journal.sqlite")), false);
   });
 
   it("keeps incidents, events, evidence and revisions across close and reopen", () => {
