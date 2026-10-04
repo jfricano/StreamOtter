@@ -1,11 +1,11 @@
 import { createClient, type Client } from "@streamotter/client";
 import {
-  createGateway, silentLogger,
-  type ChannelContract, type DevelopmentOptions, type Gateway, type GatewayLogger, type HandlerRegistry, type Json,
+  silentLogger,
+  type ChannelContract, type DevelopmentOptions, type FailureHandlingConfig, type FixtureRecord, type Gateway, type GatewayLogger, type HandlerRegistry, type Json,
   type Limits, type Principal, type ProjectConfig, type StateChange, type StreamError, type StreamEvent,
-  type Subscription, type SubscriptionState
+  type SourceRecoveryHandlers, type Subscription, type SubscriptionState
 } from "@streamotter/gateway";
-import { getGatewayInternals, type GatewayInternals } from "@streamotter/gateway/internals";
+import { createGatewayRuntime, getGatewayInternals, type GatewayInternals, type InternalGatewayOptions } from "@streamotter/gateway/internals";
 
 export type OrderParams = { orderId: string };
 export type OrderState = { orderId: string; status: "queued" | "processing" | "done"; progress: number };
@@ -84,8 +84,14 @@ export class OrderApp {
   snapshotReads: "start" | "end" = "start";
   authorizeGate: (() => Promise<void>) | null = null;
   authenticateGate: (() => Promise<void>) | null = null;
+  /** The signal the most recent authenticate call received. */
+  authenticateSignal: AbortSignal | null = null;
   authorizeOverride: ((principal: Principal, params: OrderParams) => boolean | Promise<boolean>) | null = null;
   mapOverride: ((value: Json) => unknown) | null = null;
+  /** How snapshots answer a recovery boundary (V1.1): echo its ID, omit it, or return another ID. */
+  recoveryAck: "echo" | "none" | "wrong" | "always" = "echo";
+  /** Recovery boundaries snapshots were asked to acknowledge, in call order. */
+  readonly recoveryInputs: ({ boundaryId: string; context: Json } | null)[] = [];
   revokedSessions = new Set<string>();
   tokenExpiry = new Map<string, string>();
 
@@ -105,8 +111,9 @@ export class OrderApp {
 
   handlers(): HandlerRegistry<TestChannels> {
     return {
-      authenticate: async ({ token }) => {
+      authenticate: async ({ token, signal }) => {
         this.authenticateCalls++;
+        this.authenticateSignal = signal;
         const principal = this.principalFor(token);
         if (this.authenticateGate !== null) await this.authenticateGate();
         return principal;
@@ -125,12 +132,17 @@ export class OrderApp {
             const value = record.value as { tenantId: string; revision: string; order: OrderState };
             return [{ tenantId: value.tenantId, params: { orderId: value.order.orderId }, revision: value.revision, data: value.order }];
           },
-          snapshot: async ({ principal, params }) => {
+          snapshot: async ({ principal, params, recovery }) => {
             this.snapshotCalls++;
+            this.recoveryInputs.push(recovery === undefined ? null : { ...recovery });
+            // "always" answers with an ID even when no boundary was supplied, like stale acknowledgment code.
+            const ack = this.recoveryAck === "always" ? { recoveryBoundaryId: recovery?.boundaryId ?? "rb1:stale" }
+              : recovery === undefined || this.recoveryAck === "none" ? {}
+                : { recoveryBoundaryId: this.recoveryAck === "echo" ? recovery.boundaryId : "rb1:not-the-boundary" };
             const read = () => {
               const order = this.orders.get(`${principal.tenantId}/${params.orderId}`);
               if (order === undefined) throw new Error("order not found");
-              return { revision: order.revision, data: { ...order.state } };
+              return { revision: order.revision, data: { ...order.state }, ...ack };
             };
             if (this.snapshotReads === "start") {
               const result = read();
@@ -144,6 +156,11 @@ export class OrderApp {
       }
     };
   }
+}
+
+function withSourceGeneration<C extends ProjectConfig<TestChannels>>(config: C, generation: string | undefined): C {
+  if (generation === undefined) return config;
+  return { ...config, sources: { ...config.sources, orders: { ...config.sources["orders"]!, generation } } };
 }
 
 export interface Harness {
@@ -160,19 +177,35 @@ export interface Harness {
 
 export async function startHarness(options: {
   app?: OrderApp;
-  fixtures?: { key: string | null; value: Json }[];
+  fixtures?: FixtureRecord[];
   limits?: Partial<Limits>;
   principals?: DevelopmentOptions["principals"];
   logger?: GatewayLogger;
+  failureHandling?: FailureHandlingConfig;
+  stateDirectory?: string;
+  /** Serve the operator API on the state directory's local socket. */
+  operatorSocket?: boolean;
+  /** The read-only health listener (ADR-15C §4). */
+  health?: { host?: string; port: number };
+  /** The orders source's generation. Default "fixture-1". */
+  generation?: string;
+  /** handlers.sources recovery guards (V1.1 quarantine-resync). */
+  recovery?: Record<string, SourceRecoveryHandlers>;
+  /** Test-only gateway internals (fault and crash hooks). */
+  internal?: InternalGatewayOptions;
 } = {}): Promise<Harness> {
   const app = options.app ?? new OrderApp();
-  const gateway = createGateway<TestChannels>({
-    config: orderConfig(options.limits),
-    handlers: app.handlers(),
+  const handlers = app.handlers();
+  const gateway = createGatewayRuntime<TestChannels>({
+    config: withSourceGeneration({ ...orderConfig(options.limits), ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling }) }, options.generation),
+    ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
+    ...(options.operatorSocket === undefined ? {} : { operatorSocket: options.operatorSocket }),
+    ...(options.health === undefined ? {} : { health: options.health }),
+    handlers: options.recovery === undefined ? handlers : { ...handlers, sources: options.recovery },
     mode: "development",
     development: { principals: options.principals ?? {}, fixtures: { orders: options.fixtures ?? [] } },
     logger: options.logger ?? silentLogger
-  });
+  }, options.internal ?? {}).gateway;
   const { origin, path } = await gateway.start();
   const internals = getGatewayInternals(gateway);
   const clients: Client<TestChannels>[] = [];

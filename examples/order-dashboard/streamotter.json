@@ -87,5 +87,13 @@
         "overflow": "resync"
       }
     }
+  },
+  "failureHandling": {
+    "sources": {
+      "orders": {
+        "invalidJson": "quarantine-resync",
+        "invalidPublicPayload": "quarantine-resync"
+      }
+    }
   }
 }

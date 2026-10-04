@@ -1,5 +1,5 @@
 import type {
-  ChannelContract, ChannelHandlers, DataFrame, ErrorCode, ErrorFrame, GatewayLogger, Limits, Principal, Schema,
+  ChannelContract, ChannelHandlers, DataFrame, ErrorCode, ErrorFrame, GatewayLogger, Json, Limits, Principal, Schema,
   Source, SourceStatus, SubscriptionFrame
 } from "@streamotter/contracts";
 import type { ByteBudget } from "./budget.ts";
@@ -19,6 +19,8 @@ export interface GatewayCore {
   readonly revocations: RevocationLog;
   readonly logger: GatewayLogger;
   readonly gatewayBudget: ByteBudget;
+  /** Told when a snapshot acknowledged a source's recovery boundary, for application retirement (ADR-15B §4). */
+  boundaryAcknowledged?(sourceId: string, boundaryId: string): void;
 }
 
 export interface RoutedSubscription {
@@ -84,6 +86,8 @@ export interface SourceRuntime {
   status: SourceStatus["status"];
   reason: ErrorCode | undefined;
   readonly ready: boolean;
+  /** The recovery boundary in force (V1.1): every snapshot on this source must acknowledge it. */
+  boundary: { readonly id: string; readonly context: Json } | null;
 }
 
 /** What a subscription needs from the connection that owns it. */

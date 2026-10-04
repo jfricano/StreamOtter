@@ -20,6 +20,9 @@
     }
   },
   "files": ["dist", "src"],
+  "scripts": {
+    "prepack": "tsc -b"
+  },
   "publishConfig": {
     "access": "public",
     "exports": {

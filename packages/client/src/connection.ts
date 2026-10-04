@@ -85,8 +85,11 @@ export class Connection {
     return this.#connected && !this.#closed;
   }
 
-  /** Sends a control request; rejects with TIMEOUT after five seconds or when the connection drops. */
-  request<T>(event: string, payload: unknown): Promise<Result<T>> {
+  /**
+   * Sends a control request; rejects with TIMEOUT after five seconds or when the connection drops.
+   * `onResult` runs synchronously with the acknowledgement, before any frame that followed it.
+   */
+  request<T>(event: string, payload: unknown, onResult?: (result: Result<T>) => void): Promise<Result<T>> {
     if (!this.connected) return Promise.reject(streamError("SOURCE_UNAVAILABLE", { message: "Not connected.", retryable: true }));
     return new Promise<Result<T>>((resolve, reject) => {
       const fail = (error: StreamError) => {
@@ -105,6 +108,7 @@ export class Connection {
           reject(streamError("INVALID_REQUEST", { message: "The gateway sent a malformed acknowledgement." }));
           return;
         }
+        onResult?.(result as Result<T>);
         resolve(result as Result<T>);
       });
     });

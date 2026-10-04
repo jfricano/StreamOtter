@@ -2,7 +2,7 @@
 
 **Owner amendment — October 1, 2026; reconciled October 2:** The next planned increment is **V1.1**, renamed from V1.5. The approved revision 1.0 source-failure specification and September 29 decisions remain in force. ADR-15A/B/C keep their stable decision IDs. This milestone label does not change npm or protocol versions. Lontra Creek separately owns replacing its existing `/workbench/` tour with the actual workbench UI in an isolated synthetic visitor sandbox; no new page is added.
 
-**Status:** approved, revision 1.0 (September 29, 2026). Not implemented. On the roadmap between the V1 launch and V2.0.
+**Status:** approved, revision 1.0 (September 29, 2026). Implementation started October 3, 2026; see the [log](./IMPLEMENTATION_LOG.md). Implemented and reviewed; ships in `0.2.0-rc.1` together with V1.2 and V1.2.1, not yet published. On the roadmap between the V1 launch and V2.0.
 
 | Document | What it is |
 | --- | --- |
@@ -12,6 +12,13 @@
 | [adr/ADR-15C](./adr/ADR-15C-operator-authority-and-redrive.md) | Operator service, socket, health probes, and redrive |
 | [V1_1_ACCEPTANCE_PLAN.md](./V1_1_ACCEPTANCE_PLAN.md) | Scenario families F01–F48 and release gates, aligned with the approved ADRs and frontend amendment |
 | [V1_1_IMPLEMENTATION_HANDOFF.md](./V1_1_IMPLEMENTATION_HANDOFF.md) | Slices, ownership, settled ADRs, and recorded roadmap placement |
+| [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) | The build: PR sequence, branching, work breakdown, ownership, verification, and Lontra Creek coordination |
+| [V1_1_API.md](./V1_1_API.md) | Draft API specification the slices build against: configuration, handlers, incidents, operator service, IPC, health, CLI, and the decisions it adds |
+| [WORKBENCH_HOST_CONTRACT.md](./WORKBENCH_HOST_CONTRACT.md) | WHC-1, the interface for running the published workbench outside loopback (spec §10), defined before implementation |
+| [EVIDENCE.md](./EVIDENCE.md) | Requirement-to-evidence matrix for F01–F48 |
+| [IMPLEMENTATION_LOG.md](./IMPLEMENTATION_LOG.md) | Working record and handoff: current state, decisions, runs and failures |
+| [ACCEPTANCE_PACKET.md](./ACCEPTANCE_PACKET.md) | The final acceptance packet (handoff §7): what is implemented, verified and published, limitations, and the recommended release status |
+| [REVIEW.md](./REVIEW.md) | The independent review of #12–#18 and the second review of its fixes: every finding, the PR it corrects, its fix commit and its regression test |
 
 The V1 specification still governs shipped behavior. This specification governs V1.1 work; the ADRs refine it where they say so.
 
@@ -27,5 +34,7 @@ The frontend/integration seam is an explicit upstream deliverable in this librar
 | --- | --- |
 | Simpler redrive (ADR-15C §5) | Accepted, September 29, 2026 |
 | Journal engine: `node:sqlite`, else `better-sqlite3` (ADR-15A §2) | Accepted, September 29, 2026 |
+| Journal engine refined (D1): `node:sqlite` with a Node 24.15 floor | Accepted, October 4, 2026 |
+| `streamotter sources rebaseline` as a command | Accepted, October 4, 2026 |
 | Boundary retirement as a per-source choice, default `generation`; operator mode documented as unsafe (ADR-15B §4) | Accepted, September 29, 2026 |
 | Adopt the source-failure increment between the V1 launch and V2.0 | Accepted, September 29, 2026; milestone renamed V1.1 October 1 |

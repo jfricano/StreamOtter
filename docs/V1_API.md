@@ -57,7 +57,7 @@ All authorized readers of one routing identity must receive the same public stat
 
 `createGateway({config, handlers, mode, development?, configDir?, logger?})` constructs without opening connections. `configDir` resolves relative CA paths (default: the working directory); `logger` receives redacted operator diagnostics. `start()` opens the listener and consumers and resolves when every configured source is ready; on failure or a thirty-second startup deadline it rolls back resources started by that attempt and rejects. Repeated starts while starting share the same operation; a running start returns current address information. A stopped gateway cannot restart; construct a new instance.
 
-`stop({timeoutMs})` defaults to ten seconds: stop new subscriptions, invalidate active subscriptions, abort handlers, stop consumers, commit only completed processing, close sockets, and release resources. It is idempotent. Deadline expiry forces closure without committing incomplete records.
+`stop({timeoutMs})` defaults to ten seconds: stop new subscriptions, invalidate active subscriptions, abort handlers, stop consumers, commit only completed processing, close sockets, and release resources. It is idempotent. Deadline expiry forces closure without committing incomplete records: client connections and the listening port are closed when `stop()` returns, and shutdown steps still running (a source's disconnect, the failure journal, `onStop` work) finish in the background, with a log line when they do.
 
 `revoke(selector)` invalidates matching active subscriptions immediately and closes matching connections for session/subject selectors. Drop unsent frames and abort pending snapshots; already transmitted bytes cannot be recalled. The promise resolves after local invalidation, not after a browser acknowledges it. The application must update its durable authorization/session policy **before** calling this hook, so reconnection cannot restore revoked access. V1 does not persist a revocation database.
 
@@ -86,7 +86,7 @@ This short example assumes an application session and view functions. The contra
 
 `subscribe()` returns an independent, locally identified subscription immediately and schedules startup in the next microtask. Listeners attached synchronously cannot miss initial delivery. Creating two identical subscriptions creates independent handles and lifecycle; implementation may share internal work only if authorization and semantics remain identical. Snapshots must not be shared across principals in V1.
 
-`on()` returns a removal function. State listeners receive subsequent changes; `.state` exposes current state. Data events are not replayed to late listeners. Synchronous callback exceptions and rejected callback promises become local `HANDLER_FAILED` errors and fail that subscription. Error-listener failures are caught and reported to a diagnostic logger without recursive error emission. Listener completion is not an application-processing acknowledgement.
+`on()` returns a removal function. Removal takes effect immediately: a listener removed while an event is being dispatched, for example by another listener, is not called for that event or any later one. State listeners receive subsequent changes; `.state` exposes current state. Data events are not replayed to late listeners. Synchronous callback exceptions and rejected callback promises become local `HANDLER_FAILED` errors and fail that subscription. Error-listener failures are caught and reported to a diagnostic logger without recursive error emission. Listener completion is not an application-processing acknowledgement.
 
 `ready()` waits for the next `live` state, resolving immediately if already live. Defaults to 30 seconds. Each waiter has its own timeout/signal; cancelling a waiter does not cancel the subscription. Terminal failure or closure rejects pending waiters with a structured `StreamError`. `resync()` starts a new synchronization and waits under the same rules. Concurrent resync calls join one operation. A resync can recover `resync-required`; a failed/closed subscription must be replaced.
 
@@ -143,7 +143,7 @@ For live updates, discard revisions older than the last accepted revision. Equal
 
 Kafka consumers use explicit progress management: auto-commit and automatic batch resolution are disabled. Process records in order within each partition and heartbeat while processing. Commit the next offset only after validation/mapping succeeds and each matching subscription either admits the state or has been explicitly invalidated for resynchronization. A record with no interested subscribers may be committed. A filtered record may be committed. A commit is never evidence of browser delivery.
 
-Invalid JSON, unsupported tombstones, invalid mapped payloads/revisions, handler errors/timeouts, and revision conflicts pause the source without committing the failing record or any later position in its partition. Conservatively mark every subscription of that source stale. Do not busy-loop retry or silently skip. Emit a redacted operator diagnostic; resume only through the trusted server/management action after correction. Already admitted earlier records can repeat after a crash; state revisions make that harmless when the application contract is correct.
+Invalid JSON, unsupported tombstones, invalid mapped payloads/revisions, handler errors/timeouts, and revision conflicts pause the source without committing the failing record or any later position in its partition. Conservatively mark every subscription of that source stale. Do not busy-loop retry or silently skip. Emit a redacted operator diagnostic; resume only through the trusted server/management action after correction. Resume retries the held record against current state; for a revision conflict, the state it conflicted with was discarded when its subscriptions went stale, so the retried record is normally admitted. Confirm which data is correct before resuming a revision-conflict pause; the gateway logs a warning when one is resumed. Already admitted earlier records can repeat after a crash; state revisions make that harmless when the application contract is correct.
 
 One slow subscription does not indefinitely hold Kafka progress: invalidate its pending generation, mark it stale, and apply its resynchronization policy. Slow transport receipt closes the connection so queued transport bytes cannot grow without bound. Other subscriptions continue. Never silently switch to data dropping while still reporting `live`.
 
@@ -173,6 +173,8 @@ All configurable fields below are positive integers. They are starting bounds, n
 | `maxControlFrameBytes` | 16,384 |
 | `controlRequestsPerSecond` | 20 per connection, burst 40 |
 
+`maxControlFrameBytes` must be at least 9,216 (`INCONSISTENT_LIMITS` otherwise). That fits the handshake for any token of up to 8 KiB made of printable ASCII without `"` or `\` (JWT, base64url, hex); a token whose JSON encoding escapes characters can need a larger value.
+
 Budgets count UTF-8 serialized envelopes, pending snapshots, buffered updates, and in-flight frames. The gateway-wide budget is enforced before copying/admission; it is not a bound on total process memory or native broker buffers. Configure broker fetch limits separately. Runtime objects, sockets, schemas, and traces need independent bounds and memory tests.
 
 Only one data frame per subscription is in flight until receipt. Client receipts confirm SDK frame validation and admission to synchronous listener dispatch; returned promises are not awaited for receipt. V1 cannot guarantee that application-created async work remains bounded. The default SDK is intended for cheap state replacement; expensive processing belongs in the application’s own bounded workflow.
@@ -183,7 +185,7 @@ Socket auth is `{token, protocolVersion: 1}`. Tokens are sent in the Socket.IO a
 
 Authorize on subscribe, every resynchronization, and before each data-frame send. The `authorize` handler runs at subscribe, at every synchronization attempt, and again immediately before the snapshot is delivered; the check before every data frame is synchronous (connection open, token unexpired, subscription not revoked), because revocation invalidates matching subscriptions immediately. Recheck expiration and local revocation state after asynchronous authorization. Policy failure discards pending data and terminates the subscription. Exceptions fail closed. SDK receipt does not bypass these checks. A trusted mapper may broadcast within a tenant, but only individually authorized subscribers receive data.
 
-Unrecognized channels/versions and unauthorized channel access all produce public `FORBIDDEN`. `CHANNEL_NOT_FOUND` and `CHANNEL_VERSION_UNSUPPORTED` are available only to trusted operators/local generated-contract diagnostics. Request identifiers and public messages must not reveal topic names, secrets, handler stack traces, or protected payloads.
+Unrecognized channels/versions and unauthorized channel access all produce public `FORBIDDEN`. Parameters are validated against the channel's schema before `authorize`, so in production a schema mismatch also produces public `FORBIDDEN` (traced as `INVALID_PARAMS`); a development gateway answers `INVALID_PARAMS` with the failing path. Parameters that are not a JSON object or exceed `maxParamsBytes` produce `INVALID_PARAMS` in both modes, before the channel is looked up. The per-connection subscription limit (`OVERLOADED`) and reuse of a subscription ID for a different channel or version (`INVALID_REQUEST`) are also checked before the lookup, so neither answer depends on whether the channel exists. `CHANNEL_NOT_FOUND` and `CHANNEL_VERSION_UNSUPPORTED` are available only to trusted operators/local generated-contract diagnostics. Request identifiers and public messages must not reveal topic names, secrets, handler stack traces, or protected payloads.
 
 ## 8. Socket.IO protocol v1
 
@@ -243,7 +245,7 @@ The `ManagementOperations` interface defines exact request and response bodies f
 | `POST /dev/disconnect` | Disconnect only the named preview session; never arbitrary application connections. |
 | `GET /dev/principals` | List registered development principal refs with their tenant and subject (added in revision 0.2 so the workbench can offer them); no claims. |
 
-Every route above is prefixed `/management/v1`. Unknown body/query keys fail validation. Trace pagination uses an ephemeral sequence scoped to the gateway run; it is not a data-recovery cursor. Traces retain metadata only in V1. No payload capture is exposed.
+Every route above is prefixed `/management/v1`. Unknown body/query keys fail validation. Trace pagination uses an ephemeral sequence scoped to the gateway run; it is not a data-recovery cursor. Refused handshakes are traced at most 10 per second after a burst of 100, so unauthenticated connection floods cannot evict other traces; the gateway logs a count of the ones it skipped, at most once a second and when it stops. Traces retain metadata only in V1. No payload capture is exposed.
 
 Development principals and fixture records are provided through `createGateway.development`, not portable production configuration. Fixture records advance deterministically in array order. Preview tokens use the same authorization/snapshot/delivery path after the development identity resolver establishes their principal. Reject the `development` option in production. Preview creation returns `previewSessionId`, a separate preview handle used by the dev disconnect operation; it is not an arbitrary application session identifier.
 
@@ -253,7 +255,7 @@ Configuration edits are candidates until exported and restarted. The workbench m
 
 | Command | Behavior |
 | --- | --- |
-| `streamotter init <directory>` | Create config, server-handler entry, schemas/example, and development fixtures. Refuse to overwrite existing files. |
+| `streamotter init <directory>` | Create config, server-handler entry, schemas/example, and development fixtures. Refuse to overwrite existing files; a write that fails partway through removes what it created (exit 2). |
 | `streamotter validate --config <path>` | Validate portable config; no network or handler execution. |
 | `streamotter generate --config <path> --out <directory>` | Generate channel types and integration examples; only overwrite files bearing the generator’s manifest. |
 | `streamotter dev --config <path> --handlers <module>` | Start the gateway, local workbench, management session, and registered development fixtures. |
@@ -283,7 +285,7 @@ These decisions were made while implementing V1. They refine the text above; whe
 
 **Types.** `GatewayOptions` (with optional `configDir` and `logger`), `GatewayLogger`, `DevelopmentOptions`, `Hello`, `ErrorFrame`, and `DevelopmentPrincipalSummary` are named exports. `ManagementOperations` gains `GET /management/v1/dev/principals`.
 
-**Handshake.** The origin check and authentication run in Socket.IO handshake middleware, so rejections reach the SDK as structured `connect_error` data. `authenticate` returning `null`, a missing/oversized token, or an expired principal is `UNAUTHENTICATED` (not retryable). A handler exception, timeout, or malformed principal is `HANDLER_FAILED` (retryable; logged for the operator). Extra authentication fields are `INVALID_REQUEST`; another protocol version is `UNSUPPORTED_CAPABILITY`. `identityKey` is a truncated SHA-256 of project, tenant, and subject, so it is stable across gateway restarts and changes only when the account changes.
+**Handshake.** The origin check and authentication run in Socket.IO handshake middleware, so rejections reach the SDK as structured `connect_error` data. `authenticate` returning `null`, a missing/oversized token, or an expired principal is `UNAUTHENTICATED` (not retryable). A handler exception, timeout, or malformed principal is `HANDLER_FAILED` (retryable; logged for the operator). Extra authentication fields are `INVALID_REQUEST`; another protocol version is `UNSUPPORTED_CAPABILITY`. If the client disconnects mid-handshake, the `authenticate` signal aborts and the handshake ends at once, traced `CANCELLED`; pass the signal to identity-provider calls, because an `authenticate` call that keeps running still holds its `maxConnections` slot until it settles or `handlerTimeoutMs` passes. `identityKey` is a truncated SHA-256 of project, tenant, and subject, so it is stable across gateway restarts and changes only when the account changes.
 
 **State frames.** The gateway sends `synchronizing` with each new epoch, then `live`, `stale`, `resync-required`, and `failed`. Retries announce `authorizing` under the previous epoch (or `""` before the first). A client `so:resync` coalesces with an attempt that has not yet sent its snapshot, expedites a pending backoff, and starts a new epoch when the snapshot for the current epoch was already sent. Subscribe requests carrying unknown fields (for example `recovery`) are rejected with `UNSUPPORTED_CAPABILITY`. Unknown events are answered with `UNSUPPORTED_CAPABILITY` through their callback or `so:error`.
 
@@ -295,4 +297,50 @@ These decisions were made while implementing V1. They refine the text above; whe
 
 **Management and workbench.** Unknown resources return 404 with code `INVALID_REQUEST` (the error vocabulary has no generic not-found code). Without a cursor, `GET /traces` returns the newest `limit` matching traces oldest-first; `nextCursor` is always a position after the last examined trace so callers can poll. The management server injects the gateway origin into the workbench page as a meta tag (never the token) and serves it with a restrictive CSP. Source checks also work for a source that failed to start, and `streamotter dev|start` print them when startup fails.
 
+**Workbench host contract** (V1.1 seam, new in 0.2.0-rc.1). `ManagementOperations` gains `GET /management/v1/workbench`, which returns `{ hostContract: 1, operations, limits: { maxRequestBytes } }` behind the same token and origin checks; the native server lists every operation it implements and a 1 MiB limit. The native server and `createManagementHandler` share one router, so an unknown route now answers 404 before its body is read. The workbench reads an optional boot block and otherwise behaves as described in §10. See [WORKBENCH_HOST_CONTRACT.md](./releases/v1.1/WORKBENCH_HOST_CONTRACT.md).
+
 **CLI imports** (added with the all-in-one `streamotter` package in `0.1.0-rc.3`). `init` and `generate` pick the import source for the code they write: `streamotter/client` and `streamotter/gateway` when the nearest `package.json` lists `streamotter` and not `@streamotter/client`, and `@streamotter/client` and `@streamotter/gateway` otherwise. Configuration fingerprints don't depend on it.
+
+**V1.1 source-failure groundwork** (new in 0.2.0-rc.1; [V1.1 API draft](./releases/v1.1/V1_1_API.md) §§2–5). `ProjectConfig` accepts an optional `failureHandling` section, validated by `validateProjectConfig`: closed per-source policies for the two quarantine-eligible failure classes, no skip-like actions, a quarantine topic that must not be an ingestion topic, and transient retries only with `replaySafeMapping: true`. `HandlerRegistry` accepts optional `sources` recovery guards, and the snapshot handler's input and output gain the optional `recovery` and `recoveryBoundaryId` fields. `createGateway` accepts every policy (see the containment entry below). Every pause also records a trusted internal failure class (`invalid-json`, `payload-schema`, `mapper-transient`, `mapper-error`, `mapper-timeout`, `routing-invalid`, `revision-conflict`, `tombstone`, `oversize`) in the operator log next to the unchanged public error code. A mapped output whose routing fields are valid but whose data fails the payload schema is `payload-schema`; every routing, shape, output-count and frame-size problem is `routing-invalid`. `TransientMappingError` is exported for map handlers to signal a transient dependency failure.
+
+**V1.1 containment and quarantine-hold** (new in 0.2.0-rc.1; [V1.1 API draft](./releases/v1.1/V1_1_API.md) §§4–5 and §10). With `failureHandling` set, a paused record also opens an incident; the V1 pause, stale and resume behavior is unchanged around it. `resumeSource` for such a source retries the held record exactly as in V1, and is refused with `SOURCE_UNAVAILABLE` (status 409) while an advance is pending or uncertain. A Kafka record at a later offset on a partition with a held incident pauses the source with reason `SOURCE_UNAVAILABLE` instead of being processed. While an advance is `uncertain`, a record on any partition of the source pauses it the same way. `createGateway` accepts every V1.1 policy.
+
+**V1.1 guarded continuation** (new in 0.2.0-rc.1; V1.1 API draft §§3.2–3.3 and the slice C note in §5). While a source has a recovery boundary in force, its snapshot handlers receive `recovery` and must return `recoveryBoundaryId` equal to `recovery.boundaryId`. Otherwise the attempt fails as a retryable `SOURCE_UNAVAILABLE` and the subscription stays `stale`. Returning `recoveryBoundaryId` when no boundary is in force is `INVALID_PAYLOAD`. Snapshots on sources without a boundary are unchanged. `DevelopmentOptions.fixtures` records may be `{ key, raw }`, decoded like broker bytes.
+
+**V1.2 quality fixes** (new in 0.2.0-rc.1; [V1.2 review](./releases/v1.2/README.md)):
+
+- A connection whose unsent output (Socket.IO write buffer plus WebSocket buffered bytes) passes `maxPendingBytesPerConnection` is closed, including output made only of error and control replies.
+- Malformed and unknown frames count against the control rate limit, and a connection that runs out is closed with `OVERLOADED`.
+- Unsubscribing an existing subscription is never rate-limited.
+- A session revoked between authentication and connection open is refused with `UNAUTHENTICATED`.
+- Mapped and snapshot data properties set to `undefined` are treated as absent, as JSON does, instead of failing as `routing-invalid`.
+- Configuration fingerprints allow nesting deep enough for 16-level schemas.
+- `limits` timeouts must be at most 2,147,483,647 ms.
+- An `enum` must satisfy its own `minLength` and `maxLength`.
+- `stop()` cancels a startup in progress and honors its deadline.
+- SDK:
+  - `unsubscribe()` sends `so:unsubscribe` even while the subscribe is unacknowledged.
+  - An unsubscribe rejected with `OVERLOADED` is retried within its timeout.
+  - A resync rejected with anything but `INVALID_REQUEST` returns to `stale` and retries after one and two seconds, then enters `resync-required`.
+- Kafka:
+  - A paused source stays paused through a consumer restart.
+  - The consumer heartbeats every 3 seconds while a record is being processed.
+
+**V1.2.1 minor fixes** (new in 0.2.0-rc.1; [V1.2.1 fixes](./releases/v1.2.1/FIXES.md)). Two change what a user can see:
+
+- `limits.maxControlFrameBytes` must be at least 9,216 (§6); a value between 1,024 and 9,215, accepted before, now fails validation with `INCONSISTENT_LIMITS`. The default is unchanged.
+- In production, parameters that fail the channel's `paramsSchema` are answered `FORBIDDEN`, like an unknown channel, and traced as `INVALID_PARAMS`; development still answers `INVALID_PARAMS` with the failing path. Parameters that are not a JSON object or exceed `maxParamsBytes`, the per-connection subscription limit, and a subscription ID reused for a different channel or version are checked before the channel lookup (§7).
+
+The rest:
+
+- `on()` removal takes effect immediately, as with DOM `EventTarget`: a listener removed during a dispatch is not called for that event or later ones (§4). This applies to subscription and client listeners alike.
+- `streamotter init` removes the files and directories it created and exits 2 if a write fails partway through; a dangling symbolic link counts as an existing file.
+- `test:kafka`, `test:kafka:replicated` and `test:deploy` fail when their broker or proxy isn't running, instead of passing with every test skipped, unless `STREAMOTTER_ALLOW_SKIP=1` is set ([CONTRIBUTING](../CONTRIBUTING.md#test-tiers)).
+- Handshake: a client that disconnects aborts `authenticate`'s signal and the handshake is traced `CANCELLED`; an `authenticate` call that keeps running still counts against `maxConnections` until it settles or `handlerTimeoutMs` passes. A second CONNECT on the same connection, while one is pending or open, closes the connection. Refused handshakes are traced at most 10 per second after a burst of 100 (§10).
+- `stop()` past its deadline closes the listening port before it returns; remaining shutdown work finishes in the background and is logged (§3).
+- A management GET that declares a body (a non-zero `Content-Length`, or any `Transfer-Encoding`) is answered 400 `INVALID_REQUEST`.
+- SDK: `resync()` on a `stale` subscription keeps it `stale` until the gateway announces `authorizing` for the new attempt, so a paused source still shows as `stale`; concurrent calls still join one request. A resync that runs out of attempts before a new epoch ends in `resync-required` and rejects with `RESYNC_REQUIRED`. A connection found closed when its hello is handled counts as a failed, retryable handshake, and the client reconnects.
+- Kafka: a failed offset commit is retried every second until a later commit or a rebalance replaces it, and counts only once KafkaJS reports it. With `startFrom: "latest"`, the start position of each partition without a committed offset is committed before its first record is processed. A committed offset outside the retained range, and a start position lost to an early rebalance, are logged as warnings. When the watchdog marks a source degraded during a slow record, its warning says heartbeats are not being acknowledged and names the record's position. Resuming after a revision conflict logs a warning (§6).
+- Fixture evidence in the local store expires seven days after it was stored; `evaluate` then reports `evidence-expired`.
+- `streamotter generate` suffixes colliding type names in sorted schema-ID order, so reordering schemas doesn't rename types.
+- Workbench: a response for an earlier Inspect filter, or a validation result for text since edited, is dropped.

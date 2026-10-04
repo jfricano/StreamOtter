@@ -6,7 +6,7 @@ September 25, 2026 · A separate project, in progress; not part of this reposito
 
 ## Decision
 
-The home site and live demo are their own project, **Lontra Creek**, to be published at `streamotter.app`. It is a fictional river-otter study: a simulated watershed with gauge stations, tagged otters, camera traps, and protected den sites, whose data moves through real Kafka, a StreamOtter gateway in production mode, and the browser SDK. Its pages cover the product, a guided walkthrough, a Failure Lab where each visitor breaks an isolated setup on purpose, an in-browser configuration playground, the workbench, and failure handling.
+The home site and live demo are their own project, **Lontra Creek**, to be published at `streamotter.dev`. It is a fictional river-otter study: a simulated watershed with gauge stations, tagged otters, camera traps, and protected den sites, whose data moves through real Kafka, a StreamOtter gateway in production mode, and the browser SDK. Its pages cover the product, a guided walkthrough, a Failure Lab where each visitor breaks an isolated setup on purpose, an in-browser configuration playground, the workbench, and failure handling.
 
 This replaces the earlier plan to host the order-dashboard example as an integrated `/demo`. The order dashboard stays in this repository as the reference example, with its tests.
 

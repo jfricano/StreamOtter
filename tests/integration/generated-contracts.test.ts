@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 import ts from "typescript";
-import { generateFiles } from "@streamotter/cli";
+import { generateFiles, typeNames } from "@streamotter/cli";
 import { validateProjectConfig, validateValue, type ProjectConfig, type Schema } from "@streamotter/contracts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
@@ -106,5 +106,39 @@ describe("generated contract types agree with schema validation", () => {
     const diagnostics = ts.getPreEmitDiagnostics(program).map(diagnostic =>
       `${diagnostic.file?.fileName.replace(OUT, "") ?? ""}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`);
     assert.deepEqual(diagnostics, []);
+  });
+
+  it("names colliding schema types the same whatever the schema key order", () => {
+    const ids = ["order_row", "order-row", "Client", "client-schema", "OrderRow"];
+    const expected = typeNames(ids);
+    assert.deepEqual(Object.fromEntries(typeNames([...ids].reverse())), Object.fromEntries(expected));
+    assert.equal(new Set(expected.values()).size, ids.length);
+    // "shipment_params" and "shipment-params" both become ShipmentParams; the channel must keep its type name.
+    const withTwin = (entries: [string, Schema][]): ProjectConfig => ({ ...config, schemas: Object.fromEntries(entries) });
+    const entries: [string, Schema][] = [["shipment_params", schemas["String"]!], ...Object.entries(schemas)];
+    const channelLine = (value: ProjectConfig) => /^ {2}shipmentStatus: .*$/m.exec(generateFiles(value)[0]!.content)?.[0];
+    assert.equal(channelLine(withTwin(entries)), channelLine(withTwin([...entries].reverse())));
+  });
+
+  it("keeps line separators in names inside generated string literals", () => {
+    const injection = (tail: string) => `x\u2028export const injected${tail} = 1; //`;
+    const hostile: ProjectConfig = {
+      ...config,
+      schemas: {
+        ...schemas,
+        "shipment-params": {
+          type: "object", additionalProperties: false, required: [injection("1"), "mode"],
+          properties: { [injection("1")]: { type: "string" }, mode: { type: "string", enum: [`a\u2029export const injected2 = 2; //`] } }
+        }
+      }
+    };
+    assert.equal(validateProjectConfig(hostile).valid, true);
+    for (const file of generateFiles(hostile)) {
+      const source = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.ES2022);
+      const declared = source.statements.flatMap(statement => ts.isVariableStatement(statement)
+        ? statement.declarationList.declarations.map(declaration => declaration.name.getText(source)) : []);
+      assert.deepEqual(declared.filter(name => name.startsWith("injected")), [], file.path);
+      assert.doesNotMatch(file.content, /[\u2028\u2029]/, file.path);
+    }
   });
 });

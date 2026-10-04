@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
@@ -20,7 +21,14 @@ describe("production build: `streamotter start` (compiled CLI) against TLS Kafka
     const dir = await mkdtemp(join(tmpdir(), "so-prod-"));
     const config = kafkaConfig({ topic, group: uniqueName("so-prod"), connection: { brokers: TLS, tls: { caFile: CA_FILE } } });
     await writeFile(join(dir, "streamotter.json"), JSON.stringify(config));
-    const child = spawn(process.execPath, [CLI, "start", "--config", join(dir, "streamotter.json"), "--handlers", resolve(import.meta.dirname, "fixtures/production-handlers.mjs")], { env: { ...process.env, NODE_ENV: "production" } });
+    const probe = createServer();
+    await new Promise<void>(done => probe.listen(0, "127.0.0.1", done));
+    const healthPort = (probe.address() as { port: number }).port;
+    await new Promise<void>(done => probe.close(() => done()));
+    const child = spawn(process.execPath, [
+      CLI, "start", "--config", join(dir, "streamotter.json"), "--handlers", resolve(import.meta.dirname, "fixtures/production-handlers.mjs"),
+      "--health", `127.0.0.1:${healthPort}`
+    ], { env: { ...process.env, NODE_ENV: "production" } });
     let output = "";
     child.stdout.on("data", chunk => { output += chunk; });
     child.stderr.on("data", chunk => { output += chunk; });
@@ -30,6 +38,13 @@ describe("production build: `streamotter start` (compiled CLI) against TLS Kafka
       assert.match(output, /No management or development endpoints are exposed/);
       await assert.rejects(fetch("http://127.0.0.1:7401/management/v1/health"), "no management listener in production");
       assert.equal((await fetch(`${origin}/management/v1/health`)).status, 404);
+      // F43: the production health listener is on its own loopback port and says nothing about topics.
+      const health = await fetch(`http://127.0.0.1:${healthPort}/health/ready`);
+      assert.equal(health.status, 200);
+      const body = await health.text();
+      assert.equal(body, JSON.stringify({ status: "ok", reasons: [] }));
+      assert.equal(health.headers.get("access-control-allow-origin"), null);
+      assert.equal((await fetch(`${origin}/health/ready`)).status, 404, "health is not on the delivery port");
 
       const auth = { token: "alice-token", protocolVersion: 1 };
       assert.equal((await rawConnectError(origin, auth)).code, "FORBIDDEN", "browser Origin required");

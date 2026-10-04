@@ -1,6 +1,6 @@
 # Connect to Kafka
 
-This guide replaces a fixture source with a Kafka topic, covers TLS and SASL, and explains how StreamOtter tracks progress, and what happens when a record is bad or the gateway restarts.
+This guide replaces a fixture source with a Kafka topic, covers TLS and SASL, and explains how StreamOtter tracks progress, and what happens when a record is bad or the gateway restarts. It also covers the quarantine topic for V1.1's opt-in failure policies.
 
 StreamOtter uses KafkaJS 2.2.4 internally. It is verified against **Apache Kafka 4.1.2** (see the [support matrix](#what-is-verified)); other broker versions and managed Kafka services are unverified.
 
@@ -52,7 +52,7 @@ An example value:
 | `sasl` | Optional. `plain`, `scram-sha-256`, or `scram-sha-512`. `username` and `password` name environment variables, never literal values. |
 | `generation` | Any identifier. Change it when you recreate the topics or point the source at a different cluster; it is part of every record's identity. |
 | `consumerGroup` | Used only by this source of this gateway. Never share it with another application or with a second gateway. |
-| `startFrom` | Where a **new** consumer group starts: `latest` (only new records) or `earliest` (the whole topic). Once the group has committed offsets, it always resumes from them. |
+| `startFrom` | Where a **new** consumer group starts: `latest` (only new records) or `earliest` (the whole topic). With `latest`, the gateway commits the start position as soon as it joins and starts fetching, so a restart before the first record is processed doesn't skip records produced in between. If that position can't be read at startup (within five seconds) or committed, or the group rebalances before it is committed, the gateway logs a warning and this protection is lost until the first record is committed. Once the group has committed offsets, it always resumes from them. If a committed offset has fallen outside the topic's retained range (retention deleted it), Kafka resets the group to the `startFrom` position, so records can be skipped or read again; the gateway logs a warning when that happens. |
 
 Missing environment variables or an unreadable CA file stop startup with a clear message and never print the values. Credentials never appear in exports, logs, or traces.
 
@@ -60,7 +60,7 @@ Then point your channel at the source (`"source": "orders"`) and write a `map` h
 
 ## Progress and commits
 
-The gateway commits a record's offset only after it has fully processed it: validated, mapped, and admitted to (or explicitly invalidated for) every interested subscription. A record that no subscription cares about, or that `map` filters out with `[]`, is committed too. A commit never means that a browser received the data, and source progress never waits for browsers. A slow client is disconnected rather than allowed to hold up the topic.
+The gateway commits a record's offset only after it has fully processed it: validated, mapped, and admitted to (or explicitly invalidated for) every interested subscription. A record that no subscription cares about, or that `map` filters out with `[]`, is committed too. A commit never means that a browser received the data, and source progress never waits for browsers. A slow client is disconnected rather than allowed to hold up the topic. If a commit fails, the gateway logs a warning and retries it every second until it succeeds or a later commit or a rebalance replaces it; until then, a restart can redeliver that record, which revisions make harmless.
 
 ## When a record is bad
 
@@ -71,6 +71,35 @@ To recover, fix the cause (usually your `map` handler: correct it, or have it re
 - in development, press **Resume** in the workbench's Connect tab;
 - from code, call `gateway.resumeSource("orders")`;
 - with `streamotter start`, deploy the fix and restart the gateway. It resumes from the last committed offset, which is the paused record.
+
+A conflicting duplicate revision is different: when the source paused, its views went `stale` and the state the record conflicted with was discarded, so a resume compares the record only with current state and usually admits it. Decide which data is correct before resuming; the gateway logs a warning when it resumes after a revision conflict.
+
+That is the default. V1.1 adds opt-in failure policies: every bad record becomes a durable incident, and for invalid JSON and payload-schema failures the original record can be copied to a quarantine topic, then held, or moved past only when your application's recovery guard approves. Nothing is ever skipped silently. See [Handle bad records](./source-failures.md).
+
+## The quarantine topic (V1.1)
+
+Only needed when a Kafka source uses `quarantine-hold` or `quarantine-resync`. The gateway writes the original key, value and headers there, byte for byte (original headers get a `src.` prefix), with the incident's metadata in a `streamotter-envelope` header and its ID in `streamotter-failure-id`.
+
+**Create it before you start the gateway.** The gateway never creates topics, and it refuses to start if the topic is missing.
+
+```bash
+kafka-topics.sh --bootstrap-server kafka-1.example.com:9093 --command-config admin.properties --create \
+  --topic orders-app.streamotter.quarantine --partitions 1 --replication-factor 3 \
+  --config max.message.bytes=1130496 --config min.insync.replicas=2 --config retention.ms=604800000
+```
+
+- **`max.message.bytes` must be at least `limits.maxSourceRecordBytes` plus 80 KiB** (81,920 bytes), so the largest record the gateway accepts fits with its headers. With the default 1 MiB limit that's 1,130,496 bytes, more than Kafka's default of 1,048,588. Startup reads the setting and refuses a smaller one. If you raise `maxSourceRecordBytes`, raise this too.
+- **One cluster.** It must be on the cluster of the quarantining sources, and those sources must share one connection profile. Writes and reads use that profile's credentials.
+- **Not a source topic.** Validation refuses a quarantine topic that is also a configured source topic. Nothing consumes it automatically.
+- **Replication is yours to choose.** Writes use an idempotent producer with `acks=all`, so `min.insync.replicas` and the replication factor decide what survives a broker failure. `streamotter status` reports both. Broker-failure behavior has only been tested against a single broker so far, so these settings are not a StreamOtter guarantee.
+- **Retention decides how long evidence can be read back** for `evaluate` and `redrive`. Seven days is a reasonable start. Expired evidence is reported as expired; it never clears a recovery requirement. See [the runbook](./source-failures.md#64-topic-retention-and-expired-evidence).
+- **Protect it like the source data.** It holds full records. Give read access to operators only.
+
+**ACLs.** In addition to its source permissions, the gateway's principal needs Describe, DescribeConfigs, Write and Read on the quarantine topic, and Read and Delete on consumer groups with the prefix `streamotter-<projectId>-quarantine-read-`, which evidence read-back uses as throwaway groups that never commit. The full table and an example are in the [runbook](./source-failures.md#61-credentials-and-acls); ACL-enabled brokers are not tested yet.
+
+**Source retention matters too.** A held record is never committed, so set the source topics' retention well above how long a hold may last. If retention deletes a held record, the gateway holds the source rather than jumping past it.
+
+**A changed cluster is an integrity failure.** Each incident records the Kafka cluster ID it was captured on. If the source's connection profile now reaches another cluster, or the startup check can't read the cluster ID, the same position may name a different record, so the incident holds: it is never quarantined or advanced, and no record of that source can be redriven until it is resolved. If the source really moved, change its `generation` and rebaseline; see [the runbook](./source-failures.md#64-topic-retention-and-expired-evidence).
 
 ## Restarts and crashes
 
@@ -112,6 +141,8 @@ KafkaJS 2.2.4 against Apache Kafka 4.1.2 (single-node KRaft), from the [implemen
 | Other Kafka versions and managed services | Unverified |
 
 Also verified against real Kafka: explicit per-record commits, poison records pausing without skipping, redelivery after a crash without the displayed state going backwards, rebalances and broker outages marking views `stale` and resynchronizing, and `startFrom` for new groups.
+
+V1.1 failure handling (new in 0.2.0-rc.1), against the same single local broker: byte-exact quarantine of binary keys, invalid UTF-8 and repeated headers; refusal of a missing or undersized quarantine topic; holding a source for 35 seconds without losing group membership; holding when the group position moves past a held record; advancing past a record with the commit confirmed by reading it back, including a gateway killed on either side of the commit; and reading evidence back byte for byte. On a local three-broker cluster (F47): acknowledged quarantine copies survived the leader's SIGKILL, and writes were refused, with the source held, while two of three brokers were down. Not yet tested: ACL-enabled brokers, network partitions, and managed services. See the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1).
 
 ## A local broker
 

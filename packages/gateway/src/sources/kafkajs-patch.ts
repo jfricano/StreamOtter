@@ -21,11 +21,17 @@ let applied = false;
  * prints TimeoutNegativeWarning), and the check reschedules itself: every open
  * connection spins a 1 ms timer until it is destroyed. This replacement schedules a
  * check only while requests are queued, never with a negative delay. It applies
- * only to the exact pinned version and stays behind the source adapter boundary.
+ * only to the exact pinned version. It patches the shared kafkajs module, so it also
+ * applies to the application's own KafkaJS clients on the same copy; behavior is unchanged.
  */
 export function patchKafkaJsRequestQueue(): boolean {
   if (applied) return true;
-  const version = (require("kafkajs/package.json") as { version: string }).version;
+  let version: string;
+  try {
+    version = (require("kafkajs/package.json") as { version: string }).version;
+  } catch {
+    return false; // A future kafkajs whose exports map hides package.json.
+  }
   if (version !== "2.2.4") return false;
   const RequestQueue = require("kafkajs/src/network/requestQueue/index.js") as { prototype: RequestQueueInternals & { scheduleCheckPendingRequests(): void } };
   RequestQueue.prototype.scheduleCheckPendingRequests = function (this: RequestQueueInternals): void {

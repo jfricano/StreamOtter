@@ -8,6 +8,7 @@
     "build": "streamotter generate --config streamotter.json --out src/generated && tsc -p tsconfig.json && tsc -p tsconfig.web.json && node build-web.mjs",
     "dev": "pnpm run build && node scripts/dev.mjs",
     "dev:kafka": "pnpm run build && node scripts/dev.mjs --kafka",
+    "dev:kafka-resync": "pnpm run build && node scripts/dev.mjs --kafka --resync",
     "scenarios": "node --conditions=streamotter-source scripts/scenarios.ts"
   },
   "dependencies": {

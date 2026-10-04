@@ -86,7 +86,7 @@ export class ClientSession implements SubscriptionHost {
   // --- SubscriptionHost ------------------------------------------------------------
 
   sendState(frame: SubscriptionFrame): void {
-    if (!this.#closed) this.#transport.sendState(frame);
+    if (!this.#closed && !this.#stalled()) this.#transport.sendState(frame);
   }
 
   sendData(frame: DataFrame): void {
@@ -94,11 +94,11 @@ export class ClientSession implements SubscriptionHost {
   }
 
   sendError(frame: ErrorFrame): void {
-    if (!this.#closed) this.#transport.sendError(frame);
+    if (!this.#closed && !this.#stalled()) this.#transport.sendError(frame);
   }
 
   canDeliver(): boolean {
-    if (this.#closed) return false;
+    if (this.#closed || this.#stalled()) return false;
     if (Date.now() >= this.#expiresAtMs) {
       queueMicrotask(() => this.#expire());
       return false;
@@ -120,7 +120,7 @@ export class ClientSession implements SubscriptionHost {
   // --- protocol handlers -----------------------------------------------------------
 
   handleSubscribe(payload: unknown, reply: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
     this.#control("so:subscribe", payload, reply, SUBSCRIBE_KEYS, (request, requestId) => {
       const subscriptionId = request["subscriptionId"];
       const channelName = request["channel"];
@@ -131,6 +131,23 @@ export class ClientSession implements SubscriptionHost {
         return this.#err("INVALID_REQUEST", requestId, "channel and channelVersion are required.");
       }
       if (!isPlainObject(params)) return this.#err("INVALID_PARAMS", requestId);
+      // Checks that don't depend on the channel run first, so their answers reveal nothing about it.
+      let encoded: string;
+      try {
+        encoded = canonicalJson(params);
+      } catch {
+        return this.#err("INVALID_PARAMS", requestId);
+      }
+      if (utf8ByteLength(encoded) > this.#owner.core.limits.maxParamsBytes) return this.#err("INVALID_PARAMS", requestId, "The channel parameters are too large.");
+      // A reused ID is compared with the client's own earlier request, and the subscription limit is
+      // checked, before the lookup, so neither answer can tell a known channel from an unknown one.
+      const existing = this.#subscriptions.get(subscriptionId);
+      if (existing !== undefined && (existing.channel.name !== channelName || existing.channel.version !== version)) {
+        return this.#err("INVALID_REQUEST", requestId, "This subscription ID is already used for a different contract.");
+      }
+      if (existing === undefined && this.#subscriptions.size >= this.#owner.core.limits.maxSubscriptionsPerConnection) {
+        return this.#err("OVERLOADED", requestId, "This connection has reached its subscription limit.");
+      }
       const channel = isIdentifier(channelName) ? this.#owner.channel(channelName) : undefined;
       if (channel === undefined || channel.version !== version) {
         // Unrecognized channels and versions are publicly indistinguishable from denial.
@@ -142,26 +159,25 @@ export class ClientSession implements SubscriptionHost {
         });
         return this.#err("FORBIDDEN", requestId);
       }
-      let encoded: string;
-      try {
-        encoded = canonicalJson(params);
-      } catch {
-        return this.#err("INVALID_PARAMS", requestId);
-      }
-      if (utf8ByteLength(encoded) > this.#owner.core.limits.maxParamsBytes) return this.#err("INVALID_PARAMS", requestId, "The channel parameters are too large.");
       const canonical = canonicalizeParams(channel.paramsSchema, params);
-      if (!canonical.ok) return this.#err("INVALID_PARAMS", requestId, `The channel parameters are invalid at ${canonical.issue.path}.`);
+      if (!canonical.ok) {
+        this.#owner.core.traces.record({
+          requestId, stage: "authorize", outcome: "rejected", errorCode: "INVALID_PARAMS",
+          channel: channel.name, sourceId: channel.source.id, subscriptionId
+        });
+        // Schema validation precedes authorize, so in production a schema failure is answered like an
+        // unknown channel: otherwise it would reveal the channel and its parameter names to anyone.
+        if (this.#owner.core.mode === "production") return this.#err("FORBIDDEN", requestId);
+        return this.#err("INVALID_PARAMS", requestId, `The channel parameters are invalid at ${canonical.issue.path}.`);
+      }
 
-      const existing = this.#subscriptions.get(subscriptionId);
       if (existing !== undefined) {
+        // Same channel the client already holds: only the parameters can differ.
         const contract = JSON.stringify([channel.name, channel.version, canonical.canonical]);
         if (existing.contractKey !== contract) {
           return this.#err("INVALID_REQUEST", requestId, "This subscription ID is already used for a different contract.");
         }
         return { ok: true, requestId, data: { subscriptionId } };
-      }
-      if (this.#subscriptions.size >= this.#owner.core.limits.maxSubscriptionsPerConnection) {
-        return this.#err("OVERLOADED", requestId, "This connection has reached its subscription limit.");
       }
       const subscription = new ServerSubscription({
         id: subscriptionId,
@@ -177,7 +193,10 @@ export class ClientSession implements SubscriptionHost {
   }
 
   handleUnsubscribe(payload: unknown, reply: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
+    // Releasing an existing subscription is never rate-limited: a client refused here would keep a
+    // subscription it no longer reads, and its next unreceipted frame would drop the whole connection.
+    const releases = isPlainObject(payload) && typeof payload["subscriptionId"] === "string" && this.#subscriptions.has(payload["subscriptionId"]);
     this.#control("so:unsubscribe", payload, reply, CONTROL_KEYS, (request, requestId) => {
       const subscriptionId = request["subscriptionId"];
       if (!isUuid(subscriptionId)) return this.#err("INVALID_REQUEST", requestId, "subscriptionId must be a UUID.");
@@ -187,11 +206,11 @@ export class ClientSession implements SubscriptionHost {
         this.#subscriptions.delete(subscriptionId);
       }
       return { ok: true, requestId, data: null };
-    });
+    }, releases);
   }
 
   handleResync(payload: unknown, reply: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
     this.#control("so:resync", payload, reply, CONTROL_KEYS, (request, requestId) => {
       const subscriptionId = request["subscriptionId"];
       if (!isUuid(subscriptionId)) return this.#err("INVALID_REQUEST", requestId, "subscriptionId must be a UUID.");
@@ -202,11 +221,11 @@ export class ClientSession implements SubscriptionHost {
   }
 
   handleReceipt(payload: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
     if (!isPlainObject(payload) || Object.keys(payload).some(key => !RECEIPT_KEYS.has(key))
       || !isUuid(payload["subscriptionId"]) || typeof payload["epoch"] !== "string" || payload["epoch"].length > 64
       || typeof payload["sequence"] !== "number" || !Number.isSafeInteger(payload["sequence"]) || payload["sequence"] < 1) {
-      this.sendError({ error: streamError("INVALID_REQUEST", { message: "The receipt is malformed.", requestId: newId() }) });
+      if (this.#protocolErrorAllowed()) this.sendError({ error: streamError("INVALID_REQUEST", { message: "The receipt is malformed.", requestId: newId() }) });
       return;
     }
     // Unsolicited subscription IDs do not allocate server state.
@@ -214,7 +233,7 @@ export class ClientSession implements SubscriptionHost {
   }
 
   handleUnknown(event: string, args: readonly unknown[]): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled() || !this.#protocolErrorAllowed()) return;
     const error = streamError("UNSUPPORTED_CAPABILITY", {
       message: `The operation "${event.slice(0, 64)}" is not supported by protocol version 1.`,
       requestId: newId()
@@ -247,6 +266,27 @@ export class ClientSession implements SubscriptionHost {
     }));
   }
 
+  /**
+   * True once the client has stopped reading and output it hasn't taken exceeds the connection budget.
+   * The connection is then dropped without waiting for that output to drain. Data frames are also
+   * bounded by the byte budgets; this covers state, error and acknowledgement frames.
+   */
+  #stalled(): boolean {
+    if (this.#closed) return true;
+    if (this.#transport.bufferedBytes() <= this.#owner.core.limits.maxPendingBytesPerConnection) return false;
+    this.#owner.core.logger.warn("Closing a connection that stopped reading", { connectionId: this.connectionId });
+    this.#teardown();
+    this.#transport.close(true);
+    return true;
+  }
+
+  /** Malformed and unknown frames share the control-request rate; a client past it is disconnected. */
+  #protocolErrorAllowed(): boolean {
+    if (this.#bucket.take()) return true;
+    this.close(streamError("OVERLOADED", { message: "Too many invalid frames; reconnect.", requestId: newId() }));
+    return false;
+  }
+
   #teardown(): void {
     if (this.#closed) return;
     this.#closed = true;
@@ -271,15 +311,16 @@ export class ClientSession implements SubscriptionHost {
     payload: unknown,
     reply: unknown,
     allowedKeys: ReadonlySet<string>,
-    operation: (request: Record<string, unknown>, requestId: string) => Result<unknown> & { after?: () => void }
+    operation: (request: Record<string, unknown>, requestId: string) => Result<unknown> & { after?: () => void },
+    exemptFromRate = false
   ): void {
     if (typeof reply !== "function") {
-      this.sendError({ error: streamError("INVALID_REQUEST", { message: `${event} requires an acknowledgement callback.`, requestId: newId() }) });
+      if (this.#protocolErrorAllowed()) this.sendError({ error: streamError("INVALID_REQUEST", { message: `${event} requires an acknowledgement callback.`, requestId: newId() }) });
       return;
     }
     const respond = reply as Reply;
     const requestId = isPlainObject(payload) && isUuid(payload["requestId"]) ? payload["requestId"] : newId();
-    if (!this.#bucket.take()) {
+    if (!exemptFromRate && !this.#bucket.take()) {
       respond(this.#err("OVERLOADED", requestId, "Too many control requests; slow down."));
       return;
     }

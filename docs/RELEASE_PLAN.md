@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat
+September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat. Next: `0.2.0-rc.1` (V1.1, V1.2 and V1.2.1), released through the same [checklist](./RELEASE_CHECKLIST.md) with the owner's go
 
 ## Goal
 
@@ -17,7 +17,7 @@ Every public claim must match verified behavior: no invented adoption, performan
 | License | MIT, © 2026 Orca Solutions: a root `LICENSE`, a copy in each package, and `license` fields. The workbench also ships the notices of the Socket.IO client code it bundles. |
 | Source control | Public at [github.com/jfricano/StreamOtter](https://github.com/jfricano/StreamOtter) since September 25, 2026 (`main` only; commits authored with a GitHub no-reply address). The pre-push scan found no secrets, keys, certificates, `.local/`, or build output in the tree or history. Both CI workflows pass: `ci.yml` on Node 24 and 26, and `extended.yml` (Kafka, install, browser, and deployment on Linux). |
 | Version fields | Every public package is `0.1.0-rc.1` (`scripts/release/set-version.mjs` keeps them together); nothing is tagged. |
-| Site and demo | A separate project, Lontra Creek, planned for `streamotter.app`; in progress. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md). |
+| Site and demo | A separate project, Lontra Creek, planned for `streamotter.dev`; in progress. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md). |
 | Guides and article | Not started. The README, [deployment guide](./DEPLOYMENT.md), and the [example README](../examples/order-dashboard/README.md) are the starting material. |
 
 ## Decisions for the owner
@@ -84,6 +84,8 @@ Preparation (no remote needed):
 - Final review before the first push: no secrets, certificates, or `.local/` content in the tree or history.
 
 **Status (September 25):** `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, and `.github/workflows/ci.yml` (every push and pull request: Node 24 and 26, the frozen-lockfile install, build, `check:contracts`, `typecheck`, `test`, `test:load`, and `test:install`) and `extended.yml` (nightly and on demand, Linux: Java from `actions/setup-java`, then `test:kafka`, `test:install` with the broker, `test:browser`, and `test:deploy`) are in place. On September 25 the repository was created (public) and `main` was pushed. `ci.yml` passed on its first run: both Node versions, every step including `test:install`, about 70 seconds per job. `extended.yml` passed on its first (manual) run: Kafka 20 / 20, install 14 / 14, browser 13 / 13, and deployment 4 / 4 on Linux, none skipped. The pre-push review found nothing to remove.
+
+**Update (October 4, V1.2.1, in `0.2.0-rc.1`):** both workflows pin their actions by commit SHA. `extended.yml` no longer uses `actions/setup-java`: `pnpm kafka:setup` downloads a pinned, checksum-verified Temurin 21 on x64 and arm64 Linux. It runs on Node 24 and 26, and a second nightly job runs `test:kafka:replicated` on Node 24. The Kafka and deployment tiers fail, rather than skip, when their broker or Caddy is missing. The extended tiers still don't run on pull requests; [CONTRIBUTING.md](../CONTRIBUTING.md#test-tiers) says how to run them for a branch.
 
 Pushing publishes code and is done only with the owner's explicit go-ahead. The repository is public, so the npm pages' links resolve.
 

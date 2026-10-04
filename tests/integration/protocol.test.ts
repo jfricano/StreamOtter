@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type { DataFrame, ErrorFrame, Result, SubscriptionFrame } from "@streamotter/contracts";
-import { sleep, startHarness, waitFor, type Harness } from "./harness.ts";
+import { OrderApp, sleep, startHarness, waitFor, type Harness } from "./harness.ts";
 import { ack, rawConnect, rawConnectError } from "./raw.ts";
 
 const AUTH = { token: "alice@acme", protocolVersion: 1 };
@@ -116,6 +116,11 @@ describe("Socket.IO protocol v1 contract", () => {
     const results = await Promise.all(Array.from({ length: 60 }, () => ack(socket, "so:unsubscribe", { requestId: uuid(), subscriptionId: uuid() })));
     const limited = results.filter(result => !result.ok && result.error.code === "OVERLOADED").length;
     assert.ok(limited >= 15 && limited <= 20, `expected about 20 limited requests, got ${limited}`);
+    // The bucket refills at 20 per second: half a second later about ten more are admitted.
+    await sleep(500);
+    const refill = await Promise.all(Array.from({ length: 30 }, () => ack(socket, "so:unsubscribe", { requestId: uuid(), subscriptionId: uuid() })));
+    const admitted = refill.filter(result => result.ok).length;
+    assert.ok(admitted >= 5 && admitted <= 16, `expected about 10 admitted after refilling, got ${admitted}`);
     socket.close();
   });
 
@@ -123,8 +128,30 @@ describe("Socket.IO protocol v1 contract", () => {
     const { socket } = await rawConnect(h.origin, AUTH);
     let disconnected = false;
     socket.on("disconnect", () => { disconnected = true; });
+    // Below the 16 KiB default the frame is answered (refusing the unknown field) and the connection stays.
+    const below = await ack(socket, "so:unsubscribe", { requestId: uuid(), subscriptionId: uuid(), padding: "x".repeat(12_000) });
+    assert.equal(below.ok, false);
+    assert.equal(disconnected, false);
     socket.emit("so:unsubscribe", { requestId: uuid(), subscriptionId: uuid(), padding: "x".repeat(20_000) }, () => undefined);
     await waitFor(() => disconnected, 3_000, "disconnect");
+  });
+
+  it("accepts a token at the 8 KiB cap with maxControlFrameBytes at its minimum", async () => {
+    const app = new OrderApp();
+    const token = "a".repeat(8_192);
+    const principalFor = app.principalFor.bind(app);
+    app.principalFor = value => principalFor(value === token ? "alice@acme" : value);
+    const small = await startHarness({ app, limits: { maxControlFrameBytes: 9_216 } });
+    try {
+      // An oversized CONNECT frame closes the transport without a connect error, so bound the wait.
+      const { socket } = await Promise.race([
+        rawConnect(small.origin, { token, protocolVersion: 1 }),
+        sleep(3_000).then(() => { throw new Error("the handshake did not complete"); })
+      ]);
+      socket.close();
+    } finally {
+      await small.close();
+    }
   });
 
   it("treats duplicate receipts as harmless, ignores unsolicited ones, and resynchronizes on a future receipt", async () => {

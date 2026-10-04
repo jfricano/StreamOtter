@@ -29,8 +29,16 @@ export function freezePrincipal(principal: Principal): Principal {
     tenantId: principal.tenantId,
     sessionId: principal.sessionId,
     expiresAt: principal.expiresAt,
-    claims: Object.freeze(structuredClone(principal.claims))
+    claims: deepFreeze(structuredClone(principal.claims))
   });
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null) {
+    for (const item of Object.values(value)) deepFreeze(item);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 /** Opaque, stable key scoped to project, tenant, and subject; changes when the account changes. */

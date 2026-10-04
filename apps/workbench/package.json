@@ -1,7 +1,7 @@
 {
   "name": "@streamotter/workbench",
   "version": "0.1.0-rc.3",
-  "description": "StreamOtter local workbench (static assets), served by `streamotter dev` from the loopback management origin.",
+  "description": "StreamOtter workbench (static assets): served by `streamotter dev` from the loopback management origin, or hosted under a site route through the workbench host contract (WHC-1).",
   "keywords": ["streamotter", "kafka", "realtime", "workbench", "developer-tools"],
   "homepage": "https://github.com/jfricano/StreamOtter/tree/main/apps/workbench#readme",
   "bugs": { "url": "https://github.com/jfricano/StreamOtter/issues" },
@@ -9,12 +9,23 @@
   "license": "MIT",
   "author": "Orca Solutions",
   "type": "module",
+  "exports": {
+    "./host": "./dist/workbench-host.json",
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
   "files": ["dist"],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "exports": {
+      "./host": "./dist/workbench-host.json",
+      "./dist/*": "./dist/*",
+      "./package.json": "./package.json"
+    }
   },
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "prepack": "node build.mjs"
   },
   "devDependencies": {
     "@streamotter/client": "workspace:*",

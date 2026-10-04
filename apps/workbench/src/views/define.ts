@@ -30,27 +30,31 @@ export function renderDefine(root: HTMLElement, state: WorkbenchState): void {
 
   editor.addEventListener("input", () => {
     state.candidateText = editor.value;
+    replace(report); // A validation result describes the text it checked, not the edited one.
     drawStatus();
     state.refreshShell();
   });
 
   const validate = h("button", { class: "primary", type: "button" }, "Validate candidate");
   validate.addEventListener("click", async () => {
+    const text = editor.value;
     let parsed: unknown;
     try {
-      parsed = JSON.parse(editor.value);
+      parsed = JSON.parse(text);
     } catch (error) {
       replace(report, h("div", { class: "banner bad", role: "alert" }, `Not valid JSON: ${(error as Error).message}`));
       return;
     }
     try {
       const result = await state.api.validate(parsed as never);
+      if (editor.value !== text) return; // Edited while validating; the result is stale.
       replace(report, result.valid
         ? h("div", { class: "banner info" }, "Valid. Structural, schema, and reference checks passed. Handlers and brokers were not contacted.")
         : h("div", { class: "banner bad", role: "alert" },
           h("strong", {}, `${result.issues.length} issue(s)`),
           h("ul", { class: "issues" }, result.issues.map(issue => h("li", {}, h("code", {}, issue.path || "/"), ` ${issue.code}: ${issue.message}`)))));
     } catch (error) {
+      if (editor.value !== text) return;
       replace(report, h("div", { class: "banner bad", role: "alert" }, error instanceof ApiError ? error.error.message : (error as Error).message));
     }
   });

@@ -2,6 +2,9 @@ import { ApiError } from "../api.ts";
 import { h, replace } from "../dom.ts";
 import { candidateDiffers, type WorkbenchState } from "../state.ts";
 
+/** The last export's download link, released when the next export replaces it. */
+let exportUrl: string | null = null;
+
 export function renderExport(root: HTMLElement, state: WorkbenchState): void {
   const output = h("div", { class: "stack" });
   const button = h("button", { class: "primary", type: "button" }, "Export candidate");
@@ -15,7 +18,9 @@ export function renderExport(root: HTMLElement, state: WorkbenchState): void {
     }
     try {
       const exported = await state.api.export(parsed as never);
+      if (exportUrl !== null) URL.revokeObjectURL(exportUrl);
       const url = URL.createObjectURL(new Blob([exported.content], { type: "application/json" }));
+      exportUrl = url;
       const differs = candidateDiffers(state);
       replace(output,
         differs
@@ -57,7 +62,7 @@ export function renderExport(root: HTMLElement, state: WorkbenchState): void {
         "import { createClient } from \"@streamotter/client\";",
         "import { channelVersions, type AppChannels } from \"./generated/streamotter.generated.js\";",
         "",
-        `const client = createClient<AppChannels>({ origin: "${state.gatewayOrigin}", getToken: ({ signal }) => session.getAccessToken(signal) });`,
+        `const client = createClient<AppChannels>({ origin: "${state.gatewayOrigin || "https://gateway.example.com"}", getToken: ({ signal }) => session.getAccessToken(signal) });`,
         `const sub = client.subscribe("${state.channels[0]?.name ?? "channelName"}", { channelVersion: channelVersions.${state.channels[0]?.name ?? "channelName"}, params });`,
         "sub.on(\"data\", event => render(event.data));",
         "sub.on(\"state\", ({ state }) => showDeliveryState(state)); // \"live\" means synchronized",

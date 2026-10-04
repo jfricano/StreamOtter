@@ -1,8 +1,8 @@
 /**
- * React usage example. One client per application scope (created once, closed on
- * unmount); one subscription per mounted component, unsubscribed on unmount.
+ * React usage example. One client per application scope (created and closed by the same
+ * effect, so it survives StrictMode's double run); one subscription per mounted component, unsubscribed on unmount.
  */
-import { StrictMode, createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { StrictMode, createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient, type Client, type StreamError, type SubscriptionState } from "@streamotter/client";
 import { channelVersions, type AppChannels, type OrderState } from "../generated/streamotter.generated.ts";
@@ -11,8 +11,17 @@ import { currentToken, gatewayOrigin, signIn, type Session } from "./session.ts"
 const ClientContext = createContext<Client<AppChannels> | null>(null);
 
 function StreamOtterProvider({ session, children }: { session: Session; children: ReactNode }) {
-  const client = useMemo(() => createClient<AppChannels>({ origin: gatewayOrigin(), getToken: () => currentToken(session) }), [session]);
-  useEffect(() => () => { void client.close(); }, [client]);
+  // Created in the effect that closes it: close() is permanent, and StrictMode runs effects twice in
+  // development, so a client made in useMemo would be closed and then reused.
+  const [client, setClient] = useState<Client<AppChannels> | null>(null);
+  useEffect(() => {
+    const created = createClient<AppChannels>({ origin: gatewayOrigin(), getToken: () => currentToken(session) });
+    setClient(created);
+    return () => {
+      setClient(null);
+      void created.close();
+    };
+  }, [session]);
   return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
 }
 
@@ -25,6 +34,7 @@ function useOrderStatus(orderId: string): { order: OrderState | null; revision: 
   useEffect(() => {
     if (client === null) return;
     setValue({ order: null, revision: null });
+    setState("idle");
     setError(null);
     const subscription = client.subscribe("orderStatus", { channelVersion: channelVersions.orderStatus, params: { orderId } });
     const offData = subscription.on("data", event => setValue({ order: event.data, revision: event.revision }));

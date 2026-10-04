@@ -44,7 +44,7 @@ job.on("error", error => console.warn(`[${error.code}] ${error.message}`));
 await job.ready({ timeoutMs: 30_000 });               // resolves at the next `live`
 ```
 
-`subscribe()` returns immediately and starts in the next microtask, so listeners attached synchronously never miss the snapshot. Data events are not replayed to listeners added later. Each `data` event carries `kind` (`"snapshot"` or `"update"`), `revision` (a decimal string), `data`, and `receivedAt`.
+`subscribe()` returns immediately and starts in the next microtask, so listeners attached synchronously never miss the snapshot. Data events are not replayed to listeners added later. `on()` returns a function that removes the listener; once removed, it is not called again, even for an event that is already being dispatched. Each `data` event carries `kind` (`"snapshot"` or `"update"`), `revision` (a decimal string), `data`, and `receivedAt`.
 
 The gateway decides who may see what. `getToken` supplies your application's own session token, which the gateway's `authenticate` handler verifies. The browser never chooses its tenant.
 
@@ -61,6 +61,8 @@ The gateway decides who may see what. `getToken` supplies your application's own
 
 `live` means synchronized up to the gateway's drain boundary. It is not a wall-clock freshness guarantee. Treat every other state as "may be stale".
 
+`resync()` on a `stale` subscription leaves it `stale` until the gateway actually starts the new attempt (for example, once a paused source resumes), and then it goes `authorizing`. Calls made while one is pending share it. If the attempt gives up, the subscription enters `resync-required` and `resync()` rejects with `RESYNC_REQUIRED`.
+
 The client has its own connection state (`client.state`, `client.on("state", …)`): `idle`, `connecting`, `connected`, `reconnecting`, `auth-required`, `closed`. Network failures reconnect automatically with full-jitter backoff (500 ms up to 30 s) while subscriptions are active, and every active subscription gets a fresh snapshot. `auth-required` means the token was rejected or expired, or `getToken` failed or timed out (10 s). Refresh the user's session, then call `client.reconnect()`. If the signed-in account changes, the old subscriptions close with `UNAUTHENTICATED` instead of showing the previous user's data.
 
 ## Handle errors
@@ -70,10 +72,14 @@ Every failure is a `StreamError`: `{ code, message, retryable, requestId, detail
 - `FORBIDDEN`: this user may not see this channel instance. Unknown channels also return `FORBIDDEN`, so nothing leaks. Don't retry.
 - `UNAUTHENTICATED`: the session is invalid or expired. Re-authenticate, then `client.reconnect()`.
 - `RESYNC_REQUIRED`, `TIMEOUT`, `SOURCE_UNAVAILABLE`, `OVERLOADED`: may work later. Offer a retry, but don't loop.
-- `INVALID_PARAMS`: the parameters don't match the channel's schema.
+- `INVALID_PARAMS`: the parameters don't match the channel's schema. A production gateway reports a schema mismatch as `FORBIDDEN`, so it doesn't reveal the channel's parameters.
 - `CLIENT_CLOSED`: the client was closed.
 
 A listener that throws, or returns a rejected promise, fails its subscription with `HANDLER_FAILED`. Keep listeners cheap: state replacement, not heavy processing.
+
+## Source failures on the server (V1.1)
+
+The source-failure handling new in 0.2.0-rc.1 (V1.1) changes nothing in the browser: no new state, error code, or protocol message. A source held at a bad record looks like any unavailable source: views go `stale` and recover by themselves once it is repaired. The [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) is for whoever runs the gateway.
 
 ## Clean up
 
@@ -89,15 +95,24 @@ Unsubscribe when a view unmounts. Close a shared client only when its owning app
 Create one client per signed-in session and one subscription per mounted component:
 
 ```tsx
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createClient, type Client, type StreamError, type SubscriptionState } from "@streamotter/client";
 import { channelVersions, type AppChannels, type JobProgress } from "./generated/streamotter.generated.js";
 
 const ClientContext = createContext<Client<AppChannels> | null>(null);
 
 export function StreamOtterProvider({ getToken, children }: { getToken: () => Promise<string>; children: ReactNode }) {
-  const client = useMemo(() => createClient<AppChannels>({ getToken }), [getToken]);
-  useEffect(() => () => { void client.close(); }, [client]);
+  // Create the client in the effect that closes it. close() is permanent, and React StrictMode runs
+  // effects twice in development, so a client from useMemo would be closed and then reused.
+  const [client, setClient] = useState<Client<AppChannels> | null>(null);
+  useEffect(() => {
+    const created = createClient<AppChannels>({ getToken });
+    setClient(created);
+    return () => {
+      setClient(null);
+      void created.close();
+    };
+  }, [getToken]);
   return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
 }
 

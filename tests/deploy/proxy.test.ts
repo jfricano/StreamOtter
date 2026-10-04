@@ -171,10 +171,17 @@ describe("deployment behind a TLS-terminating reverse proxy", { skip: ready ? fa
   });
 
   it("recovers the browser view across a graceful gateway restart", async () => {
+    const before = problems.length;
     assert.equal(await stop(gateway, "SIGTERM"), 0, "graceful shutdown");
     await page.locator(".badge", { hasText: "Reconnecting" }).first().waitFor({ timeout: 10_000 });
     gateway = await startGateway();
     await page.locator(".badge", { hasText: "Live" }).first().waitFor({ timeout: 60_000 });
+    // While no gateway is listening, the proxy answers a reconnect attempt with 502 and the
+    // browser logs the failed handshake itself. Whether an attempt lands in that window depends
+    // on the client's backoff jitter, so only that error, on this socket and only during the
+    // restart, is expected; any other problem still fails the test.
+    const handshake = new RegExp(`^console: WebSocket connection to 'wss://localhost:${new URL(origin).port}/streamotter/socket\\.io/\\?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 502$`);
+    problems.splice(before, problems.length - before, ...problems.slice(before).filter(problem => !handshake.test(problem)));
     await page.getByRole("button", { name: "Advance order" }).click();
     await page.locator(".status-title", { hasText: /^packed$/i }).waitFor({ timeout: 20_000 });
     assert.match(await page.locator(".order-body").innerText(), /revision 3/);

@@ -1,4 +1,5 @@
 import { StreamOtterError } from "./errors.ts";
+import { validateFailureHandling } from "./failures.ts";
 import { validateLimits } from "./limits.ts";
 import { IDENTIFIER_PATTERN, isPlainObject } from "./primitives.ts";
 import { pointer, validateParamsSchema, validateSchemaDefinition } from "./schema.ts";
@@ -40,7 +41,7 @@ class Checker {
   keys(value: Record<string, unknown>, path: string, required: readonly string[], optional: readonly string[] = []): void {
     for (const key of Object.keys(value)) {
       if (required.includes(key) || optional.includes(key)) continue;
-      const deferred = DEFERRED_FEATURES[key];
+      const deferred = Object.hasOwn(DEFERRED_FEATURES, key) ? DEFERRED_FEATURES[key] : undefined;
       if (deferred !== undefined) this.add(pointer(path, key), "UNSUPPORTED_FEATURE", deferred);
       else this.add(pointer(path, key), "UNKNOWN_KEY", `Unknown key "${key}".`);
     }
@@ -93,7 +94,7 @@ function isOrigin(value: unknown): value is string {
 export function validateProjectConfig(input: unknown): ConfigValidation {
   const c = new Checker();
   if (!c.object(input, "", "The configuration")) return { valid: false, issues: c.issues };
-  c.keys(input, "", ["configVersion", "projectId", "gateway", "connections", "sources", "schemas", "channels"], ["limits"]);
+  c.keys(input, "", ["configVersion", "projectId", "gateway", "connections", "sources", "schemas", "channels"], ["limits", "failureHandling"]);
 
   if (input["configVersion"] !== undefined && input["configVersion"] !== 1) {
     c.add("/configVersion", "UNSUPPORTED_FEATURE", "Only configVersion 1 is supported.");
@@ -170,6 +171,7 @@ export function validateProjectConfig(input: unknown): ConfigValidation {
   }
 
   const sourceIds = new Set<string>();
+  const sourceShapes = new Map<string, { kind: "kafka" | "fixture"; topics: readonly string[] }>();
   const kafkaProfiles = new Set<string>();
   const consumerGroups = new Map<string, string>();
   const sources = input["sources"];
@@ -224,10 +226,12 @@ export function validateProjectConfig(input: unknown): ConfigValidation {
         if (startFrom !== undefined && startFrom !== "latest" && startFrom !== "earliest") {
           c.add(pointer(path, "startFrom"), "INVALID_VALUE", "startFrom must be latest or earliest.");
         }
+        sourceShapes.set(id, { kind: "kafka", topics: Array.isArray(topics) ? topics.filter((topic): topic is string => typeof topic === "string") : [] });
       } else if (kind === "fixture") {
         c.keys(source, path, ["kind", "generation", "fixtureRef"]);
         if (source["generation"] !== undefined) c.identifier(source["generation"], pointer(path, "generation"), "generation");
         if (source["fixtureRef"] !== undefined) c.identifier(source["fixtureRef"], pointer(path, "fixtureRef"), "fixtureRef");
+        sourceShapes.set(id, { kind: "fixture", topics: [] });
       } else {
         c.add(pointer(path, "kind"), "UNSUPPORTED_FEATURE", "Source kind must be kafka or fixture in V1.");
       }
@@ -296,6 +300,7 @@ export function validateProjectConfig(input: unknown): ConfigValidation {
   }
 
   validateLimits(input["limits"], "/limits", c.issues);
+  validateFailureHandling(input["failureHandling"], "/failureHandling", { sources: sourceShapes }, c.issues);
   return { valid: c.issues.length === 0, issues: c.issues };
 }
 

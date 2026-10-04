@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { createServer, type AddressInfo } from "node:net";
 import { describe, it } from "node:test";
+import { generateFiles } from "@streamotter/cli";
+import { MAX_NESTING_DEPTH, validateProjectConfig, type Schema } from "@streamotter/contracts";
 import { createGateway, defineProject, silentLogger, type ProjectConfig } from "@streamotter/gateway";
 import { OrderApp, orderConfig, type TestChannels } from "./harness.ts";
 
@@ -97,8 +100,36 @@ describe("acceptance 8–9: configuration boundaries", () => {
     const { origin } = await first.start();
     const port = Number(new URL(origin).port);
     const config = { ...orderConfig(), gateway: { ...orderConfig().gateway, port } };
-    const second = createGateway({ config, handlers: app.handlers(), mode: "development", development, logger: silentLogger });
+    // A free port for the second gateway's health listener, which starts before the gateway's own listener.
+    const probe = createServer();
+    await new Promise<void>(done => probe.listen(0, "127.0.0.1", done));
+    const healthPort = (probe.address() as AddressInfo).port;
+    await new Promise(done => probe.close(done));
+    const second = createGateway({ config, handlers: app.handlers(), mode: "development", development, logger: silentLogger, health: { host: "127.0.0.1", port: healthPort } });
     await assert.rejects(second.start(), new RegExp(`Port ${port} is already in use`));
+    // Rolled back: the health listener this attempt opened is closed again, and the port can be reused.
+    await assert.rejects(fetch(`http://127.0.0.1:${healthPort}/health/live`));
+    const reuse = createServer();
+    await new Promise<void>((done, fail) => { reuse.once("error", fail); reuse.listen(healthPort, "127.0.0.1", done); });
+    await new Promise(done => reuse.close(done));
     await first.stop();
+  });
+
+  it("accepts a payload schema nested to the documented limit everywhere the configuration is used", async () => {
+    let deep: Schema = { type: "string", enum: ["leaf"] };
+    for (let level = 1; level < MAX_NESTING_DEPTH; level++) {
+      deep = { type: "object", additionalProperties: false, required: ["k"], properties: { k: deep } };
+    }
+    const base = orderConfig();
+    const config = { ...base, schemas: { ...base.schemas, Deep: deep }, channels: { orderStatus: { ...base.channels.orderStatus, payloadSchema: "Deep" } } };
+    assert.equal(validateProjectConfig(config).valid, true);
+    assert.doesNotThrow(() => defineProject(config));
+    assert.equal(generateFiles(config).length, 2);
+    const gateway = createGateway<TestChannels>({
+      config: config as ProjectConfig<TestChannels>, handlers: new OrderApp().handlers(), mode: "development",
+      development: { principals: {}, fixtures: { orders: [] } }, logger: silentLogger
+    });
+    await gateway.start();
+    await gateway.stop();
   });
 });

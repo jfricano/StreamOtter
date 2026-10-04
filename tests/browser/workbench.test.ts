@@ -26,7 +26,7 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
   before(async () => {
     h = await startHarness({
       principals: { alice: { subject: "alice", tenantId: "acme", sessionId: "dev-alice", expiresAt: FAR_FUTURE, claims: {} } },
-      fixtures: [orderRecord("acme", "ord_1", 2, "processing", 40), orderRecord("acme", "ord_1", 3, "done", 100)]
+      fixtures: [orderRecord("acme", "ord_1", 2, "processing", 40), orderRecord("acme", "ord_1", 3, "done", 100), orderRecord("acme", "ord_1", 4, "done", 100)]
     });
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
     m = await startManagementServer({ gateway: h.gateway, port: 0, token: TOKEN, workbenchDir: WORKBENCH });
@@ -50,6 +50,10 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     await page.getByRole("button", { name: "Open workbench" }).click();
     await page.getByText("Sources ready").waitFor();
     assert.equal(await tab("Connect").getAttribute("aria-selected"), "true");
+    // Native mode (no boot block): the mount is not marked, and the page's own styles.css applies.
+    assert.equal(await page.locator("#app").getAttribute("data-streamotter-workbench"), null);
+    assert.deepEqual(await page.evaluate(() => Array.from(document.styleSheets).map(sheet => sheet.href === null ? "inline" : new URL(sheet.href).pathname)), ["/styles.css"]);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--radius").trim()), "8px");
     problems.length = 0; // The deliberate wrong-token attempt logged expected 401 responses.
   });
 
@@ -83,6 +87,15 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     assert.ok(activity.indexOf("Snapshot at revision 3.") < activity.indexOf("Subscription stale."), "newest first: stale, then the fresh snapshot");
   });
 
+  it("Preview keeps drawing a running preview after a tab switch", async () => {
+    await tab("Connect").click();
+    await tab("Preview").click();
+    await page.getByText("revision 3", { exact: true }).waitFor();
+    await h.advance(1);
+    await page.getByText("revision 4", { exact: true }).waitFor();
+    await page.getByRole("list", { name: "Preview activity" }).getByText("Update at revision 4.").waitFor();
+  });
+
   it("Inspect lists the stages a record passed through", async () => {
     await tab("Inspect").click();
     const table = page.locator("tbody");
@@ -91,6 +104,37 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     }
     await page.getByLabel("Filter by outcome").selectOption("failed");
     await page.getByText("No traces yet").waitFor();
+  });
+
+  it("Inspect drops a response for the previous filter that arrives after the filter changed", async () => {
+    await page.getByLabel("Follow new traces").uncheck();
+    await page.getByLabel("Filter by outcome").selectOption("");
+    await page.locator("tbody code", { hasText: /^commit$/ }).first().waitFor();
+    let release!: () => void;
+    const released = new Promise<void>(done => { release = done; });
+    let held = 0;
+    let delivered!: () => void;
+    const stale = new Promise<void>(done => { delivered = done; });
+    await page.route(url => url.pathname.endsWith("/traces") && !url.searchParams.has("outcome"), async route => {
+      if (held++ > 0) return route.continue();
+      const response = await route.fetch(); // Unfiltered rows, held back until the filter has changed.
+      await released;
+      await route.fulfill({ response });
+      delivered();
+    });
+    try {
+      await page.getByRole("button", { name: "Reload latest" }).click();
+      while (held === 0) await page.waitForTimeout(20);
+      await page.getByLabel("Filter by outcome").selectOption("failed");
+      await page.getByText("No traces yet").waitFor();
+      release();
+      await stale;
+      await page.waitForTimeout(200);
+      assert.equal(await page.locator("tbody code").count(), 0, "the unfiltered rows were dropped");
+    } finally {
+      await page.unrouteAll({ behavior: "wait" });
+      await page.getByLabel("Follow new traces").check();
+    }
   });
 
   it("Define marks an edited candidate as requiring a restart and validates it", async () => {
@@ -104,10 +148,36 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     await page.getByText(/^Valid\./).waitFor();
     candidate["commands"] = {};
     await editor.fill(JSON.stringify(candidate, null, 2));
+    assert.equal(await page.getByText(/^Valid\./).count(), 0, "an edit clears the earlier result");
     await page.getByRole("button", { name: "Validate candidate" }).click();
     await page.getByText(/Commands are a V3 feature/).waitFor();
     delete candidate["commands"];
     await editor.fill(JSON.stringify(candidate, null, 2));
+
+    // A result that arrives after the candidate was edited describes the old text and is dropped.
+    let release!: () => void;
+    const released = new Promise<void>(done => { release = done; });
+    let held = false;
+    let delivered!: () => void;
+    const stale = new Promise<void>(done => { delivered = done; });
+    await page.route(url => url.pathname.endsWith("/config/validate"), async route => {
+      held = true;
+      const response = await route.fetch();
+      await released;
+      await route.fulfill({ response });
+      delivered();
+    });
+    try {
+      await page.getByRole("button", { name: "Validate candidate" }).click();
+      while (!held) await page.waitForTimeout(20);
+      await editor.fill(JSON.stringify(candidate));
+      release();
+      await stale;
+      await page.waitForTimeout(200);
+      assert.equal(await page.getByText(/^Valid\./).count(), 0, "the stale result was dropped");
+    } finally {
+      await page.unrouteAll({ behavior: "wait" });
+    }
   });
 
   it("Export returns canonical content whose fingerprint matches the CLI's algorithm", async () => {

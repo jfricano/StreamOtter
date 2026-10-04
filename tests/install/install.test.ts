@@ -15,6 +15,7 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -116,6 +117,17 @@ function pnpm(): { command: string; args: string[] } {
     return /\.[cm]?js$/.test(execPath) ? { command: process.execPath, args: [execPath] } : { command: execPath, args: [] };
   }
   return { command: "npx", args: ["-y", rootManifest.packageManager ?? "pnpm"] };
+}
+
+/** One file of a tarball as bytes (tar() decodes stdout as text). */
+function tarBytes(file: string, entry: string): Promise<Buffer> {
+  return new Promise((done, fail) => {
+    const child = spawn("tar", ["-xOzf", file, entry], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+    const chunks: Buffer[] = [];
+    child.stdout.on("data", chunk => { chunks.push(chunk as Buffer); });
+    child.on("error", fail);
+    child.on("close", code => (code === 0 ? done(Buffer.concat(chunks)) : fail(new Error(`tar exited with ${code} for ${entry}`))));
+  });
 }
 
 async function tar(args: readonly string[]): Promise<string> {
@@ -237,14 +249,28 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
         for (const source of sources) assert.ok(entries.includes(`dist/${source}.d.ts`), `declarations for ${source}`);
         if (pkg.name === "streamotter") {
           assert.equal(manifest.main, undefined, "no root entry point: browser and server code are separate subpaths");
-          assert.deepEqual([...sources].sort(), ["cli", "client", "contracts", "gateway", "management"]);
+          assert.deepEqual([...sources].sort(), ["cli", "client", "contracts", "gateway", "management", "operator"]);
         } else {
           assert.equal(manifest.main, "./dist/index.js");
           assert.equal(manifest.types, "./dist/index.d.ts");
           assert.ok(entries.includes("dist/index.js") && entries.includes("dist/index.d.ts"), "main and types files exist");
         }
       } else {
-        for (const asset of ["index.html", "app.js", "styles.css", "THIRD_PARTY_LICENSES.txt"]) assert.ok(entries.includes(`dist/${asset}`), `workbench ${asset}`);
+        for (const asset of ["index.html", "app.js", "styles.css", "workbench-host.css", "THIRD_PARTY_LICENSES.txt", "workbench-host.json"]) assert.ok(entries.includes(`dist/${asset}`), `workbench ${asset}`);
+        // WHC-1 §2: the host manifest names the packed files with matching Subresource Integrity values.
+        const host = JSON.parse(await tar(["-xOzf", file, "package/dist/workbench-host.json"])) as {
+          hostContract: number; package: string; version: string; integrity: Record<string, string>; entry: Record<string, string>;
+        };
+        assert.equal(host.hostContract, 1);
+        assert.equal(host.package, "@streamotter/workbench");
+        assert.equal(host.version, VERSION, "the manifest reports the exact packed version");
+        assert.deepEqual(Object.keys(host.integrity).sort(), ["app.js", "styles.css", "workbench-host.css"]);
+        assert.equal(host.entry["hostStyle"], "workbench-host.css", "hosts link the scoped stylesheet (WHC-1 §2.1)");
+        for (const asset of Object.values(host.entry)) assert.ok(entries.includes(`dist/${asset}`), `manifest entry ${asset} is packed`);
+        for (const [asset, value] of Object.entries(host.integrity)) {
+          const bytes = await tarBytes(file, `package/dist/${asset}`);
+          assert.equal(value, `sha384-${createHash("sha384").update(bytes).digest("base64")}`, `integrity of ${asset}`);
+        }
       }
       if (pkg.name === "@streamotter/cli" || pkg.name === "streamotter") {
         assert.ok(entries.includes("bin/streamotter.js"));
@@ -264,6 +290,21 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
       assert.ok(!existsSync(join(directory, "node_modules/@streamotter")), `${pkg.name} has no nested StreamOtter copies`);
     }
     assert.ok(existsSync(bin("streamotter")), "the streamotter bin is linked");
+  });
+
+  it("@streamotter/workbench: the host manifest and assets resolve through the package exports (WHC-1 §2)", async () => {
+    await writeFile(join(consumer, "workbench-host-check.mjs"), WORKBENCH_HOST_CHECK);
+    const checked = await run(process.execPath, ["workbench-host-check.mjs"], { cwd: consumer });
+    assert.equal(checked.code, 0, `${checked.stdout}\n${checked.stderr}`);
+    const result = JSON.parse(checked.stdout) as { manifest: string; script: string; hostStyle: string; packageJson: string; version: string; imported: string; integrity: boolean };
+    const directory = join(await realpath(consumer), "node_modules/@streamotter/workbench");
+    assert.equal(result.manifest, join(directory, "dist/workbench-host.json"));
+    assert.equal(result.script, join(directory, "dist/app.js"));
+    assert.equal(result.hostStyle, join(directory, "dist/workbench-host.css"));
+    assert.equal(result.packageJson, join(directory, "package.json"), "the CLI's require.resolve of package.json keeps working");
+    assert.equal(result.version, VERSION);
+    assert.equal(result.imported, VERSION, "import ... with { type: \"json\" } works too");
+    assert.equal(result.integrity, true);
   });
 
   it("CLI: init, validate, generate", async () => {
@@ -322,6 +363,42 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     } finally {
       assert.equal(await dev.stop("SIGINT"), 0, `graceful shutdown on SIGINT\n${dev.output()}`);
     }
+  });
+
+  it("CLI: the operator socket survives a crash and restart of the installed gateway (V1.1 API §7, §10)", { skip: process.platform === "win32" ? "Unix-domain sockets only" : false }, async () => {
+    const config = JSON.parse(await readFile(join(consumer, "app/streamotter.json"), "utf8")) as { gateway: { port: number }; sources: Record<string, unknown> };
+    config.gateway.port = 0;
+    const sourceId = Object.keys(config.sources)[0]!;
+    await writeFile(join(consumer, "app/streamotter.failures.json"), `${JSON.stringify({ ...config, failureHandling: { sources: { [sourceId]: { invalidJson: "quarantine-hold" } } } }, null, 2)}\n`);
+    const state = join(consumer, "state");
+    const init = await run(bin("streamotter"), ["init", "--failures", "--config", "app/streamotter.failures.json", "--state-dir", state], { cwd: consumer });
+    assert.equal(init.code, 0, init.stderr);
+    const args = ["dev", "--config", "app/streamotter.failures.json", "--handlers", "app/server/handlers.mjs", "--management-port", "0", "--state-dir", state, "--operator-socket"];
+    const status = async () => {
+      const result = await run(bin("streamotter"), ["status", "--state-dir", state, "--json"], { cwd: consumer, timeoutMs: 30_000 });
+      assert.equal(result.code, 0, result.stderr);
+      return JSON.parse(result.stdout) as { store: { kind: string }; sources: { sourceId: string }[] };
+    };
+
+    const first = startProcess(bin("streamotter"), args, consumer);
+    await waitFor(() => /Press Ctrl\+C to stop/.test(first.output()), 30_000, `dev banner\n${first.output()}`);
+    const before = await status();
+    assert.equal(before.store.kind, "sqlite");
+    assert.deepEqual(before.sources.map(source => source.sourceId), [sourceId]);
+    // A crash leaves the socket, the token and the journal lock behind.
+    await first.stop("SIGKILL");
+    assert.ok(existsSync(join(state, "run", "operator.sock")), "the crashed gateway left its socket");
+
+    const second = startProcess(bin("streamotter"), args, consumer);
+    try {
+      await waitFor(() => /Press Ctrl\+C to stop/.test(second.output()), 30_000, `dev banner after the crash\n${second.output()}`);
+      assert.deepEqual((await status()).sources.map(source => source.sourceId), [sourceId]);
+    } finally {
+      assert.equal(await second.stop("SIGINT"), 0, `graceful shutdown on SIGINT\n${second.output()}`);
+    }
+    assert.equal(existsSync(join(state, "run", "operator.sock")), false, "a graceful stop removes the socket");
+    const stopped = await run(bin("streamotter"), ["status", "--state-dir", state], { cwd: consumer });
+    assert.equal(stopped.code, 1);
   });
 
   it("CLI: start refuses the development scaffold in production", async () => {
@@ -528,6 +605,7 @@ console.log(JSON.stringify({ percents, states }));
 const GATEWAY_CHECK = `import { createClient } from "@streamotter/client";
 import { createGateway, defineProject, silentLogger } from "@streamotter/gateway";
 import { startManagementServer } from "@streamotter/gateway/management";
+import { getGatewayOperator } from "@streamotter/gateway/operator";
 
 const config = defineProject({
   configVersion: 1,
@@ -590,6 +668,13 @@ const until = async (predicate, label) => {
 
 const gateway = createGateway({ config, handlers, mode: "development", development, logger: silentLogger });
 const { origin } = await gateway.start();
+// The operator subpath resolves; without failureHandling there is no operator service (V1.1 API §6).
+try {
+  getGatewayOperator(gateway);
+  throw new Error("expected no operator service");
+} catch (error) {
+  if (error.code !== "UNSUPPORTED_CAPABILITY") throw error;
+}
 const management = await startManagementServer({ gateway, port: 0, workbenchDir: null });
 const client = createClient({ origin, getToken: () => "alice-token" });
 const order = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
@@ -645,10 +730,32 @@ export function watchJob(element: HTMLElement): () => Promise<void> {
 `;
 
 /** Server code type-checked against the published gateway, contracts, and CLI declarations (NodeNext). */
+/** Resolves the WHC-1 manifest and assets the way a host's build would, and checks the integrity values. */
+const WORKBENCH_HOST_CHECK = `import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+const require = createRequire(import.meta.url);
+const manifestPath = require.resolve("@streamotter/workbench/host");
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const imported = (await import("@streamotter/workbench/host", { with: { type: "json" } })).default;
+const integrity = Object.entries(manifest.integrity).every(([file, value]) =>
+  value === "sha384-" + createHash("sha384").update(readFileSync(join(dirname(manifestPath), file))).digest("base64"));
+console.log(JSON.stringify({
+  manifest: manifestPath,
+  script: require.resolve("@streamotter/workbench/dist/" + manifest.entry.script),
+  hostStyle: require.resolve("@streamotter/workbench/dist/" + manifest.entry.hostStyle),
+  packageJson: require.resolve("@streamotter/workbench/package.json"),
+  version: manifest.version,
+  imported: imported.version,
+  integrity
+}));
+`;
+
 const SERVER_CHECK = `import { generateFiles, EXIT } from "@streamotter/cli";
 import { compareRevisions, validateProjectConfig, type ProjectConfig } from "@streamotter/contracts";
 import { createGateway, defineProject, silentLogger, type ChannelHandlers, type HandlerRegistry, type Principal } from "@streamotter/gateway";
-import { startManagementServer } from "@streamotter/gateway/management";
+import { createManagementHandler, startManagementServer, type ManagementHandlerOptions } from "@streamotter/gateway/management";
 import { readFileSync } from "node:fs";
 import type { AppChannels } from "../app/generated/streamotter.generated.js";
 
@@ -676,6 +783,13 @@ export async function main(): Promise<number> {
   await gateway.stop({ timeoutMs: 5_000 });
   const starter: typeof startManagementServer = startManagementServer;
   void starter;
+  const hostOptions: ManagementHandlerOptions = { gateway, operations: ["health", "config"], authorize: () => false };
+  // @ts-expect-error: WHC-1 has no CLI-only operations such as retiring a recovery boundary
+  const unsafe: ManagementHandlerOptions["operations"] = ["sources.retire-boundary"];
+  void unsafe;
+  const mount: typeof createManagementHandler = createManagementHandler;
+  void hostOptions;
+  void mount;
   const valid: boolean = validateProjectConfig(config).valid;
   const files: readonly { path: string; content: string }[] = generateFiles(config);
   return valid && compareRevisions("2", "10") < 0 && files.length > 0 && address.path.length > 0 && result.closedConnections >= 0 ? EXIT.ok : EXIT.runtime;

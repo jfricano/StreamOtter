@@ -45,7 +45,8 @@ pnpm test:kafka:replicated
 ```
 
 - [ ] All required suites pass on the selected release source. The candidate must include the replicated broker tier; older source without it is rejected by preparation.
-- [ ] Packed installation's real TLS Kafka case passes rather than skips; replicated tests pass with no skip override.
+- [ ] Packed installation's real TLS Kafka case passes rather than skips. `pnpm test:kafka:replicated` reports three tests passed (the environment check and both failure tests), none skipped; leave `STREAMOTTER_ALLOW_SKIP` unset.
+- [ ] On the first macOS rehearsal, replicated start reports "Replicated Kafka 4.1.2 is ready"; stop reports each node stopped and leaves no broker Kafka `java` process running.
 - [ ] Review all six packed file lists and the exact artifact manifest in the workflow summary. `pnpm pack` rewrites internal workspace dependencies to the selected version and applies `publishConfig.exports`; directory-based `npm publish` is not substituted.
 - [ ] Record additional handoff limitations honestly, including acceptance checks that this workflow does not execute.
 
@@ -64,7 +65,7 @@ git push origin v<version>
 ## 4. Select and approve publication (owner)
 
 - [ ] Actions → **Publish approved npm release** → **Run workflow**, branch `main`, explicit existing release tag and distribution tag.
-- [ ] Stable versions use `latest`; prereleases accept the explicitly selected `latest` or `next`. For `0.2.0-rc.1`, the team recommends `latest` because no stable version exists; the owner makes the final selection.
+- [ ] Stable versions use `latest`; prereleases accept the explicitly selected `latest` or `next`. For `0.2.0-rc.1`, Jason approved `latest`; no secondary `next` promotion is included. Future releases still require an explicit selection.
 - [ ] Review preparation results, source SHA, package versions, selected distribution tag, and artifact hashes.
 - [ ] Approve the `npm-release` job for this release only. No token/login/OTP needs to be supplied to the workflow.
 

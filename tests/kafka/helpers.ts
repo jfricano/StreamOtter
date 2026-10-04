@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import kafkajs, { type Admin } from "kafkajs";
 import { createClient, type Client } from "@streamotter/client";
 import {
-  silentLogger, type GatewayLogger, type KafkaConnection, type Limits, type ProjectConfig
+  silentLogger, type FailureHandlingConfig, type GatewayLogger, type KafkaConnection, type Limits, type ProjectConfig,
+  type SourceRecoveryHandlers
 } from "@streamotter/gateway";
 import { createGatewayRuntime, getGatewayInternals, type GatewayInternals, type InternalGatewayOptions } from "@streamotter/gateway/internals";
 import { OrderApp, orderConfig, type TestChannels } from "../integration/harness.ts";
@@ -28,6 +29,13 @@ export async function testAdmin(): Promise<Admin> {
   await adminConnected;
   return admin;
 }
+
+/**
+ * The Kafka, replicated and deployment tiers skip their tests when what they need isn't running. Each
+ * tier also has a 00-environment check that fails unless STREAMOTTER_ALLOW_SKIP=1, so a run with nothing
+ * started can't pass with every test skipped.
+ */
+export const ALLOW_SKIP = process.env.STREAMOTTER_ALLOW_SKIP === "1";
 
 /** True when the local broker from scripts/kafka/start.sh is reachable. */
 export async function brokerAvailable(): Promise<boolean> {
@@ -61,11 +69,11 @@ export async function waitForEmptyGroup(groupId: string, timeoutMs = 45_000): Pr
   }
 }
 
-export async function createTopic(partitions = 3): Promise<string> {
+export async function createTopic(partitions = 3, configEntries: { name: string; value: string }[] = []): Promise<string> {
   const topic = uniqueName("so-test");
   const client = await testAdmin();
   try {
-    await client.createTopics({ topics: [{ topic, numPartitions: partitions }], waitForLeaders: true });
+    await client.createTopics({ topics: [{ topic, numPartitions: partitions, configEntries }], waitForLeaders: true });
   } catch (error) {
     // A broker that has only just started can report the new topic's partitions as unknown while
     // their leaders are elected. The topic was created; wait for its leaders below instead.
@@ -91,6 +99,41 @@ export async function produce(topic: string, messages: { key: string | null; val
   })();
   const producer = await producerPromise;
   await producer.send({ topic, messages: messages.map(message => ({ ...message })) });
+}
+
+/** Produces records byte for byte: binary keys and values, null values, repeated headers, explicit timestamps. */
+export async function produceRaw(topic: string, messages: {
+  key: Buffer | null;
+  value: Buffer | null;
+  headers?: Record<string, Buffer | Buffer[]>;
+  partition?: number;
+  timestamp?: string;
+}[]): Promise<void> {
+  producerPromise ??= (async () => {
+    const producer = new Kafka({ clientId: "streamotter-tests-producer", brokers: PLAINTEXT, logLevel: logLevel.NOTHING }).producer();
+    await producer.connect();
+    return producer;
+  })();
+  const producer = await producerPromise;
+  await producer.send({ topic, messages: messages.map(message => ({ ...message })) });
+}
+
+/** Reads every record currently in a topic from the beginning, with raw bytes and headers. */
+export async function readTopic(topic: string, expected: number, timeoutMs = 15_000): Promise<kafkajs.KafkaMessage[]> {
+  const consumer = new Kafka({ clientId: "streamotter-tests-reader", brokers: PLAINTEXT, logLevel: logLevel.NOTHING }).consumer({ groupId: uniqueName("so-reader") });
+  const messages: kafkajs.KafkaMessage[] = [];
+  await consumer.connect();
+  try {
+    await consumer.subscribe({ topics: [topic], fromBeginning: true });
+    await consumer.run({ eachMessage: async ({ message }) => { messages.push(message); } });
+    const deadline = Date.now() + timeoutMs;
+    while (messages.length < expected && Date.now() < deadline) await new Promise(done => setTimeout(done, 100));
+    // Give a duplicate the chance to show up before reporting.
+    await new Promise(done => setTimeout(done, 1_000));
+  } finally {
+    await consumer.disconnect();
+  }
+  return messages;
 }
 
 export function orderValue(tenantId: string, orderId: string, revision: number, status: "queued" | "processing" | "done", progress: number): string {
@@ -122,6 +165,7 @@ export function kafkaConfig(options: {
   startFrom?: "latest" | "earliest";
   limits?: Partial<Limits>;
   port?: number;
+  failureHandling?: FailureHandlingConfig;
 }): ProjectConfig<TestChannels> {
   const base = orderConfig(options.limits);
   return {
@@ -133,7 +177,8 @@ export function kafkaConfig(options: {
         kind: "kafka", generation: "orders-1", connectionRef: "cluster", topics: [options.topic],
         consumerGroup: options.group, codec: "json", startFrom: options.startFrom ?? "earliest"
       }
-    }
+    },
+    ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling })
   };
 }
 
@@ -160,6 +205,11 @@ export async function startKafkaHarness(options: {
   port?: number;
   logger?: GatewayLogger;
   internal?: InternalGatewayOptions;
+  failureHandling?: FailureHandlingConfig;
+  stateDirectory?: string;
+  recovery?: Record<string, SourceRecoveryHandlers>;
+  /** The read-only health listener (ADR-15C §4). */
+  health?: { host?: string; port: number };
 } = {}): Promise<KafkaHarness> {
   const topic = options.topic ?? await createTopic();
   const group = options.group ?? uniqueName("so-group");
@@ -171,9 +221,12 @@ export async function startKafkaHarness(options: {
       ...(options.connection === undefined ? {} : { connection: options.connection }),
       ...(options.startFrom === undefined ? {} : { startFrom: options.startFrom }),
       ...(options.limits === undefined ? {} : { limits: options.limits }),
-      ...(options.port === undefined ? {} : { port: options.port })
+      ...(options.port === undefined ? {} : { port: options.port }),
+      ...(options.failureHandling === undefined ? {} : { failureHandling: options.failureHandling })
     }),
-    handlers: app.handlers(),
+    ...(options.stateDirectory === undefined ? {} : { stateDirectory: options.stateDirectory }),
+    ...(options.health === undefined ? {} : { health: options.health }),
+    handlers: options.recovery === undefined ? app.handlers() : { ...app.handlers(), sources: options.recovery },
     mode,
     ...(mode === "development" ? { development: { principals: {}, fixtures: {} } } : {}),
     logger: options.logger ?? silentLogger,
@@ -193,4 +246,23 @@ export async function startKafkaHarness(options: {
       await gateway.stop({ timeoutMs: 5_000 });
     }
   };
+}
+
+/** Consumer groups the broker currently lists whose IDs start with prefix (empty groups included, removed ones not). */
+export async function groupsWithPrefix(prefix: string): Promise<string[]> {
+  const { groups } = await (await testAdmin()).listGroups();
+  return groups.map(group => group.groupId).filter(groupId => groupId.startsWith(prefix));
+}
+
+/** Every listed consumer group with a committed offset on the topic, and those offsets. */
+export async function committedOffsetsOnTopic(topic: string): Promise<Record<string, Record<number, string>>> {
+  const client = await testAdmin();
+  const { groups } = await client.listGroups();
+  const result: Record<string, Record<number, string>> = {};
+  await Promise.all(groups.map(async ({ groupId }) => {
+    const offsets = await committedOffsets(groupId, topic);
+    const committed = Object.entries(offsets).filter(([, offset]) => offset !== "-1");
+    if (committed.length > 0) result[groupId] = Object.fromEntries(committed);
+  }));
+  return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
 }

@@ -1,5 +1,5 @@
 import { ApiError } from "../api.ts";
-import { h, pill, replace } from "../dom.ts";
+import { h, pill, replace, unavailable } from "../dom.ts";
 import { sourceTone, type WorkbenchState } from "../state.ts";
 
 const STEP_ICON = { ok: "✓", failed: "✗", skipped: "–" } as const;
@@ -8,9 +8,12 @@ export function renderConnect(root: HTMLElement, state: WorkbenchState): void {
   const table = h("tbody");
   const results = h("div", { class: "stack" });
 
+  let latestRefresh = 0;
   const refresh = async () => {
+    const attempt = ++latestRefresh;
     try {
       const [{ items }, health] = await Promise.all([state.api.sources(), state.api.health()]);
+      if (attempt !== latestRefresh) return; // A newer refresh started; its answer wins.
       state.sources = items;
       state.ready = health.ready;
       state.refreshShell();
@@ -62,15 +65,15 @@ export function renderConnect(root: HTMLElement, state: WorkbenchState): void {
         h("td", {}, pill(source.status, sourceTone(source.status)), source.reason === undefined ? null : h("div", { class: "small mono" }, source.reason)),
         h("td", {}, h("div", { class: "row" },
           action("Check connection", async () => showSteps(source.sourceId, (await state.api.checkSource(source.sourceId)).steps)),
-          source.status === "paused" ? action("Resume at uncommitted position", async () => {
+          source.status !== "paused" ? null : state.can("sources.resume") ? action("Resume at uncommitted position", async () => {
             await state.api.resumeSource(source.sourceId);
             await refresh();
-          }, true) : null,
-          source.kind === "fixture" ? [advanceCount, action("Advance fixture", async () => {
+          }, true) : unavailable("Resume", ["sources.resume"]),
+          source.kind !== "fixture" ? null : state.can("dev.fixtures.advance") ? [advanceCount, action("Advance fixture", async () => {
             const { advanced } = await state.api.advance(source.sourceId, Number(advanceCount.value));
             replace(results, h("div", { class: "banner info" }, `Advanced ${advanced} record(s) of "${source.sourceId}". See Inspect for their path.`));
             await refresh();
-          })] : null)));
+          })] : unavailable("Advance fixture", ["dev.fixtures.advance"]))));
     }));
   };
 
