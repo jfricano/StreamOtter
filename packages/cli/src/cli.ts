@@ -264,7 +264,13 @@ async function commandInit(positionals: string[], io: CliIO): Promise<number> {
         for (let dir = dirname(path); dir !== first && dir.startsWith(first); dir = dirname(dir)) chain.unshift(dir);
         created.push(...[first, ...chain].map(dir => ({ path: dir, directory: true })));
       }
-      await writeFile(path, file.content, { flag: "wx" });
+      try {
+        await writeFile(path, file.content, { flag: "wx" });
+      } catch (error) {
+        // writeFile creates the file before writing it, so a failed write (disk full) leaves it behind.
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") created.push({ path, directory: false });
+        throw error;
+      }
       created.push({ path, directory: false });
     }
   } catch (error) {

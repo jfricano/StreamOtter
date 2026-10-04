@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import kafkajs, { type Admin, type Producer } from "kafkajs";
@@ -262,11 +263,21 @@ export async function closeReplicatedHelpers(): Promise<void> {
   await Promise.all(others.map(async other => (await other).disconnect().catch(() => undefined)));
 }
 
+/** The environment for Kafka's command-line tools: like the start scripts, they use the JDK setup.sh installed when there is one. */
+function toolEnv(): NodeJS.ProcessEnv {
+  const jdk = resolve(ROOT, ".local/jdk");
+  return {
+    ...process.env,
+    LOG_DIR: resolve(ROOT, ".local/kafka-replicated/tool-logs"),
+    ...(existsSync(resolve(jdk, "bin/java")) ? { JAVA_HOME: jdk } : {})
+  };
+}
+
 /** Kafka's preferred-leader election for every partition, so leadership is back where topic creation put it. */
 export async function electPreferredLeaders(): Promise<void> {
   await run(resolve(ROOT, ".local/kafka/bin/kafka-leader-election.sh"), [
     "--bootstrap-server", REPLICATED.join(","), "--election-type", "PREFERRED", "--all-topic-partitions"
-  ], { env: { ...process.env, LOG_DIR: resolve(ROOT, ".local/kafka-replicated/tool-logs") } }).catch(() => undefined);
+  ], { env: toolEnv() }).catch(() => undefined);
 }
 
 /** The topic's effective settings that define the declared durability policy. */
@@ -282,7 +293,7 @@ export async function topicSettings(topic: string): Promise<Record<string, strin
 export async function groupCoordinator(group: string): Promise<number> {
   const { stdout } = await run(resolve(ROOT, ".local/kafka/bin/kafka-consumer-groups.sh"), [
     "--bootstrap-server", REPLICATED.join(","), "--describe", "--group", group, "--state"
-  ], { env: { ...process.env, LOG_DIR: resolve(ROOT, ".local/kafka-replicated/tool-logs") } });
+  ], { env: toolEnv() });
   const match = /^\S+\s+\S+\s+\((\d+)\)/m.exec(stdout.split("\n").find(line => line.startsWith(group)) ?? "");
   if (match === null) throw new Error(`no coordinator in: ${stdout}`);
   return Number(match[1]);

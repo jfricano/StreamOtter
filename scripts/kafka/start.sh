@@ -7,7 +7,9 @@
 # Data persists in .local/kafka-data across restarts; pass --reset to wipe it.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Physical path (pwd -P), so the same checkout reached through a symbolic link names the same config
+# file on the broker's command line and still recognizes its own broker.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 LOCAL="$ROOT/.local"
 KAFKA="$LOCAL/kafka"
 DATA="$LOCAL/kafka-data"
@@ -33,13 +35,19 @@ fi
 # file whose pid now belongs to another process (or another checkout's broker) is never trusted. The
 # command line reads as empty for a moment while the start script execs into java, so an empty read
 # is retried. Uses ps rather than /proc so it also works on macOS; -ww keeps the command line whole.
+# The path must follow a space, so /other/repo/.local/... never matches. Returns 2 (rather than 1) when
+# the process is still a Kafka broker started with some other config path, so callers keep its pid file.
 owns() {
   local pid="$1" config="$2" cmdline
   for _ in $(seq 1 20); do
     kill -0 "$pid" 2>/dev/null || return 1
     cmdline="$(ps -ww -p "$pid" -o command= 2>/dev/null || true)"
     if [ -n "$cmdline" ]; then
-      case "$cmdline" in *"$config"*) return 0 ;; *) return 1 ;; esac
+      case "$cmdline" in
+        *" $config"|*" $config "*) return 0 ;;
+        *" kafka.Kafka "*|*"/kafka-server-start.sh "*) return 2 ;;
+        *) return 1 ;;
+      esac
     fi
     sleep 0.1
   done
@@ -52,9 +60,14 @@ if [ "${1:-}" = "--reset" ]; then
 fi
 
 if [ -f "$PIDFILE" ]; then
-  if owns "$(cat "$PIDFILE")" "$CONFIG"; then
+  status=0
+  owns "$(cat "$PIDFILE")" "$CONFIG" || status=$?
+  if [ "$status" = 0 ]; then
     echo "Kafka is already running (pid $(cat "$PIDFILE"))."
     exit 0
+  elif [ "$status" = 2 ]; then
+    echo "Warning: $PIDFILE names a running Kafka process (pid $(cat "$PIDFILE")) whose command line does not name $CONFIG; left it running and kept the pid file. Stop it yourself if it is this checkout's broker." >&2
+    exit 1
   fi
   rm -f "$PIDFILE"
 fi
