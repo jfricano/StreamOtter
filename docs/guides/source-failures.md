@@ -387,6 +387,8 @@ Two topics have retention that matters.
 
 **The source topic.** A held record is uncommitted, so retention can delete it while you work on the fix. The gateway then sees the group's position past the held record without a recorded advance. It holds the source ("Source progress moved past a held record without a recorded advance; the source is held") instead of treating that as progress. Retries hold again, because the record is gone. The way out is a rebaseline ([§6.10](#610-rebaseline-a-source)). Prevent it: keep source retention well above how long a hold may last, and alert on readiness. The same applies when someone resets the group's offsets by hand or another consumer commits on the group.
 
+**Another cluster.** An incident records the Kafka cluster ID it was captured on. If the connection profile now reaches a different cluster (or the quarantine check can't name one), the incident holds with "Kafka cluster mismatch": the record at the same position may be a different record there, so it is never quarantined or advanced, and an advance that was pending at the restart stays `uncertain` instead of being confirmed from the other cluster's offsets. Point the profile back at the original cluster, or, if the source really moved, change its `generation` and rebaseline ([§6.10](#610-rebaseline-a-source)).
+
 ### 6.5 Repair a poison record
 
 `failures show` names the class, the stage and the next action. Then:

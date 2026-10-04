@@ -188,3 +188,54 @@ describe("FailureService progress watching", () => {
     assert.equal(store.open("orders")[0]?.progress, "uncertain");
   });
 });
+
+describe("FailureService cluster identity (ADR-15A §3)", () => {
+  const holdGuard: SourceRecoveryHandlers = { recover: async () => ({ decision: "hold", reason: "not yet" }) };
+
+  it("never quarantines or advances an incident captured on another Kafka cluster", async () => {
+    const store = claimed();
+    const first = resync(store, { guard: holdGuard, clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    assert.equal(store.open("orders")[0]?.clusterId, "cluster-a");
+
+    // The profile now points at another cluster with the same generation, and the record at the same coordinates fails.
+    const adapter = new FakeAdapter("advanced");
+    const writer = new ScriptedWriter([{ kind: "acknowledged", partition: 0, offset: "5" }]);
+    const second = resync(store, { adapter, writer, clusterId: "cluster-b" });
+    await second.failures.start([second.source], async () => "41");
+    await second.failures.held(second.source, plain, pause);
+    const [incident] = store.open("orders");
+    assert.equal(adapter.calls.length, 0, "never advanced");
+    assert.equal(writer.writes.length, 0, "never quarantined under the other cluster's coordinates");
+    assert.equal(incident?.progress, "held");
+    assert.equal(incident?.recovery, "held");
+    assert.match(incident?.diagnosis ?? "", /^Kafka cluster mismatch: .*cluster-a.*cluster cluster-b/);
+  });
+
+  it("checks the cluster again after the guard, before the advance is prepared", async () => {
+    const store = claimed();
+    const adapter = new FakeAdapter("advanced");
+    let failures!: FailureService;
+    const guard: SourceRecoveryHandlers = { recover: async () => { failures.setClusterId("orders", "cluster-b"); return { decision: "recoverable", context: { watermark: 1 }, evidenceRef: "outbox:1" }; } };
+    const built = resync(store, { adapter, guard, clusterId: "cluster-a" });
+    failures = built.failures;
+    await failures.held(built.source, plain, pause);
+    assert.equal(adapter.calls.length, 0);
+    assert.equal(store.boundary("orders"), null, "no boundary was prepared");
+    assert.match(store.open("orders")[0]?.diagnosis ?? "", /^Kafka cluster mismatch/);
+  });
+
+  it("does not reconcile a prepared advance against another cluster's committed offset", async () => {
+    const store = claimed();
+    const first = resync(store, { clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    const [held] = store.list({ state: "all" }).items;
+    store.update(held?.failureId as string, held?.revision as number, { progress: "advance-pending", state: "open", resolution: null }, { event: "advance-pending", detail: null, operationId: null });
+
+    const second = resync(store, { adapter: null, clusterId: "cluster-b" });
+    await second.failures.start([second.source], async () => "42");
+    const [incident] = store.open("orders");
+    assert.equal(incident?.progress, "uncertain", "offset + 1 on cluster-b confirms nothing about cluster-a");
+    assert.match(incident?.diagnosis ?? "", /^Kafka cluster mismatch/);
+  });
+});

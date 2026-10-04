@@ -160,6 +160,12 @@ export class FailureService {
    */
   async #reconcile(source: FailureSource, incident: IncidentRecord, committedOffset: CommittedOffsetReader | undefined): Promise<void> {
     const position = incident.position;
+    const mismatch = this.#clusterMismatch(source, incident);
+    if (mismatch !== null) {
+      // Another cluster's committed offsets say nothing about this advance.
+      this.#update(incident, { progress: "uncertain", diagnosis: mismatch }, "held", "cluster-mismatch at startup");
+      return;
+    }
     if (position.kind !== "kafka") {
       this.#update(incident, { progress: "held" }, "held", "the fixture restarted from its first record, so the advance is evaluated again when the record is reached");
       return;
@@ -355,6 +361,8 @@ export class FailureService {
       return;
     }
 
+    // Quarantine and continuation both name the record by its position, which another cluster does not share (ADR-15A §3).
+    if (policy !== "pause" && this.#holdOnClusterMismatch(source, record)) return;
     if (policy === "pause") {
       if (record.recovery !== "not-applicable" || record.quarantine !== "not-required") return;
       this.#emit(record, "held", "pause policy");
@@ -437,6 +445,7 @@ export class FailureService {
       return;
     }
     if (prior !== null && prior.generation !== source.config.generation) prior = null;
+    if (this.#holdOnClusterMismatch(source, record)) return;
     const pending = this.#update(record, { recovery: "guard-pending" }, "held", "running the recovery guard");
     if (pending === record) return;
     const outcome = await this.#runGuard(guard, source, pending, prior);
@@ -454,6 +463,7 @@ export class FailureService {
       return;
     }
 
+    if (this.#holdOnClusterMismatch(source, current)) return;
     const boundaryId = `rb1:${randomBytes(16).toString("hex")}`;
     let prepared: IncidentRecord;
     try {
@@ -500,6 +510,27 @@ export class FailureService {
         this.#update(prepared, { progress: "uncertain" }, "held", "the advance could not be confirmed; the source stays paused until it is reconciled");
         return;
     }
+  }
+
+  /**
+   * ADR-15A §3: an incident records the Kafka cluster it was captured on, and
+   * the gateway never advances on another one, because the same coordinates may
+   * name a different record there. Returns the integrity diagnosis, or null.
+   */
+  #clusterMismatch(source: FailureSource, incident: IncidentRecord): string | null {
+    if (source.config.kind !== "kafka" || incident.clusterId === null) return null;
+    const current = this.#clusterIds.get(source.id) ?? null;
+    if (current === incident.clusterId) return null;
+    return `Kafka cluster mismatch: the incident was captured on cluster ${incident.clusterId}, but the source now reads ${current === null ? "a cluster whose ID is unknown" : `cluster ${current}`}. The same position may name a different record, so this is an integrity failure: the source stays held and is never advanced. If the source moved to another cluster, change its generation and rebaseline.`;
+  }
+
+  /** Holds the incident with the cluster-mismatch diagnosis when there is one; true when it did. */
+  #holdOnClusterMismatch(source: FailureSource, record: IncidentRecord): boolean {
+    const mismatch = this.#clusterMismatch(source, record);
+    if (mismatch === null) return false;
+    this.#logger.error("The incident was captured on another Kafka cluster; the source stays held and is never advanced", { failureId: record.failureId, sourceId: source.id });
+    this.#update(record, { diagnosis: mismatch, recovery: "held" }, "held", "cluster-mismatch");
+    return true;
   }
 
   async #runGuard(guard: SourceRecoveryHandlers, source: FailureSource, record: IncidentRecord, prior: StoredBoundary | null): Promise<GuardOutcome> {

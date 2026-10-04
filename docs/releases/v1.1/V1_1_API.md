@@ -272,6 +272,8 @@ Startup restores the boundary in force before any source can be ready. It reconc
 
 While an incident is `uncertain` (unexplained at startup, or an advance that could not be confirmed), every record of the source is held, on every partition, until a restart reconciles it. Commits on other partitions never clear it.
 
+ADR-15A §3: an incident's `clusterId` is the Kafka cluster it was captured on. When the source's current cluster ID (read by the quarantine check at startup) differs from it, or is unknown, the gateway refuses to quarantine or advance that incident: it is held with the integrity diagnosis "Kafka cluster mismatch: …". The check runs when the record is observed, before the guard and again before the advance is prepared. At startup an `advance-pending` or `uncertain` incident from another cluster becomes `uncertain` instead of being reconciled against the current cluster's committed offset.
+
 ## 6. Operator service (slices C, D)
 
 One `OperatorService` (ADR-15C §1), reached in-process, over the local socket, and through development management routes. Every method returns a promise of the shape below or throws a `StreamOtterError`.
