@@ -253,6 +253,60 @@ describe("workbench Failures tab", { skip: existsSync(resolve(WORKBENCH, "app.js
     fake.leakRaw = false;
   });
 
+  it("revokes the previous export's download URL when exporting again", async () => {
+    await page.evaluate(() => {
+      const revoked: string[] = [];
+      const original = URL.revokeObjectURL.bind(URL);
+      (window as unknown as { __revoked: string[] }).__revoked = revoked;
+      URL.revokeObjectURL = url => { revoked.push(url); original(url); };
+    });
+    const href = () => page.evaluate(() => document.querySelector("a[download]")?.getAttribute("href") ?? null);
+    const exportAgain = async () => {
+      const previous = await href();
+      await detail().getByRole("button", { name: "Export metadata bundle" }).click();
+      await page.waitForFunction(old => (document.querySelector("a[download]")?.getAttribute("href") ?? null) !== old, previous);
+      return (await href())!;
+    };
+    const first = await exportAgain();
+    const second = await exportAgain();
+    assert.ok(first.startsWith("blob:") && second.startsWith("blob:") && first !== second);
+    const revoked = await page.evaluate(() => (window as unknown as { __revoked: string[] }).__revoked);
+    assert.equal(revoked.at(-1), first, "the replaced URL is revoked");
+    assert.ok(!revoked.includes(second), "the URL on the page stays usable");
+  });
+
+  it("an older detail response that arrives last never replaces a newer one", async () => {
+    const failureId = "f1:orders:fixture:3";
+    const incident = () => fake.incidents.find(item => item.failureId === failureId)!;
+    await openDetail(failureId);
+    let release!: () => void;
+    const released = new Promise<void>(done => { release = done; });
+    let held = 0;
+    let delivered!: () => void;
+    const stale = new Promise<void>(done => { delivered = done; });
+    await page.route(url => url.pathname.endsWith(`/failures/${encodeURIComponent(failureId)}`), async route => {
+      if (held++ > 0) return route.continue();
+      const response = await route.fetch(); // Answered at the older revision, then held back.
+      await released;
+      await route.fulfill({ response });
+      delivered();
+    });
+    try {
+      incident().revision = 20;
+      await page.getByRole("button", { name: "Refresh" }).click();
+      while (held === 0) await page.waitForTimeout(20);
+      incident().revision = 21;
+      await page.getByRole("button", { name: "Refresh" }).click();
+      await fact("Revision").getByText("21", { exact: true }).waitFor();
+      release();
+      await stale;
+      await page.waitForTimeout(200);
+      assert.equal(await fact("Revision").innerText(), "21", "the older response was dropped");
+    } finally {
+      await page.unrouteAll({ behavior: "wait" });
+    }
+  });
+
   it("reopen circuit requires a reason and sends the displayed circuit revision", async () => {
     const status = page.getByRole("region", { name: "Operator status" });
     const notes = status.getByRole("row", { name: /^notes/ });

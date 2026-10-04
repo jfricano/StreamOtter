@@ -15,7 +15,7 @@ import { WORKBENCH_OPERATIONS, type WorkbenchHostManifest, type WorkbenchOperati
 import { createManagementHandler } from "@streamotter/gateway/management";
 import { FAR_FUTURE, orderRecord, startHarness, type Harness } from "../integration/harness.ts";
 import { launch, openPage } from "./browser.ts";
-import type { Browser, Page } from "playwright";
+import type { Browser, Page, WebSocket } from "playwright";
 
 const WORKBENCH = resolve(import.meta.dirname, "../../apps/workbench/dist");
 const VERSION = (JSON.parse(readFileSync(resolve(import.meta.dirname, "../../apps/workbench/package.json"), "utf8")) as { version: string }).version;
@@ -302,5 +302,32 @@ ${json}
     // The only console message is Chromium logging the discovery 404 that this case is about.
     assert.deepEqual(problems, ["console: Failed to load resource: the server responded with a status of 404 (Not Found)"]);
     assert.deepEqual(seen.filter(entry => entry.path.startsWith(LEGACY_API) && entry.headers.authorization !== undefined), []);
+  });
+
+  it("closes a running preview's gateway connection when the session ends", async () => {
+    problems.length = 0;
+    const sockets: WebSocket[] = [];
+    const onSocket = (socket: WebSocket) => { if (socket.url().startsWith(h.origin.replace(/^http/, "ws"))) sockets.push(socket); };
+    page.on("websocket", onSocket);
+    await page.goto(`${origin}${PREFIX}/`);
+    await page.getByText("Sources ready").waitFor();
+    await tab("Preview").click();
+    await page.getByLabel("Development principal").selectOption("alice");
+    await page.getByRole("textbox", { name: /orderId/ }).fill("ord_1");
+    await page.getByRole("button", { name: "Start preview" }).click();
+    await page.locator(".pill", { hasText: "live" }).first().waitFor();
+    assert.ok(sockets.some(socket => !socket.isClosed()), "the preview holds an open gateway WebSocket");
+
+    sessions.clear(); // The host ends the visitor's session; the next API answer is 401.
+    await tab("Define").click();
+    await page.getByRole("button", { name: "Validate candidate" }).click();
+    await page.getByRole("heading", { name: "Session ended" }).waitFor();
+    const deadline = Date.now() + 3_000;
+    while (sockets.some(socket => !socket.isClosed()) && Date.now() < deadline) await page.waitForTimeout(50);
+    assert.deepEqual(sockets.map(socket => socket.isClosed()), sockets.map(() => true), "no gateway connection stays open after the session ended");
+    const opened = sockets.length;
+    await page.waitForTimeout(1_500);
+    page.off("websocket", onSocket);
+    assert.equal(sockets.length, opened, "the preview does not reconnect");
   });
 });

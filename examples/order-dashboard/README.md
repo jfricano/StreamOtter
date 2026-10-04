@@ -97,10 +97,20 @@ The guard can only answer honestly from data the application owns, so the store 
 - After the broker acknowledges a row, the application records its position on the row
   (topic, partition and offset in Kafka mode; the timeline index in fixture mode). A row
   whose send failed has no position and never counts as published.
+- The outbox must be complete from the moment each order was created (or at least from
+  the oldest position the guard may still be asked about): never prune rows the guard
+  might need, and never restore the orders without their rows. An order with rows
+  missing would look like an order that was never re-published, or worse, like one that
+  never changed. The guard therefore decides "never changed" from the order itself
+  (still at its seed revision), not from the absence of rows.
 - The snapshot query reads the order and the watermark together. In Kafka mode that is
   the authoritative store behind `GET /internal/orders/…`. In fixture mode it is the
-  development read model, whose watermark is the newest outbox row it has applied from
-  the stream.
+  development read model, which applies records in timeline order.
+- The watermark a snapshot reports must be **contiguous**: watermark W means every
+  outbox row up to W has been processed. It is never merely the highest row seen. A read model fed
+  from several partitions (or several replicas) can apply row 9 before row 7, and
+  reporting 9 then would acknowledge a boundary at 8 without row 7's change. Such a
+  read model reports the highest W below which it has no gaps.
 
 ### What the guard checks
 
@@ -108,19 +118,21 @@ The guard can only answer honestly from data the application owns, so the store 
 and the boundary already in force. It never reads the bad record's payload.
 
 1. **Which order?** It looks for the outbox row published at the failed record's
-   position. For a record the application did not publish, fixture mode can read the
-   record's key back from the timeline. An order ID names one order per tenant, so the
+   position. If more than one row recorded that position (for example, the topic was
+   re-created while the outbox was kept, so offsets started again): **hold**. For a
+   record the application did not publish, fixture mode can read the record's key back
+   from the timeline. An order ID names one order per tenant, so the
    guard considers that order in every tenant that has it. A missing key, a key that is
    not an order ID, an order that does not exist, or (in Kafka mode, which does not read
    the topic back) any record the outbox did not publish: **hold**.
 2. **Will snapshots supersede it?** Only if every affected order has a published outbox
    row later in the same stream: the same partition, or later in the fixture timeline.
    That row is the **re-publish**. For a record the application did not publish, an order
-   with no outbox rows at all **never changed state** and also qualifies. Anything else:
+   still at its seed revision **never changed state** and also qualifies. Anything else:
    **hold**, with a reason naming the order and the outbox row.
 3. **Recoverable** returns `context: { watermark }`, the newest re-publish's sequence,
-   at least the prior boundary's watermark, so a superseding boundary carries the old
-   obligation forward. `evidenceRef` names the outbox rows it relied on.
+   at least the failed row's sequence and the prior boundary's watermark, so a
+   superseding boundary carries the old obligation forward. `evidenceRef` names the outbox rows it relied on.
 
 Every snapshot handler then calls `acknowledgeRecovery(recovery, watermark)`. It echoes
 `recovery.boundaryId` only when the read it served is at or past the boundary's

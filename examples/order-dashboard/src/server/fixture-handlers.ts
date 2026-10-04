@@ -30,8 +30,14 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 /**
  * The development read model snapshots are served from. Its watermark is the outbox
- * sequence of the newest published row it has applied; the order and the watermark
- * change together, and a snapshot reads them together.
+ * sequence up to which it has processed every published row; the order and the
+ * watermark change together, and a snapshot reads them together. The watermark must
+ * be contiguous, never merely the highest row seen. Taking the highest row applied is
+ * safe here only because the fixture timeline is one ordered stream that publishes
+ * rows in sequence order, so every lower row was read first. (A row the gateway
+ * quarantined is read but not applied; the guard answers for it, and its boundary
+ * waits for the re-publish, a later row.) A read model fed from several Kafka
+ * partitions has to track gaps and report the highest sequence below which it has none.
  */
 class ReadModel {
   readonly orders = initialOrders();

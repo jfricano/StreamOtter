@@ -1,5 +1,5 @@
 import {
-  utf8ByteLength, WORKBENCH_REQUEST_HEADER,
+  isPlainObject, utf8ByteLength, WORKBENCH_REQUEST_HEADER,
   type Capabilities, type ChannelSummary, type ConfigIssue, type DevelopmentPrincipalSummary, type DiagnosticStep, type EvaluateRequest,
   type EvaluationResult, type IncidentDetail, type IncidentSummary, type Json, type ListFailuresRequest, type OperationResult, type OperatorStatus,
   type Page, type ProjectConfig, type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle, type Result,
@@ -26,6 +26,12 @@ export interface ApiTarget { apiBase: string; apiOrigin: string | null }
 /** True for the response a host gives when its session credential is missing or has expired. */
 function unauthenticated(status: number, error: StreamError | null): boolean {
   return status === 401 || error?.code === "UNAUTHENTICATED";
+}
+
+/** True for a body shaped like a management Result; anything else is treated like a body that is not JSON. */
+function isResult(body: unknown): body is Result<unknown> {
+  if (!isPlainObject(body)) return false;
+  return body["ok"] === true ? "data" in body : body["ok"] === false && isPlainObject(body["error"]);
 }
 
 /**
@@ -96,17 +102,21 @@ export class ManagementApi {
         : { ...session, credentials: "same-origin" };
     if (payload !== undefined) init.body = payload;
     const response = await fetch(url, init);
-    let result: Result<T>;
+    let answer: unknown;
     try {
-      result = await response.json() as Result<T>;
+      answer = await response.json();
     } catch {
-      if (this.#auth.mode === "session" && unauthenticated(response.status, null)) throw this.#sessionEnded();
+      answer = undefined;
+    }
+    // A body that is not JSON, or JSON that is not a Result (`null`, an array, a string), says nothing
+    // more than the status does. In session mode any 401 ends the session, whatever its body.
+    const result = isResult(answer) ? answer as Result<T> : null;
+    const error = result !== null && !result.ok ? result.error : null;
+    if (this.#auth.mode === "session" && unauthenticated(response.status, error)) throw this.#sessionEnded();
+    if (result === null) {
       throw new ApiError(response.status, { code: "INTERNAL", message: `Unexpected response (${response.status}).`, retryable: true, requestId: "" });
     }
-    if (!result.ok) {
-      if (this.#auth.mode === "session" && unauthenticated(response.status, result.error)) throw this.#sessionEnded();
-      throw new ApiError(response.status, result.error);
-    }
+    if (!result.ok) throw new ApiError(response.status, result.error);
     return result.data;
   }
 

@@ -87,6 +87,9 @@ export function renderFailures(root: HTMLElement, state: WorkbenchState): void {
   let nextCursor: string | null = null;
   let selected: string | null = null;
   let listRequest = 0;
+  let detailRequest = 0;
+  /** The object URL of the last export's download link, revoked when another export replaces it. */
+  let exportUrl: string | null = null;
 
   const statusBody = h("div", { class: "stack" });
   const statusOutput = h("div", { class: "stack" });
@@ -350,7 +353,9 @@ export function renderFailures(root: HTMLElement, state: WorkbenchState): void {
         try {
           const bundle = await state.api.exportFailure(detail.failureId);
           const content = `${JSON.stringify(bundle, null, 2)}\n`;
+          if (exportUrl !== null) URL.revokeObjectURL(exportUrl);
           const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+          exportUrl = url;
           replace(actionOutput, h("div", { class: "stack" },
             h("div", { class: "banner info", role: "status" }, "Metadata only: raw record bytes are never part of a workbench export."),
             h("a", { href: url, download: "streamotter-failure.json", class: "mono" }, "Download streamotter-failure.json"),
@@ -432,11 +437,14 @@ export function renderFailures(root: HTMLElement, state: WorkbenchState): void {
   };
 
   const loadDetail = async (failureId: string) => {
+    const request = ++detailRequest;
     try {
       const detail = await state.api.failure(failureId);
-      if (selected !== failureId) return;
+      // A newer request (another selection, a refresh, or the reload after an action) superseded this one.
+      if (request !== detailRequest || selected !== failureId) return;
       drawDetail(detail);
     } catch (error) {
+      if (request !== detailRequest) return;
       replace(detailBody, h("div", { class: "banner bad", role: "alert" }, errorText(error)));
     }
   };

@@ -5,7 +5,7 @@ import { createClient, type Client } from "@streamotter/client";
 import { silentLogger, type FixtureRecord, type Gateway, type HandlerRegistry, type Json, type ProjectConfig } from "@streamotter/gateway";
 import { createGatewayRuntime, getGatewayInternals, type GatewayInternals, type IncidentRecord, type IncidentStore } from "@streamotter/gateway/internals";
 import type { AppChannels } from "../../examples/order-dashboard/src/generated/streamotter.generated.ts";
-import { issueToken } from "../../examples/order-dashboard/src/server/domain.ts";
+import { decideRecovery, initialOrders, issueToken, OrderStore, type OutboxEntry, type SourcePosition } from "../../examples/order-dashboard/src/server/domain.ts";
 import { createFixtureApplication, type FixtureApplication } from "../../examples/order-dashboard/src/server/fixture-handlers.ts";
 import { observe, waitFor } from "./harness.ts";
 
@@ -317,5 +317,70 @@ describe("order-dashboard reference recovery guard (ADR-15B §5)", () => {
     assert.match(byIndex(stale)?.guard?.reason ?? "", /Order acme\/ord_1002 has not been re-published after the record at fixture index 4\./);
     assert.equal(boundary(run)?.boundaryId, second?.boundaryId, "a hold installs nothing");
     assert.equal(status(run), "paused");
+  });
+});
+
+/**
+ * The guard's evidence rules on stores the fixture application cannot produce: a store
+ * restored without its outbox history, and an outbox whose positions repeat. The
+ * expected decisions follow from the stores the tests build, not from the guard.
+ */
+describe("order-dashboard reference recovery guard: incomplete or ambiguous outbox", () => {
+  const kafka = (offset: string): SourcePosition => ({ kind: "kafka", topic: "orders.status", partition: 0, offset });
+  const fixture = (index: string): SourcePosition => ({ kind: "fixture", index });
+  const incident = (position: SourcePosition) => ({ failureId: "f1", failureClass: "invalid-json" as const, position, evidenceHash: "sha256:00" });
+
+  /** A store restored from a file written before the outbox existed, after acme/ord_1001 changed three times. */
+  function legacyStore(): OrderStore {
+    const orders = Object.fromEntries(initialOrders());
+    const order = orders["acme/ord_1001"]!;
+    orders["acme/ord_1001"] = { ...order, revision: "4", state: { ...order.state, status: "shipped", progress: 80 } };
+    return OrderStore.restore(orders);
+  }
+
+  it("does not read a missing outbox history as 'never changed' when the order's revision moved", () => {
+    const store = legacyStore();
+    assert.equal(store.outbox().length, 0, "the restored store has no outbox rows");
+    const decision = decideRecovery({ outbox: store.outbox(), orders: store.orders.values(), incident: incident(fixture("12")), prior: null, sourceKey: "ord_1001" });
+    assert.equal(decision.decision, "hold");
+    assert.match(decision.decision === "hold" ? decision.reason : "", /Order acme\/ord_1001 has not been re-published after the record at fixture index 12\./);
+
+    // An order still at its seed revision did not change, whatever the outbox holds.
+    const unchanged = decideRecovery({ outbox: store.outbox(), orders: store.orders.values(), incident: incident(fixture("12")), prior: null, sourceKey: "ord_1003" });
+    assert.deepEqual(unchanged, { decision: "recoverable", context: { watermark: 0 }, evidenceRef: "outbox: acme/ord_1003 never changed" });
+  });
+
+  it("does not read a pruned outbox as 'never changed'", () => {
+    const store = new OrderStore();
+    const order = store.get("acme", "ord_1002")!;
+    const row = store.commit({ ...order, revision: "2", state: { ...order.state, status: "picking", progress: 30 } });
+    store.markPublished(row.seq, fixture("0"));
+    // The rows for the order were pruned; the order itself is still at revision 2.
+    const pruned = store.outbox().filter(entry => entry.orderId !== "ord_1002");
+    const decision = decideRecovery({ outbox: pruned, orders: store.orders.values(), incident: incident(fixture("5")), prior: null, sourceKey: "ord_1002" });
+    assert.equal(decision.decision, "hold");
+  });
+
+  it("holds when more than one outbox row recorded the failed position", () => {
+    const outbox: OutboxEntry[] = [
+      { seq: 1, tenantId: "acme", orderId: "ord_1001", revision: "2", position: kafka("3") },
+      { seq: 2, tenantId: "acme", orderId: "ord_1001", revision: "3", position: kafka("7") },
+      // The topic was re-created with the outbox kept, so offsets started again.
+      { seq: 50, tenantId: "acme", orderId: "ord_1002", revision: "2", position: kafka("3") }
+    ];
+    const decision = decideRecovery({ outbox, orders: initialOrders().values(), incident: incident(kafka("3")), prior: null });
+    assert.equal(decision.decision, "hold");
+    assert.match(decision.decision === "hold" ? decision.reason : "", /Outbox rows 1, 50 all record orders\.status\[0\]@3/);
+  });
+
+  it("returns a watermark at least the failed row's sequence", () => {
+    // The failed row (seq 5) landed before a re-publish row with a lower sequence (seq 4), for example after a relay retried out of order.
+    const outbox: OutboxEntry[] = [
+      { seq: 4, tenantId: "acme", orderId: "ord_1001", revision: "2", position: kafka("8") },
+      { seq: 5, tenantId: "acme", orderId: "ord_1001", revision: "2", position: kafka("6") }
+    ];
+    const decision = decideRecovery({ outbox, orders: initialOrders().values(), incident: incident(kafka("6")), prior: null });
+    assert.equal(decision.decision, "recoverable");
+    assert.deepEqual(decision.decision === "recoverable" ? decision.context : null, { watermark: 5 });
   });
 });
