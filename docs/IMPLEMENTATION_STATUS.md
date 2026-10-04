@@ -226,7 +226,7 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 - Evidence read-back takes at least the broker's `group.initial.rebalance.delay.ms` (3 s by default). After a lost connection, KafkaJS keeps retrying for about 24 s after the read has reported `unavailable`.
 - The journal engine is `node:sqlite`, so failure handling with a state directory needs Node 24.15 or later (decision D1 in the [API draft](./releases/v1.1/V1_1_API.md#11-decisions-this-draft-adds), taken 2026-10-04).
 - The operator socket is not available on Windows.
-- Fixture evidence in the local spool (`streamotter dev` with fixture sources) is never deleted; the spool is capped at 16 MiB (review finding J7).
+- Fixture evidence in the local spool (`streamotter dev` with fixture sources) expires seven days after it was stored, like a quarantine topic's copy under Kafka's default `retention.ms`; it is pruned when the gateway starts and before new evidence is stored, so evidence past seven days can still be read until then. The spool is capped at 16 MiB (review finding J7).
 - While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds, on every partition, until a restart reconciles it.
 - Redrive finds an evidence conflict or a moved position on an incident through its event history, which keeps the newest 200 events, so an incident retried more than about 100 times can lose that marker (second review, [REVIEW.md](./releases/v1.1/REVIEW.md) §5).
 - `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` have run on Linux only; their macOS fix (`bdf1445`) has not run on a Mac yet.
