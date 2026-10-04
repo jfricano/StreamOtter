@@ -77,3 +77,32 @@ The fixes were made in parallel on six branches and merged into `feat/v1.1-revie
 
 - The failure chain's `run()` became re-entrant through `AsyncLocalStorage` (C), and retry and reassess moved into the chain (O2). An operator call made from inside a disposition's async context therefore runs nested instead of queuing. The O2 race test made its retry from inside `store.update`, so it now binds that call outside the chain (`619748b`). Real operator requests arrive on their own socket or HTTP connection, outside any chain.
 - Doc conflicts in API §6 were resolved by keeping both sides' additions.
+
+## 5. Second review of the fixes
+
+A fresh reviewer, who wrote neither the code nor the fixes, reviewed the fix diff (`24abe81..619748b`), with a focus on the re-entrant failure chain and on how fixes made in parallel interact. It found no major problem and three minor ones, each proven with a failing test. Each is fixed by its own commit, and the tests are in `packages/gateway/test/review-followups.test.ts`.
+
+| Finding | Fix |
+| --- | --- |
+| H was incomplete. The circuit check in `#continue` ran before `prepareAdvance` moved the incident's entry, so an incident advanced again after a not-held attempt still counted twice there. With the default limit, the fifth distinct incident's re-advance could open the circuit. | `ab6bcb6`. The check leaves out the incident's own earlier entry. |
+| B and O6 didn't connect. A cluster-mismatch incident was not one of the source-integrity faults O6 checks, so evaluate and redrive of another incident on the source were still allowed. | `05ef737` |
+| D was incomplete. A crash while the guard ran left `guard-pending` in the journal. If the policy no longer resumed the guard, nothing cleared it, and every operator retry was refused as `in-progress`. | `483eb82`. Startup puts `guard-pending` back to `held`, since no guard runs in a new process. |
+
+Also found, not fixed, and recorded here:
+
+- **O6 reads integrity markers from the incident's event history**, which keeps the newest 200 events per incident. An incident retried more than about 100 times can lose an `evidence-conflict` or `position-moved` marker, after which O6 no longer sees that fault. An `uncertain` advance is a persisted progress value and is not affected. A persisted flag on the incident would be sturdier; that is a journal schema change, left for a later release.
+- **J1 doesn't shrink journals written before it.** No migration clears `failure_ids` on boundary rows superseded earlier. No V1.1 journal exists outside development, because nothing is published, so none was added.
+- **Redrive rechecks the incident's revision before taking the source's processing lock**, not inside it. Changing the revision in that gap takes a redelivery of an incident that is already `advanced`, which only an offset reset can cause. Not reproduced.
+
+The reviewer checked these and found them sound:
+
+- **The re-entrant `run()`.** The only production path into it from inside a chain is the intended one (operator retry → `resumeSource` → `beforeRetry`). `settled()` is never awaited inside a chain.
+- **Store parity.** The memory store and the SQLite journal behave the same across advance, re-advance, uncertain and retire sequences.
+- **Startup reconciliation** after crashes at each new step of E, F and B.
+- **The S1 drain**, and **W1–W7**.
+
+## 6. Found later
+
+| Finding | Corrects | Fix |
+| --- | --- | --- |
+| `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` checked a node's process through `/proc`, which macOS doesn't have. On a Mac, start reported that node 101 exited, exited 1 and left Java running, and stop killed nothing. The release checklist and CONTRIBUTING tell the releaser to run these on a Mac. Found by the V1.2 review. | #18 | `bdf1445`. Both scripts use `ps -ww -p <pid> -o command=`. Rerun on Linux; not yet run on macOS. |
