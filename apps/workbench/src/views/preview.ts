@@ -36,6 +36,17 @@ let active: ActivePreview | null = null;
 const log: { at: string; text: string; tone: "ok" | "warn" | "bad" | "info" | "neutral" }[] = [];
 let latest: { kind: string; revision: string; receivedAt: string; data: Json } | null = null;
 
+/**
+ * Closes the running preview, if any, without drawing: the session ended (WHC-1 §3.2), so the
+ * workbench stops every request, including the preview's gateway connection and its reconnects.
+ */
+export function closePreview(): void {
+  const current = active;
+  active = null;
+  latest = null;
+  if (current !== null) void current.client.close();
+}
+
 function paramInputs(schema: Schema | undefined): { element: HTMLElement; read: () => Params } {
   if (schema === undefined || schema.type !== "object") {
     return { element: h("p", { class: "muted" }, "This channel's parameter schema is not an object."), read: () => ({}) };

@@ -11,7 +11,7 @@ import { renderDefine } from "./views/define.ts";
 import { renderExport } from "./views/export.ts";
 import { renderFailures } from "./views/failures.ts";
 import { renderInspect } from "./views/inspect.ts";
-import { renderPreview } from "./views/preview.ts";
+import { closePreview, renderPreview } from "./views/preview.ts";
 
 type Tab = "connect" | "define" | "preview" | "inspect" | "failures" | "export";
 const TABS: [Tab, string][] = [["connect", "Connect"], ["define", "Define"], ["preview", "Preview"], ["inspect", "Inspect"], ["failures", "Failures"], ["export", "Export"]];
@@ -106,6 +106,7 @@ async function open(settings: HostSettings, auth: ApiAuth): Promise<void> {
   const api = new ManagementApi({ apiBase: settings.apiBase, apiOrigin: settings.apiOrigin }, auth, () => {
     cleanup?.();
     cleanup = null;
+    closePreview();
     renderSessionEnded();
   });
   try {
