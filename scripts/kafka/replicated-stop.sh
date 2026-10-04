@@ -11,13 +11,27 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE="$ROOT/.local/kafka-replicated"
 
+# True when the live process names the node's config file on its command line. The command line
+# reads as empty for a moment while the start scripts exec into java, so an empty read is retried.
+owns() {
+  local pid="$1" config="$2" cmdline
+  for _ in $(seq 1 20); do
+    kill -0 "$pid" 2>/dev/null || return 1
+    cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    if [ -n "$cmdline" ]; then
+      case "$cmdline" in *"$config"*) return 0 ;; *) return 1 ;; esac
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
 # Prints the node's pid when its pidfile names a live process started with its own config file.
 live_pid() {
   local dir="$BASE/node-$1"
   [ -f "$dir/pid" ] || return 1
   local pid; pid="$(cat "$dir/pid")"
-  kill -0 "$pid" 2>/dev/null || return 1
-  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q -- "$dir/server.properties" || return 1
+  owns "$pid" "$dir/server.properties" || return 1
   echo "$pid"
 }
 
