@@ -173,6 +173,8 @@ All configurable fields below are positive integers. They are starting bounds, n
 | `maxControlFrameBytes` | 16,384 |
 | `controlRequestsPerSecond` | 20 per connection, burst 40 |
 
+`maxControlFrameBytes` must be at least 9,216 (`INCONSISTENT_LIMITS` otherwise). That fits the handshake for any token of up to 8 KiB made of printable ASCII without `"` or `\` (JWT, base64url, hex); a token whose JSON encoding escapes characters can need a larger value.
+
 Budgets count UTF-8 serialized envelopes, pending snapshots, buffered updates, and in-flight frames. The gateway-wide budget is enforced before copying/admission; it is not a bound on total process memory or native broker buffers. Configure broker fetch limits separately. Runtime objects, sockets, schemas, and traces need independent bounds and memory tests.
 
 Only one data frame per subscription is in flight until receipt. Client receipts confirm SDK frame validation and admission to synchronous listener dispatch; returned promises are not awaited for receipt. V1 cannot guarantee that application-created async work remains bounded. The default SDK is intended for cheap state replacement; expensive processing belongs in the application’s own bounded workflow.
