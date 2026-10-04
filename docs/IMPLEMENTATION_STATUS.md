@@ -164,7 +164,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 
 October 3, 2026 · Opt-in source-failure policies, durable quarantine, guarded continuation, the operator workflow, and the health listener ([specification](./releases/v1.1/V1_1_SOURCE_FAILURE_SPEC.md), [API draft](./releases/v1.1/V1_1_API.md), [runbook](./guides/source-failures.md)). Not published to npm.
 
-This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) and adds nothing to it. Scenario IDs (F01–F48) are those of the [acceptance plan](./releases/v1.1/V1_1_ACCEPTANCE_PLAN.md). The matrix marks a row *implemented* when code and tests are in, *partial* when some named tiers or cases are missing, and *verified* only with a recorded run per its rules; no row is marked verified yet. The commands, results and failed runs are in the [implementation log](./releases/v1.1/IMPLEMENTATION_LOG.md). <!-- lead: re-sync this section with EVIDENCE.md after the slice E rows land -->
+This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) and adds nothing to it. Scenario IDs (F01–F48) are those of the [acceptance plan](./releases/v1.1/V1_1_ACCEPTANCE_PLAN.md). The matrix marks a row *implemented* when code and tests are in, *partial* when some named tiers or cases are missing, and *verified* only with a recorded run per its rules; no row is marked verified yet. The commands, results and failed runs are in the [implementation log](./releases/v1.1/IMPLEMENTATION_LOG.md).
 
 ### Status by area
 
@@ -180,19 +180,19 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Recovery guard, boundary and snapshot acknowledgment | F20–F24 | Implemented | |
 | Late results after epoch change, revoke or stop | F25 | Partial | Revoke and new-incident races are not separately tested. |
 | Circuit breaker | F26 | Implemented | |
-| Moved or expired source position; journal identity; second gateway | F27, F29, F30 | Implemented | F29: topic re-creation without a generation change is not detected. |
+| Moved or expired source position; journal identity, rebaseline; second gateway | F27, F29, F30 | Implemented | F29: a re-created topic without a generation change is detected only when redelivered bytes differ. |
 | Operator retry, evaluate, redrive, plans and refusals | F19, F28, F31–F34, F36 | Implemented | |
-| Redrive interrupted by a crash | F35 | Partial | Uses an in-process crash hook; no child-process crash test. |
-| Operator and raw-evidence boundary | F37 | Partial | The failure routes and the socket are covered; the health listener part of F37 is slice E. <!-- lead: confirm after the health tests land --> |
+| Redrive interrupted by a crash | F35 | Implemented | |
+| Operator, health and raw-evidence boundary | F37 | Implemented | |
 | Socket permissions, raw payload handling, exports | F38–F40 | Implemented | |
 | Budgets and limits | F41 | Partial | Repeated-failure limits on the operator surfaces are not tested. |
 | Independent sources | F42 | Implemented | |
 | Workbench Failures tab and host contract | F44 | Implemented | Chromium only (see below). |
-| Health and lifecycle states | F43 | Planned | |
-| Firefox and WebKit | F45 | Planned | |
-| Packed install | F46 | Implemented (seam part) | The workbench host assets are covered; clean configuration and production proxy are not. |
+| Health and lifecycle states | F43 | Partial | An unresolved commit has no readiness test of its own. |
+| Firefox and WebKit | F45 | Not run | Only Chromium could run in the build environment. |
+| Packed install, production proxy, crash restart | F46 | Implemented | The proxy deployment test runs without `failureHandling`. |
 | Replicated Kafka under broker failure | F47 | Planned | |
-| Upgrade, then downgrade, with open incidents | F48 | Planned | |
+| Upgrade, then downgrade, with open incidents | F48 | Partial | Restarts in the test are graceful; no SIGKILL during a downgrade. |
 
 ### Runs recorded in the implementation log
 
@@ -212,7 +212,7 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 - **Broker-failure durability.** Every Kafka run used one local broker. Nothing here shows that quarantine evidence survives a broker or leader failure (F47).
 - **ACL-enabled brokers.** The ACL list in the [runbook](./guides/source-failures.md#61-credentials-and-acls) follows from the client calls; no run used a broker with authorization enabled.
 - **Browsers other than Chromium** (F45).
-- **Downgrade** (F48), and restart of a production deployment behind a proxy with failure handling on (F46).
+- **A crash during a downgrade** (F48), and restart of a production deployment behind a proxy with failure handling on (F46).
 - **The truth of an application's recovery guard and snapshot acknowledgment.** The gateway checks boundary identity and lifecycle only.
 - **Security beyond the listed checks.** Passing F37–F40 is not a security audit.
 
