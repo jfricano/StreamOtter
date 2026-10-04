@@ -188,6 +188,11 @@ export class KafkaSourceAdapter implements SourceAdapter {
   #lastActivity = Date.now();
   #watchdog: NodeJS.Timeout | null = null;
   #joined: (() => void) | null = null;
+  /** Records processed whose commit failed, per partition, retried until a later commit or a rebalance supersedes them. */
+  readonly #uncommitted = new Map<string, { position: Extract<SourceRecord["position"], { kind: "kafka" }>; epoch: number }>();
+  /** Serializes offset commits so a retried commit can never land after, and move back, a later one. */
+  #commits: Promise<unknown> = Promise.resolve();
+  #retrying = false;
   readonly #sockets = new TrackedSockets();
 
   constructor(options: {
@@ -274,10 +279,12 @@ export class KafkaSourceAdapter implements SourceAdapter {
           if (this.#beforeCommit !== undefined) await this.#beforeCommit(this.#sourceId, position);
           if (this.#stopping) return;
           try {
-            await consumer.commitOffsets([{ topic: batch.topic, partition: batch.partition, offset: nextOffset(message.offset) }]);
+            await this.#commit(consumer, position);
             this.#onCommit(position);
           } catch (error) {
-            // Processing completed; a failed commit only means this record can be redelivered.
+            // Processing completed; a failed commit only means this record can be redelivered. It is retried
+            // in the background, so the last record before a quiet period doesn't stay uncommitted.
+            this.#uncommitted.set(`${batch.topic}:${batch.partition}`, { position, epoch: this.#assignmentEpoch });
             this.#sink.logger.warn("Kafka offset commit failed; the record may be redelivered", {
               sourceId: this.#sourceId, topic: batch.topic, partition: batch.partition, offset: message.offset,
               error: (error as Error).name
@@ -290,7 +297,10 @@ export class KafkaSourceAdapter implements SourceAdapter {
     });
     await joined;
     if (this.#stopping) return; // stop() released the wait; it has already cleared any watchdog.
-    this.#watchdog = setInterval(() => this.#checkWatchdog(), 1_000);
+    this.#watchdog = setInterval(() => {
+      this.#checkWatchdog();
+      this.#retryCommits();
+    }, 1_000);
     this.#watchdog.unref();
   }
 
@@ -347,7 +357,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const epoch = this.#assignmentEpoch;
     const next = nextOffset(position.offset);
     try {
-      await consumer.commitOffsets([{ topic: position.topic, partition: position.partition, offset: next }]);
+      await this.#commit(consumer, position);
     } catch (error) {
       this.#sink.logger.warn("Advancing past a held record failed at commit; the source stays paused", {
         sourceId: this.#sourceId, topic: position.topic, partition: position.partition, offset: position.offset, error: (error as Error).name
@@ -394,6 +404,50 @@ export class KafkaSourceAdapter implements SourceAdapter {
     this.#setStatus("healthy");
     consumer.resume(this.#source.topics.map(topic => ({ topic })));
     return "advanced";
+  }
+
+  /**
+   * Commits the offset after a record, in order with every other commit. A
+   * success supersedes any failed commit still waiting on that partition.
+   */
+  #commit(consumer: Consumer, position: Extract<SourceRecord["position"], { kind: "kafka" }>, still: () => boolean = () => true): Promise<boolean> {
+    const key = `${position.topic}:${position.partition}`;
+    const commit = this.#commits.then(async () => {
+      // Checked in turn, so a retry queued behind a later commit doesn't move the offset back.
+      if (!still()) return false;
+      await consumer.commitOffsets([{ topic: position.topic, partition: position.partition, offset: nextOffset(position.offset) }]);
+      const pending = this.#uncommitted.get(key);
+      if (pending !== undefined && BigInt(pending.position.offset) <= BigInt(position.offset)) this.#uncommitted.delete(key);
+      return true;
+    });
+    this.#commits = commit.catch(() => undefined);
+    return commit;
+  }
+
+  /** Retries failed commits still current: none after a rebalance, when the partition's next owner starts from the committed offset. */
+  #retryCommits(): void {
+    const consumer = this.#consumer;
+    if (consumer === null || this.#stopping || this.#rebalancing || this.#retrying || this.#uncommitted.size === 0) return;
+    this.#retrying = true;
+    void (async () => {
+      for (const [key, pending] of [...this.#uncommitted]) {
+        if (pending.epoch !== this.#assignmentEpoch) {
+          if (this.#uncommitted.get(key) === pending) this.#uncommitted.delete(key);
+          continue;
+        }
+        // Skipped when a later commit or a rebalance superseded it, or the source began stopping, while it waited.
+        const current = () => this.#uncommitted.get(key) === pending && pending.epoch === this.#assignmentEpoch && !this.#stopping && !this.#rebalancing;
+        try {
+          if (!(await this.#commit(consumer, pending.position, current))) continue;
+        } catch {
+          continue; // Still pending; the next tick tries again.
+        }
+        this.#sink.logger.info("Kafka offset commit succeeded on retry", {
+          sourceId: this.#sourceId, topic: pending.position.topic, partition: pending.position.partition, offset: pending.position.offset
+        });
+        this.#onCommit(pending.position);
+      }
+    })().finally(() => { this.#retrying = false; });
   }
 
   #reapplyPause(): void {

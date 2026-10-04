@@ -71,6 +71,29 @@ describe("Kafka 4.1.2 via KafkaJS 2.2.4: delivery and explicit progress", { skip
     }
   });
 
+  it("retries a failed commit of the last record without waiting for another record", async () => {
+    const topic = await createTopic(1);
+    const harness = await startKafkaHarness({ topic });
+    try {
+      const consumer = consumers.at(-1)!;
+      const commitOffsets = consumer.commitOffsets.bind(consumer);
+      let failures = 0;
+      consumer.commitOffsets = async offsets => {
+        if (failures++ === 0) throw new Error("injected commit failure");
+        return commitOffsets(offsets);
+      };
+      await produce(topic, [{ key: "ord_r", value: orderValue("acme", "ord_r", 1, "queued", 0) }]);
+      const deadline = Date.now() + 15_000;
+      while ((await committedOffsets(harness.group, topic))[0] !== "1") {
+        assert.ok(Date.now() < deadline, "the failed commit was never retried");
+        await sleep(200);
+      }
+      assert.ok(failures >= 2);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("reports staged source diagnostics against the live broker", async () => {
     assert.ok(k !== undefined);
     const steps = await k.internals.checkSource("orders");
