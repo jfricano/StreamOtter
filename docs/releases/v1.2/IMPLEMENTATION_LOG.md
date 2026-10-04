@@ -48,4 +48,7 @@ Working record for the V1.2 quality review. Anyone resuming starts with §1. New
 
 On Node 24.21.0 at the final commit:
 
-- `pnpm verify`: typecheck, contract check and 396+ tests pass.
+- `pnpm verify`: typecheck, contract check and 397 tests pass.
+- `test:load` 1, `test:kafka` 44 (single broker), `test:kafka:replicated` 2 (three brokers), `test:browser` 58, `test:deploy` 4 (Caddy), `test:install` 22: all pass.
+- The first `test:kafka` run failed the new paused-source test: partition 1 can be processed before the poison record pauses the source. The test now checks that nothing moves after the pause, instead of expecting nothing at all.
+- Node 26 was not run.
