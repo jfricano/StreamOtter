@@ -17,6 +17,7 @@
 | [WORKBENCH_HOST_CONTRACT.md](./WORKBENCH_HOST_CONTRACT.md) | WHC-1, the interface for running the published workbench outside loopback (spec §10), defined before implementation |
 | [EVIDENCE.md](./EVIDENCE.md) | Requirement-to-evidence matrix for F01–F48 |
 | [IMPLEMENTATION_LOG.md](./IMPLEMENTATION_LOG.md) | Working record and handoff: current state, decisions, runs and failures |
+| [ACCEPTANCE_PACKET.md](./ACCEPTANCE_PACKET.md) | The final acceptance packet (handoff §7): what is implemented, verified and published, limitations, and the recommended release status |
 
 The V1 specification still governs shipped behavior. This specification governs V1.1 work; the ADRs refine it where they say so.
 
@@ -32,5 +33,7 @@ The frontend/integration seam is an explicit upstream deliverable in this librar
 | --- | --- |
 | Simpler redrive (ADR-15C §5) | Accepted, September 29, 2026 |
 | Journal engine: `node:sqlite`, else `better-sqlite3` (ADR-15A §2) | Accepted, September 29, 2026 |
+| Journal engine refined (D1): `node:sqlite` with a Node 24.15 floor | Accepted, October 4, 2026 |
+| `streamotter sources rebaseline` as a command | Accepted, October 4, 2026 |
 | Boundary retirement as a per-source choice, default `generation`; operator mode documented as unsafe (ADR-15B §4) | Accepted, September 29, 2026 |
 | Adopt the source-failure increment between the V1 launch and V2.0 | Accepted, September 29, 2026; milestone renamed V1.1 October 1 |
