@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, it } from "node:test";
 import { createClient } from "@streamotter/client";
 import { canonicalJsonPretty, type Result } from "@streamotter/contracts";
@@ -11,9 +12,9 @@ import { waitFor } from "./harness.ts";
 const ROOT = resolve(import.meta.dirname, "../..");
 const CLI = resolve(ROOT, "packages/cli/src/main.ts");
 
-function runCli(args: string[], cwd = ROOT): Promise<{ code: number; stdout: string; stderr: string }> {
+function runCli(args: string[], cwd = ROOT, nodeArgs: string[] = []): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise(done => {
-    const child = spawn(process.execPath, ["--conditions=streamotter-source", "--no-warnings", CLI, ...args], { cwd });
+    const child = spawn(process.execPath, ["--conditions=streamotter-source", "--no-warnings", ...nodeArgs, CLI, ...args], { cwd });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", chunk => { stdout += chunk; });
@@ -130,6 +131,34 @@ describe("CLI: init, validate, generate, dev, start", () => {
     const bare = await mkdtemp(join(tmpdir(), "so-style-bare-"));
     assert.equal((await runCli(["init", "app"], bare)).code, 0);
     assert.match(await readFile(join(bare, "app/web/example.ts"), "utf8"), /from "@streamotter\/client"/);
+  });
+
+  it("removes a partial scaffold and exits 2 when a write fails partway through", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "so-init-fail-"));
+    // Fails the third write (web/example.ts), after server/ was created and two files were written.
+    const preload = join(dir, "fail-third-write.mjs");
+    await writeFile(preload, [
+      "import fs from \"node:fs\";",
+      "import { syncBuiltinESMExports } from \"node:module\";",
+      "const original = fs.promises.writeFile;",
+      "let calls = 0;",
+      "fs.promises.writeFile = async (...args) => {",
+      "  if (++calls === 3) throw Object.assign(new Error(\"ENOSPC: no space left on device\"), { code: \"ENOSPC\" });",
+      "  return original(...args);",
+      "};",
+      "syncBuiltinESMExports();"
+    ].join("\n"));
+    const fresh = await runCli(["init", join(dir, "fresh", "app")], ROOT, ["--import", pathToFileURL(preload).href]);
+    assert.equal(fresh.code, 2, fresh.stderr);
+    assert.match(fresh.stderr, /Could not create the project in .*removed the files it had written: ENOSPC/);
+    assert.equal(fresh.stdout, "");
+    assert.deepEqual((await readdir(dir)).sort(), ["fail-third-write.mjs"]);
+
+    const existing = join(dir, "existing");
+    await mkdir(existing);
+    await writeFile(join(existing, "notes.txt"), "mine\n");
+    assert.equal((await runCli(["init", existing], ROOT, ["--import", pathToFileURL(preload).href])).code, 2);
+    assert.deepEqual(await readdir(existing), ["notes.txt"]);
   });
 
   it("exports from the workbench API and validates in the CLI with the same canonical form and fingerprint", async () => {
