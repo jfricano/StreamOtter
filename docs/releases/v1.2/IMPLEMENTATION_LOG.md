@@ -4,9 +4,9 @@ Working record for the V1.2 quality review. Anyone resuming starts with §1. New
 
 ## 1. Resume here
 
-**Current state (October 4, 2026):** phase A is done. With the owner's go, the V1 code V1.1 never touched was reviewed early, findings only: 10 major and 33 minor ([findings](./PHASE_A_FINDINGS.md)). Phase B (V1 code that V1.1 changed) and all fixes wait for the V1.1 fix PR (stacked on #18) and its second review.
+**Current state (October 4, 2026):** the review is done and fixed. Phase A found 10 major and 33 minor issues ([findings](./PHASE_A_FINDINGS.md)), phase B 5 major and 24 minor ([findings](./PHASE_B_FINDINGS.md)). All 15 majors are fixed on `feat/v1.2-quality-fixes`, each with a regression test that fails without its fix, along with the cheap minors (§3). The branch is stacked on `feat/v1.1-review-fixes` (PR #19). Nothing merges to `main` without the owner.
 
-**Next step:** when the V1.1 thread finishes, rebase this branch onto the newest V1.1 branch (or `main`), record the review commit here, and run phase B (reviewers 3, 4, 6 and the changed parts of 5 in the plan), then fix phase A and B findings on `feat/v1.2-quality-fixes`.
+**Next step:** drive the V1.2 PR's CI to green and answer review. The deferred minors in §3 are candidates for a later release.
 
 **Environment notes:** same as V1.1 (see `docs/releases/v1.1/IMPLEMENTATION_LOG.md` §1). Commits are authored and committed as Jason Fricano `<44284799+jfricano@users.noreply.github.com>`, unsigned, with no tool trailers.
 
@@ -23,3 +23,29 @@ Working record for the V1.2 quality review. Anyone resuming starts with §1. New
 - Re-ran every major reproduction; all failed as described. Results in [PHASE_A_FINDINGS.md](./PHASE_A_FINDINGS.md).
 - W-2 (macOS `/proc` in `scripts/kafka/replicated-*.sh`) is V1.1 code; passed to the V1.1 thread.
 - Reproduction scripts lived in the review container's git-ignored `.review-scratch/`; each fix must add its own regression test.
+
+### October 4, 2026 — phase B review and fixes
+
+- The V1.1 fix PR (#19) and its second review finished. Rebased onto `feat/v1.1-review-fixes` at `c6f05f1` and ran phase B with three reviewers: K (gateway core and Kafka, real broker), M (CLI and management), R (workbench, docs, release). 5 major, 24 minor, in [PHASE_B_FINDINGS.md](./PHASE_B_FINDINGS.md).
+- Fixed the 15 majors, one commit per finding or tightly coupled group, each with a regression test confirmed to fail before its fix. Then fixed the cheap minors in five commits by area, with tests for the timer cap, the enum length check and prototype-named commands.
+- Test results are in §4.
+
+## 3. Minor findings: fixed and deferred
+
+**Fixed:** P-5 (timer limits capped at 2^31−1 ms), P-7 (claims deep-frozen), the client's missing 1 s then 2 s retry backoff (with C-2), W-3 and W-6 (with C-4), W-4, W-5, W-7, W-10, G-5, G-6, G-7, G-8, K-5, M-2, M-3, M-4, M-6 (the preflight; a mid-write file-system error can still leave a partial scaffold), M-7, M-8, M-9, R-2, R-3, R-4.
+
+**Deferred**, each judged low risk or larger than a minor fix:
+
+- Protocol and gateway: P-2, P-3, P-6, P-8, P-9.
+- Client SDK: `resync()` during a pause shows `authorizing`; the same-tick hello-then-close stall in Node clients; a `resync-required` for the old epoch ignored mid-resync; listeners firing after one unsubscribes.
+- Codegen: G-4.
+- CLI and management: M-5.
+- Gateway and Kafka: K-4, K-6 (mostly addressed by the K-3 heartbeat), K-7, K-8, K-9.
+- Example, scripts and tests: W-8, W-9, W-11 to W-18.
+- Workbench, docs and release: R-5 to R-9.
+
+## 4. Test runs
+
+On Node 24.21.0 at the final commit:
+
+- `pnpm verify`: typecheck, contract check and 396+ tests pass.
