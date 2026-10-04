@@ -61,7 +61,10 @@ it("stays paused, without fetching in a loop, after the consumer crashes and res
     ]);
     await waitFor(() => k.internals.sources()[0]?.status === "paused", 15_000, "paused");
     await sleep(1_000);
-
+    // Partition 1 may be processed before the poison in partition 0 pauses the source; nothing moves after that.
+    const committedWhenPaused = await committedOffsets(k.group, topic);
+    const mappedWhenPaused = mapped.length;
+    assert.equal(committedWhenPaused[0], "-1");
 
     // Cut the broker off long enough for KafkaJS to exhaust its retries and crash with restart.
     blackhole = true;
@@ -76,8 +79,8 @@ it("stays paused, without fetching in a loop, after the consumer crashes and res
     await sleep(5_000);
     assert.ok(counts.startBatch - mid.startBatch < 50, `a paused source handed out ${counts.startBatch - mid.startBatch} batches in 5 s`);
     assert.equal(k.internals.sources()[0]?.status, "paused");
-    assert.deepEqual(await committedOffsets(k.group, topic), { 0: "-1", 1: "-1" });
-    assert.equal(mapped.length, 0);
+    assert.deepEqual(await committedOffsets(k.group, topic), committedWhenPaused);
+    assert.equal(mapped.length, mappedWhenPaused);
   } finally {
     blackhole = false;
     await k.close();
