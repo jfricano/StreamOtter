@@ -4,7 +4,7 @@ V1.2.1 fixes the minor findings deferred from the V1.2 quality review (issues #2
 
 ## 1. Resume here
 
-**Current state (October 4, 2026):** in progress on `feat/v1.2.1-minor-fixes`, stacked on `feat/v1.2-quality-fixes` (PR #20). One PR targets that branch; each fixed issue is referenced with "Fixes #N". Nothing merges to `main` without the owner. Whether V1.2.1 joins the 0.2.0-rc.1 release is the owner's call; release-level docs (CHANGELOG, release notes, acceptance packet, roadmap) stay owned by the V1.2 PR and changes to them are sent there, not edited here.
+**Current state (October 4, 2026):** all 34 issues addressed and every tier green ([FIXES.md](./FIXES.md) has each one). Next: an independent review of the whole V1.2.1 diff, at the owner's request, then the PR. Work is on `feat/v1.2.1-minor-fixes`, stacked on `feat/v1.2-quality-fixes` (PR #20). One PR targets that branch; each fixed issue is referenced with "Fixes #N". Nothing merges to `main` without the owner. Whether V1.2.1 joins the 0.2.0-rc.1 release is the owner's call; release-level docs (CHANGELOG, release notes, acceptance packet, roadmap) stay owned by the V1.2 PR and changes to them are sent there, not edited here.
 
 **Environment notes:** same as V1.1 and V1.2 (see `docs/releases/v1.1/IMPLEMENTATION_LOG.md` §1). Node 24.21.0. Commits are authored and committed as Jason Fricano `<44284799+jfricano@users.noreply.github.com>`, unsigned, with no tool trailers. If #19 or #20 move, merge their branch in; never rebase them.
 
@@ -28,3 +28,20 @@ Every tier runs before the PR is marked ready: `verify`, `test:load`, `test:kafk
 ### October 4, 2026 — start
 
 - Branched from `feat/v1.2-quality-fixes` at `d049294`. Baseline `pnpm verify` on Node 24.21.0: 397 pass.
+
+### October 4, 2026 — fixes
+
+- Six workers, one git worktree each (`fix/v1.2.1-group-a` to `-f`), each merged into `feat/v1.2.1-minor-fixes` with `--no-ff`. One import conflict in `tests/integration/cli.test.ts` (groups D and F) was resolved by keeping both imports.
+- Lesson: `git stash` is shared by every worktree of a clone. One worker popped another's stash; nothing was lost, but fails-without-fix checks must copy files aside or use `git diff` and `git apply -R`, never stash.
+- Outcomes are in [FIXES.md](./FIXES.md). Not fixed outright, with reasons there: K-4 (behavior kept, warning and docs added), K-6 (partly: a clearer warning), R-9 (documented, `exports` kept).
+- The reviewer's itemized lists for W-17 and W-19 were never written into the repo (PHASE_A_FINDINGS.md names six of W-19's twelve behaviors). Both were rebuilt from an audit of the tests against `docs/V1_API.md`.
+- Release-level wording (CHANGELOG, the J7 limitation in `docs/releases/v1.1/REVIEW.md`) was sent to the V1.2 PR's owner, not edited here.
+
+## 4. Test runs
+
+On Node 24.21.0 at the merge of all six groups:
+
+- `pnpm verify`: typecheck, contract check and 424 tests pass (397 at the start).
+- `test:load` 1, `test:kafka` 48 (single broker), `test:kafka:replicated` 3 (three brokers), `test:browser` 59, `test:deploy` 5 (Caddy), `test:install` 22: all pass, none skipped.
+- W-18 check: with the replicated cluster down, `test:kafka:replicated` fails (exit 1); with `STREAMOTTER_ALLOW_SKIP=1` it passes with its check skipped.
+- Node 26 was not run locally; the extended workflow now runs it.
