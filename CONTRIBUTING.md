@@ -33,9 +33,11 @@ Tests and type-checks run the TypeScript sources through the `streamotter-source
 | `pnpm test:kafka` | `pnpm kafka:setup` once, then `pnpm kafka:start` | Nightly |
 | `pnpm test:browser` | `pnpm browsers:setup` once (Linux may also need Playwright's system libraries) | Nightly |
 | `pnpm test:deploy` | `pnpm deploy:setup` once, plus the running broker | Nightly |
-| `pnpm test:kafka:replicated` (V1.1 F47: quarantine evidence under leader and ISR failure) | `pnpm kafka:setup` once, then `./scripts/kafka/replicated-start.sh` (three brokers on ports 29092–29094 and three controllers; stop with `./scripts/kafka/replicated-stop.sh`). Skips when the cluster isn't running. The scripts are written for Linux and macOS, but have only run on Linux so far | No; run by hand before a release |
+| `pnpm test:kafka:replicated` (V1.1 F47: quarantine evidence under leader and ISR failure) | `pnpm kafka:setup` once, then `./scripts/kafka/replicated-start.sh` (three brokers on ports 29092–29094 and three controllers; stop with `./scripts/kafka/replicated-stop.sh`). The scripts are written for Linux and macOS, but have only run on Linux so far | No; run by hand before a release |
 
 With the broker running, `pnpm test:install` also runs the installed `streamotter start` against TLS Kafka.
+
+`pnpm test:kafka`, `pnpm test:kafka:replicated` and `pnpm test:deploy` fail when what they need isn't running, rather than passing with every test skipped. Set `STREAMOTTER_ALLOW_SKIP=1` to let them skip instead.
 
 The setup scripts download pinned, checksum-verified tools into the gitignored `.local/` folder: Apache Kafka 4.1.2 (plus a Temurin 21 JDK on Apple silicon and on x64 or arm64 Linux; elsewhere they use Java 17+ from `PATH`), headless Chromium, and Caddy. Stop the broker with `pnpm kafka:stop`, and delete `.local/` to remove everything.
 
