@@ -23,7 +23,7 @@ What the runtime cannot establish, and says so in the docs and the UI: whether t
 
 ## 2. Baseline-to-release diff
 
-Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: the stack of PRs below, ending at `feat/v1.1-operations-release`.
+Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: the stack of PRs below, ending at `feat/v1.1-review-fixes`.
 
 | PR | Branch | Content |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: the s
 | #16 | `feat/v1.1-guarded-continuation` | Slice C: recovery guard, recovery boundaries, snapshot acknowledgment, circuit breaker |
 | #17 | `feat/v1.1-operator` | Slice D: operator service, local socket, CLI, Failures tab, Kafka read-back |
 | #18 | `feat/v1.1-operations-release` | Slice E: health listener, downgrade refusal, `sources rebaseline`, reference guard, runbook and guides, crash tests, replicated-broker test, this packet |
-| (review fixes) | `feat/v1.1-review-fixes` | Fixes for every review finding except J7 (fixture evidence is never deleted), one commit per finding and a regression test for every code fix; see [REVIEW.md](./REVIEW.md) |
+| #19 | `feat/v1.1-review-fixes` | Fixes for every review finding except J7 (fixture evidence is never deleted), one commit per finding and a regression test for every code fix; see [REVIEW.md](./REVIEW.md) |
 
 Overall against `main`: about 120 files and 20,000 lines added, about half of them in `packages/` and most of the rest tests and docs. The [CHANGELOG](../../../CHANGELOG.md) lists every user-visible change under Unreleased.
 
@@ -114,6 +114,7 @@ These ACLs follow from the client calls. They have not been checked against a br
 - While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds until a restart reconciles it. This is deliberate (review finding A), but it means one uncertain advance stops every partition of that source.
 - `KafkaQuarantineReader` reports `unavailable` on a coordinator reload (`GROUP_LOAD_IN_PROGRESS`) right after a broker rejoins, instead of retrying within its deadline. It fails closed; the operator repeats the command.
 - If a source's group coordinator is lost during an advance, the assignment epoch changes and the incident becomes `uncertain`; a restart reconciles it. Seen once in an F47 development run, not covered by a test.
+- Redrive finds an evidence conflict or a moved position on an incident through its event history, which keeps the newest 200 events. An incident retried more than about 100 times can lose that marker, and redrive then no longer sees the fault ([REVIEW.md](./REVIEW.md) §5). An `uncertain` advance is not affected.
 - The partial and not-run rows in §4.
 
 ## 10. Recommended release status

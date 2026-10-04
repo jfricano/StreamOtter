@@ -97,6 +97,8 @@ kafka-topics.sh --bootstrap-server kafka-1.example.com:9093 --command-config adm
 
 **Source retention matters too.** A held record is never committed, so set the source topics' retention well above how long a hold may last. If retention deletes a held record, the gateway holds the source rather than jumping past it.
 
+**A changed cluster is an integrity failure.** Each incident records the Kafka cluster ID it was captured on. If the source's connection profile now reaches another cluster, or the startup check can't read the cluster ID, the same position may name a different record, so the incident holds: it is never quarantined or advanced, and no record of that source can be redriven until it is resolved. If the source really moved, change its `generation` and rebaseline; see [the runbook](./source-failures.md#64-topic-retention-and-expired-evidence).
+
 ## Restarts and crashes
 
 On a restart, clients reconnect by themselves and resynchronize from fresh snapshots. Records that were processed but not yet committed when a gateway crashed are processed again, and revisions make that harmless: an update no newer than what a view already shows is discarded.
@@ -138,7 +140,7 @@ KafkaJS 2.2.4 against Apache Kafka 4.1.2 (single-node KRaft), from the [implemen
 
 Also verified against real Kafka: explicit per-record commits, poison records pausing without skipping, redelivery after a crash without the displayed state going backwards, rebalances and broker outages marking views `stale` and resynchronizing, and `startFrom` for new groups.
 
-V1.1 failure handling (unreleased), against the same single local broker: byte-exact quarantine of binary keys, invalid UTF-8 and repeated headers; refusal of a missing or undersized quarantine topic; holding a source for 35 seconds without losing group membership; holding when the group position moves past a held record; advancing past a record with the commit confirmed by reading it back, including a gateway killed on either side of the commit; and reading evidence back byte for byte. Not yet tested: a replicated cluster, ACL-enabled brokers, and an unavailable quarantine broker. See the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased).
+V1.1 failure handling (unreleased), against the same single local broker: byte-exact quarantine of binary keys, invalid UTF-8 and repeated headers; refusal of a missing or undersized quarantine topic; holding a source for 35 seconds without losing group membership; holding when the group position moves past a held record; advancing past a record with the commit confirmed by reading it back, including a gateway killed on either side of the commit; and reading evidence back byte for byte. On a local three-broker cluster (F47): acknowledged quarantine copies survived the leader's SIGKILL, and writes were refused, with the source held, while two of three brokers were down. Not yet tested: ACL-enabled brokers, network partitions, and managed services. See the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased).
 
 ## A local broker
 

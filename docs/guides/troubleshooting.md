@@ -57,7 +57,8 @@ Exit code `2` means invalid input or configuration; `1` means startup or runtime
 | `No failure journal at …/journal.sqlite. Run \`streamotter init --failures\` …` or `State directory … does not exist` | Create the journal once with `streamotter init --failures --config <path> --state-dir <dir>`, as the gateway's user. If a journal existed before, don't create a new one: see [lost or damaged local state](./source-failures.md#68-lost-or-damaged-local-state). |
 | `… is group- or world-writable (mode …); run chmod go-w on it.`, or `… is owned by uid …` | Make the state directory and journal owned by the gateway's user, and not writable by others. `run/` must have no group or world access at all (`chmod 700`). |
 | `The failure journal needs Node 24.15.0 or later` | Upgrade Node. |
-| `Another gateway owns this journal (pid …)` | Stop the other gateway. A lock naming another host must be removed by hand once you've checked that gateway is stopped. |
+| `Another gateway owns this journal (pid …)` | Stop the other gateway. A lock left by a dead process on the same host is replaced by itself, even one naming the new gateway's own pid after a container restart. A lock naming another host must be removed by hand once you've checked that gateway is stopped. |
+| `…/journal.sqlite-wal exists: files of an earlier journal are still here …` (or `-shm`), from `init --failures` | A `-wal` or `-shm` file from an earlier journal is still in the state directory, and it can hold that journal's last commits. Don't delete it. Move `journal.sqlite`, `journal.sqlite-wal` and `journal.sqlite-shm` aside together, or recover the old journal; see [lost or damaged local state](./source-failures.md#68-lost-or-damaged-local-state). |
 | `… is not a readable SQLite database or is corrupt …` / `… failed its integrity check …` | Restore the journal from a backup. See [lost or damaged local state](./source-failures.md#68-lost-or-damaged-local-state). |
 | `Source "…" has an open incident (…) from generation "…"` | You changed a source's `generation` while it has open incidents. If you didn't mean to rebaseline, restore the previous generation and resolve them first. If you did (a re-created topic, a record that can never be processed), run `streamotter sources rebaseline` with the gateway stopped. See [Rebaseline a source](./source-failures.md#610-rebaseline-a-source). |
 | `The quarantine topic is missing; provision it …` | Create the topic, and check the principal can Describe it. See [the quarantine topic](./kafka.md#the-quarantine-topic-v11). |
@@ -67,14 +68,17 @@ Exit code `2` means invalid input or configuration; `1` means startup or runtime
 
 ## Operator commands (V1.1)
 
-`streamotter status`, `failures …` and `sources …` talk to a running gateway over its local socket. Exit codes: `0` completed, `1` runtime failure or a `failed` operation, `2` invalid request, `3` refused, `4` unknown outcome.
+`streamotter status`, `failures …` and `sources …` talk to a running gateway over its local socket. Exit codes: `0` completed, `1` runtime failure or a `failed` operation, `2` invalid request, `3` refused, `4` unknown outcome. With `--json`, every error is one line `{"error": StreamError}` on stderr and stdout stays empty.
 
 | What you see | Why | What to do |
 | --- | --- | --- |
 | `No gateway is serving the operator socket for …` (exit 1) | The gateway isn't running, wasn't started with `--operator-socket`, or `--state-dir` points elsewhere | Start it with `--state-dir <dir> --operator-socket` and use the same `<dir>`. |
 | `Operator token file … is accessible to group or others …`, or `… is owned by uid …` | You're not the gateway's user, or the permissions changed | Run the command as the gateway's user (for example with `sudo -u`). |
 | `UNAUTHENTICATED: The operator token is missing or stale` | The gateway restarted between reading the token and the request | Run the command again; each start writes a new token. |
-| `refused: stale-revision` (exit 3) | The incident or circuit changed since you read it | Read the current revision with `failures show` or `status`, check what changed, and decide again. |
+| `refused: stale-revision` (exit 3) | The incident or circuit changed since you read it. A `retry-current` or `reassess` waits for a quarantine write or recovery guard already running on the source, and that can change the incident. | Read the current revision with `failures show` or `status`, check what changed, and decide again. |
+| `refused: not-found` (exit 3) | No incident, source or boundary with that ID | Check the ID, and that `--state-dir` names the right gateway. |
+| `refused: advance-unresolved` | An advance on that source is `advance-pending` or `uncertain`; the whole source holds until a restart reconciles it | Restart the gateway once the broker is reachable. See [crash and restart](./source-failures.md#67-crash-and-restart). |
+| `refused: integrity-fault-open` (`evaluate`, `redrive`) | The source has an unresolved source-integrity fault: an integrity-class incident, an unconfirmed advance, an evidence conflict, a moved position, or an incident captured on another Kafka cluster | Resolve that incident first. For a changed cluster, see [another cluster](./source-failures.md#64-topic-retention-and-expired-evidence). |
 | `refused: circuit-open` | Automatic continuation stopped on that source; retries are refused too | Fix the cause, then `sources reopen-circuit`. |
 | `refused: plan-expired`, `plan-unknown` or `fingerprint-changed` | Redrive plans last five minutes, are single use, and end on restart | Run `failures evaluate` again. |
 | `refused: nothing-to-rebaseline` (exit 3) | `sources rebaseline` found no incident or boundary from an earlier generation | Change the source's `generation` first; incidents of the current generation are retried or repaired, never rebaselined. |

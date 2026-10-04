@@ -242,7 +242,7 @@ A generation change always retires the boundary, whatever the mode. No mode reti
 | What happened to one record, and what can I do? | `streamotter failures show --state-dir <dir> --failure <failureId>` |
 | A file to attach to a bug report | `streamotter failures export --state-dir <dir> --failure <failureId> --out incident.json` |
 
-Every command takes `--json` for scripts. The CLI talks to the gateway serving `<dir>/run/operator.sock`, so that gateway must run with `--operator-socket`, and you must run the CLI as the gateway's user.
+Every command takes `--json` for scripts. With `--json`, every error, usage errors included, goes to stderr as one line `{"error": StreamError}`, stdout stays empty, and the exit code is the same as without it. The CLI talks to the gateway serving `<dir>/run/operator.sock`, so that gateway must run with `--operator-socket`, and you must run the CLI as the gateway's user.
 
 `failures show` keeps separate facts separate. Read them separately:
 
@@ -261,6 +261,8 @@ None of these says a browser shows correct data. That is still each subscription
 
 Every action names the incident (or circuit, or boundary) and the revision you saw. If anything changed since, it's refused rather than applied. There is no `--force`, no wildcard and no bulk form. Get the revision from `failures show` or `status`.
 
+`retry-current` and `reassess` wait for anything the gateway is still doing with the source's held record (a quarantine write, the recovery guard) before they check the revision. That work can change the incident, so a revision read while it ran is refused `stale-revision`: read it again. A retry the gateway would refuse anyway (`gateway-not-running`, `advance-unresolved`, `circuit-open`) is refused before anything is recorded and leaves the incident's revision unchanged.
+
 | Situation | Command | What it does |
 | --- | --- | --- |
 | You fixed the cause (publisher, mapping, schema) | `sources retry-current --source <id> --failure <fid> --expected-revision <n>` | Resumes the source at the held record, which is processed again. Never skips it. Waits up to 15 s and reports `retried` (processed), `advanced`, `held` (failed again, with the reason) or `retrying` (not settled yet). |
@@ -269,7 +271,7 @@ Every action names the incident (or circuit, or boundary) and the revision you s
 | A record was advanced past, and you want its state delivered now that the mapping works | `failures evaluate --failure <fid> --expected-revision <n>`, then `failures redrive --failure <fid> --plan <planId> --plan-fingerprint <fp> --expected-revision <n>` | Evaluate reads the original back, runs the current mapping without delivering, tracing or committing, and issues a five-minute single-use plan when redrive is allowed. Redrive checks everything again and admits the outputs through the normal revision filter: `reprocessed` if a subscription took a frame, `superseded` if current state was already newer. Nothing is published to Kafka and no offset moves. |
 | Retire a boundary by hand (`boundaryRetirement: "operator"` only) | `sources retire-boundary --source <id> --boundary <bid> --expected-revision <n> --reason "<what you verified>" --confirm <bid>` | See the warning in [§4.3](#43-retiring-a-boundary). The CLI prints it and sends nothing unless `--confirm` repeats the boundary ID. |
 
-Redrive needs: an `advanced` incident of an eligible class, `replaySafeMapping: true`, no unresolved source-integrity fault on the source (an open integrity-class incident, an unconfirmed advance, an evidence conflict, or a position that moved without a recorded advance), readable evidence, and a mapping that now succeeds. Otherwise `evaluate` says why in `ineligibleReason`.
+Redrive needs: an `advanced` incident of an eligible class, `replaySafeMapping: true`, no unresolved source-integrity fault on the source (an open integrity-class incident, an unconfirmed advance, an evidence conflict, a position that moved without a recorded advance, or an incident captured on another Kafka cluster), readable evidence, and a mapping that now succeeds. Otherwise `evaluate` says why in `ineligibleReason`.
 
 `retry-current`'s outcome `held` exits 0, because the operation completed. Read the outcome, not just the exit code.
 
@@ -281,7 +283,7 @@ Redrive needs: an `advanced` incident of an eligible class, `replaySafeMapping: 
 | `1` | Runtime failure: the gateway isn't running or reachable, an operator error, or the operation `failed` |
 | `2` | Invalid usage or request (`INVALID_REQUEST`) |
 | `3` | Refused: the gateway understood the request and declined it |
-| `4` | Unknown outcome |
+| `4` | Unknown outcome: the gateway recorded the operation as `unknown`, or a mutation (`retry-current`, `reassess`, `reopen-circuit`, `retire-boundary`, `redrive`) reached the gateway and its answer was lost or timed out. A read command that loses its answer exits 1. Check `status` and `failures show` before sending a mutation again. |
 
 Refusals carry an `outcome` you can act on:
 
@@ -289,13 +291,16 @@ Refusals carry an `outcome` you can act on:
 | --- | --- |
 | `stale-revision` | Read the current revision with `failures show` or `status`, check what changed, and decide again. |
 | `not-held`, `advance-unresolved`, `in-progress` | The record isn't waiting on you right now. Check `status`; an unresolved advance is reconciled at the next start. |
+| `circuit-closed` | `reopen-circuit` found the circuit already closed. Nothing to do. |
 | `circuit-open` | Fix the cause, then `reopen-circuit`. While the circuit of a `quarantine-resync` source is open, every retry is refused, `gateway.resumeSource` included. |
 | `integrity-class`, `policy-not-resync` | The class or policy can't be reassessed or redriven. Repair and `retry-current`. |
 | `plan-expired`, `plan-unknown`, `fingerprint-changed` | Evaluate again; see [§6.6](#66-stale-or-expired-plans). |
+| `plan-mismatch` | The plan was issued for a different incident. Use the plan `evaluate` gave for this one. |
 | `evidence-expired`, `evidence-unavailable` | See [§6.4](#64-topic-retention-and-expired-evidence) and [§6.1](#61-credentials-and-acls). |
 | `not-replay-safe`, `integrity-fault-open`, `not-advanced` | Redrive isn't allowed for this incident; `failures show` explains the next action. |
 | `retirement-mode`, `incident-held` | Boundary retirement is off for this source, or an incident it covers is still held. `advance-unresolved` on `retire-boundary` means an incident it covers has an advance not yet confirmed; it is reconciled at the next start. |
 | `operation-id-reused`, `operation-in-progress` | Use a new `--operation-id` for a new redrive. |
+| `not-found` | No such incident, source or boundary. Check the ID, and that `--state-dir` names the right gateway. |
 | `nothing-to-rebaseline` | `sources rebaseline` found nothing from an earlier generation; see [§6.10](#610-rebaseline-a-source). |
 | `journal-unavailable` | The operation couldn't be recorded, so nothing was done; see [§6.3](#63-full-disk-or-full-journal). |
 
@@ -319,7 +324,7 @@ Protect the quarantine topic, the state directory and their backups as you prote
 
 ## 6. Incident procedures
 
-Each procedure starts from what you see: readiness reasons from the [health listener](../DEPLOYMENT.md#health-checks), `streamotter status`, and gateway log lines. Log lines carry IDs and categories, never payloads or credentials.
+Each procedure starts from what you see: readiness reasons from the [health listener](../DEPLOYMENT.md#health-checks), `streamotter status`, and gateway log lines. Log lines carry IDs and categories, never payloads or credentials. The one exception is V1's "Source paused" line, which includes up to 200 characters of a `map` error's message; keep record contents out of the errors your mappers throw.
 
 ### 6.1 Credentials and ACLs
 
@@ -360,7 +365,7 @@ Credentials themselves (environment variables, CA files) work as in V1: a wrong 
 
 The quarantine topic lives on your source cluster, so a whole-cluster outage is a source outage: views go `stale` and recover as in V1. This procedure is for the quarantine topic alone failing: its partition leader is unavailable, `min.insync.replicas` can't be met, it was deleted, or writes are refused.
 
-What happens: the write times out after 10 seconds and two retries, or the broker refuses it. A timeout is recorded as `quarantine: unknown`, never as success. A definite refusal is `failed`. Either way the source stays held at the record, nothing is committed, and readiness reports `quarantine`. A `quarantine-resync` source never advances without a fresh acknowledged copy. Other sources keep running.
+What happens: each write attempt has a 10-second deadline, and a write is retried at most twice. A write that still gets no answer is recorded as `quarantine: unknown`, never as success. A definite refusal by the broker is `failed`. Either way the source stays held at the record, nothing is committed, and readiness reports `quarantine`. A `quarantine-resync` source never advances without a fresh acknowledged copy. Other sources keep running.
 
 Do:
 
@@ -392,11 +397,11 @@ Two topics have retention that matters.
 
 **The source topic.** A held record is uncommitted, so retention can delete it while you work on the fix. The gateway then sees the group's position past the held record without a recorded advance. It holds the source ("Source progress moved past a held record without a recorded advance; the source is held") instead of treating that as progress. Retries hold again, because the record is gone. The way out is a rebaseline ([§6.10](#610-rebaseline-a-source)). Prevent it: keep source retention well above how long a hold may last, and alert on readiness. The same applies when someone resets the group's offsets by hand or another consumer commits on the group.
 
-**Another cluster.** An incident records the Kafka cluster ID it was captured on. If the connection profile now reaches a different cluster (or the quarantine check can't name one), the incident holds with "Kafka cluster mismatch": the record at the same position may be a different record there, so it is never quarantined or advanced, and an advance that was pending at the restart stays `uncertain` instead of being confirmed from the other cluster's offsets. Point the profile back at the original cluster, or, if the source really moved, change its `generation` and rebaseline ([§6.10](#610-rebaseline-a-source)).
+**Another cluster.** An incident records the Kafka cluster ID it was captured on. If the connection profile now reaches a different cluster (or the quarantine check can't name one), the incident holds with "Kafka cluster mismatch": the record at the same position may be a different record there, so it is never quarantined or advanced and counts as a source-integrity fault that blocks redrive on the source, and an advance that was pending at the restart stays `uncertain` instead of being confirmed from the other cluster's offsets. Point the profile back at the original cluster, or, if the source really moved, change its `generation` and rebaseline ([§6.10](#610-rebaseline-a-source)).
 
 ### 6.5 Repair a poison record
 
-`failures show` names the class, the stage and the next action. Then:
+`failures show` names the class, the stage and the next action. Its diagnosis names a `map` error by its type and code only, never its message, because a message can quote the record (a `JSON.parse` error does). The full message is in the gateway's "Source paused" log line, as in V1. Then:
 
 | Cause | Repair |
 | --- | --- |
@@ -431,8 +436,9 @@ On start, before any source is ready, the gateway:
 
 - **Takes the journal lock.** `journal.lock` names the owning pid and host. A lock left by a dead process on the same host is replaced, including one that names the new gateway's own pid (a container restarted in place often reuses pid 1), but only once SQLite confirms no other process holds the journal open. A lock naming another host is refused, because its owner can't be checked: confirm that gateway is stopped, remove the lock, and start again.
 - **Restores the boundary in force**, so no snapshot after a restart skips it.
-- **Reconciles unresolved advances** (`advance-pending`, `uncertain`) against the consumer group's committed offset. Offset + 1 confirms the advance. At or below the record means it never happened, and the incident is `held` again. Anything further is unexplained, and the source holds. If the committed offset can't be read, the incident stays `uncertain` and held; restart once the broker is reachable. While an incident is `uncertain`, the whole source holds: the next record on any partition is not processed.
-- **Marks interrupted operator operations `unknown`.** They're logged ("An operator operation was interrupted by a restart; its outcome is unknown and it is not rerun") and never rerun. A CLI command that was waiting may have exited 1 or 4.
+- **Reconciles unresolved advances** (`advance-pending`, `uncertain`) against the consumer group's committed offset. Offset + 1 confirms the advance. At or below the record means it never happened, and the incident is `held` again. Anything further is unexplained, and the source holds. If the committed offset can't be read, the incident stays `uncertain` and held; restart once the broker is reachable. While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds: the next record on any partition is not processed, and retries are refused with `advance-unresolved`.
+- **Puts an interrupted recovery guard back to `held`.** An incident left `guard-pending` by a crash during the guard returns to `recovery: held`, because no guard runs in a new process. Use `reassess` or `retry-current` to run it again.
+- **Marks interrupted operator operations `unknown`.** They're logged ("An operator operation was interrupted by a restart; its outcome is unknown and it is not rerun") and never rerun. On a graceful stop, the operator socket first answers requests already running, for up to 5 seconds. A mutation that was waiting and got no answer exits 4; a read exits 1.
 
 After an `unknown` operation: run `failures show` and read the incident's history, which records each operation ID. Decide again from what you see. For a redrive, evaluate again and approve the new plan with a new operation ID; reusing the old ID returns the recorded `unknown`.
 

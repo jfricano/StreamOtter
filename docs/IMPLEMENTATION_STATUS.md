@@ -228,6 +228,8 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 - The operator socket is not available on Windows.
 - Fixture evidence in the local spool (`streamotter dev` with fixture sources) is never deleted; the spool is capped at 16 MiB (review finding J7).
 - While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds, on every partition, until a restart reconciles it.
+- Redrive finds an evidence conflict or a moved position on an incident through its event history, which keeps the newest 200 events, so an incident retried more than about 100 times can lose that marker (second review, [REVIEW.md](./releases/v1.1/REVIEW.md) §5).
+- `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` have run on Linux only; their macOS fix (`bdf1445`) has not run on a Mac yet.
 
 ## Gate A status (home site and demo plan)
 

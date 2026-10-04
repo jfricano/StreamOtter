@@ -97,12 +97,13 @@ sudo -u streamotter npx streamotter init --failures --config streamotter.json --
 | --- | --- | --- |
 | `<dir>` | `init --failures` (0700) | Exists; not a symlink; owned by the gateway's user; not group- or world-writable |
 | `<dir>/journal.sqlite` (plus `journal.sqlite-wal` while open) | `init --failures` (0600) | Exists (never created by `start`); not a symlink; owned by the gateway's user; not group- or world-writable |
-| `<dir>/journal.lock` | `start` | Names the owning process; a second gateway is refused |
+| `<dir>/journal.lock` | `start` | Names the owning process; a second gateway is refused. A lock left by a dead process on the same host is replaced, including one naming the new gateway's own pid (a container restarted in place often reuses pid 1), once SQLite confirms nothing else holds the journal open |
 | `<dir>/run/` | `init --failures` (0700) | With `--operator-socket`: no group or world access at all, not a symlink, owned by the gateway's user |
 | `<dir>/run/operator.sock`, `<dir>/run/operator.token` | `start --operator-socket` (0600 each) | Fresh token on every start; both removed on stop |
 
 - **Persistent storage.** Put the directory on a persistent local volume. In a container, mount a volume there; a container's writable layer loses the journal on replacement, and the gateway then refuses to start until you [recover](./guides/source-failures.md#68-lost-or-damaged-local-state).
 - **Node.js 24.15 or later.** The journal uses the built-in `node:sqlite`, which warns as experimental on earlier Node 24 releases, so the gateway refuses to open it there.
+- **Leftover WAL files.** `init --failures` refuses (`journal-exists`) while a `journal.sqlite-wal` or `journal.sqlite-shm` is in the directory, because it can hold an earlier journal's last commits. Never delete them; move all the journal files aside together.
 - **Backups.** Copy `journal.sqlite` and any `journal.sqlite-wal` with the gateway stopped. Skip `run/` and `journal.lock`. Protect backups like the source data: the journal holds incident metadata, and fixture evidence in development.
 - **Keep it out of version control**, and out of anything you bundle or ship.
 - **Disk.** The journal stops at 256 MiB and then refuses writes, keeping the source held; it never evicts decision state. Leave room on the volume.
@@ -110,7 +111,7 @@ sudo -u streamotter npx streamotter init --failures --config streamotter.json --
 
 ### The operator socket
 
-`--operator-socket` (`operatorSocket: true`) serves the operator API on `<dir>/run/operator.sock` for the `streamotter status`, `failures` and `sources` commands. It requires `--state-dir` and `failureHandling`. It starts after every source is ready.
+`--operator-socket` (`operatorSocket: true`) serves the operator API on `<dir>/run/operator.sock` for the `streamotter status`, `failures` and `sources` commands. It requires `--state-dir` and `failureHandling`. It starts after every source is ready. On stop it closes before the sources do: it stops accepting requests, answers those already running for up to 5 seconds (within the 10-second stop deadline), then removes the socket and token. A mutation whose answer is lost this way exits 4 in the CLI, unknown outcome.
 
 The boundary is filesystem permissions plus the token file: Node can't check the caller's user ID, so **anyone who can read the state directory is an operator**. Run the operator commands as the gateway's user on the same host (for example `sudo -u streamotter npx streamotter status --state-dir /var/lib/streamotter/shop`). Never expose the socket through a proxy or a shared volume. Startup refuses an insecure `run/` directory, a socket path over 103 bytes, a path occupied by something other than a socket, and a socket another gateway is answering on. Windows is not supported.
 
