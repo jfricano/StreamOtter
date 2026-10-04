@@ -81,4 +81,30 @@ describe("operator races (fixture tier)", () => {
     assert.equal(result.outcome, "not-found");
     assert.equal(result.operationId, "op-missing");
   });
+
+  it("O6: evaluate and redrive are blocked while another incident on the source has an evidence conflict or an uncertain advance", async () => {
+    const app = new OrderApp();
+    h = await startHarness({ app, failureHandling: RESYNC, recovery: { orders: recoverable }, fixtures: [shipped(3)] });
+    const op = getGatewayOperator(h.gateway);
+    await h.advance(1);
+    const advanced = await only(h, op);
+    app.mapOverride = repairedMap;
+    const plan = (await op.evaluate({ failureId: advanced.failureId, expectedRevision: advanced.revision })).plan!;
+    assert.ok(plan !== null);
+    const store = h.internals.incidentStore()! as IncidentStore;
+
+    const conflict = otherIncident(store, store.get(advanced.failureId)!);
+    const marked = store.update(conflict.failureId, conflict.revision, {}, { event: "held", detail: "evidence-conflict", operationId: null });
+    const evaluation = await op.evaluate({ failureId: advanced.failureId, expectedRevision: advanced.revision });
+    assert.equal(evaluation.eligible, false);
+    assert.equal(evaluation.ineligibleReason, "integrity-fault-open");
+    const redrive = await op.redrive({ failureId: advanced.failureId, planId: plan.planId, planFingerprint: plan.fingerprint, expectedRevision: advanced.revision });
+    assert.equal(redrive.outcome, "integrity-fault-open", redrive.message);
+
+    store.update(marked.failureId, marked.revision, { state: "resolved", progress: "processed", resolution: "test" }, { event: "resolved", detail: "test", operationId: null });
+    const uncertain = otherIncident(store, { ...store.get(advanced.failureId)!, failureId: `${advanced.failureId}-2` });
+    store.update(uncertain.failureId, uncertain.revision, { progress: "uncertain" }, { event: "held", detail: "the advance could not be confirmed", operationId: null });
+    const again = await op.evaluate({ failureId: advanced.failureId, expectedRevision: advanced.revision });
+    assert.equal(again.ineligibleReason, "integrity-fault-open");
+  });
 });

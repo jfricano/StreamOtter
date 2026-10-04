@@ -457,8 +457,10 @@ export class OperatorService implements OperatorApi {
     if (!this.#failures.policy(record.sourceId).replaySafeMapping) {
       return refused("not-replay-safe", `Source "${record.sourceId}" does not declare replaySafeMapping, which stored redrive requires.`);
     }
-    const integrity = this.#failures.store.open(record.sourceId).find(incident => !QUARANTINE_ELIGIBLE_CLASSES.includes(incident.failureClass));
-    if (integrity !== undefined) return refused("integrity-fault-open", `Source "${record.sourceId}" has an unresolved ${integrity.failureClass} incident (${integrity.failureId}); resolve it first.`);
+    for (const incident of this.#failures.store.open(record.sourceId)) {
+      const fault = integrityFault(incident, () => this.#failures.store.events(incident.failureId));
+      if (fault !== null) return refused("integrity-fault-open", `Source "${record.sourceId}" has an unresolved source-integrity fault: ${fault} (${incident.failureId}); resolve it first.`);
+    }
     if (this.#host.state() !== "running") return refused("gateway-not-running", "The gateway is not running.");
     return null;
   }
@@ -599,6 +601,27 @@ export class OperatorService implements OperatorApi {
 }
 
 // --- pure helpers ---------------------------------------------------------------------
+
+/**
+ * Event details the failure service records for a source-integrity fault on an
+ * eligible-class incident: redelivered bytes that differ from the captured
+ * evidence, and group progress that moved past a held record with no recorded advance.
+ */
+const INTEGRITY_EVENT_DETAILS: ReadonlyMap<string, string> = new Map([
+  ["evidence-conflict", "the redelivered bytes differ from the captured evidence"],
+  ["position-moved", "the source position moved past a held record without a recorded advance"]
+]);
+
+/** Why an open incident is an unresolved source-integrity fault (spec §8.3), or null. */
+function integrityFault(incident: IncidentRecord, events: () => readonly { detail: string | null }[]): string | null {
+  if (!QUARANTINE_ELIGIBLE_CLASSES.includes(incident.failureClass)) return `an unresolved ${incident.failureClass} incident`;
+  if (incident.progress === "uncertain") return "an advance that could not be confirmed";
+  for (const event of events()) {
+    const fault = event.detail === null ? undefined : INTEGRITY_EVENT_DETAILS.get(event.detail);
+    if (fault !== undefined) return fault;
+  }
+  return null;
+}
 
 function usesResync(policy: ResolvedSourcePolicy): boolean {
   return policy.invalidJson === "quarantine-resync" || policy.invalidPublicPayload === "quarantine-resync";
