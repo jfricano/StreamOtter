@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
+import kafkajs from "kafkajs";
 import { observe, sleep, waitFor } from "../integration/harness.ts";
 import { brokerAvailable, closeKafkaHelpers, committedOffsets, createTopic, orderValue, produce, startKafkaHarness, testAdmin, type KafkaHarness } from "./helpers.ts";
+
+// Capture every consumer the gateway creates, to observe its commits in the order they were made.
+const consumers: kafkajs.Consumer[] = [];
+const commits: { topic: string; partition: number; offset: string }[] = [];
+const originalConsumer = kafkajs.Kafka.prototype.consumer;
+kafkajs.Kafka.prototype.consumer = function (this: kafkajs.Kafka, ...args: Parameters<kafkajs.Kafka["consumer"]>) {
+  const consumer = originalConsumer.apply(this, args);
+  consumer.on(consumer.events.COMMIT_OFFSETS, event => {
+    for (const { topic, partitions } of event.payload.topics) {
+      for (const { partition, offset } of partitions) commits.push({ topic, partition: Number(partition), offset: String(offset) });
+    }
+  });
+  consumers.push(consumer);
+  return consumer;
+};
 
 const available = await brokerAvailable();
 
@@ -46,8 +62,13 @@ describe("Kafka 4.1.2 via KafkaJS 2.2.4: delivery and explicit progress", { skip
     for (const [partition, high] of Object.entries(expected)) {
       assert.equal(committed[Number(partition)] === "-1" ? "0" : committed[Number(partition)], high, `partition ${partition}`);
     }
-    const commits = k.internals.traces({ limit: 500 }).items.filter(trace => trace.stage === "commit");
-    assert.ok(commits.length >= 5, "each processed record produced a commit trace");
+    const commitTraces = k.internals.traces({ limit: 500 }).items.filter(trace => trace.stage === "commit");
+    assert.ok(commitTraces.length >= 5, "each processed record produced a commit trace");
+    // Within each partition, every record's next offset is committed once, in record order, with none skipped.
+    for (const [partition, high] of Object.entries(expected)) {
+      const sequence = commits.filter(commit => commit.topic === k!.topic && commit.partition === Number(partition)).map(commit => commit.offset);
+      assert.deepEqual(sequence, Array.from({ length: Number(high) }, (_, index) => String(index + 1)), `commit order on partition ${partition}`);
+    }
   });
 
   it("reports staged source diagnostics against the live broker", async () => {
