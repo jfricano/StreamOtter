@@ -233,7 +233,8 @@ await import("/workbench/assets/${manifest.entry.script}");
     browser = await launch();
     ({ page, problems } = await openPage(browser));
     page.on("request", request => {
-      void request.allHeaders().then(headers => browserRequests.push({ url: request.url(), headers }));
+      // A request still in flight when the browser closes rejects; it has nothing left to record.
+      request.allHeaders().then(headers => browserRequests.push({ url: request.url(), headers }), () => undefined);
     });
   });
   after(async () => {
