@@ -410,7 +410,7 @@ A redrive plan is in gateway memory: at most 64 at a time, five minutes each, si
 | Refusal | Why | Do |
 | --- | --- | --- |
 | `plan-expired` | More than five minutes passed | Evaluate again and redrive promptly. |
-| `plan-unknown` | The gateway restarted, or the plan was used | Evaluate again. |
+| `plan-unknown` | The gateway restarted, or the plan (or another plan of the same incident) was used | Evaluate again. |
 | `fingerprint-changed` | The record now maps to different output, or the evidence changed, since the plan was issued; nothing was admitted | Evaluate again and review the new outputs before approving. |
 | `stale-revision`, `generation-changed` | The incident or the source changed | Check `failures show`; evaluate again if redrive still makes sense. |
 

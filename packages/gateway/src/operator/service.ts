@@ -220,7 +220,7 @@ export class OperatorService implements OperatorApi {
     const { operationId: _supplied, ...rest } = input;
     return this.#mutate("redrive", record.sourceId, input.failureId, rest, input.operationId, async operationId => {
       const plan = this.#plans.get(input.planId);
-      if (plan === undefined) return refused("plan-unknown", "No such plan. Plans are kept in memory for 5 minutes and end when the gateway restarts; evaluate again.");
+      if (plan === undefined) return refused("plan-unknown", "No such plan, or it was already used. Plans are single use, kept in memory for 5 minutes and end when the gateway restarts; evaluate again.");
       if (plan.failureId !== input.failureId) return refused("plan-mismatch", "That plan was issued for a different incident.");
       if (Date.now() >= plan.expiresAtMs) {
         this.#plans.delete(plan.planId);
@@ -235,11 +235,17 @@ export class OperatorService implements OperatorApi {
       if (this.#host.config.sources[current.sourceId]?.generation !== plan.generation) return refused("generation-changed", "The source generation changed since the plan was issued.", current.revision);
       const blocked = this.#redriveBlocker(current);
       if (blocked !== null) return { ...blocked, incidentRevision: current.revision };
+      // A plan approves exactly one redrive. It is claimed here, before the first await, together with every other
+      // plan of this incident (all issued at this revision, which the redrive's own operator event supersedes), so a
+      // concurrent redrive of the incident finds no plan (plan-unknown) instead of mapping and admitting the record twice.
+      for (const [planId, other] of this.#plans) if (other.failureId === plan.failureId) this.#plans.delete(planId);
       const evidence = await this.#evidence(current);
       if (evidence.kind === "missing") return refused(evidence.reason, evidence.message, current.revision);
       if (evidenceHash(evidence.raw) !== plan.evidenceHash) return refused("fingerprint-changed", "The stored evidence changed since the plan was issued.", current.revision);
-      // A plan approves exactly one redrive.
-      this.#plans.delete(plan.planId);
+      const latest = this.#failures.store.get(current.failureId);
+      if (latest === null || latest.revision !== current.revision) {
+        return refused("stale-revision", `Incident ${current.failureId} changed while the redrive was being prepared; evaluate again.`, latest?.revision ?? null);
+      }
       await this.#hooks.afterIntent?.(operationId, "redrive");
       const outcome = await this.#host.redriveRecord(current.sourceId, evidence.raw, current.position, plan.outputHash);
       const draft = redriveResult(outcome, current.revision);

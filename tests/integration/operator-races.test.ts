@@ -48,6 +48,31 @@ describe("operator races (fixture tier)", () => {
   let h: Harness | undefined;
   afterEach(async () => { await h?.close(); h = undefined; });
 
+  it("O1: one plan redrives once even when two redrives of it run concurrently, and a second plan of the same incident is spent too", async () => {
+    const app = new OrderApp();
+    h = await startHarness({ app, failureHandling: RESYNC, recovery: { orders: recoverable }, fixtures: [shipped(3)] });
+    app.put("acme", "alice", "ord_1", 2, "processing", 20);
+    const op = getGatewayOperator(h.gateway);
+    const seen = observe(h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }));
+    await waitFor(() => seen.states.includes("live"), 5_000, "live");
+    await h.advance(1);
+    const advanced = await only(h, op);
+    assert.equal(advanced.progress, "advanced");
+    app.mapOverride = repairedMap;
+    const first = (await op.evaluate({ failureId: advanced.failureId, expectedRevision: advanced.revision })).plan!;
+    const second = (await op.evaluate({ failureId: advanced.failureId, expectedRevision: advanced.revision })).plan!;
+    let mapCalls = 0;
+    app.mapOverride = value => { mapCalls++; return repairedMap(value); };
+    const request = (plan: typeof first, operationId: string) =>
+      op.redrive({ failureId: advanced.failureId, planId: plan.planId, planFingerprint: plan.fingerprint, expectedRevision: advanced.revision, operationId });
+
+    const results = await Promise.all([request(first, "op-a"), request(first, "op-b"), request(second, "op-c")]);
+    assert.deepEqual(results.map(result => result.outcome), ["reprocessed", "plan-unknown", "plan-unknown"], JSON.stringify(results));
+    assert.equal(mapCalls, 1, "the record is mapped once");
+    const history = (await op.showFailure({ failureId: advanced.failureId })).history.filter(event => event.event === "operator");
+    assert.deepEqual(history.map(event => event.operationId), ["op-a"], "one operator event");
+  });
+
   it("O5: a redrive of an unknown incident is refused as not-found", async () => {
     h = await startHarness({ failureHandling: RESYNC, recovery: { orders: recoverable }, fixtures: [shipped(3)] });
     const op = getGatewayOperator(h.gateway);
