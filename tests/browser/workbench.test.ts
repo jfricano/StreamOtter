@@ -26,7 +26,7 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
   before(async () => {
     h = await startHarness({
       principals: { alice: { subject: "alice", tenantId: "acme", sessionId: "dev-alice", expiresAt: FAR_FUTURE, claims: {} } },
-      fixtures: [orderRecord("acme", "ord_1", 2, "processing", 40), orderRecord("acme", "ord_1", 3, "done", 100)]
+      fixtures: [orderRecord("acme", "ord_1", 2, "processing", 40), orderRecord("acme", "ord_1", 3, "done", 100), orderRecord("acme", "ord_1", 4, "done", 100)]
     });
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
     m = await startManagementServer({ gateway: h.gateway, port: 0, token: TOKEN, workbenchDir: WORKBENCH });
@@ -85,6 +85,15 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     await page.locator(".pill", { hasText: "live" }).first().waitFor();
     const activity = await page.getByRole("list", { name: "Preview activity" }).innerText();
     assert.ok(activity.indexOf("Snapshot at revision 3.") < activity.indexOf("Subscription stale."), "newest first: stale, then the fresh snapshot");
+  });
+
+  it("Preview keeps drawing a running preview after a tab switch", async () => {
+    await tab("Connect").click();
+    await tab("Preview").click();
+    await page.getByText("revision 3", { exact: true }).waitFor();
+    await h.advance(1);
+    await page.getByText("revision 4", { exact: true }).waitFor();
+    await page.getByRole("list", { name: "Preview activity" }).getByText("Update at revision 4.").waitFor();
   });
 
   it("Inspect lists the stages a record passed through", async () => {

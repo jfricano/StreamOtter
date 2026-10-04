@@ -33,8 +33,22 @@ interface ActivePreview {
 
 /** Keeps one live preview across tab switches; closed explicitly by the user. */
 let active: ActivePreview | null = null;
+/** Bumped by every stop, so a start that was waiting for its preview session knows it was cancelled. */
+let starting = 0;
 const log: { at: string; text: string; tone: "ok" | "warn" | "bad" | "info" | "neutral" }[] = [];
 let latest: { kind: string; revision: string; receivedAt: string; data: Json } | null = null;
+/**
+ * The mounted view's drawing functions. The running preview's listeners outlive the render that
+ * started them, so they draw through this rather than into that render's (possibly detached) DOM.
+ */
+let mounted: { status: () => void; log: () => void } | null = null;
+type Tone = "ok" | "warn" | "bad" | "info" | "neutral";
+
+function note(text: string, tone: Tone): void {
+  log.unshift({ at: new Date().toISOString(), text, tone });
+  if (log.length > 200) log.length = 200;
+  mounted?.log();
+}
 
 /**
  * Closes the running preview, if any, without drawing: the session ended (WHC-1 §3.2), so the
@@ -44,6 +58,7 @@ export function closePreview(): void {
   const current = active;
   active = null;
   latest = null;
+  starting++;
   if (current !== null) void current.client.close();
 }
 
@@ -90,11 +105,6 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
   const controls = h("div", { class: "row" });
   const message = h("div");
 
-  const note = (text: string, tone: "ok" | "warn" | "bad" | "info" | "neutral") => {
-    log.unshift({ at: new Date().toISOString(), text, tone });
-    if (log.length > 200) log.length = 200;
-    drawLog();
-  };
   const drawLog = () => replace(timeline, log.map(entry => h("li", {}, h("span", { class: "muted mono small" }, time(entry.at)), h("span", {}, pill(entry.tone === "neutral" ? "·" : entry.tone, entry.tone), " ", entry.text))));
 
   const drawStatus = () => {
@@ -149,6 +159,7 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
     const current = active;
     active = null;
     latest = null;
+    starting++; // A start still awaiting its preview session is abandoned.
     if (current !== null) {
       await current.subscription.unsubscribe();
       await current.client.close();
@@ -164,7 +175,17 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
       replace(message, h("div", { class: "banner warn" }, "No development principals are registered. Export `development.principals` from your handler module."));
       return;
     }
+    start.disabled = true;
+    try {
+      await begin();
+    } finally {
+      start.disabled = false;
+    }
+  });
+
+  const begin = async () => {
     await stop();
+    const attempt = starting;
     const summary = state.channels.find(item => item.name === channel.value);
     if (summary === undefined) return;
     const principalRef = principal.value;
@@ -174,9 +195,10 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
     try {
       session = await state.api.previewSession(principalRef);
     } catch (error) {
-      replace(message, h("div", { class: "banner bad", role: "alert" }, describe(error)));
+      if (attempt === starting) replace(message, h("div", { class: "banner bad", role: "alert" }, describe(error)));
       return;
     }
+    if (attempt !== starting) return; // Stopped, or the session ended, while the session was minted.
     const client = createClient<ChannelMap>({
       origin: state.gatewayOrigin,
       path: state.gatewayPath,
@@ -184,7 +206,7 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
         // Preview tokens last five minutes; mint a fresh one for the same principal when needed.
         if (Date.parse(session.expiresAt) - Date.now() < 45_000) {
           session = await state.api.previewSession(principalRef);
-          if (active !== null) active.previewSessionId = session.previewSessionId;
+          if (active?.client === client) active.previewSessionId = session.previewSessionId;
         }
         return session.token;
       }
@@ -194,21 +216,21 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
     note(`Subscribing to ${summary.name} v${summary.version} as "${principalRef}" with ${JSON.stringify(params)}.`, "info");
     client.on("state", change => {
       note(`Connection ${change.state}${change.reason === undefined ? "" : ` (${change.reason})`}.`, CONNECTION_TONE[change.state]);
-      drawStatus();
+      mounted?.status();
     });
     client.on("error", error => note(`Connection error ${error.code}: ${error.message}`, "bad"));
     subscription.on("state", change => {
       note(`Subscription ${change.state}${change.reason === undefined ? "" : ` (${change.reason})`}.`, STATE_TONE[change.state]);
-      drawStatus();
+      mounted?.status();
     });
     subscription.on("data", event => {
       latest = { kind: event.kind, revision: event.revision, receivedAt: event.receivedAt, data: event.data };
       note(`${event.kind === "snapshot" ? "Snapshot" : "Update"} at revision ${event.revision}.`, event.kind === "snapshot" ? "info" : "ok");
-      drawStatus();
+      mounted?.status();
     });
     subscription.on("error", error => note(`${error.code}: ${error.message}`, "bad"));
     drawStatus();
-  });
+  };
 
   replace(root,
     h("section", { class: "panel stack" },
@@ -226,6 +248,7 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
       h("section", { class: "panel stack" }, h("h3", {}, "Delivery state"), status, controls),
       h("section", { class: "panel stack" }, h("h3", {}, "Current state"), dataView)),
     h("section", { class: "panel" }, h("h3", {}, "Activity"), timeline));
+  mounted = { status: drawStatus, log: drawLog };
   drawParams();
   drawStatus();
   drawLog();
