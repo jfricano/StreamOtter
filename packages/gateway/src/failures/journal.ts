@@ -1081,16 +1081,41 @@ export class SqliteIncidentStore implements IncidentStore {
     }
   }
 
-  /** Runs fn in one BEGIN IMMEDIATE transaction; any error rolls everything back. */
+  /**
+   * Runs fn, and every store call it makes, in one transaction: everything
+   * commits together, or an error escaping fn rolls all of it back. A store
+   * call that fails inside fn undoes only its own writes. For offline tools
+   * (rebaseline) whose steps must land together.
+   */
+  atomically<T>(fn: () => T): T {
+    return this.#write(fn);
+  }
+
+  /** The sources recorded in the journal, by ID. */
+  sources(): SourceIdentity[] {
+    return (this.#statement("SELECT source_id, generation, kind FROM sources ORDER BY source_id").all() as { source_id: string; generation: string; kind: SourceIdentity["kind"] }[])
+      .map(row => ({ sourceId: row.source_id, generation: row.generation, kind: row.kind }));
+  }
+
+  /**
+   * Runs fn in one BEGIN IMMEDIATE transaction; any error rolls everything back.
+   * Inside another write (atomically) it runs in a savepoint instead, so its own
+   * failure undoes only its own writes and the enclosing transaction decides.
+   */
   #write<T>(fn: () => T): T {
     if (this.#closed) throw refuse("SOURCE_UNAVAILABLE", "journal-closed", `The journal at ${this.path} is closed.`);
-    this.#db.exec("BEGIN IMMEDIATE");
+    const nested = this.#db.isTransaction;
+    this.#db.exec(nested ? "SAVEPOINT nested_write" : "BEGIN IMMEDIATE");
     try {
       const result = fn();
-      this.#db.exec("COMMIT");
+      this.#db.exec(nested ? "RELEASE nested_write" : "COMMIT");
       return result;
     } catch (error) {
-      if (this.#db.isTransaction) this.#db.exec("ROLLBACK");
+      if (nested) {
+        if (this.#db.isTransaction) this.#db.exec("ROLLBACK TO nested_write; RELEASE nested_write");
+      } else if (this.#db.isTransaction) {
+        this.#db.exec("ROLLBACK");
+      }
       if (sqliteErrcode(error) === SQLITE_FULL) {
         throw storeFull(`The failure journal at ${this.path} reached its ${this.#journalLimitBytes}-byte limit or the disk is full; nothing was evicted.`);
       }

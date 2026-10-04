@@ -996,6 +996,27 @@ describe("sqlite journal", { skip: SQLITE_SKIP }, () => {
     }
   });
 
+  it("runs several writes as one transaction: all of them commit, or none", () => {
+    const { store } = freshJournal();
+    store.claim(PROJECT, SOURCES);
+    store.observe(observation("f1:a"));
+    assert.throws(() => store.atomically(() => {
+      store.update("f1:a", 1, { state: "resolved", resolution: "closed" }, { event: "resolved", detail: null, operationId: null });
+      store.claim("another-project", SOURCES);
+    }), refusal("project-mismatch"));
+    assert.equal(store.get("f1:a")?.state, "open", "the first write was rolled back with the failed one");
+    assert.equal(store.get("f1:a")?.revision, 1);
+    assert.deepEqual(store.events("f1:a").map(event => event.event), ["detected"]);
+    // A failed write caught inside the transaction undoes only itself.
+    store.atomically(() => {
+      store.update("f1:a", 1, { progress: "retrying" }, { event: "retrying", detail: null, operationId: null });
+      assert.throws(() => store.update("f1:a", 1, { progress: "held" }, { event: "held", detail: null, operationId: null }), rejects("stale-revision"));
+    });
+    assert.equal(store.get("f1:a")?.progress, "retrying");
+    assert.deepEqual(store.sources(), SOURCES);
+    store.close();
+  });
+
   it("refuses writes past the journal limit and evicts nothing", () => {
     const directory = stateDirectory();
     initJournal(directory, PROJECT, SOURCES);
