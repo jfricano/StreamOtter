@@ -151,6 +151,7 @@ function nextOffset(offset: string): string {
 
 /** How long without fetch/heartbeat activity before a healthy source is considered degraded. */
 const WATCHDOG_MS = 12_000;
+const HEARTBEAT_INTERVAL_MS = 3_000;
 
 /**
  * KafkaJS adapter with explicit progress management: auto-commit and automatic
@@ -209,7 +210,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const consumer = kafka.consumer({
       groupId: this.#source.consumerGroup,
       sessionTimeout: 30_000,
-      heartbeatInterval: 3_000,
+      heartbeatInterval: HEARTBEAT_INTERVAL_MS,
       maxWaitTimeInMs: 1_000,
       allowAutoTopicCreation: false,
       retry: { initialRetryTime: 300, maxRetryTime: 5_000, retries: 8, restartOnFailure: async () => !this.#stopping }
@@ -224,6 +225,12 @@ export class KafkaSourceAdapter implements SourceAdapter {
       eachBatchAutoResolve: false,
       partitionsConsumedConcurrently: 1,
       eachBatch: async ({ batch, resolveOffset, heartbeat, isRunning, isStale }) => {
+        if (this.#paused) {
+          // A consumer that crashed and restarted while paused has lost KafkaJS's own pause state;
+          // without it, returning unresolved would fetch the same records again in a tight loop.
+          this.#reapplyPause();
+          return;
+        }
         for (const message of batch.messages) {
           if (this.#paused || this.#stopping || !isRunning() || isStale()) return;
           const position = { kind: "kafka" as const, topic: batch.topic, partition: batch.partition, offset: message.offset };
@@ -237,7 +244,15 @@ export class KafkaSourceAdapter implements SourceAdapter {
             position,
             heartbeat
           };
-          const outcome = await this.#sink.process(input);
+          // KafkaJS heartbeats only between batches. Keep the group membership (and the watchdog) alive
+          // while one record takes long, or the group evicts this member and the record is redelivered forever.
+          const beating = setInterval(() => { heartbeat().catch(() => undefined); }, HEARTBEAT_INTERVAL_MS);
+          let outcome: Awaited<ReturnType<SourceSink["process"]>>;
+          try {
+            outcome = await this.#sink.process(input);
+          } finally {
+            clearInterval(beating);
+          }
           if (outcome.kind === "abandon") return;
           if (outcome.kind === "hold") {
             this.#pauseAt(batch.topic, batch.partition, message.offset);
@@ -376,6 +391,10 @@ export class KafkaSourceAdapter implements SourceAdapter {
     return "advanced";
   }
 
+  #reapplyPause(): void {
+    this.#consumer?.pause(this.#source.topics.map(name => ({ topic: name })));
+  }
+
   #pauseAt(topic: string, partition: number, offset: string): void {
     const consumer = this.#consumer;
     this.#paused = true;
@@ -411,6 +430,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
       this.#assignmentEpoch++;
       this.#rebalancing = false;
       this.#lastActivity = Date.now();
+      if (this.#paused) this.#reapplyPause();
       this.#setStatus("healthy");
       const joined = this.#joined;
       this.#joined = null;
