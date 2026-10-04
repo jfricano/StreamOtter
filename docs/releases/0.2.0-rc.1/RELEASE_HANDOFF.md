@@ -8,7 +8,7 @@ One npm release, `0.2.0-rc.1`, carrying three internal milestones: V1.1 (source-
 
 All six packages publish together at one version: `streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli` and `@streamotter/workbench`. The manifests still say `0.1.0-rc.3`; `node scripts/release/set-version.mjs 0.2.0-rc.1` sets them during the release ([checklist §1](../../RELEASE_CHECKLIST.md#1-prepare-the-release-commit)).
 
-**dist-tag:** `latest`, as for every release candidate until the first stable version ([checklist §5](../../RELEASE_CHECKLIST.md#5-publish-owner)). That moves every unpinned `npm install streamotter` to `0.2.0-rc.1`. Two changes can refuse a configuration or request that `0.1.0-rc.3` accepted: the `limits.maxControlFrameBytes` minimum (9216), and production answering invalid subscribe parameters with `FORBIDDEN`.
+**dist-tag:** `latest`, then `next` too. This is deliberate and already documented, not a default. No stable version exists, and npm pointed `latest` at `0.1.0-rc.1` on the first publish, so every release candidate since has gone on `latest`; `0.1.0-rc.3` is `latest` today ([checklist §5, "Which tag"](../../RELEASE_CHECKLIST.md#5-publish-owner)). Publishing on `next` alone would leave `npm install streamotter` and the npm pages on `0.1.0-rc.3`. **Decision for jason:** keep the documented `latest` (recommended, so new users get the current code and docs), or use `next` only for a quieter candidate. With `latest`, every unpinned `npm install streamotter` moves to `0.2.0-rc.1`. Two changes can refuse a configuration or request that `0.1.0-rc.3` accepted: the `limits.maxControlFrameBytes` minimum (9216), and production answering invalid subscribe parameters with `FORBIDDEN`.
 
 ## PRs and merge order
 
@@ -46,11 +46,11 @@ Details: [V1.1 acceptance packet](../v1.1/ACCEPTANCE_PACKET.md) §4, [V1.2 log](
 
 ## Who publishes
 
-jason, from his own machine, with his npm credentials and on his go. Claude never handles npm tokens or publishes. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md) §§1–7: set the version and date the CHANGELOG, run the clean build and every suite, dry run, tag `v0.2.0-rc.1`, publish all six with `--tag latest`, verify from the registry, then create the GitHub release from the CHANGELOG entry.
+jason, from his own machine, with his npm credentials and on his go. Claude never handles npm tokens or publishes. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md) §§1–7: set the version and date the CHANGELOG, run the clean build and every suite, dry run, tag `v0.2.0-rc.1`, publish all six with the chosen tag (`--tag latest` unless jason picks `next`), verify from the registry, then create the GitHub release from the CHANGELOG entry.
 
 ## Acceptance checks after publishing
 
-1. `npm dist-tag ls <package>` shows `latest: 0.2.0-rc.1` for all six packages.
+1. `npm dist-tag ls <package>` shows `0.2.0-rc.1` on the chosen tag (`latest`, and `next` if it was added) for all six packages.
 2. `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` passes against the registry, with the broker running. Wait about a minute after publishing first, because the registry can briefly report a new version as missing.
 3. `npx streamotter@0.2.0-rc.1 --help` runs. `streamotter validate` accepts a `0.1.0-rc.3` configuration that has no `failureHandling`, as long as its `maxControlFrameBytes` is unset or at least 9216.
 4. The npm pages show the `0.2.0-rc.1` READMEs.
@@ -59,7 +59,7 @@ jason, from his own machine, with his npm credentials and on his go. Claude neve
 
 Never unpublish. If `0.2.0-rc.1` is broken:
 
-1. `npm dist-tag add <package>@0.1.0-rc.3 latest` for all six packages, one at a time if using a passkey ([checklist](../../RELEASE_CHECKLIST.md#5-publish-owner) has the rate-limit note).
+1. If it was published on `latest`: `npm dist-tag add <package>@0.1.0-rc.3 latest` for all six packages, one at a time if using a passkey ([checklist](../../RELEASE_CHECKLIST.md#5-publish-owner) has the rate-limit note).
 2. `npm deprecate <package>@0.2.0-rc.1 "<what is wrong>; use 0.1.0-rc.3"` for all six.
 3. Fix forward as `0.2.0-rc.2` through the same checklist ([corrections](../../RELEASE_CHECKLIST.md#corrections)).
 
