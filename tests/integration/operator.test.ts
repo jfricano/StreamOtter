@@ -311,7 +311,8 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     assert.equal(result.operationId, "op-redrive-1");
     await waitFor(() => seen.events.some(event => event.revision === "3"), 5_000, "the redriven state delivered");
     assert.deepEqual(seen.events.at(-1)?.data, { orderId: "ord_1", status: "done", progress: 100 });
-    assert.equal(seen.states.at(-1), "live");
+    // The redriven state can arrive through a resync, so live may follow it.
+    await waitFor(() => seen.states.at(-1) === "live", 5_000, "live after the redrive");
 
     const delivered = seen.events.length;
     const replayed = await op.redrive(request);
