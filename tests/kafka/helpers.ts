@@ -30,6 +30,13 @@ export async function testAdmin(): Promise<Admin> {
   return admin;
 }
 
+/**
+ * The Kafka, replicated and deployment tiers skip their tests when what they need isn't running. Each
+ * tier also has a 00-environment check that fails unless STREAMOTTER_ALLOW_SKIP=1, so a run with nothing
+ * started can't pass with every test skipped.
+ */
+export const ALLOW_SKIP = process.env.STREAMOTTER_ALLOW_SKIP === "1";
+
 /** True when the local broker from scripts/kafka/start.sh is reachable. */
 export async function brokerAvailable(): Promise<boolean> {
   const probe = new Kafka({ clientId: "probe", brokers: PLAINTEXT, logLevel: logLevel.NOTHING, retry: { retries: 0 }, connectionTimeout: 1_000 }).admin();

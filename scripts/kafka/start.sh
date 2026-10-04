@@ -22,17 +22,51 @@ if [ ! -x "$KAFKA/bin/kafka-server-start.sh" ]; then
   echo "Kafka is not installed; run ./scripts/kafka/setup.sh first." >&2
   exit 1
 fi
-if [ -x "$LOCAL/jdk/bin/java" ]; then export JAVA_HOME="$LOCAL/jdk"; fi
+if [ -x "$LOCAL/jdk/bin/java" ]; then
+  export JAVA_HOME="$LOCAL/jdk"
+elif ! command -v java >/dev/null; then
+  echo "No Java found: .local/jdk is missing and java is not on PATH. Run ./scripts/kafka/setup.sh, or install a JDK 17 or newer." >&2
+  exit 1
+fi
+
+# True when the live process names this checkout's broker config on its command line, so a stale pid
+# file whose pid now belongs to another process (or another checkout's broker) is never trusted. The
+# command line reads as empty for a moment while the start script execs into java, so an empty read
+# is retried. Uses ps rather than /proc so it also works on macOS; -ww keeps the command line whole.
+owns() {
+  local pid="$1" config="$2" cmdline
+  for _ in $(seq 1 20); do
+    kill -0 "$pid" 2>/dev/null || return 1
+    cmdline="$(ps -ww -p "$pid" -o command= 2>/dev/null || true)"
+    if [ -n "$cmdline" ]; then
+      case "$cmdline" in *"$config"*) return 0 ;; *) return 1 ;; esac
+    fi
+    sleep 0.1
+  done
+  return 1
+}
 
 if [ "${1:-}" = "--reset" ]; then
   "$ROOT/scripts/kafka/stop.sh" >/dev/null 2>&1 || true
   rm -rf "$DATA"
 fi
 
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-  echo "Kafka is already running (pid $(cat "$PIDFILE"))."
-  exit 0
+if [ -f "$PIDFILE" ]; then
+  if owns "$(cat "$PIDFILE")" "$CONFIG"; then
+    echo "Kafka is already running (pid $(cat "$PIDFILE"))."
+    exit 0
+  fi
+  rm -f "$PIDFILE"
 fi
+
+# Something else (another checkout's broker, say) already holding a listener port would both make this
+# broker fail to bind and answer the readiness probe below, so refuse up front.
+for port in 19092 19093 19094 19095; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    echo "Port $port is already in use by another process (another checkout's broker?); stop it first." >&2
+    exit 1
+  fi
+done
 
 # Local TLS material: a throwaway CA and a broker certificate for localhost/127.0.0.1.
 if [ ! -f "$CERTS/broker-keystore.pem" ]; then
