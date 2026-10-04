@@ -86,3 +86,25 @@ describe("B with O6: a cluster mismatch blocks redrive", () => {
     assert.equal(evaluation.eligible, false, "redrive must be refused while a cluster-mismatch integrity fault is open");
   });
 });
+
+describe("D after a crash: no guard is pending in a new process", () => {
+  it("a guard-pending left by a crash is cleared at the next start", async () => {
+    const store = new MemoryIncidentStore();
+    store.claim("order-dashboard", [{ sourceId: "orders", generation: "orders-1", kind: "kafka" }]);
+    const hang: SourceRecoveryHandlers = { recover: () => new Promise(() => undefined) };
+    const f1 = new FailureService({ config, store, logger: silent, quarantine: writer, configFingerprint: "c".repeat(64), handlerBuildId: "b", maxSourceRecordBytes: 1 << 20, guards: { orders: hang } });
+    f1.setClusterId("orders", "cluster-a");
+    const source: FailureSource = { id: "orders", config: config.sources["orders"] as FailureSource["config"], adapter: new Adapter() };
+    void f1.held(source, rec("10"), pause);
+    await new Promise(r => setTimeout(r, 50));
+    assert.equal(store.open("orders")[0]?.recovery, "guard-pending");
+    // "crash": a new process with the policy changed to pause for this class
+    const cfg = JSON.parse(JSON.stringify(config)) as ProjectConfig;
+    (cfg.failureHandling as any).sources.orders.invalidJson = "pause";
+    const f2 = new FailureService({ config: cfg, store, logger: silent, quarantine: writer, configFingerprint: "c".repeat(64), handlerBuildId: "b", maxSourceRecordBytes: 1 << 20 });
+    f2.setClusterId("orders", "cluster-a");
+    await f2.start([{ ...source, config: cfg.sources["orders"] as FailureSource["config"] }], async () => "10");
+    await f2.held({ ...source, config: cfg.sources["orders"] as FailureSource["config"] }, rec("10"), pause);
+    assert.notEqual(store.open("orders")[0]?.recovery, "guard-pending");
+  });
+});

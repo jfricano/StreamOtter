@@ -153,6 +153,11 @@ export class FailureService {
       if (boundary !== null && boundary.generation === source.config.generation) this.#onBoundary(source.id, { id: boundary.boundaryId, context: boundary.context });
       for (const incident of open) {
         if (incident.progress === "advance-pending" || incident.progress === "uncertain") await this.#reconcile(source, incident, committedOffset);
+        // No guard runs in a new process: a guard the last process was still waiting on is over.
+        const current = this.store.get(incident.failureId);
+        if (current !== null && current.state === "open" && current.recovery === "guard-pending") {
+          this.#update(current, { recovery: "held" }, "held", "the gateway restarted while the recovery guard was running");
+        }
       }
       if (this.store.open(source.id).some(incident => WATCHED_PROGRESS.has(incident.progress))) this.#watched.add(source.id);
     }
