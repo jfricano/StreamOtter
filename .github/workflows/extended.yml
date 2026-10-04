@@ -23,11 +23,6 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # scripts/kafka/setup.sh pins a JDK for macOS only; on Linux it uses the java on PATH.
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Start Kafka 4.1.2

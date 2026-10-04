@@ -37,7 +37,7 @@ Tests and type-checks run the TypeScript sources through the `streamotter-source
 
 With the broker running, `pnpm test:install` also runs the installed `streamotter start` against TLS Kafka.
 
-The setup scripts download pinned, checksum-verified tools into the gitignored `.local/` folder: Apache Kafka 4.1.2 (plus a JDK on Apple silicon; elsewhere they use Java 17+ from `PATH`), headless Chromium, and Caddy. Stop the broker with `pnpm kafka:stop`, and delete `.local/` to remove everything.
+The setup scripts download pinned, checksum-verified tools into the gitignored `.local/` folder: Apache Kafka 4.1.2 (plus a Temurin 21 JDK on Apple silicon and on x64 or arm64 Linux; elsewhere they use Java 17+ from `PATH`), headless Chromium, and Caddy. Stop the broker with `pnpm kafka:stop`, and delete `.local/` to remove everything.
 
 ## Repository layout
 

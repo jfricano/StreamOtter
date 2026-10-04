@@ -22,7 +22,12 @@ if [ ! -x "$KAFKA/bin/kafka-server-start.sh" ]; then
   echo "Kafka is not installed; run ./scripts/kafka/setup.sh first." >&2
   exit 1
 fi
-if [ -x "$LOCAL/jdk/bin/java" ]; then export JAVA_HOME="$LOCAL/jdk"; fi
+if [ -x "$LOCAL/jdk/bin/java" ]; then
+  export JAVA_HOME="$LOCAL/jdk"
+elif ! command -v java >/dev/null; then
+  echo "No Java found: .local/jdk is missing and java is not on PATH. Run ./scripts/kafka/setup.sh, or install a JDK 17 or newer." >&2
+  exit 1
+fi
 
 if [ "${1:-}" = "--reset" ]; then
   "$ROOT/scripts/kafka/stop.sh" >/dev/null 2>&1 || true
