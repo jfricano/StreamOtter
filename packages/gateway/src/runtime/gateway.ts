@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type { Server as IoServer } from "socket.io";
 import {
-  assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
+  MAX_CONFIG_DEPTH, assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
   resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
   QUARANTINE_ELIGIBLE_CLASSES, type FailureClass, type OperatorApi,
@@ -349,7 +349,7 @@ export class GatewayRuntime implements SessionOwner {
 
     this.config = config;
     this.mode = options.mode;
-    this.fingerprint = sha256Hex(config);
+    this.fingerprint = sha256Hex(config, MAX_CONFIG_DEPTH);
     this.#handlers = options.handlers;
     this.#development = options.development;
     this.#configDir = options.configDir ?? process.cwd();

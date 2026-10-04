@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
-  canonicalJsonPretty, StreamOtterError, validateProjectConfig,
+  MAX_CONFIG_DEPTH, canonicalJsonPretty, StreamOtterError, validateProjectConfig,
   type ConfigIssue, type DevelopmentOptions, type HandlerRegistry, type Json, type ProjectConfig
 } from "@streamotter/contracts";
 import { createGateway, type Gateway, type GatewayLogger } from "@streamotter/gateway";
@@ -244,7 +244,7 @@ async function commandValidate(values: Record<string, unknown>, io: CliIO): Prom
   const { config, path } = await loadConfig(values["config"] as string | undefined);
   io.out(`${path} is valid.`);
   io.out(`Fingerprint: sha256:${fingerprint(config)}`);
-  if (canonicalJsonPretty(config) !== await readFile(path, "utf8")) {
+  if (canonicalJsonPretty(config, MAX_CONFIG_DEPTH) !== await readFile(path, "utf8")) {
     io.out("Note: the file is not in canonical form (workbench exports use sorted keys and two-space indentation); the fingerprint is unaffected.");
   }
   return EXIT.ok;

@@ -41,8 +41,8 @@ export async function invokeHandler<T>(
   }
 }
 
-export function sha256Hex(value: unknown): string {
-  return createHash("sha256").update(canonicalJson(value)).digest("hex");
+export function sha256Hex(value: unknown, maxDepth?: number): string {
+  return createHash("sha256").update(canonicalJson(value, maxDepth)).digest("hex");
 }
 
 export function newId(): string {
