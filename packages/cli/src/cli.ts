@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, statSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -243,7 +243,14 @@ async function commandInit(positionals: string[], io: CliIO): Promise<number> {
   if (existsSync(target) && !(await stat(target)).isDirectory()) throw new CliError(EXIT.invalid, `${directory} exists and is not a directory.`);
   const projectId = basename(target).replace(/[^A-Za-z0-9_-]/g, "-").replace(/^[^A-Za-z]+/, "") || "streamotter-app";
   const files = scaffoldFiles(projectId.slice(0, 64), { packages: detectPackageStyle(target) });
-  const conflicts = files.filter(file => existsSync(join(target, file.path))).map(file => file.path);
+  // A parent path that exists as a file would fail halfway through, after earlier files were written.
+  const blockedBy = (path: string): boolean => {
+    for (let parent = dirname(join(target, path)); parent.startsWith(target) && parent !== target; parent = dirname(parent)) {
+      if (existsSync(parent) && !statSync(parent).isDirectory()) return true;
+    }
+    return existsSync(join(target, path));
+  };
+  const conflicts = files.filter(file => blockedBy(file.path)).map(file => file.path);
   if (conflicts.length > 0) throw new CliError(EXIT.invalid, `Refusing to overwrite existing files: ${conflicts.join(", ")}`);
   for (const file of files) {
     await mkdir(dirname(join(target, file.path)), { recursive: true });
@@ -269,11 +276,15 @@ async function commandGenerate(values: Record<string, unknown>, io: CliIO): Prom
   const out = values["out"] as string | undefined;
   if (out === undefined) throw new CliError(EXIT.invalid, "--out <directory> is required.");
   const target = resolve(out);
+  if (existsSync(target) && !statSync(target).isDirectory()) throw new CliError(EXIT.invalid, `${out} exists and is not a directory.`);
   const files = generateFiles(config, { packages: detectPackageStyle(target) });
   const blocked: string[] = [];
   for (const file of files) {
     const path = join(target, file.path);
-    if (existsSync(path) && !(await readFile(path, "utf8")).startsWith(GENERATED_MARKER)) blocked.push(file.path);
+    const existing = lstatSync(path, { throwIfNoEntry: false });
+    if (existing === undefined) continue;
+    // A symbolic link, even a dangling one, would send the write somewhere else.
+    if (!existing.isFile() || !(await readFile(path, "utf8")).startsWith(GENERATED_MARKER)) blocked.push(file.path);
   }
   if (blocked.length > 0) {
     throw new CliError(EXIT.invalid, `Refusing to overwrite files that were not created by the generator: ${blocked.join(", ")}`);
@@ -291,7 +302,8 @@ async function commandDev(values: Record<string, unknown>, io: CliIO): Promise<n
   const loaded = await unlessSignalled(io, loadHandlers(values["handlers"] as string | undefined));
   if ("signal" in loaded) return stopForSignal(io, loaded.signal);
   const { handlers, development } = loaded.value;
-  const managementPort = values["management-port"] === undefined ? 7401 : Number(values["management-port"]);
+  const portText = values["management-port"] as string | undefined;
+  const managementPort = portText === undefined ? 7401 : /^\d{1,5}$/.test(portText) ? Number(portText) : Number.NaN;
   if (!Number.isInteger(managementPort) || managementPort < 0 || managementPort > 65_535) throw new CliError(EXIT.invalid, "--management-port must be a port number.");
   let gateway: Gateway;
   try {
@@ -429,7 +441,7 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
     });
   } catch (error) {
     // An operator command run with --json reports even an unknown flag as {"error": StreamError} (API §10).
-    if (isOperatorCommand(command) && rest.includes("--json")) return fail(io, true, EXIT.invalid, (error as Error).message);
+    if (isOperatorCommand(command) && rest.some(arg => /^--json(=|$)/.test(arg))) return fail(io, true, EXIT.invalid, (error as Error).message);
     io.err(`${(error as Error).message}\n\n${USAGE}`);
     return EXIT.invalid;
   }
@@ -443,7 +455,7 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<number
     dev: ["config", "handlers", "management-port", "state-dir", "operator-socket"],
     start: ["config", "handlers", "state-dir", "handler-build-id", "operator-socket", "health"]
   };
-  const permitted = allowed[command];
+  const permitted = Object.hasOwn(allowed, command) ? allowed[command] : undefined;
   if (permitted === undefined) {
     io.err(`Unknown command "${command}".\n\n${USAGE}`);
     return EXIT.invalid;

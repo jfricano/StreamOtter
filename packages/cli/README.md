@@ -133,6 +133,7 @@ Setting up failure handling (`init --failures`, the quarantine topic, policies, 
 | `streamotter sources reassess --state-dir <dir> --source <id> --failure <id> --expected-revision <n>` | Re-run the recovery guard for a held, eligible incident; never overrides an integrity failure |
 | `streamotter sources reopen-circuit --state-dir <dir> --source <id> --expected-circuit-revision <n> --reason <text>` | Reset a stopped automatic-continuation circuit after repair; approves no record |
 | `streamotter sources retire-boundary --state-dir <dir> --source <id> --boundary <id> --expected-revision <n> --reason <text> --confirm <boundaryId>` | Retire a recovery boundary (unsafe; see above) |
+| `streamotter sources rebaseline --config <path> --state-dir <dir> --source <id> --reason <text> --confirm <sourceId>` | Offline, with the gateway stopped: close a source's incidents after a generation change |
 
 Every operator command accepts `--json`.
 

@@ -37,6 +37,7 @@ describe("CLI: init, validate, generate, dev, start", () => {
     const unknown = await runCli(["deploy"]);
     assert.equal(unknown.code, 2);
     assert.match(unknown.stderr, /Unknown command "deploy"/);
+    assert.match((await runCli(["constructor"])).stderr, /Unknown command "constructor"/);
     assert.equal((await runCli(["validate", "--config", "x.json", "--bogus"])).code, 2);
     assert.equal((await runCli(["validate", "--config", "missing.json"])).code, 2);
   });
