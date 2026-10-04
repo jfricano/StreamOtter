@@ -93,6 +93,19 @@ describe("client control requests stay in step with the gateway", () => {
     assert.equal(sub.state, "live");
   });
 
+  it("a resync that runs out of attempts before a new epoch ends in resync-required", async () => {
+    h = await startHarness({ limits: { handlerTimeoutMs: 50, maxSyncAttempts: 1 } });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    await sub.ready({ timeoutMs: 5_000 });
+    h.app.authorizeOverride = () => new Promise<boolean>(() => undefined); // Authorize times out under the old epoch.
+    await assert.rejects(sub.resync({ timeoutMs: 3_000 }), (error: { code?: string }) => error.code === "RESYNC_REQUIRED");
+    assert.equal(sub.state, "resync-required");
+    h.app.authorizeOverride = null;
+    await sub.resync({ timeoutMs: 5_000 });
+    assert.equal(sub.state, "live");
+  });
+
   it("a hello and a close read together reconnect instead of leaving the client connected to nothing", async () => {
     const io = new Server({ path: DEFAULT_SOCKET_PATH });
     let connections = 0;

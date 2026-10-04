@@ -350,7 +350,13 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     // unavailable the gateway holds the request, and showing authorizing would hide the outage.
     if (this.#state !== "stale") this.#setState("authorizing");
     const replacing = this.#epoch;
-    connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }).then(result => {
+    const acknowledged = (result: { ok: boolean }) => {
+      // Frames after the acknowledgement follow the request (the socket is ordered), so from here a
+      // resync-required for the old epoch means this attempt gave up too. Runs synchronously,
+      // before frames read in the same socket read as the acknowledgement.
+      if (result.ok && connection === this.#attached && this.#replacing === replacing) this.#replacing = null;
+    };
+    connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }, acknowledged).then(result => {
       if (connection !== this.#attached || this.#terminal || result.ok) return;
       this.#lastError = result.error;
       this.#emitError(result.error);
