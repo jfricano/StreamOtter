@@ -114,7 +114,7 @@ The workbench reads the block once, when `app.js` is evaluated, so the block and
 | --- | --- | --- |
 | `hostContract` | `1` | Required. Any other value is refused with an "unsupported host contract" screen. |
 | `apiBase` | string | Absolute path, without a trailing slash. Every operation path in §5 is appended to it. It is resolved against the page's own origin, or against `apiOrigin` when that is set; a URL or a `//host` path is refused, so `apiBase` alone can never point the workbench at another origin. Default `/management/v1`. |
-| `apiOrigin` | string | **Revision 0.3.** Optional. The exact origin of the API when it is not the page's own, for example `"https://demo.streamotter.app"`. Allowed only with `auth.mode` `session`. See §3.4. |
+| `apiOrigin` | string | **Revision 0.3.** Optional. The exact origin of the API when it is not the page's own, for example `"https://demo.streamotter.dev"`. Allowed only with `auth.mode` `session`. See §3.4. |
 | `auth.mode` | `"token"` or `"session"` | `token`: the native behavior. The workbench shows its token gate and sends `Authorization: Bearer <token>`, keeping the token in memory only. `session`: the host authenticates requests with its own credential (for example an `HttpOnly`, `SameSite=Strict` cookie). The workbench shows no token gate, sends `credentials: "same-origin"` (or, with `apiOrigin`, `mode: "cors"` and `credentials: "include"`), never sends an `Authorization` header, and adds `X-StreamOtter-Workbench: 1` to every request so the host can reject cross-site form posts. A `401` or `UNAUTHENTICATED` answer shows a "Session ended" screen with a Reload button and stops all requests (§10). |
 | `gateway.origin`, `gateway.path` | string | The gateway the Preview tab connects to with the browser SDK. Optional; when absent, Preview is unavailable. |
 | `environment.kind` | `"development"` or `"sandbox"` | Shown in the top bar. `sandbox` also shows a persistent banner with `label` and `detail`. |
@@ -130,13 +130,13 @@ When the boot element is absent, the workbench behaves exactly as it does today:
 
 ### 3.4 Cross-origin API (`apiOrigin`, revision 0.3)
 
-Some hosts serve the page from one origin and the API from another: a static site on `https://streamotter.app` whose API and session cookie live on `https://demo.streamotter.app`. `apiOrigin` names that second origin explicitly:
+Some hosts serve the page from one origin and the API from another: a static site on `https://streamotter.dev` whose API and session cookie live on `https://demo.streamotter.dev`. `apiOrigin` names that second origin explicitly:
 
 ```html
 <script type="application/json" id="streamotter-workbench-host">
 {
   "hostContract": 1,
-  "apiOrigin": "https://demo.streamotter.app",
+  "apiOrigin": "https://demo.streamotter.dev",
   "apiBase": "/workbench/api/v1",
   "auth": { "mode": "session" },
   "environment": { "kind": "sandbox", "label": "Synthetic fixture" }
@@ -154,13 +154,13 @@ Rules:
 
 What the host must do on the API origin (CORS):
 
-- Answer the preflight (`OPTIONS`) for **exactly the page's origin**: `Access-Control-Allow-Origin: https://streamotter.app` (echoed only after comparing the request's `Origin` with that allowlisted value), `Access-Control-Allow-Credentials: true`, `Access-Control-Allow-Methods: GET, POST`, and `Access-Control-Allow-Headers: Content-Type, X-StreamOtter-Workbench`. Every request carries the custom header, so every request, GET included, is preflighted.
+- Answer the preflight (`OPTIONS`) for **exactly the page's origin**: `Access-Control-Allow-Origin: https://streamotter.dev` (echoed only after comparing the request's `Origin` with that allowlisted value), `Access-Control-Allow-Credentials: true`, `Access-Control-Allow-Methods: GET, POST`, and `Access-Control-Allow-Headers: Content-Type, X-StreamOtter-Workbench`. Every request carries the custom header, so every request, GET included, is preflighted.
 - Send `Access-Control-Allow-Origin` (the same exact origin) and `Access-Control-Allow-Credentials: true` on every actual response, errors included, and `Vary: Origin`. A `401` without them reaches the workbench as a network failure, which shows as "unavailable" instead of "Session ended".
 - Never use `*`, never reflect an arbitrary `Origin`, and refuse the preflight for any other origin. Browsers reject `*` with credentials anyway; reflecting any origin would let every site on the web drive the visitor's session.
 - Keep requiring `X-StreamOtter-Workbench: 1` on mutations. `createManagementHandler` adds no CORS headers and answers `OPTIONS` with 404 (§9), so a host that uses it answers the preflight and adds the response headers itself, before delegating.
 - Never answer with a redirect. The workbench refuses redirects, so one shows as "unavailable".
 
-Cookies: a `SameSite=Strict` cookie set by the API origin is sent with these requests only when the page and the API are the same site (the same scheme and registrable domain, as `streamotter.app` and `demo.streamotter.app` are). A host whose API is on a different site would need `SameSite=None` and is subject to third-party-cookie blocking; WHC-1 does not recommend that topology.
+Cookies: a `SameSite=Strict` cookie set by the API origin is sent with these requests only when the page and the API are the same site (the same scheme and registrable domain, as `streamotter.dev` and `demo.streamotter.dev` are). A host whose API is on a different site would need `SameSite=None` and is subject to third-party-cookie blocking; WHC-1 does not recommend that topology.
 
 ## 4. Capability discovery
 
