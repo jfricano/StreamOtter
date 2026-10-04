@@ -106,6 +106,37 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     await page.getByText("No traces yet").waitFor();
   });
 
+  it("Inspect drops a response for the previous filter that arrives after the filter changed", async () => {
+    await page.getByLabel("Follow new traces").uncheck();
+    await page.getByLabel("Filter by outcome").selectOption("");
+    await page.locator("tbody code", { hasText: /^commit$/ }).first().waitFor();
+    let release!: () => void;
+    const released = new Promise<void>(done => { release = done; });
+    let held = 0;
+    let delivered!: () => void;
+    const stale = new Promise<void>(done => { delivered = done; });
+    await page.route(url => url.pathname.endsWith("/traces") && !url.searchParams.has("outcome"), async route => {
+      if (held++ > 0) return route.continue();
+      const response = await route.fetch(); // Unfiltered rows, held back until the filter has changed.
+      await released;
+      await route.fulfill({ response });
+      delivered();
+    });
+    try {
+      await page.getByRole("button", { name: "Reload latest" }).click();
+      while (held === 0) await page.waitForTimeout(20);
+      await page.getByLabel("Filter by outcome").selectOption("failed");
+      await page.getByText("No traces yet").waitFor();
+      release();
+      await stale;
+      await page.waitForTimeout(200);
+      assert.equal(await page.locator("tbody code").count(), 0, "the unfiltered rows were dropped");
+    } finally {
+      await page.unrouteAll({ behavior: "wait" });
+      await page.getByLabel("Follow new traces").check();
+    }
+  });
+
   it("Define marks an edited candidate as requiring a restart and validates it", async () => {
     await tab("Define").click();
     const editor = page.getByLabel("Candidate configuration JSON");
@@ -121,6 +152,19 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     await page.getByText(/Commands are a V3 feature/).waitFor();
     delete candidate["commands"];
     await editor.fill(JSON.stringify(candidate, null, 2));
+
+  });
+    try {
+      await page.getByRole("button", { name: "Validate candidate" }).click();
+      while (!held) await page.waitForTimeout(20);
+      await editor.fill(JSON.stringify(candidate));
+      release();
+      await stale;
+      await page.waitForTimeout(200);
+      assert.equal(await page.getByText(/^Valid\./).count(), 0, "the stale result was dropped");
+    } finally {
+      await page.unrouteAll({ behavior: "wait" });
+    }
   });
 
   it("Export returns canonical content whose fingerprint matches the CLI's algorithm", async () => {
