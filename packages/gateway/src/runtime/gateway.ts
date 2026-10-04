@@ -966,7 +966,10 @@ export class GatewayRuntime implements SessionOwner {
    * obligations a journal still holds. When stateDirectory points at a journal
    * with an open incident or a recovery boundary in force for a configured
    * source, startup is refused until they are resolved or retired with failure
-   * handling still configured. A journal with nothing outstanding is left alone.
+   * handling still configured. A boundary from a generation other than the
+   * configured one doesn't count: a generation change always retires it (ADR-15B
+   * §4), as the journal does when failure handling claims it again. A journal
+   * with nothing outstanding is left alone.
    */
   #refuseAbandonedJournal(): void {
     if (this.#stateDirectory === undefined || !existsSync(join(this.#stateDirectory, JOURNAL_FILE))) return;
@@ -979,9 +982,10 @@ export class GatewayRuntime implements SessionOwner {
     try {
       const openIncidents: string[] = [];
       const boundaries: string[] = [];
-      for (const sourceId of this.#sources.keys()) {
+      for (const [sourceId, source] of this.#sources) {
         if (store.open(sourceId).length > 0) openIncidents.push(sourceId);
-        if (store.boundary(sourceId) !== null) boundaries.push(sourceId);
+        const boundary = store.boundary(sourceId);
+        if (boundary !== null && boundary.generation === source.config.generation) boundaries.push(sourceId);
       }
       if (openIncidents.length > 0 || boundaries.length > 0) {
         throw refuse(

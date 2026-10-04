@@ -91,6 +91,26 @@ describe("F48: upgrade and downgrade with failure handling", { skip }, () => {
     assert.equal(h.internals.incidentStore(), null, "started without failure handling once nothing was outstanding");
   });
 
+  it("allows dropping failureHandling together with a generation change that retires the boundary", async () => {
+    const state = await journal();
+    h = await startHarness({ stateDirectory: state, failureHandling: resync(), recovery: { orders: recoverable }, fixtures: [badJson] });
+    await h.advance(1);
+    await h.internals.failuresSettled();
+    assert.ok((await getGatewayOperator(h.gateway).status()).sources[0]?.boundary, "a generation-mode boundary is in force");
+    await h.close();
+    h = undefined;
+
+    // ADR-15B §4: the new generation retires the old generation's boundary, so nothing is outstanding.
+    h = await startHarness({ stateDirectory: state, generation: "fixture-2" });
+    assert.equal(h.internals.incidentStore(), null);
+    await h.close();
+    h = undefined;
+
+    // The old generation's boundary still counts when the generation is unchanged.
+    await assert.rejects(startHarness({ stateDirectory: state }), (error: { code: string; details?: { boundarySources?: string[] } }) =>
+      error.code === "CONFIG_INVALID" && error.details?.boundarySources?.[0] === "orders");
+  });
+
   it("refuses to drop failureHandling while an incident is still open", async () => {
     const state = await journal();
     h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures: [badJson] });
