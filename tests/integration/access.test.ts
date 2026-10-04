@@ -79,16 +79,57 @@ describe("acceptance 4: access fails closed", () => {
     h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)] });
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
     h.app.tokenExpiry.set("alice@acme#first", new Date(Date.now() + 1_200).toISOString());
-    const tokens = ["alice@acme#first", "alice@acme#second"];
-    const client = h.client(() => tokens.shift() ?? "alice@acme#second");
+    // Reauthentication waits on a gate, so the record committed after expiry has no reauthenticated
+    // connection to arrive on: it may only reach the client through the resync snapshot.
+    const reauth = deferred();
+    let tokenCalls = 0;
+    const client = h.client(async () => {
+      if (++tokenCalls === 1) return "alice@acme#first";
+      await reauth.promise;
+      return "alice@acme#second";
+    });
     const sub = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
     const seen = observe(sub);
     await sub.ready();
     await waitFor(() => seen.states.includes("stale"), 5_000, "stale at expiry");
     assert.equal(seen.reasons[seen.states.indexOf("stale")], "UNAUTHENTICATED");
+    h.app.put("acme", "alice", "ord_1", 2, "processing", 20);
+    assert.equal(await h.advance(1), 1);
+    await sleep(300);
+    assert.deepEqual(seen.events.map(event => event.revision), ["1"], "no record is delivered after expiry");
+    assert.equal(sub.state, "stale");
+    reauth.resolve();
     await waitFor(() => seen.states.lastIndexOf("live") > seen.states.indexOf("stale"), 5_000, "live after reauthentication");
     assert.equal(h.app.snapshotCalls, 2);
+    assert.deepEqual(seen.events.map(event => [event.revision, event.kind]), [["1", "snapshot"], ["2", "snapshot"]]);
     assert.equal(client.state, "connected");
+  });
+
+  it("drops a record committed after expiry even before the expiry timer fires", async t => {
+    h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)] });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const start = Date.now();
+    h.app.tokenExpiry.set("alice@acme#first", new Date(start + 120_000).toISOString());
+    let tokenCalls = 0;
+    const client = h.client(() => (++tokenCalls === 1 ? "alice@acme#first" : "alice@acme#second"));
+    const sub = client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    const seen = observe(sub);
+    await sub.ready();
+    // Only Date moves: the gateway's expiry timer is still two minutes away, so the send-time
+    // check is the only thing that can stop this record.
+    h.app.put("acme", "alice", "ord_1", 2, "processing", 20);
+    t.mock.timers.enable({ apis: ["Date"], now: start + 121_000 });
+    try {
+      assert.equal(await h.advance(1), 1);
+    } finally {
+      t.mock.timers.reset();
+    }
+    await sleep(100);
+    assert.deepEqual(seen.events.map(event => event.revision), ["1"], "no record is delivered after expiry");
+    await waitFor(() => seen.states.includes("stale"), 5_000, "stale at expiry");
+    assert.equal(seen.reasons[seen.states.indexOf("stale")], "UNAUTHENTICATED");
+    await waitFor(() => seen.states.lastIndexOf("live") > seen.states.indexOf("stale"), 5_000, "live after reauthentication");
+    assert.deepEqual(seen.events.map(event => [event.revision, event.kind]), [["1", "snapshot"], ["2", "snapshot"]], "the update reached the client only through the resync snapshot");
   });
 
   it("refreshes the connection before token expiry without an account switch", async () => {
