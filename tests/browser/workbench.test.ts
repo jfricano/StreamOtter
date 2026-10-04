@@ -148,12 +148,25 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     await page.getByText(/^Valid\./).waitFor();
     candidate["commands"] = {};
     await editor.fill(JSON.stringify(candidate, null, 2));
+    assert.equal(await page.getByText(/^Valid\./).count(), 0, "an edit clears the earlier result");
     await page.getByRole("button", { name: "Validate candidate" }).click();
     await page.getByText(/Commands are a V3 feature/).waitFor();
     delete candidate["commands"];
     await editor.fill(JSON.stringify(candidate, null, 2));
 
-  });
+    // A result that arrives after the candidate was edited describes the old text and is dropped.
+    let release!: () => void;
+    const released = new Promise<void>(done => { release = done; });
+    let held = false;
+    let delivered!: () => void;
+    const stale = new Promise<void>(done => { delivered = done; });
+    await page.route(url => url.pathname.endsWith("/config/validate"), async route => {
+      held = true;
+      const response = await route.fetch();
+      await released;
+      await route.fulfill({ response });
+      delivered();
+    });
     try {
       await page.getByRole("button", { name: "Validate candidate" }).click();
       while (!held) await page.waitForTimeout(20);
