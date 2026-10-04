@@ -2,7 +2,7 @@
  * Declared-workload resource test (not a capacity benchmark). Parameters:
  *   clients:        200 SDK clients, one connection each, one subscription each
  *   channel keys:   20 orders (10 subscribers per routing identity), one tenant
- *   stalled:        10 raw clients that never acknowledge frames
+ *   stalled:        10 raw clients that acknowledge their snapshot and no frame after it
  *   updates:        600 fixture records (30 revisions per order), as fast as the source commits
  *   payload:        ~150-byte JSON order state (≈400-byte data frames)
  *   limits:         defaults, except receiptTimeoutMs 1000 (shed stalled clients quickly) and
@@ -52,7 +52,11 @@ describe("declared workload: fan-out, stalled clients, and churn", () => {
         const { socket } = await rawConnect(h.origin, { token: "alice@acme", protocolVersion: 1 });
         let disconnected = false;
         let frames = 0;
-        socket.on("so:data", (_frame: DataFrame) => { frames++; });
+        // Receipting the snapshot starts each stalled client's receipt timer at its first update,
+        // which arrives during the advance below, not at subscribe time.
+        socket.on("so:data", (frame: DataFrame) => {
+          if (++frames === 1) socket.emit("so:receipt", { subscriptionId: frame.subscriptionId, epoch: frame.epoch, sequence: frame.sequence });
+        });
         socket.on("disconnect", () => { disconnected = true; });
         await ack(socket, "so:subscribe", { requestId: crypto.randomUUID(), subscriptionId: crypto.randomUUID(), channel: "orderStatus", channelVersion: 1, params: { orderId: `ord_${index}` } });
         return { socket, get disconnected() { return disconnected; }, get frames() { return frames; } };
@@ -71,9 +75,10 @@ describe("declared workload: fan-out, stalled clients, and churn", () => {
         advanced += step;
       }
       const commitMs = Date.now() - advanceStarted;
-      // The stalled clients never acknowledge, so a source that waited on them would only finish
-      // after the receipt timeout disconnected them. Committing everything while every stalled
-      // client is still connected is what shows the source never blocked on them.
+      // The stalled clients never acknowledge an update, so a source that waited on them would only
+      // finish after the receipt timeout (counted from each one's first update) disconnected them.
+      // Committing everything while every stalled client is still connected is what shows the
+      // source never blocked on them.
       const stalledConnectedAtCommit = stalled.filter(client => !client.disconnected).length;
       report["source commit of 600 records (ms)"] = commitMs;
       await waitFor(() => latest.every(revision => revision === final), 60_000, "all healthy clients converged");
@@ -83,11 +88,12 @@ describe("declared workload: fan-out, stalled clients, and churn", () => {
       report["frames delivered"] = CLIENTS * REVISIONS;
 
       assert.equal(advanced, fixtures.length);
-      assert.equal(stalledConnectedAtCommit, STALLED, `the source never blocked on stalled subscribers (commit took ${commitMs} ms)`);
-      assert.ok(commitMs < h.internals.limits.receiptTimeoutMs, `the source committed within the receipt timeout (${commitMs} ms)`);
+      assert.equal(stalledConnectedAtCommit, STALLED,
+        `every stalled client was still connected when the source finished committing (commit took ${commitMs} ms; receipt timeout ${h.internals.limits.receiptTimeoutMs} ms from each one's first update)`);
       assert.deepEqual(outOfOrder, [], "no client saw a regressing revision");
       assert.ok(peakPending <= h.internals.limits.maxPendingBytesGateway, `peak ${peakPending}`);
       await waitFor(() => stalled.every(client => client.disconnected), 10_000, "stalled clients disconnected by receipt timeout");
+      assert.ok(stalled.every(client => client.frames >= 2), "each stalled client got an update after its receipted snapshot, so its timer started there");
       assert.ok(subscriptions.every(sub => sub.state === "live"));
 
       // Churn on one connection: subscribe/unsubscribe cycles release all server state.
