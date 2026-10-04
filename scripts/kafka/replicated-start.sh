@@ -49,11 +49,12 @@ port_of() {
 
 # True when the live process names the node's config file on its command line. The command line
 # reads as empty for a moment while the start scripts exec into java, so an empty read is retried.
+# Uses ps rather than /proc so it also works on macOS; -ww keeps Kafka's long command line whole.
 owns() {
   local pid="$1" config="$2" cmdline
   for _ in $(seq 1 20); do
     kill -0 "$pid" 2>/dev/null || return 1
-    cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    cmdline="$(ps -ww -p "$pid" -o command= 2>/dev/null || true)"
     if [ -n "$cmdline" ]; then
       case "$cmdline" in *"$config"*) return 0 ;; *) return 1 ;; esac
     fi
