@@ -55,7 +55,7 @@ Open `http://127.0.0.1:7401/` and paste the token.
 
 1. **Preview:** start a preview session as `developer`, then subscribe to `jobProgress` with `{"jobId": "job_1"}`. The subscription goes `authorizing → synchronizing → live` and shows the snapshot, `queued — 0 %` at revision 1.
 2. **Connect:** advance the `jobs` fixture one record at a time. Each record is a full new state with a higher revision (25 %, 60 %, 90 %, then 100 %), and the preview shows it immediately.
-3. **Inspect:** follow each record through `validate → map → queue → send → receipt → commit`.
+3. **Inspect:** follow each record through `source → validate → map → queue → commit`, and to each subscriber through `send → receipt`. The commit doesn't wait for the browser's receipt, so it usually appears first.
 
 The workbench previews as a development principal, without your own login. To see a real page, continue below.
 
