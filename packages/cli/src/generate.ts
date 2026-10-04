@@ -51,6 +51,14 @@ export function fingerprint(config: unknown): string {
   return createHash("sha256").update(canonicalJson(config)).digest("hex");
 }
 
+/**
+ * A JavaScript string literal for generated code. JSON leaves U+2028 and U+2029 unescaped, and both
+ * end a line in JavaScript, so a name containing one could close the `//` comment it's written into.
+ */
+function literal(value: string): string {
+  return JSON.stringify(value).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
+
 function pascalCase(id: string): string {
   return id.split(/[-_]+/).filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("");
 }
@@ -71,7 +79,7 @@ export function typeNames(schemaIds: readonly string[]): Map<string, string> {
 }
 
 function propertyKey(name: string): string {
-  return IDENTIFIER.test(name) ? name : JSON.stringify(name);
+  return IDENTIFIER.test(name) ? name : literal(name);
 }
 
 function describe(schema: Schema): string | null {
@@ -100,7 +108,7 @@ function describe(schema: Schema): string | null {
 export function renderType(schema: Schema, indent = ""): string {
   switch (schema.type) {
     case "string":
-      return schema.enum !== undefined ? schema.enum.map(value => JSON.stringify(value)).join(" | ") : "string";
+      return schema.enum !== undefined ? schema.enum.map(value => literal(value)).join(" | ") : "string";
     case "number":
     case "integer":
       return "number";
@@ -169,7 +177,7 @@ export function generateFiles(config: ProjectConfig, options: { packages?: Packa
   const paramsSchema = firstChannel === undefined ? undefined : config.schemas[firstChannel.paramsSchema];
   const exampleParams = paramsSchema?.type === "object"
     ? `{ ${Object.entries(paramsSchema.properties).map(([key, schema]) =>
-      `${propertyKey(key)}: ${schema.type === "string" ? (schema.enum?.[0] !== undefined ? JSON.stringify(schema.enum[0]) : `"example"`) : schema.type === "boolean" ? "true" : "1"}`).join(", ")} }`
+      `${propertyKey(key)}: ${schema.type === "string" ? (schema.enum?.[0] !== undefined ? literal(schema.enum[0]) : `"example"`) : schema.type === "boolean" ? "true" : "1"}`).join(", ")} }`
     : "{}";
   const example = firstName === undefined ? `${header}\nexport {};\n` : [
     header,
@@ -182,15 +190,15 @@ export function generateFiles(config: ProjectConfig, options: { packages?: Packa
     " */",
     `export async function mount${pascalCase(firstName)}(options: {`,
     "  origin: string;",
-    `  params: AppChannels[${JSON.stringify(firstName)}]["params"];`,
+    `  params: AppChannels[${literal(firstName)}]["params"];`,
     "  getToken: (signal: AbortSignal) => Promise<string>;",
-    `  render: (data: AppChannels[${JSON.stringify(firstName)}]["data"]) => void;`,
+    `  render: (data: AppChannels[${literal(firstName)}]["data"]) => void;`,
     "  showState?: (state: SubscriptionState) => void;",
     "  showError?: (error: StreamError) => void;",
     "}): Promise<() => Promise<void>> {",
     "  const client = createClient<AppChannels>({ origin: options.origin, getToken: ({ signal }) => options.getToken(signal) });",
-    `  const subscription = client.subscribe(${JSON.stringify(firstName)}, {`,
-    `    channelVersion: channelVersions[${JSON.stringify(firstName)}],`,
+    `  const subscription = client.subscribe(${literal(firstName)}, {`,
+    `    channelVersion: channelVersions[${literal(firstName)}],`,
     "    params: options.params",
     "  });",
     "  subscription.on(\"data\", event => options.render(event.data));",
