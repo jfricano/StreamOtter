@@ -168,6 +168,8 @@ const WATCHDOG_MS = 12_000;
 const HEARTBEAT_INTERVAL_MS = 3_000;
 /** How long startup waits for each step of reading the group's start position before going on without it. */
 const START_POSITION_TIMEOUT_MS = 5_000;
+/** Few, short retries for that read, so KafkaJS gives up on its own close to the deadline instead of retrying for 25 seconds. */
+const START_POSITION_RETRY = { initialRetryTime: 300, maxRetryTime: 1_000, retries: 2 };
 
 /**
  * KafkaJS adapter with explicit progress management: auto-commit and automatic
@@ -188,6 +190,10 @@ export class KafkaSourceAdapter implements SourceAdapter {
   #consumer: Consumer | null = null;
   #kafka: KafkaClient | null = null;
   #admin: Admin | null = null;
+  /** The admin client reading start positions while startup does, and its sockets; stop() closes both. */
+  #startAdmin: { admin: Admin; sockets: TrackedSockets } | null = null;
+  /** Counts the consumer's COMMIT_OFFSETS events; a commit that raised none did not happen. */
+  #commitEvents = 0;
   /** The record the source is paused at, if a process() call returned pause. */
   #held: { topic: string; partition: number; offset: string } | null = null;
   /** Partitions assigned at the last group join, and a counter that changes on every rejoin. */
@@ -251,7 +257,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const joined = new Promise<void>(resolve => { this.#joined = resolve; });
     await consumer.connect();
     await consumer.subscribe({ topics: [...this.#source.topics], fromBeginning: this.#source.startFrom === "earliest" });
-    await this.#readStartPositions(kafka);
+    await this.#readStartPositions();
     if (this.#stopping) return;
     await consumer.run({
       autoCommit: false,
@@ -306,13 +312,15 @@ export class KafkaSourceAdapter implements SourceAdapter {
           resolveOffset(message.offset);
           if (this.#beforeCommit !== undefined) await this.#beforeCommit(this.#sourceId, position);
           if (this.#stopping) return;
+          // Taken before the commit: a crash or rebalance while it runs makes the retry stale, not current.
+          const epoch = this.#assignmentEpoch;
           try {
             await this.#commit(consumer, position);
             this.#onCommit(position);
           } catch (error) {
             // Processing completed; a failed commit only means this record can be redelivered. It is retried
             // in the background, so the last record before a quiet period doesn't stay uncommitted.
-            this.#uncommitted.set(`${batch.topic}:${batch.partition}`, { position, epoch: this.#assignmentEpoch });
+            this.#uncommitted.set(`${batch.topic}:${batch.partition}`, { position, epoch });
             this.#sink.logger.warn("Kafka offset commit failed; the record may be redelivered", {
               sourceId: this.#sourceId, topic: batch.topic, partition: batch.partition, offset: message.offset,
               error: (error as Error).name
@@ -340,6 +348,13 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const admin = this.#admin;
     this.#admin = null;
     if (admin !== null) await admin.disconnect().catch(() => undefined);
+    const startAdmin = this.#startAdmin;
+    this.#startAdmin = null;
+    if (startAdmin !== null) {
+      // Its sockets first: disconnect waits for a request in flight, which a silent broker answers only at the request timeout.
+      startAdmin.sockets.destroyAll();
+      await startAdmin.admin.disconnect().catch(() => undefined);
+    }
     if (consumer !== null) {
       let timer: NodeJS.Timeout | undefined;
       await Promise.race([
@@ -443,13 +458,28 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const commit = this.#commits.then(async () => {
       // Checked in turn, so a retry queued behind a later commit doesn't move the offset back.
       if (!still()) return false;
-      await consumer.commitOffsets([{ topic: position.topic, partition: position.partition, offset: nextOffset(position.offset) }]);
+      await this.#commitOffsets(consumer, [{ topic: position.topic, partition: position.partition, offset: nextOffset(position.offset) }]);
       const pending = this.#uncommitted.get(key);
       if (pending !== undefined && BigInt(pending.position.offset) <= BigInt(position.offset)) this.#uncommitted.delete(key);
       return true;
     });
     this.#commits = commit.catch(() => undefined);
     return commit;
+  }
+
+  /**
+   * KafkaJS resolves commitOffsets without committing while its consumer is not running (between a
+   * crash or stop and the restarted consumer's join), so a commit counts only if it raised COMMIT_OFFSETS.
+   * Callers serialize commits through #commits, so the event seen during the call is this commit's.
+   */
+  async #commitOffsets(consumer: Consumer, offsets: { topic: string; partition: number; offset: string }[]): Promise<void> {
+    const before = this.#commitEvents;
+    await consumer.commitOffsets(offsets);
+    if (this.#commitEvents === before) {
+      const error = new Error("The Kafka consumer was not running, so the offset was not committed.");
+      error.name = "KafkaConsumerNotRunning";
+      throw error;
+    }
   }
 
   /** Retries failed commits still current: none after a rebalance, when the partition's next owner starts from the committed offset. */
@@ -487,10 +517,27 @@ export class KafkaSourceAdapter implements SourceAdapter {
    * will start, so committing it can never skip a record. Best effort; a
    * failure only logs.
    */
-  async #readStartPositions(kafka: KafkaClient): Promise<void> {
-    const admin = kafka.admin();
+  async #readStartPositions(): Promise<void> {
+    // stop() disconnects only the admin client it finds, so none may be created once it has begun.
+    if (this.#stopping) return;
+    let abandoned = false;
+    const sockets = new TrackedSockets();
+    const config = kafkaConfig(this.#clientId, this.#connection, this.#sink, sockets, () => this.#stopping || abandoned);
+    // A client of its own with few retries. A connection KafkaJS still opens after the read was given up
+    // is closed at once, so its retrier ends quickly instead of reconnecting behind the source's back.
+    const admin = new Kafka({
+      ...config,
+      retry: START_POSITION_RETRY,
+      socketFactory: options => {
+        const socket = sockets.factory(options);
+        if (abandoned || this.#stopping) socket.destroy(new Error("start position read abandoned"));
+        return socket;
+      }
+    }).admin();
+    this.#startAdmin = { admin, sockets };
     const latest = this.#source.startFrom === "latest";
     const starts = new Map<string, string>();
+    let failed = false;
     try {
       await withDeadline(admin.connect(), Date.now() + START_POSITION_TIMEOUT_MS, "Kafka connect");
       const deadline = Date.now() + START_POSITION_TIMEOUT_MS;
@@ -511,13 +558,21 @@ export class KafkaSourceAdapter implements SourceAdapter {
       }
       if (latest && starts.size > 0) this.#startPositions = starts;
     } catch (error) {
+      failed = true;
       if (!this.#stopping) {
-        this.#sink.logger.warn("The consumer group's start position could not be read; a restart before the first commit starts from the latest offset again", {
+        this.#sink.logger.warn(latest
+          ? "The consumer group's start position could not be read; a restart before the first commit starts from the latest offset again"
+          : "The consumer group's committed offsets could not be read, so an offset outside the retained range is not reported", {
           sourceId: this.#sourceId, error: (error as Error).name
         });
       }
     } finally {
+      abandoned = true;
+      if (this.#startAdmin?.admin === admin) this.#startAdmin = null;
+      // After a failure a request may still be waiting, and disconnect would wait for it; closing the sockets ends it.
+      if (failed) sockets.destroyAll();
       await admin.disconnect().catch(() => undefined);
+      sockets.destroyAll();
     }
   }
 
@@ -535,7 +590,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const commit = this.#commits.then(async () => {
       if (this.#stopping) return;
       try {
-        await consumer.commitOffsets(offsets);
+        await this.#commitOffsets(consumer, offsets);
         this.#sink.logger.info("Recorded the latest start position for partitions with no committed offset", { sourceId: this.#sourceId, partitions: offsets.length });
       } catch (error) {
         this.#sink.logger.warn("The start position could not be committed; a restart before the first commit starts from the latest offset again", {
@@ -578,9 +633,10 @@ export class KafkaSourceAdapter implements SourceAdapter {
       if (processing === null) {
         this.#sink.logger.warn("Kafka source has had no broker activity; marking it degraded", { sourceId: this.#sourceId });
       } else {
-        // Heartbeats continue while a record is processed, so silence here means the broker isn't answering them,
-        // not just that the record is slow. Name the record so the two can be told apart in the log.
-        this.#sink.logger.warn("Kafka source has had no broker activity while a record is processing; heartbeats are not reaching the broker, marking it degraded", {
+        // Heartbeats continue while a record is processed, so silence here means none is being acknowledged (the
+        // broker is unreachable, or a rebalance is refusing them), not just that the record is slow. Name the record
+        // so the two can be told apart in the log.
+        this.#sink.logger.warn("Kafka source has had no broker activity while a record is processing; heartbeats are not being acknowledged, marking it degraded", {
           sourceId: this.#sourceId, topic: processing.position.topic, partition: processing.position.partition, offset: processing.position.offset,
           processingMs: Date.now() - processing.since
         });
@@ -597,7 +653,14 @@ export class KafkaSourceAdapter implements SourceAdapter {
       this.#rebalancing = false;
       // Only the first assignment: positions read at startup say nothing about partitions gained later.
       if (this.#startPositions !== null && this.#startJoin === null) this.#startJoin = this.#assignment;
-      else this.#startPositions = null;
+      else if (this.#startPositions !== null) {
+        // The group rejoined before the first assignment fetched; another member may have committed since.
+        this.#sink.logger.warn("The consumer group rebalanced before the start position was committed; a restart before the first commit starts from the latest offset again", {
+          sourceId: this.#sourceId, partitions: this.#startPositions.size
+        });
+        this.#startPositions = null;
+        this.#startJoin = null;
+      }
       this.#lastActivity = Date.now();
       if (this.#paused) this.#reapplyPause();
       this.#setStatus("healthy");
@@ -616,21 +679,32 @@ export class KafkaSourceAdapter implements SourceAdapter {
     consumer.on(events.FETCH_START, () => { if (this.#startJoin !== null) this.#commitStartPositions(consumer); });
     consumer.on(events.FETCH, () => this.#activity());
     consumer.on(events.HEARTBEAT, () => this.#activity());
-    consumer.on(events.COMMIT_OFFSETS, () => this.#activity());
+    consumer.on(events.COMMIT_OFFSETS, () => {
+      this.#commitEvents++;
+      this.#activity();
+    });
     consumer.on(events.CRASH, event => {
       this.#sink.logger.warn("Kafka consumer crashed", {
         sourceId: this.#sourceId,
         error: event.payload.error.name,
         restart: event.payload.restart
       });
+      this.#lostAssignment();
       this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
     consumer.on(events.DISCONNECT, () => {
       if (!this.#stopping) this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
     consumer.on(events.STOP, () => {
+      this.#lostAssignment();
       if (!this.#stopping) this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
+  }
+
+  /** The consumer stopped (a crash restarts it): its assignment is gone and failed commits are no longer current. */
+  #lostAssignment(): void {
+    this.#assignment = null;
+    this.#assignmentEpoch++;
   }
 }
 
@@ -650,6 +724,7 @@ function withDeadline<T>(promise: Promise<T>, deadline: number, label: string): 
     promise,
     new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => reject(new Error(`${label} timed out`)), Math.max(1, deadline - Date.now()));
+      timer.unref(); // The raced promise keeps the process alive while it is needed.
     })
   ]).finally(() => clearTimeout(timer));
 }

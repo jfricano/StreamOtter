@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { afterEach, describe, it } from "node:test";
 import { createClient } from "@streamotter/client";
 import { DEFAULT_SOCKET_PATH, EVENTS, PROTOCOL_VERSION, type Hello } from "@streamotter/contracts";
+import { ClientSession } from "../../packages/gateway/src/runtime/session.ts";
 import { FAR_FUTURE, observe, orderRecord, sleep, startHarness, waitFor, type Harness, type TestChannels } from "./harness.ts";
 
 // The tests package has no socket.io server dependency; borrow the gateway's.
@@ -91,6 +92,34 @@ describe("client control requests stay in step with the gateway", () => {
     await h.internals.resumeSource("orders");
     await resynced;
     assert.equal(sub.state, "live");
+  });
+
+  it("concurrent resync() calls on a stale subscription join one request", async () => {
+    let resyncs = 0;
+    const original = ClientSession.prototype.handleResync;
+    ClientSession.prototype.handleResync = function (this: ClientSession, payload: unknown, reply: unknown) {
+      resyncs++;
+      return original.call(this, payload, reply);
+    };
+    try {
+      h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)] });
+      h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+      const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+      await sub.ready({ timeoutMs: 5_000 });
+      h.app.mapOverride = () => { throw new Error("boom"); };
+      assert.equal(await h.advance(1), 0);
+      await waitFor(() => sub.state === "stale", 2_000, "stale while paused");
+      const waits = [sub.resync({ timeoutMs: 8_000 }), sub.resync({ timeoutMs: 8_000 }), sub.resync({ timeoutMs: 8_000 })];
+      await sleep(300);
+      assert.equal(resyncs, 1, "the gateway received one resync request");
+      h.app.mapOverride = null;
+      await h.internals.resumeSource("orders");
+      await Promise.all(waits);
+      assert.equal(sub.state, "live");
+      assert.equal(resyncs, 1);
+    } finally {
+      ClientSession.prototype.handleResync = original;
+    }
   });
 
   it("a resync that runs out of attempts before a new epoch ends in resync-required", async () => {
