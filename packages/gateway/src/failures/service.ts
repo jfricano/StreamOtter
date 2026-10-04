@@ -465,7 +465,16 @@ export class FailureService {
     try {
       circuit = this.store.circuit(sourceId);
       const now = Date.now();
-      const recent = circuit.advances.filter(at => now - Date.parse(at) < limit.windowMs);
+      // An incident advanced again after a not-held attempt still counts once (spec §4): leave out its earlier entry, as prepareAdvance does.
+      const own = record.boundaryId === null ? undefined : this.store.getBoundary(record.boundaryId)?.createdAt;
+      let ownSkipped = false;
+      const recent = circuit.advances.filter(at => {
+        if (!ownSkipped && at === own) {
+          ownSkipped = true;
+          return false;
+        }
+        return now - Date.parse(at) < limit.windowMs;
+      });
       if (circuit.state === "open" || recent.length >= limit.incidents) {
         if (circuit.state !== "open") {
           circuit = this.store.updateCircuit(sourceId, circuit.revision, {
