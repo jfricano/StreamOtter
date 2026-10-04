@@ -58,14 +58,18 @@ const VERSION = /^[0-9A-Za-z.+-]+$/;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 /**
- * An absolute path: starts with one `/`, has no empty, `.` or `..` segment, no trailing slash, no
- * query or fragment, and no backslash. `//host` (a protocol-relative URL, which would name another
+ * An absolute path: starts with one `/`, has no empty, `.` or `..` segment (nor its percent-encoded
+ * forms `%2e`, `.%2e`, `%2e.` and `%2e%2e`, in any case, which browsers resolve the same way), no
+ * trailing slash, no query or fragment, and no backslash. `//host` (a protocol-relative URL, which would name another
  * origin) is refused. The path is resolved against the page's own origin, or against `apiOrigin`
  * when a boot block sets one; a path alone can never change the origin.
  */
 export function isSameOriginApiPath(value: unknown): value is string {
   if (typeof value !== "string" || value.length < 2 || value.length > MAX_PATH_LENGTH || !value.startsWith("/")) return false;
-  return value.slice(1).split("/").every(segment => segment !== "." && segment !== ".." && SEGMENT.test(segment));
+  return value.slice(1).split("/").every(segment => {
+    const dots = segment.replace(/%2e/gi, ".");
+    return dots !== "." && dots !== ".." && SEGMENT.test(segment);
+  });
 }
 
 /** The only hosts `apiOrigin` may name over plain `http:`, so native tests can run without TLS. */

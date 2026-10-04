@@ -51,13 +51,15 @@ describe("workbench host contract (WHC-1) boot block", () => {
   });
 
   it("allows only an absolute same-origin apiBase without a trailing slash", () => {
-    for (const valid of ["/management/v1", "/workbench/api/v1", "/a", "/a-b/c_d/~e"]) {
+    for (const valid of ["/management/v1", "/workbench/api/v1", "/a", "/a-b/c_d/~e", "/api/%2e%2ex", "/api/..%2e", "/v1.2"]) {
       assert.equal(isSameOriginApiPath(valid), true, valid);
       assert.deepEqual(paths({ hostContract: 1, apiBase: valid }), [], valid);
     }
     for (const invalid of [
       "", "/", "/api/", "api/v1", "//evil.example/api", "https://evil.example/api", "/api//v1", "/api/../x", "/./api",
-      "/api?x=1", "/api#x", "/api\\v1", "/api v1", `/${"a".repeat(300)}`, 7
+      "/api?x=1", "/api#x", "/api\\v1", "/api v1", `/${"a".repeat(300)}`, 7,
+      // Percent-encoded dot segments, which browsers resolve as "." and "..".
+      "/workbench/%2e%2e/admin", "/api/%2E", "/api/.%2e/x", "/api/%2E./x", "/%2e%2E/api"
     ]) {
       assert.equal(isSameOriginApiPath(invalid), false, String(invalid));
       assert.deepEqual(paths({ hostContract: 1, apiBase: invalid }), ["/apiBase"], String(invalid));
