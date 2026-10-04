@@ -105,8 +105,12 @@ The guard can only answer honestly from data the application owns, so the store 
   (still at its seed revision), not from the absence of rows.
 - The snapshot query reads the order and the watermark together. In Kafka mode that is
   the authoritative store behind `GET /internal/orders/…`. In fixture mode it is the
-  development read model, whose watermark is the newest outbox row it has applied from
-  the stream.
+  development read model, which applies records in timeline order.
+- The watermark a snapshot reports must be **contiguous**: watermark W means every
+  outbox row up to W has been processed. It is never merely the highest row seen. A read model fed
+  from several partitions (or several replicas) can apply row 9 before row 7, and
+  reporting 9 then would acknowledge a boundary at 8 without row 7's change. Such a
+  read model reports the highest W below which it has no gaps.
 
 ### What the guard checks
 

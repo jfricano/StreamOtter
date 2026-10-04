@@ -206,6 +206,7 @@ async snapshot({ principal, params, recovery, signal }) {
 }
 ```
 
+- **Make the watermark contiguous.** `appliedSeq` must mean "every outbox row up to here has been processed", never merely the highest row seen. A replica fed from several partitions can apply row 9 before row 7; reporting 9 would acknowledge a boundary at 8 without row 7's change.
 - **Return the ID only when `recovery` is present.** An ID returned when no boundary is in force is `INVALID_PAYLOAD`.
 - **When your read is behind, omit the ID; don't throw.** An omitted or different ID is a retryable `SOURCE_UNAVAILABLE` attempt: the view stays `stale` and the SDK's normal backoff applies. A thrown error fails the subscription with `HANDLER_FAILED`.
 - The boundary is checked again after the pre-delivery authorization, so a snapshot that started under an older boundary doesn't count.
