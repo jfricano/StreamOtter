@@ -42,7 +42,10 @@ export function evidenceHash(evidence: RawEvidence): string {
 /**
  * Flattens KafkaJS headers into an ordered list, one entry per value, so a key
  * repeated on the wire keeps every value. KafkaJS decodes repeated keys into an
- * array in arrival order.
+ * array in arrival order. It folds them with `obj[key] === undefined`, which
+ * sees inherited properties, so a header named constructor, toString or
+ * __proto__ arrives as [inherited, value]: anything that is neither a Buffer
+ * nor a string came from Object.prototype, not the wire, and is skipped.
  */
 export function flattenKafkaHeaders(headers: Readonly<Record<string, Buffer | string | (Buffer | string)[] | undefined>> | undefined): HeaderBytes[] {
   const list: HeaderBytes[] = [];
@@ -50,6 +53,7 @@ export function flattenKafkaHeaders(headers: Readonly<Record<string, Buffer | st
   for (const [name, raw] of Object.entries(headers)) {
     if (raw === undefined) continue;
     for (const value of Array.isArray(raw) ? raw : [raw]) {
+      if (typeof value !== "string" && !(value instanceof Uint8Array)) continue;
       list.push({ name, value: typeof value === "string" ? Buffer.from(value, "utf8") : new Uint8Array(value) });
     }
   }
