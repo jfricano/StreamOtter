@@ -124,8 +124,8 @@ describe("F47: quarantine evidence under a leader failure (replicated Kafka)", {
 
     // With the old leader still down, everything acknowledged before the kill is on the new leader, byte for byte.
     const whileDown = await checkEvidence({ quarantine, ledger, acknowledged: ackedBeforeKill, committed: null });
-    const readerMs = await checkWithReader(quarantine, ackedBeforeKill, ledger, [KILLED]);
-    console.log(`# with broker ${KILLED} down: ${whileDown.acknowledgedChecked} pre-kill acknowledgments verified byte for byte on leader ${failedOver.leader} by a plain consumer and by KafkaQuarantineReader (${readerMs} ms); ${whileDown.records} records up to the high watermark`);
+    const reader = await checkWithReader(quarantine, ackedBeforeKill, ledger, [KILLED]);
+    console.log(`# with broker ${KILLED} down: ${whileDown.acknowledgedChecked} pre-kill acknowledgments verified byte for byte on leader ${failedOver.leader} by a plain consumer and by KafkaQuarantineReader (${reader.ms} ms, transient unavailable reads ${JSON.stringify(reader.unavailable)}); ${whileDown.records} records up to the high watermark`);
     assert.equal(await committedOffset(group, topic), heldOffset, "still held after the failover, until a retry");
 
     // Bring the killed broker back while the stream drains.
@@ -204,10 +204,10 @@ describe("F47: quarantine evidence under a leader failure (replicated Kafka)", {
     // Every acknowledgment, before the kill and after it, is still there after the old leader rejoined.
     await checkEvidence({ quarantine, ledger, acknowledged: ackedBeforeKill, committed: null });
     const check = await checkEvidence({ quarantine, ledger, acknowledged: final, committed });
-    await checkWithReader(quarantine, final, ledger);
+    const finalReader = await checkWithReader(quarantine, final, ledger);
     assert.ok((check.copies.get(heldOffset) ?? 0) >= 2, "the retried record has its pre-kill copy and a fresh acknowledged one");
     const duplicated = [...check.copies].filter(([, count]) => count > 1);
-    console.log(`# after recovery: ${check.records} quarantine records for ${BAD_RECORDS} bad records; copies per source offset where more than one ${JSON.stringify(duplicated)}; all byte-identical to the ledger`);
+    console.log(`# after recovery: ${check.records} quarantine records for ${BAD_RECORDS} bad records; copies per source offset where more than one ${JSON.stringify(duplicated)}; all byte-identical to the ledger (plain consumer; KafkaQuarantineReader ${finalReader.ms} ms, transient unavailable reads ${JSON.stringify(finalReader.unavailable)})`);
     console.log(`# gateway warnings/errors: ${gw.logger.entries.length} ${JSON.stringify([...new Set(gw.logger.entries.map(entry => entry.message))])}`);
   });
 });

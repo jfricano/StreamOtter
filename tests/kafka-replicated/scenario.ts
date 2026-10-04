@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FailureHandlingConfig, SourceRecoveryHandlers } from "@streamotter/contracts";
+import { DEFAULT_LIMITS, type FailureHandlingConfig, type SourceRecoveryHandlers } from "@streamotter/contracts";
 import { silentLogger } from "@streamotter/gateway";
 import { initJournal, KafkaQuarantineReader, type IncidentRecord, type IncidentStore, type InternalGatewayOptions } from "@streamotter/gateway/internals";
-import { DEFAULT_LIMITS } from "@streamotter/contracts";
 import { sleep } from "../integration/harness.ts";
 import { orderValue, startKafkaHarness, type KafkaHarness } from "../kafka/helpers.ts";
 import { headerValues, readPartition, recordingLogger, REPLICATED, type LedgerEntry } from "./helpers.ts";
@@ -169,23 +168,31 @@ export async function checkEvidence(options: {
 /**
  * Reads each acknowledged incident's evidence back through the production
  * KafkaQuarantineReader (failure ID and evidence hash checked by the reader) and
- * compares the returned bytes with the ledger. Returns how long the reads took.
+ * compares the returned bytes with the ledger. An "unavailable" read is retried
+ * up to four times, as an operator would, and reported; "expired" or "mismatch"
+ * fails at once. Returns how long the reads took and the transient reasons seen.
  */
-export async function checkWithReader(quarantine: string, acknowledged: IncidentRecord[], ledger: LedgerEntry[], avoid: readonly number[] = []): Promise<number> {
+export async function checkWithReader(
+  quarantine: string, acknowledged: IncidentRecord[], ledger: LedgerEntry[], avoid: readonly number[] = []
+): Promise<{ ms: number; unavailable: string[] }> {
   const brokers = REPLICATED.filter((_, index) => !avoid.includes(index + 1));
   const reader = new KafkaQuarantineReader({
     topic: quarantine, connection: { brokers, tls: false, ca: null, sasl: null }, logger: silentLogger,
     maxSourceRecordBytes: DEFAULT_LIMITS.maxSourceRecordBytes, clientId: `so-repl-reader-${Date.now()}`
   });
   const started = Date.now();
+  const unavailable: string[] = [];
   try {
     for (const incident of acknowledged) {
-      assert.ok(incident.quarantineCoordinates !== null && incident.position.kind === "kafka");
+      const coordinates = incident.quarantineCoordinates;
+      assert.ok(coordinates !== null && incident.position.kind === "kafka");
       const sourceOffset = incident.position.offset;
-      const read = await reader.read({
-        failureId: incident.failureId, partition: incident.quarantineCoordinates.partition, offset: incident.quarantineCoordinates.offset,
-        evidenceHash: incident.evidence.hash, timeoutMs: 20_000
-      });
+      let read = await reader.read({ failureId: incident.failureId, ...coordinates, evidenceHash: incident.evidence.hash, timeoutMs: 20_000 });
+      for (let attempt = 1; attempt < 5 && read.kind === "unavailable"; attempt++) {
+        unavailable.push(read.reason);
+        await sleep(1_000);
+        read = await reader.read({ failureId: incident.failureId, ...coordinates, evidenceHash: incident.evidence.hash, timeoutMs: 20_000 });
+      }
       assert.equal(read.kind, "found", `the reader did not find source offset ${sourceOffset}'s evidence: ${JSON.stringify(read)}`);
       if (read.kind !== "found") continue;
       const entry = ledger.find(item => item.offset === sourceOffset);
@@ -197,5 +204,5 @@ export async function checkWithReader(quarantine: string, acknowledged: Incident
   } finally {
     await reader.stop();
   }
-  return Date.now() - started;
+  return { ms: Date.now() - started, unavailable };
 }

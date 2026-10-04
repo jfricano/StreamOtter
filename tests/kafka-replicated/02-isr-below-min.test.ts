@@ -142,8 +142,8 @@ describe("F47: quarantine evidence with the ISR below min.insync.replicas (repli
       assert.equal(incident?.progress, "advanced");
     }
     const check = await checkEvidence({ quarantine, ledger, acknowledged: [first, ...final], committed: end });
-    await checkWithReader(quarantine, [first, ...final], ledger);
-    console.log(`# quarantine records: ${check.records}; copies per source offset ${JSON.stringify([...check.copies])}; source offset 1 acknowledged at ${JSON.stringify(preKillCoordinates)} before the kill and ${JSON.stringify(advanced.quarantineCoordinates)} after; all byte-identical to the ledger (plain consumer and KafkaQuarantineReader)`);
+    const reader = await checkWithReader(quarantine, [first, ...final], ledger);
+    console.log(`# quarantine records: ${check.records}; copies per source offset ${JSON.stringify([...check.copies])}; source offset 1 acknowledged at ${JSON.stringify(preKillCoordinates)} before the kill and ${JSON.stringify(advanced.quarantineCoordinates)} after; all byte-identical to the ledger (plain consumer; KafkaQuarantineReader ${reader.ms} ms, transient unavailable reads ${JSON.stringify(reader.unavailable)})`);
     console.log(`# events for source offset 1: ${JSON.stringify(eventsOf(k, advanced.failureId).map(event => `${event.event}${event.detail === null ? "" : `: ${event.detail}`}`))}`);
     console.log(`# gateway warnings/errors: ${gw.logger.entries.length} ${JSON.stringify([...new Set(gw.logger.entries.map(entry => entry.message))])}`);
   });
