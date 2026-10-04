@@ -4,7 +4,7 @@ V1.2.1 fixes the minor findings deferred from the V1.2 quality review (issues #2
 
 ## 1. Resume here
 
-**Current state (October 4, 2026):** all 34 issues addressed and every tier green ([FIXES.md](./FIXES.md) has each one). Next: an independent review of the whole V1.2.1 diff, at the owner's request, then the PR. Work is on `feat/v1.2.1-minor-fixes`, stacked on `feat/v1.2-quality-fixes` (PR #20). One PR targets that branch; each fixed issue is referenced with "Fixes #N". Nothing merges to `main` without the owner. Whether V1.2.1 joins the 0.2.0-rc.1 release is the owner's call; release-level docs (CHANGELOG, release notes, acceptance packet, roadmap) stay owned by the V1.2 PR and changes to them are sent there, not edited here.
+**Current state (October 4, 2026):** all 34 issues addressed and every tier green ([FIXES.md](./FIXES.md) has each one). The independent review is done and its 19 minor findings are fixed ([REVIEW.md](./REVIEW.md)). Next: the owner reviews and merges the PR into the V1.2 branch; whether V1.2.1 joins `0.2.0-rc.1` is the owner's call. Work is on `feat/v1.2.1-minor-fixes`, stacked on `feat/v1.2-quality-fixes` (PR #20). One PR targets that branch; each fixed issue is referenced with "Fixes #N". Nothing merges to `main` without the owner. Whether V1.2.1 joins the 0.2.0-rc.1 release is the owner's call; release-level docs (CHANGELOG, release notes, acceptance packet, roadmap) stay owned by the V1.2 PR and changes to them are sent there, not edited here.
 
 **Environment notes:** same as V1.1 and V1.2 (see `docs/releases/v1.1/IMPLEMENTATION_LOG.md` §1). Node 24.21.0. Commits are authored and committed as Jason Fricano `<44284799+jfricano@users.noreply.github.com>`, unsigned, with no tool trailers. If #19 or #20 move, merge their branch in; never rebase them.
 
@@ -37,6 +37,13 @@ Every tier runs before the PR is marked ready: `verify`, `test:load`, `test:kafk
 - The reviewer's itemized lists for W-17 and W-19 were never written into the repo (PHASE_A_FINDINGS.md names six of W-19's twelve behaviors). Both were rebuilt from an audit of the tests against `docs/V1_API.md`.
 - Release-level wording (CHANGELOG, the J7 limitation in `docs/releases/v1.1/REVIEW.md`) was sent to the V1.2 PR's owner, not edited here.
 
+### October 4, 2026 — independent review
+
+- At the owner's request, three reviewers who hadn't written the fixes reviewed the whole diff before the PR: 19 minor findings, no majors ([REVIEW.md](./REVIEW.md)). Three workers fixed them in their own worktrees; each fix has a test where testable.
+- The V1.2 branch moved (docs only, `6fa29a9`) and was merged in.
+- Also fixed a V1.1 operator test that asserted `live` too early after a redrive (flaky under load).
+- The scripts' new ownership check stopped and restarted the real local broker correctly.
+
 ## 4. Test runs
 
 On Node 24.21.0 at the merge of all six groups:
@@ -45,3 +52,8 @@ On Node 24.21.0 at the merge of all six groups:
 - `test:load` 1, `test:kafka` 48 (single broker), `test:kafka:replicated` 3 (three brokers), `test:browser` 59, `test:deploy` 5 (Caddy), `test:install` 22: all pass, none skipped.
 - W-18 check: with the replicated cluster down, `test:kafka:replicated` fails (exit 1); with `STREAMOTTER_ALLOW_SKIP=1` it passes with its check skipped.
 - Node 26 was not run locally; the extended workflow now runs it.
+
+After the review fixes, on Node 24.21.0:
+
+- `pnpm verify`: 444 tests pass.
+- `test:load` 1, `test:kafka` 48, `test:kafka:replicated` 3, `test:browser` 59, `test:deploy` 5, `test:install` 22: all pass, none skipped.
