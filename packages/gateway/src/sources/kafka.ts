@@ -335,10 +335,17 @@ export class KafkaSourceAdapter implements SourceAdapter {
       return "uncertain";
     }
     let committed: string | null = null;
+    // stop() disconnects only the admin client it finds, so none may be created or left connected once it has begun.
+    // The commit may have landed, so the advance is uncertain and restart reconciles it.
+    if (this.#stopping) return "uncertain";
     try {
-      this.#admin ??= this.#kafka.admin();
-      await this.#admin.connect();
-      const offsets = await this.#admin.fetchOffsets({ groupId: this.#source.consumerGroup, topics: [position.topic] });
+      const admin = this.#admin ??= this.#kafka.admin();
+      await admin.connect();
+      if (this.#stopping) {
+        await admin.disconnect().catch(() => undefined);
+        return "uncertain";
+      }
+      const offsets = await admin.fetchOffsets({ groupId: this.#source.consumerGroup, topics: [position.topic] });
       committed = offsets.find(entry => entry.topic === position.topic)?.partitions.find(entry => entry.partition === position.partition)?.offset ?? null;
     } catch (error) {
       this.#sink.logger.warn("The committed offset could not be read back; the source stays paused", {
