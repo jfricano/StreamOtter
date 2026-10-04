@@ -10,6 +10,8 @@ import type { ConnectionTransport } from "./types.ts";
 export interface HandshakeResult {
   principal: Principal;
   previewSessionId: string | null;
+  /** The revocation log position when authentication began; the session is refused if anything revoked since matches. */
+  revocationSeq: number;
 }
 
 export interface SessionHandlers {

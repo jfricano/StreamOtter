@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { deferred, observe, orderRecord, sleep, startHarness, waitFor, type Harness } from "./harness.ts";
+import { rawSocket } from "./raw.ts";
 
 describe("acceptance 4: access fails closed", () => {
   let h: Harness | undefined;
@@ -172,6 +173,29 @@ describe("acceptance 4: access fails closed", () => {
     gate.resolve();
     await assert.rejects(sub.ready(), { code: "UNAUTHENTICATED" });
     assert.equal(client.state, "auth-required");
+  });
+
+  it("revocation between authentication and connection open still closes the session", async () => {
+    h = await startHarness();
+    // revoke() lands a few microtask hops after authenticate returns, while socket.io is still opening
+    // the connection. Sweeping the hop count covers the whole gap, wherever it falls.
+    for (let hops = 0; hops <= 40; hops++) {
+      h.app.authenticateGate = async () => {
+        let chain: Promise<unknown> = Promise.resolve();
+        for (let i = 0; i < hops; i++) chain = chain.then(() => undefined);
+        void chain.then(() => h!.gateway.revoke({ kind: "session", tenantId: "acme", sessionId: `race${hops}` }));
+      };
+      const socket = rawSocket(h.origin, { token: `alice@acme#race${hops}`, protocolVersion: 1 });
+      const outcome = await new Promise<string>(resolve => {
+        socket.once("connect_error", (error: Error & { data?: { code: string } }) => resolve(error.data?.code ?? "connect_error"));
+        socket.once("so:error", (frame: { error: { code: string } }) => resolve(frame.error.code));
+        socket.once("disconnect", () => resolve("disconnected"));
+        setTimeout(() => resolve("still connected"), 1_000);
+      });
+      socket.close();
+      assert.notEqual(outcome, "still connected", `revocation ${hops} hops after authentication was missed`);
+    }
+    h.app.authenticateGate = null;
   });
 
   it("closes prior subscriptions when the authenticated identity changes", async () => {

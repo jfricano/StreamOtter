@@ -536,7 +536,7 @@ export class GatewayRuntime implements SessionOwner {
       if (this.core.revocations.revokedSince(revocationSeq, principal)) return reject("UNAUTHENTICATED", "Access was revoked.", false);
       if (this.#state !== "running") return reject("OVERLOADED", "The gateway is not accepting connections.");
       this.core.traces.record({ requestId, stage: "authorize", outcome: "ok" });
-      return { ok: true, value: { principal, previewSessionId } };
+      return { ok: true, value: { principal, previewSessionId, revocationSeq } };
     } finally {
       this.#pendingHandshakes--;
     }
@@ -552,6 +552,11 @@ export class GatewayRuntime implements SessionOwner {
     });
     this.#sessions.add(session);
     if (this.#state !== "running") queueMicrotask(() => session.close());
+    // A revocation can land after authentication finished but before socket.io opened the connection,
+    // when the session is not yet in #sessions and revoke() can't see it.
+    else if (this.core.revocations.revokedSince(result.revocationSeq, result.principal)) {
+      queueMicrotask(() => session.close(streamError("UNAUTHENTICATED", { message: "Access was revoked; authenticate again.", retryable: false, requestId: newId() })));
+    }
     return session;
   }
 
