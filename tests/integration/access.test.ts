@@ -189,6 +189,24 @@ describe("acceptance 4: access fails closed", () => {
     gate.resolve();
   });
 
+  it("closes a connection that sends a second CONNECT instead of opening an unreachable session", async () => {
+    h = await startHarness();
+    const gate = deferred();
+    h.app.authenticateGate = () => gate.promise;
+    const socket = rawSocket(h.origin, { token: "alice@acme", protocolVersion: 1 });
+    let disconnected = false;
+    socket.io.on("close", () => { disconnected = true; });
+    await waitFor(() => h!.app.authenticateCalls === 1);
+    // A second Socket.IO CONNECT packet for "/" on the same engine.io connection.
+    (socket.io.engine as unknown as { write(data: string): void }).write(`0${JSON.stringify({ token: "alice@acme#other", protocolVersion: 1 })}`);
+    await waitFor(() => disconnected, 3_000, "connection closed");
+    gate.resolve();
+    await sleep(50);
+    assert.equal(h.app.authenticateCalls, 1, "the second CONNECT is not authenticated");
+    assert.equal(h.internals.connectionCount(), 0);
+    socket.close();
+  });
+
   it("revocation between authentication and connection open still closes the session", async () => {
     h = await startHarness();
     // revoke() lands a few microtask hops after authenticate returns, while socket.io is still opening
