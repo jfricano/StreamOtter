@@ -44,6 +44,11 @@ Every tier runs before the PR is marked ready: `verify`, `test:load`, `test:kafk
 - Also fixed a V1.1 operator test that asserted `live` too early after a redrive (flaky under load).
 - The scripts' new ownership check stopped and restarted the real local broker correctly.
 
+### October 4, 2026 — PR and GitHub CI
+
+- Opened PR #56 against `feat/v1.2-quality-fixes`. PR CI (Verify on Node 24 and 26) passed.
+- The extended workflow, dispatched by hand, failed on Node 24 and 26 in `tests/browser/workbench-cross-origin.test.ts` (a V1.1 test that had never run in GitHub's extended job): a header read for a request still in flight when the browser closed rejected unhandled. Both browser tests that read headers now ignore that rejection. The second run passed every job, including the new Node 26 matrix and the nightly replicated-Kafka job.
+
 ## 4. Test runs
 
 On Node 24.21.0 at the merge of all six groups:
