@@ -14,11 +14,11 @@ All six packages publish together at one version: `streamotter`, `@streamotter/c
 
 | Order | PR | Branch → base | Content | Head at handoff |
 | --- | --- | --- | --- | --- |
-| 1 | [#55](https://github.com/jfricano/StreamOtter/pull/55) | `review/v1.1` → `main` (draft) | All of V1.1, with its review fixes | `c484007` |
-| 2 | [#20](https://github.com/jfricano/StreamOtter/pull/20) | `feat/v1.2-quality-fixes` → `review/v1.1` | V1.2 review fixes and the release docs | `976bb8d` |
+| 1 | [#55](https://github.com/jfricano/StreamOtter/pull/55) | `review/v1.1` → `main` | All of V1.1, with its review fixes | **Merged** October 4 as `560c7c0` |
+| 2 | [#20](https://github.com/jfricano/StreamOtter/pull/20) | `feat/v1.2-quality-fixes` → `main` | V1.2 review fixes and the release docs | `976bb8d` |
 | 3 | [#56](https://github.com/jfricano/StreamOtter/pull/56) | `feat/v1.2.1-minor-fixes` → `feat/v1.2-quality-fixes` | V1.2.1 fixes for issues #21–#54 | `4e67ef8` |
 
-Merge #55 into `main`, then retarget #20 to `main` and merge it, then #56. Each PR was mergeable with green CI at the heads above. Only jason merges.
+#55 is merged, and #20 now targets `main`. Next, merge #20, then #56. Each PR was mergeable with green CI at the heads above. Only jason merges.
 
 ## Verification
 
