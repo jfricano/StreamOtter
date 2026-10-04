@@ -260,7 +260,7 @@ Slice C note, continuation order (spec §6; ADR-15A ordering step 5). For an eli
 1. A fresh copy of the evidence is written and acknowledged. An older acknowledgment is never reused for an advance.
 2. The circuit breaker is checked. When it is open, or when the window already holds `automaticAdvanceLimit.incidents` advances, the circuit opens (persisted) and the record holds.
 3. The guard runs with the prior boundary. After the await, the incident must be unchanged: the same revision, open and held. Otherwise the result is ignored.
-4. One journal transaction installs the new boundary (superseding the prior one), sets the incident to `advance-pending`, records the guard result and counts the advance in the circuit.
+4. One journal transaction installs the new boundary (superseding the prior one), sets the incident to `advance-pending`, records the guard result and counts the advance in the circuit. The circuit counts distinct incidents: an incident advanced again (after an attempt that found the source no longer paused at it) keeps one entry, at its latest advance.
 5. The boundary is applied to the runtime, so later snapshots must acknowledge it.
 6. `advancePast` commits offset + 1 and reads it back.
 7. The incident is then recorded as `advanced` (and resolved). If the source was no longer paused at the record, it goes back to `held`; if the result could not be confirmed, it becomes `uncertain`.

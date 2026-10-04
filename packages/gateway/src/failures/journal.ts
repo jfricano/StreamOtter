@@ -904,8 +904,12 @@ export class SqliteIncidentStore implements IncidentStore {
           boundary.supersedes, boundary.createdAt, null, null, null, null);
       this.#replace(advanced.record, recordJson);
       this.#addEvent(record.failureId, advanced.event);
+      // Spec §4 counts distinct incidents: an incident advanced again (after a not-held attempt) moves its entry to the new time.
       const circuit = this.circuit(record.sourceId);
-      this.#saveCircuit({ ...circuit, advances: capAdvances([...circuit.advances, input.at]), revision: circuit.revision + 1 });
+      const advances = [...circuit.advances];
+      const earlier = record.boundaryId === null ? -1 : advances.indexOf(this.getBoundary(record.boundaryId)?.createdAt ?? "");
+      if (earlier >= 0) advances.splice(earlier, 1);
+      this.#saveCircuit({ ...circuit, advances: capAdvances([...advances, input.at]), revision: circuit.revision + 1 });
       return { record: advanced.record, boundary };
     });
   }
