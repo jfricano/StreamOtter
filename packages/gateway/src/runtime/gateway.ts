@@ -462,6 +462,11 @@ export class GatewayRuntime implements SessionOwner {
     // With failure handling, a resume is a retry of the held record and is refused while an advance is unresolved (ADR-15C §6).
     await this.#failures?.beforeRetry(sourceId, "operator retry of the held record");
     this.core.logger.info("Resuming source at its uncommitted position", { sourceId });
+    if (source.reason === "REVISION_CONFLICT") {
+      // Pausing marked every subscription stale and dropped the state the record conflicted with; the retry
+      // can only be compared with state resynchronized since, which usually means it is admitted.
+      this.core.logger.warn("Resuming after a revision conflict: the conflicting state was discarded when the source paused, so the record is retried against current state only", { sourceId });
+    }
     await source.adapter.resume();
     return source.summary();
   }
@@ -1249,6 +1254,15 @@ export class GatewayRuntime implements SessionOwner {
     if (expired) {
       this.core.logger.warn("Stop deadline expired; forcing closure without committing incomplete records");
       this.#http?.closeAllConnections();
+      // Release the listening port now rather than when the remaining work reaches it, so a replacement
+      // gateway can bind it as soon as stop() returns. What is still running is logged when it ends.
+      const io = this.#io;
+      if (io !== null) io.close();
+      const expiredAt = Date.now();
+      void work.then(
+        () => this.core.logger.info("Shutdown work still running at the stop deadline has finished", { afterDeadlineMs: Date.now() - expiredAt }),
+        error => this.core.logger.error("Shutdown work still running at the stop deadline failed", { error: (error as Error).message.slice(0, 200) })
+      );
     }
     this.#state = "stopped";
     if (wasRunning) this.core.logger.info("Gateway stopped");

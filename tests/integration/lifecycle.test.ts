@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:net";
 import { afterEach, describe, it, mock } from "node:test";
 import { createClient } from "@streamotter/client";
 import { createGateway, silentLogger } from "@streamotter/gateway";
@@ -342,5 +343,24 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     await gateway.stop({ timeoutMs: 500 });
     assert.ok(Date.now() - stopping < 1_500, `stop took ${Date.now() - stopping} ms`);
     assert.equal(await started, "SOURCE_UNAVAILABLE");
+  });
+
+  it("releases the listening port at the stop deadline while slower shutdown work finishes in the background", async () => {
+    const infos: string[] = [];
+    const harness = await startHarness({ logger: { info(message) { infos.push(message); }, warn() {}, error() {} } });
+    const release = deferred();
+    harness.internals.onStop(() => release.promise);
+    const { hostname, port } = new URL(harness.origin);
+    const stopping = Date.now();
+    await harness.gateway.stop({ timeoutMs: 200 });
+    assert.ok(Date.now() - stopping < 1_000, `stop took ${Date.now() - stopping} ms`);
+    // The port can be bound again although the stop callback above has not returned.
+    await new Promise<void>((resolve, reject) => {
+      const server = createServer();
+      server.once("error", reject);
+      server.listen(Number(port), hostname, () => server.close(() => resolve()));
+    });
+    release.resolve();
+    await waitFor(() => infos.includes("Shutdown work still running at the stop deadline has finished"), 2_000, "the background work's completion log");
   });
 });

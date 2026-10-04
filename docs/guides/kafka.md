@@ -52,7 +52,7 @@ An example value:
 | `sasl` | Optional. `plain`, `scram-sha-256`, or `scram-sha-512`. `username` and `password` name environment variables, never literal values. |
 | `generation` | Any identifier. Change it when you recreate the topics or point the source at a different cluster; it is part of every record's identity. |
 | `consumerGroup` | Used only by this source of this gateway. Never share it with another application or with a second gateway. |
-| `startFrom` | Where a **new** consumer group starts: `latest` (only new records) or `earliest` (the whole topic). Once the group has committed offsets, it always resumes from them. |
+| `startFrom` | Where a **new** consumer group starts: `latest` (only new records) or `earliest` (the whole topic). With `latest`, the gateway commits the start position as soon as it joins, so a restart before the first record is processed doesn't skip records produced in between. Once the group has committed offsets, it always resumes from them. If a committed offset has fallen outside the topic's retained range (retention deleted it), Kafka resets the group to the `startFrom` position, so records can be skipped or read again; the gateway logs a warning when that happens. |
 
 Missing environment variables or an unreadable CA file stop startup with a clear message and never print the values. Credentials never appear in exports, logs, or traces.
 
