@@ -67,4 +67,4 @@ A gateway that ran `0.2.0-rc.1` with `failureHandling` and a state directory mus
 
 ## Downstream
 
-Lontra Creek pins `streamotter` exactly at `0.1.0-rc.3`. Publishing this release changes nothing on the demo or the site until a Lontra Creek PR moves that pin. The cross-project sequence is in the rollout plan the coordinator keeps at `/mnt/project-files/release-0.2.0-rc.1/ROLLOUT_PLAN.md`; it is outside this repository.
+Lontra Creek pins `streamotter` exactly at `0.1.0-rc.3`. Publishing this release changes nothing on the demo or the site until a Lontra Creek PR moves that pin. The cross-project sequence is in the [rollout plan](https://github.com/jfricano/lontra-creek/blob/fix/streamotter-dev-domain/docs/releases/0.2.0-rc.1/ROLLOUT_PLAN.md) in the Lontra Creek repository (it moves to `main` when lontra-creek #41 merges).
