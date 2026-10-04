@@ -456,6 +456,11 @@ export class GatewayRuntime implements SessionOwner {
     // With failure handling, a resume is a retry of the held record and is refused while an advance is unresolved (ADR-15C §6).
     await this.#failures?.beforeRetry(sourceId, "operator retry of the held record");
     this.core.logger.info("Resuming source at its uncommitted position", { sourceId });
+    if (source.reason === "REVISION_CONFLICT") {
+      // Pausing marked every subscription stale and dropped the state the record conflicted with; the retry
+      // can only be compared with state resynchronized since, which usually means it is admitted.
+      this.core.logger.warn("Resuming after a revision conflict: the conflicting state was discarded when the source paused, so the record is retried against current state only", { sourceId });
+    }
     await source.adapter.resume();
     return source.summary();
   }
