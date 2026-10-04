@@ -1,17 +1,28 @@
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import type { Server as IoServer } from "socket.io";
 import {
   assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
-  resolveLimits, STARTUP_DEADLINE_MS, streamError, StreamOtterError, utf8ByteLength, validateValue,
+  resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
+  QUARANTINE_ELIGIBLE_CLASSES, type FailureClass, type OperatorApi,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
-  type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry,
+  type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry, type HealthReason,
   type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
-  type SourceStatus, type StreamError, type StreamEvent, type Trace
+  type SourceStatus, type StreamError, type StreamEvent, type Trace, type ValueIssue
 } from "@streamotter/contracts";
+import { JOURNAL_FILE, openJournal } from "../failures/journal.ts";
+import { KafkaQuarantineReader, KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicReport } from "../failures/quarantine.ts";
+import { FailureService, type AdvanceHooks } from "../failures/service.ts";
+import { MemoryIncidentStore, type IncidentStore, type RawEvidence } from "../failures/store.ts";
+import { assertFailureHandling, nodeSupportsJournal, usesQuarantine } from "../failures/validate.ts";
+import { startOperatorSocket, type OperatorSocket } from "../operator/ipc.ts";
+import { OperatorService, type OperatorHooks, type OperatorHost } from "../operator/service.ts";
 import { ByteBudget } from "./budget.ts";
+import { healthOptionIssues, startHealthListener, type HealthListener } from "./health.ts";
 import { Router, routingKey, type ChannelRuntime, type GatewayCore, type SourceRuntime } from "./core.ts";
 import {
   freezePrincipal, identityKey, matchesPrincipal, principalProblem, RevocationLog, sourceRecordId, updateEventId
@@ -21,7 +32,7 @@ import { FRAME_OVERHEAD_BYTES, type PendingFrame, type ServerSubscription } from
 import { TraceBuffer, type TraceQuery } from "./traces.ts";
 import { consoleLogger, describeError, invokeHandler, newId, nowIso, Semaphore, sha256Hex } from "./util.ts";
 import { FixtureSourceAdapter, type FixtureRecord } from "../sources/fixture.ts";
-import { createKafkaSourceAdapter, resolveKafkaConnection, runKafkaDiagnostics, type ResolvedKafkaConnection } from "../sources/kafka.ts";
+import { createKafkaSourceAdapter, readCommittedOffset, resolveKafkaConnection, runKafkaDiagnostics, type ResolvedKafkaConnection } from "../sources/kafka.ts";
 import type { ProcessOutcome, SourceAdapter, SourceInput, SourceSink } from "../sources/types.ts";
 import { attachSocketIo, type HandshakeResult } from "../transport/socketio.ts";
 import type { ConnectionTransport } from "../transport/types.ts";
@@ -35,14 +46,26 @@ class SourceRuntimeImpl implements SourceRuntime {
   adapter: SourceAdapter | null = null;
   status: SourceStatus["status"] = "starting";
   reason: ErrorCode | undefined = undefined;
+  /** Extra attempts at the whole mapping after a TransientMappingError (V1.1 policy). */
+  readonly transientRetries: 0 | 1 | 2;
+  boundary: SourceRuntime["boundary"] = null;
+  /** Serializes record processing with operator redrive, so a redrive runs at a record boundary (ADR-15C §5). */
+  #lock: Promise<unknown> = Promise.resolve();
 
-  constructor(id: string, config: ProjectConfig["sources"][string]) {
+  constructor(id: string, config: ProjectConfig["sources"][string], transientRetries: 0 | 1 | 2) {
     this.id = id;
     this.config = config;
+    this.transientRetries = transientRetries;
   }
 
   get ready(): boolean {
     return this.status === "healthy";
+  }
+
+  exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.#lock.then(work, work);
+    this.#lock = run.catch(() => undefined);
+    return run;
   }
 
   summary(): SourceStatus {
@@ -54,12 +77,99 @@ class SourceRuntimeImpl implements SourceRuntime {
 
 interface RoutedOutput { channel: ChannelRuntime; key: string; frame: PendingFrame }
 
+/**
+ * Why a mapped output was rejected, with its trusted failure class (ADR-15B §1).
+ * `message` is the V1 log text; `diagnosis`, when set, replaces it where payload
+ * text must not appear (incidents, evaluation and redrive results).
+ */
+interface OutputProblem { failureClass: FailureClass; message: string; diagnosis?: string }
+
 interface PreviewSession { principal: Principal; expiresAtMs: number }
+
+/** One record decoded, mapped and checked, before admission. */
+type Prepared =
+  | { kind: "ok"; record: SourceRecord; outputs: RoutedOutput[] }
+  | { kind: "problem"; stage: "validate" | "map" | "queue"; code: ErrorCode; failureClass: FailureClass; reason: string; channel: string | null; logReason?: string }
+  | { kind: "abandon" };
+
+/** An evaluation as the operator service sees it: metadata only, never the frames themselves. */
+export type OperatorPrepared =
+  | { kind: "ok"; outputs: { channel: string; channelVersion: number; revision: string }[]; outputHash: string }
+  | { kind: "problem"; stage: "validate" | "map" | "queue"; code: ErrorCode; failureClass: FailureClass; reason: string; channel: string | null }
+  | { kind: "abandon" };
+
+export type RedriveOutcome =
+  | Exclude<OperatorPrepared, { kind: "ok" }>
+  | { kind: "changed"; evaluation: Extract<OperatorPrepared, { kind: "ok" }> }
+  | { kind: "admitted"; evaluation: Extract<OperatorPrepared, { kind: "ok" }>; counts: Record<"queued" | "filtered" | "inactive" | "overflow", number> };
+
+function describePrepared(prepared: Prepared): OperatorPrepared {
+  if (prepared.kind === "problem") {
+    const { logReason: _logReason, ...problem } = prepared;
+    return problem;
+  }
+  if (prepared.kind !== "ok") return prepared;
+  const outputs = prepared.outputs.map(output => ({ channel: output.channel.name, channelVersion: output.channel.version, revision: output.frame.revision }));
+  // The canonical mapped-output hash of the plan fingerprint (ADR-15C §5): routing key, revision and data hash of every output, in order.
+  const outputHash = `sha256:${sha256Hex(prepared.outputs.map(output => [output.key, output.frame.revision, output.frame.dataHash]))}`;
+  return { kind: "ok", outputs, outputHash };
+}
+
+/**
+ * A map handler's error as an incident may show it: the error's name and, when
+ * present, its code. Never the message, which can quote record data (a
+ * JSON.parse SyntaxError quotes its input).
+ */
+function errorSummary(error: unknown): string {
+  if (!(error instanceof Error)) return `a non-Error ${typeof error}`;
+  const token = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(value) ? value : null;
+  const name = token(error.name) ?? "Error";
+  const code = token((error as { code?: unknown }).code);
+  return code === null ? name : `${name} (code ${code})`;
+}
+
+/**
+ * A value issue for an incident diagnosis. Paths name schema properties and
+ * array indexes, except for a property the schema doesn't allow, whose name
+ * comes from the mapped data, so that path is left out.
+ */
+function issueDiagnosis(prefix: string, issue: ValueIssue): string {
+  return issue.message === "Property is not allowed." ? `${prefix}: a property is not allowed by the schema` : `${prefix} ${issue.path}: ${issue.message}`;
+}
+
+/** A source input rebuilt from stored original bytes, decoded the way the Kafka adapter decodes a key. */
+function storedInput(raw: RawEvidence, position: SourceRecord["position"]): SourceInput {
+  return {
+    key: raw.key === null ? null : Buffer.from(raw.key).toString("utf8"),
+    bytes: raw.value,
+    keyBytes: raw.key,
+    headers: raw.headers,
+    position
+  };
+}
+
+/** Waits before re-running a mapping that threw TransientMappingError (spec §6). */
+const TRANSIENT_RETRY_DELAYS_MS = [250, 1_000] as const;
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { signal.removeEventListener("abort", onAbort); resolve(true); }, ms);
+    const onAbort = () => { clearTimeout(timer); resolve(false); };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /** Test-only instrumentation; not reachable through the public createGateway(). */
 export interface InternalGatewayOptions {
   /** Awaited after a Kafka record is processed and before its offset is committed. */
   beforeCommit?: (sourceId: string, position: SourceRecord["position"]) => Promise<void>;
+  /** Replaces the incident store the gateway would open, to inject faults. */
+  incidentStore?: IncidentStore;
+  /** Crash points around a guarded advance (slice C crash tests). */
+  advanceHooks?: AdvanceHooks;
+  /** Crash and lost-response points around operator operations (slice D tests). */
+  operatorHooks?: OperatorHooks;
 }
 
 /** Development and management access to a running gateway; never exposed to browsers. */
@@ -87,6 +197,12 @@ export interface GatewayInternals {
   connectionCount(): number;
   subscriptionCount(): number;
   pendingBytes(): number;
+  /** The source-failure incident store while the gateway runs with failureHandling; null otherwise. */
+  incidentStore(): IncidentStore | null;
+  /** Resolves when queued failure dispositions (journal, quarantine writes) have finished. */
+  failuresSettled(): Promise<void>;
+  /** The operator service (ADR-15C §1) while the gateway runs with failureHandling; null otherwise. */
+  operator(): OperatorApi | null;
 }
 
 const internalsRegistry = new WeakMap<Gateway, GatewayInternals>();
@@ -146,8 +262,12 @@ function validateDevelopment(config: ProjectConfig, development: DevelopmentOpti
       continue;
     }
     records.forEach((record: unknown, index) => {
-      if (!isPlainObject(record) || !(record["key"] === null || typeof record["key"] === "string") || !isJsonValue(record["value"])) {
-        issues.push(`development.fixtures.${source.fixtureRef}[${index}] must be {key: string | null, value: JSON}`);
+      const keyOk = isPlainObject(record) && (record["key"] === null || typeof record["key"] === "string");
+      const valueOk = isPlainObject(record) && (Object.hasOwn(record, "raw")
+        ? typeof record["raw"] === "string" && !Object.hasOwn(record, "value")
+        : isJsonValue(record["value"]));
+      if (!keyOk || !valueOk) {
+        issues.push(`development.fixtures.${source.fixtureRef}[${index}] must be {key: string | null, value: JSON} or {key: string | null, raw: string}`);
       }
     });
   }
@@ -183,6 +303,16 @@ export class GatewayRuntime implements SessionOwner {
   readonly #handlers: HandlerRegistry<ChannelMap>;
   readonly #development: DevelopmentOptions | undefined;
   readonly #configDir: string;
+  readonly #stateDirectory: string | undefined;
+  readonly #handlerBuildId: string;
+  readonly #operatorSocketEnabled: boolean;
+  #operatorSocket: OperatorSocket | null = null;
+  readonly #healthOptions: { host: string; port: number } | null;
+  #health: HealthListener | null = null;
+  #failures: FailureService | null = null;
+  #operator: OperatorService | null = null;
+  #quarantineReport: QuarantineTopicReport | null = null;
+  #quarantineReader: QuarantineReader | null = null;
   readonly #sources = new Map<string, SourceRuntimeImpl>();
   readonly #channels = new Map<string, ChannelRuntime>();
   readonly #sessions = new Set<ClientSession>();
@@ -209,6 +339,11 @@ export class GatewayRuntime implements SessionOwner {
     assertValidProjectConfig(options.config);
     const config = options.config;
     validateHandlers(config, options.handlers);
+    assertFailureHandling(config, options.handlers, options);
+    const healthIssues = healthOptionIssues(options.health);
+    if (healthIssues.length > 0) {
+      throw new StreamOtterError("CONFIG_INVALID", { message: `Invalid health listener: ${healthIssues.join("; ")}.`, details: { issues: healthIssues } });
+    }
     if (options.mode === "production") validateProduction(config, options);
     else validateDevelopment(config, options.development);
 
@@ -218,6 +353,10 @@ export class GatewayRuntime implements SessionOwner {
     this.#handlers = options.handlers;
     this.#development = options.development;
     this.#configDir = options.configDir ?? process.cwd();
+    this.#stateDirectory = options.stateDirectory;
+    this.#handlerBuildId = options.handlerBuildId ?? "unspecified";
+    this.#operatorSocketEnabled = options.operatorSocket === true;
+    this.#healthOptions = options.health === undefined ? null : { host: options.health.host ?? "127.0.0.1", port: options.health.port };
     this.#allowedOrigins = new Set(config.gateway.allowedOrigins);
     const limits = resolveLimits(config.limits);
     this.core = {
@@ -229,9 +368,13 @@ export class GatewayRuntime implements SessionOwner {
       snapshots: new Semaphore(limits.maxConcurrentSnapshots),
       revocations: new RevocationLog(Math.max(60_000, limits.snapshotTimeoutMs + limits.handlerTimeoutMs * 3)),
       logger: options.logger ?? consoleLogger(),
-      gatewayBudget: new ByteBudget(limits.maxPendingBytesGateway)
+      gatewayBudget: new ByteBudget(limits.maxPendingBytesGateway),
+      boundaryAcknowledged: (sourceId, boundaryId) => { this.#failures?.acknowledged(sourceId, boundaryId); }
     };
-    for (const [id, source] of Object.entries(config.sources)) this.#sources.set(id, new SourceRuntimeImpl(id, source));
+    for (const [id, source] of Object.entries(config.sources)) {
+      const retries = config.failureHandling === undefined ? 0 : resolveSourcePolicy(config.failureHandling, id).transientMapperRetries;
+      this.#sources.set(id, new SourceRuntimeImpl(id, source, retries));
+    }
     for (const [name, channel] of Object.entries(config.channels)) {
       const source = this.#sources.get(channel.source);
       const handlers = this.#handlers.channels[channel.handlersRef];
@@ -308,6 +451,8 @@ export class GatewayRuntime implements SessionOwner {
     if (this.#state !== "running" || source.adapter === null) throw conflict("The gateway is not running.");
     if (source.status === "healthy") return source.summary();
     if (source.status !== "paused") throw conflict(`Source "${sourceId}" is ${source.status}; only paused sources can be resumed.`);
+    // With failure handling, a resume is a retry of the held record and is refused while an advance is unresolved (ADR-15C §6).
+    await this.#failures?.beforeRetry(sourceId, "operator retry of the held record");
     this.core.logger.info("Resuming source at its uncommitted position", { sourceId });
     await source.adapter.resume();
     return source.summary();
@@ -414,8 +559,9 @@ export class GatewayRuntime implements SessionOwner {
 
   #sink(source: SourceRuntimeImpl): SourceSink {
     return {
-      process: input => this.#process(source, input),
+      process: input => source.exclusive(() => this.#process(source, input)),
       setStatus: (status, reason) => this.#setSourceStatus(source, status, reason),
+      held: (input, outcome) => { void this.#failures?.held(source, input, outcome); },
       logger: this.core.logger,
       stopSignal: this.#stopController.signal
     };
@@ -446,40 +592,77 @@ export class GatewayRuntime implements SessionOwner {
   async #process(source: SourceRuntimeImpl, input: SourceInput): Promise<ProcessOutcome> {
     if (this.#halting()) return { kind: "abandon" };
     const requestId = newId();
-    const { limits, traces } = this.core;
+    const { traces } = this.core;
     const trace = (stage: Trace["stage"], outcome: Trace["outcome"], extra: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">> = {}) =>
       traces.record({ requestId, stage, outcome, sourceId: source.id, ...extra });
-    const pause = (stage: Trace["stage"], code: ErrorCode, reason: string, channel?: string): ProcessOutcome => {
-      trace(stage, stage === "map" ? "failed" : "rejected", channel === undefined ? { errorCode: code } : { errorCode: code, channel });
+    // The operator log keeps V1's reason text; the incident gets the sanitized diagnosis.
+    const pause = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, diagnosis: string, channel: string | null, logReason: string): ProcessOutcome => {
+      trace(stage, stage === "map" ? "failed" : "rejected", channel === null ? { errorCode: code } : { errorCode: code, channel });
       this.core.logger.warn("Source paused on an unprocessable record; it will not be committed or skipped", {
         sourceId: source.id,
         position: input.position as unknown as Json,
         code,
-        reason,
-        ...(channel === undefined ? {} : { channel })
+        failureClass,
+        reason: logReason,
+        ...(channel === null ? {} : { channel })
       });
       this.#setSourceStatus(source, "paused", code);
-      return { kind: "pause", code };
+      return { kind: "pause", code, failureClass, stage, channel, diagnosis: diagnosis.slice(0, 512) };
     };
     trace("source", "ok");
 
+    const moved = this.#failures?.positionProblem(source.id, input.position) ?? null;
+    if (moved !== null) {
+      trace("source", "rejected", { errorCode: "SOURCE_UNAVAILABLE" });
+      this.core.logger.error("Source progress moved past a held record without a recorded advance; the source is held", {
+        sourceId: source.id, position: input.position as unknown as Json, reason: moved
+      });
+      this.#setSourceStatus(source, "paused", "SOURCE_UNAVAILABLE");
+      return { kind: "hold", code: "SOURCE_UNAVAILABLE", reason: moved };
+    }
+
+    const prepared = await this.#prepare(source, input, { requestId, trace, retries: source.transientRetries });
+    if (prepared.kind === "abandon") return { kind: "abandon" };
+    if (prepared.kind === "problem") {
+      return pause(prepared.stage, prepared.code, prepared.failureClass, prepared.reason, prepared.channel, prepared.logReason ?? prepared.reason);
+    }
+    this.#admit(prepared.outputs, requestId);
+    return { kind: "commit" };
+  }
+
+  /**
+   * Decodes, maps and validates one record for every channel of its source, and
+   * checks the outputs against current subscriber state, without admitting
+   * anything. Shared by live processing, evaluation and redrive (ADR-15C §5), so
+   * all three apply the same rules. Records traces only through `trace`.
+   */
+  async #prepare(source: SourceRuntimeImpl, input: SourceInput, options: {
+    requestId: string;
+    trace: (stage: Trace["stage"], outcome: Trace["outcome"], extra?: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">>) => void;
+    retries: 0 | 1 | 2;
+  }): Promise<Prepared> {
+    const { limits } = this.core;
+    const { requestId, trace } = options;
+    type Problem = Extract<Prepared, { kind: "problem" }>;
+    const problem = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, reason: string, channel?: string, logReason?: string): Problem =>
+      ({ kind: "problem", stage, code, failureClass, reason, channel: channel ?? null, ...(logReason === undefined || logReason === reason ? {} : { logReason }) });
     let value: Json;
     if (input.value !== undefined) {
-      if (!isJsonValue(input.value)) return pause("validate", "INVALID_PAYLOAD", "fixture value is not JSON data");
+      if (!isJsonValue(input.value)) return problem("validate", "INVALID_PAYLOAD", "invalid-json", "fixture value is not JSON data");
       if (utf8ByteLength(JSON.stringify(input.value)) > limits.maxSourceRecordBytes) {
-        return pause("validate", "INVALID_PAYLOAD", "record exceeds maxSourceRecordBytes");
+        return problem("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
       }
       value = input.value;
     } else {
       const bytes = input.bytes ?? null;
-      if (bytes === null) return pause("validate", "INVALID_PAYLOAD", "tombstone records have no V1 meaning; represent deletion as explicit state");
-      if (bytes.byteLength > limits.maxSourceRecordBytes) return pause("validate", "INVALID_PAYLOAD", "record exceeds maxSourceRecordBytes");
+      if (bytes === null) return problem("validate", "INVALID_PAYLOAD", "tombstone", "tombstone records have no V1 meaning; represent deletion as explicit state");
+      if (bytes.byteLength > limits.maxSourceRecordBytes) return problem("validate", "INVALID_PAYLOAD", "oversize", "record exceeds maxSourceRecordBytes");
       try {
         value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as Json;
       } catch {
-        return pause("validate", "INVALID_PAYLOAD", "record value is not valid UTF-8 JSON");
+        return problem("validate", "INVALID_PAYLOAD", "invalid-json", "record value is not valid UTF-8 JSON");
       }
-      if (!isJsonValue(value)) return pause("validate", "INVALID_PAYLOAD", "record value exceeds the nesting limit");
+      if (!isJsonValue(value)) return problem("validate", "INVALID_PAYLOAD", "invalid-json", "record value exceeds the nesting limit");
     }
     trace("validate", "ok");
 
@@ -493,26 +676,58 @@ export class GatewayRuntime implements SessionOwner {
     });
 
     // Map for every channel and validate every output before admitting any of them.
+    // A TransientMappingError re-runs the whole mapping, up to the source's retry budget.
+    // With failure handling configured, a quarantine-eligible problem does not end the
+    // evaluation: every remaining output, channel and the conflict check still run, and
+    // any other problem found outranks it, so a quarantine policy never advances past an
+    // integrity or mapper failure (INV-03, ADR-15B §1). Without failureHandling the first
+    // problem is reported, as in V1.
+    const classifyAll = this.config.failureHandling !== undefined;
     const outputs: RoutedOutput[] = [];
-    for (const channel of source.channels) {
-      const outcome = await invokeHandler(
-        context => channel.handlers.map({ ...context, record }),
-        { timeoutMs: limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
-      );
-      if (outcome.kind === "aborted" || this.#halting()) return { kind: "abandon" };
-      if (outcome.kind === "timeout") return pause("map", "TIMEOUT", "map handler timed out", channel.name);
-      if (outcome.kind === "error") {
-        return pause("map", "HANDLER_FAILED", `map handler threw ${JSON.stringify(describeError(outcome.error))}`, channel.name);
+    let eligible: Problem | null = null;
+    attempts: for (let attempt = 0; ; attempt++) {
+      outputs.length = 0;
+      eligible = null;
+      for (const channel of source.channels) {
+        const outcome = await invokeHandler(
+          context => channel.handlers.map({ ...context, record }),
+          { timeoutMs: limits.handlerTimeoutMs, requestId, parent: this.#stopController.signal }
+        );
+        if (outcome.kind === "aborted" || this.#halting()) return { kind: "abandon" };
+        if (outcome.kind === "timeout") return problem("map", "TIMEOUT", "mapper-timeout", "map handler timed out", channel.name);
+        if (outcome.kind === "error") {
+          const transient = TransientMappingError.is(outcome.error);
+          if (transient && attempt < options.retries) {
+            trace("map", "failed", { channel: channel.name, errorCode: "HANDLER_FAILED" });
+            this.core.logger.info("Retrying a transient mapping failure", { sourceId: source.id, channel: channel.name, attempt: attempt + 1 });
+            if (!await abortableDelay(TRANSIENT_RETRY_DELAYS_MS[attempt] ?? 1_000, this.#stopController.signal) || this.#halting()) {
+              return { kind: "abandon" };
+            }
+            await input.heartbeat?.().catch(() => undefined);
+            continue attempts;
+          }
+          const failureClass = transient ? "mapper-transient" : "mapper-error";
+          return problem("map", "HANDLER_FAILED", failureClass, `map handler threw ${errorSummary(outcome.error)}`, channel.name,
+            `map handler threw ${JSON.stringify(describeError(outcome.error))}`);
+        }
+        const mapped: unknown = outcome.value;
+        if (!Array.isArray(mapped)) return problem("map", "INVALID_PAYLOAD", "routing-invalid", "map must return an array", channel.name);
+        if (mapped.length > limits.maxMapOutputs) return problem("map", "INVALID_PAYLOAD", "routing-invalid", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
+        let failed = false;
+        for (let index = 0; index < mapped.length; index++) {
+          const built = this.#buildOutput(channel, record, mapped[index]);
+          if ("failureClass" in built) {
+            const found = problem("map", "INVALID_PAYLOAD", built.failureClass, `output ${index}: ${built.diagnosis ?? built.message}`, channel.name, `output ${index}: ${built.message}`);
+            if (!classifyAll || !QUARANTINE_ELIGIBLE_CLASSES.includes(built.failureClass)) return found;
+            eligible ??= found;
+            failed = true;
+            continue;
+          }
+          outputs.push(built);
+        }
+        if (!failed) trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
       }
-      const mapped: unknown = outcome.value;
-      if (!Array.isArray(mapped)) return pause("map", "INVALID_PAYLOAD", "map must return an array", channel.name);
-      if (mapped.length > limits.maxMapOutputs) return pause("map", "INVALID_PAYLOAD", `map returned more than ${limits.maxMapOutputs} outputs`, channel.name);
-      for (let index = 0; index < mapped.length; index++) {
-        const built = this.#buildOutput(channel, record, mapped[index]);
-        if (typeof built === "string") return pause("map", "INVALID_PAYLOAD", `output ${index}: ${built}`, channel.name);
-        outputs.push(built);
-      }
-      trace("map", mapped.length === 0 ? "filtered" : "ok", { channel: channel.name });
+      break;
     }
 
     // Equal revisions with different canonical data conflict with current state.
@@ -525,31 +740,85 @@ export class GatewayRuntime implements SessionOwner {
         if (conflicting) break;
         conflicting = (subscription as ServerSubscription).conflicts(revision, dataHash);
       }
-      if (conflicting) return pause("queue", "REVISION_CONFLICT", "the same revision was mapped to different data", output.channel.name);
+      if (conflicting) return problem("queue", "REVISION_CONFLICT", "revision-conflict", "the same revision was mapped to different data", output.channel.name);
       if (earlier === undefined || compareRevisions(revision, earlier.revision) > 0) seen.set(output.key, { revision, dataHash });
     }
+    return eligible ?? { kind: "ok", record, outputs };
+  }
 
+  /** Admits validated outputs to every capturing subscription; the revision filter drops anything at or below a subscriber's state. */
+  #admit(outputs: readonly RoutedOutput[], requestId: string): Record<"queued" | "filtered" | "inactive" | "overflow", number> {
+    const counts = { queued: 0, filtered: 0, inactive: 0, overflow: 0 };
     for (const output of outputs) {
       const subscriptions = this.core.router.get(output.key);
       if (subscriptions === undefined) continue;
-      for (const subscription of [...subscriptions] as ServerSubscription[]) subscription.admit(output.frame, requestId);
+      for (const subscription of [...subscriptions] as ServerSubscription[]) counts[subscription.admit(output.frame, requestId)]++;
     }
-    return { kind: "commit" };
+    return counts;
   }
 
-  #buildOutput(channel: ChannelRuntime, record: SourceRecord, item: unknown): RoutedOutput | string {
-    if (!isPlainObject(item)) return "must be an object";
+  // --- operator evaluation and redrive (ADR-15C §5) --------------------------------
+
+  /**
+   * Runs stored original bytes through the live decode, map and validate path
+   * without admitting anything, committing, seeking or recording traces (spec
+   * §8.2, F31). Transient mapping errors are not retried.
+   */
+  async evaluateRecord(sourceId: string, raw: RawEvidence, position: SourceRecord["position"]): Promise<OperatorPrepared> {
+    const source = this.#sources.get(sourceId);
+    if (source === undefined) throw notFound(`Unknown source "${sourceId}".`);
+    const prepared = await this.#prepare(source, storedInput(raw, position), { requestId: newId(), trace: () => undefined, retries: 0 });
+    return describePrepared(prepared);
+  }
+
+  /**
+   * Re-evaluates stored original bytes at a record boundary of the source and,
+   * only if the mapped outputs still hash to what the approved plan saw, admits
+   * them through the normal revision filter (ADR-15C §5, F33). Never commits,
+   * seeks or publishes. Traces are recorded under one request ID.
+   */
+  async redriveRecord(sourceId: string, raw: RawEvidence, position: SourceRecord["position"], expectedOutputHash: string): Promise<RedriveOutcome> {
+    const source = this.#sources.get(sourceId);
+    if (source === undefined) throw notFound(`Unknown source "${sourceId}".`);
+    if (this.#state !== "running") return { kind: "abandon" };
+    return source.exclusive(async () => {
+      if (this.#halting()) return { kind: "abandon" } as const;
+      const requestId = newId();
+      const trace = (stage: Trace["stage"], outcome: Trace["outcome"], extra: Partial<Pick<Trace, "channel" | "subscriptionId" | "errorCode">> = {}) =>
+        this.core.traces.record({ requestId, stage, outcome, sourceId, ...extra });
+      trace("source", "ok");
+      const prepared = await this.#prepare(source, storedInput(raw, position), { requestId, trace, retries: 0 });
+      const described = describePrepared(prepared);
+      if (described.kind !== "ok") {
+        if (described.kind === "problem") trace(described.stage, described.stage === "map" ? "failed" : "rejected", { errorCode: described.code });
+        return described;
+      }
+      if (described.outputHash !== expectedOutputHash) return { kind: "changed", evaluation: described } as const;
+      const counts = this.#admit((prepared as Extract<Prepared, { kind: "ok" }>).outputs, requestId);
+      return { kind: "admitted", evaluation: described, counts } as const;
+    });
+  }
+
+  /**
+   * Builds one routed output. Routing checks (shape, tenant, params, revision,
+   * frame size) run before the payload schema, so only a payload that fails its
+   * declared schema after valid routing is classified payload-schema; everything
+   * else is an integrity failure that a quarantine policy can never skip.
+   */
+  #buildOutput(channel: ChannelRuntime, record: SourceRecord, item: unknown): RoutedOutput | OutputProblem {
+    const routing = (message: string): OutputProblem => ({ failureClass: "routing-invalid", message });
+    if (!isPlainObject(item)) return routing("must be an object");
     for (const key of Object.keys(item)) {
-      if (key !== "tenantId" && key !== "params" && key !== "revision" && key !== "data") return `unexpected field "${key}"`;
+      if (key !== "tenantId" && key !== "params" && key !== "revision" && key !== "data") {
+        return { ...routing(`unexpected field "${key}"`), diagnosis: "unexpected field" };
+      }
     }
     const { tenantId, params, revision, data } = item;
-    if (typeof tenantId !== "string" || tenantId.length === 0 || tenantId.length > 512) return "tenantId must be a non-empty string";
+    if (typeof tenantId !== "string" || tenantId.length === 0 || tenantId.length > 512) return routing("tenantId must be a non-empty string");
     const canonical = canonicalizeParams(channel.paramsSchema, params);
-    if (!canonical.ok) return `params ${canonical.issue.path}: ${canonical.issue.message}`;
-    if (!isRevision(revision)) return "revision must be a canonical unsigned decimal string";
-    if (!isJsonValue(data)) return "data must be JSON";
-    const issue = validateValue(channel.payloadSchema, data);
-    if (issue !== null) return `data ${issue.path}: ${issue.message}`;
+    if (!canonical.ok) return { ...routing(`params ${canonical.issue.path}: ${canonical.issue.message}`), diagnosis: issueDiagnosis("params", canonical.issue) };
+    if (!isRevision(revision)) return routing("revision must be a canonical unsigned decimal string");
+    if (!isJsonValue(data)) return routing("data must be JSON");
     const event: StreamEvent = {
       id: updateEventId(record.id, channel.name, channel.version, tenantId, canonical.canonical, revision),
       channel: channel.name,
@@ -559,8 +828,11 @@ export class GatewayRuntime implements SessionOwner {
       revision,
       receivedAt: record.receivedAt
     };
+    // Checked before the payload schema: an oversized frame is an integrity failure, never payload-schema.
     const bytes = Buffer.byteLength(JSON.stringify(event)) + FRAME_OVERHEAD_BYTES;
-    if (bytes > this.core.limits.maxDataFrameBytes) return "the data frame exceeds maxDataFrameBytes";
+    if (bytes > this.core.limits.maxDataFrameBytes) return routing("the data frame exceeds maxDataFrameBytes");
+    const issue = validateValue(channel.payloadSchema, data);
+    if (issue !== null) return { failureClass: "payload-schema", message: `data ${issue.path}: ${issue.message}`, diagnosis: issueDiagnosis("data", issue) };
     return {
       channel,
       key: routingKey(channel.name, channel.version, tenantId, canonical.canonical),
@@ -606,6 +878,167 @@ export class GatewayRuntime implements SessionOwner {
     return results;
   }
 
+  #committed(source: SourceRuntimeImpl, position: SourceRecord["position"]): void {
+    this.recordCommit(source.id);
+    this.#failures?.committed(source.id, position);
+  }
+
+  /**
+   * Opens the incident store and, when a Kafka source can quarantine, checks the
+   * quarantine topic and connects its producer. Any refusal fails startup.
+   */
+  async #startFailures(connections: Map<string, ResolvedKafkaConnection>): Promise<void> {
+    const store: IncidentStore = this.#internal.incidentStore ?? (this.#stateDirectory === undefined
+      ? new MemoryIncidentStore()
+      : openJournal(this.#stateDirectory, { projectId: this.config.projectId }));
+    try {
+      store.claim(this.config.projectId, [...this.#sources.values()].map(source => ({
+        sourceId: source.id, generation: source.config.generation, kind: source.config.kind
+      })));
+    } catch (error) {
+      store.close();
+      throw error;
+    }
+    if (store.kind === "memory") {
+      this.core.logger.warn("Source-failure incidents are kept in memory only; set stateDirectory to keep them across restarts", {});
+    }
+    let quarantine: KafkaQuarantineWriter | null = null;
+    try {
+      const quarantined = [...this.#sources.values()].filter(source => source.config.kind === "kafka" && usesQuarantine(this.config, source.id));
+      const first = quarantined[0]?.config;
+      const topic = this.config.failureHandling?.quarantine?.topic;
+      if (first?.kind === "kafka" && topic !== undefined) {
+        quarantine = new KafkaQuarantineWriter({
+          topic,
+          connection: connections.get(first.connectionRef) as ResolvedKafkaConnection,
+          logger: this.core.logger,
+          maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes,
+          clientId: `streamotter-${this.config.projectId}-quarantine`
+        });
+        const report = await quarantine.start();
+        this.#quarantineReport = report;
+        this.core.logger.info("Quarantine topic checked", { ...report });
+        // Connects only when an operator reads evidence back; consumer groups are <clientId>-quarantine-read-<uuid>.
+        this.#quarantineReader = new KafkaQuarantineReader({
+          topic,
+          connection: connections.get(first.connectionRef) as ResolvedKafkaConnection,
+          logger: this.core.logger,
+          maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes,
+          clientId: `streamotter-${this.config.projectId}`
+        });
+      }
+      const failures = new FailureService({
+        config: this.config,
+        store,
+        logger: this.core.logger,
+        quarantine,
+        configFingerprint: this.fingerprint,
+        handlerBuildId: this.#handlerBuildId,
+        maxSourceRecordBytes: this.core.limits.maxSourceRecordBytes,
+        guards: this.#handlers.sources ?? {},
+        onBoundary: (sourceId, boundary) => {
+          const source = this.#sources.get(sourceId);
+          if (source !== undefined) source.boundary = boundary === null ? null : Object.freeze({ id: boundary.id, context: boundary.context });
+        },
+        stopSignal: this.#stopController.signal,
+        ...(this.#internal.advanceHooks === undefined ? {} : { hooks: this.#internal.advanceHooks })
+      });
+      const clusterId = quarantine?.report?.clusterId;
+      if (clusterId !== undefined) for (const source of quarantined) failures.setClusterId(source.id, clusterId);
+      await failures.start(this.#sources.values(), async (source, topic, partition) => {
+        if (source.config.kind !== "kafka") return null;
+        return readCommittedOffset(connections.get(source.config.connectionRef) as ResolvedKafkaConnection,
+          `streamotter-${this.config.projectId}-reconcile`, source.config.consumerGroup, topic, partition, this.core.logger);
+      });
+      this.#failures = failures;
+      this.#operator = new OperatorService(this.#operatorHost(), failures, this.#internal.operatorHooks);
+    } catch (error) {
+      await this.#quarantineReader?.stop().catch(() => undefined);
+      this.#quarantineReader = null;
+      await quarantine?.stop().catch(() => undefined);
+      store.close();
+      throw error;
+    }
+  }
+
+  /**
+   * Spec §14 and F48: removing failureHandling must not silently drop the
+   * obligations a journal still holds. When stateDirectory points at a journal
+   * with an open incident or a recovery boundary in force for a configured
+   * source, startup is refused until they are resolved or retired with failure
+   * handling still configured. A boundary from a generation other than the
+   * configured one doesn't count: a generation change always retires it (ADR-15B
+   * §4), as the journal does when failure handling claims it again. A journal
+   * with nothing outstanding is left alone.
+   */
+  #refuseAbandonedJournal(): void {
+    if (this.#stateDirectory === undefined || !existsSync(join(this.#stateDirectory, JOURNAL_FILE))) return;
+    const refuse = (message: string, details: Record<string, Json>) => new StreamOtterError("CONFIG_INVALID", {
+      message: `${message} Restore the failureHandling section, resolve the incidents and retire the boundaries, then remove it (see the V1.1 downgrade notes).`,
+      details: { reason: "failure-handling-removed", ...details }
+    });
+    if (!nodeSupportsJournal()) throw refuse("The state directory holds a failure journal that this Node version cannot read, and failureHandling is not configured.", {});
+    const store = openJournal(this.#stateDirectory, { projectId: this.config.projectId });
+    try {
+      const openIncidents: string[] = [];
+      const boundaries: string[] = [];
+      for (const [sourceId, source] of this.#sources) {
+        if (store.open(sourceId).length > 0) openIncidents.push(sourceId);
+        const boundary = store.boundary(sourceId);
+        if (boundary !== null && boundary.generation === source.config.generation) boundaries.push(sourceId);
+      }
+      if (openIncidents.length > 0 || boundaries.length > 0) {
+        throw refuse(
+          `failureHandling was removed, but the failure journal still has ${openIncidents.length > 0 ? `open incidents on ${openIncidents.join(", ")}` : ""}${openIncidents.length > 0 && boundaries.length > 0 ? " and " : ""}${boundaries.length > 0 ? `recovery boundaries in force on ${boundaries.join(", ")}` : ""}.`,
+          { openIncidentSources: openIncidents, boundarySources: boundaries }
+        );
+      }
+    } finally {
+      store.close();
+    }
+  }
+
+  /** Readiness reason categories (ADR-15C §4); empty means ready. */
+  #readiness(): HealthReason[] {
+    if (this.#state !== "running") return ["starting"];
+    const reasons: HealthReason[] = [];
+    for (const source of this.#sources.values()) {
+      if (source.status === "paused") reasons.push("source-held");
+      else if (source.status !== "healthy") reasons.push("source-unavailable");
+    }
+    const failures = this.#failures;
+    if (failures !== null) {
+      const usage = failures.store.usage();
+      if (failures.journalError !== null || usage.sizeBytes >= usage.limitBytes) reasons.push("journal");
+      for (const source of this.#sources.values()) {
+        if (failures.store.open(source.id).some(incident => incident.quarantine === "failed" || incident.quarantine === "unknown")) reasons.push("quarantine");
+      }
+    }
+    return reasons;
+  }
+
+  #operatorHost(): OperatorHost {
+    return {
+      mode: this.mode,
+      config: this.config,
+      fingerprint: this.fingerprint,
+      handlerBuildId: this.#handlerBuildId,
+      logger: this.core.logger,
+      state: () => this.#state,
+      source: sourceId => this.#sources.get(sourceId)?.summary() ?? null,
+      traces: query => this.core.traces.page(query),
+      quarantineReport: () => this.#quarantineReport,
+      quarantineReader: () => this.#quarantineReader,
+      retry: async sourceId => { await this.resumeSource(sourceId); },
+      evaluateRecord: (sourceId, raw, position) => this.evaluateRecord(sourceId, raw, position),
+      redriveRecord: (sourceId, raw, position, hash) => this.redriveRecord(sourceId, raw, position, hash),
+      setBoundary: (sourceId, boundary) => {
+        const source = this.#sources.get(sourceId);
+        if (source !== undefined) source.boundary = boundary === null ? null : Object.freeze({ id: boundary.id, context: boundary.context });
+      }
+    };
+  }
+
   /** Called by adapters after a commit so the trace reflects actual source progress. */
   recordCommit(sourceId: string): void {
     this.core.traces.record({ requestId: newId(), stage: "commit", outcome: "ok", sourceId });
@@ -619,6 +1052,17 @@ export class GatewayRuntime implements SessionOwner {
     let http: HttpServer | null = null;
     let io: IoServer | null = null;
     try {
+      // First, so readiness reports "starting" for the whole startup.
+      if (this.#healthOptions !== null) {
+        const { host, port } = this.#healthOptions;
+        this.#health = await startHealthListener({ host, port, readiness: () => this.#readiness() }).catch((error: unknown) => {
+          const code = (error as NodeJS.ErrnoException | undefined)?.code;
+          throw new StreamOtterError("SOURCE_UNAVAILABLE", {
+            message: code === "EADDRINUSE" ? `Health port ${host}:${port} is already in use.` : `The health listener could not start on ${host}:${port}: ${(error as Error | undefined)?.message ?? String(error)}`
+          });
+        });
+        this.core.logger.info("Health listener started", { origin: this.#health.origin });
+      }
       const connections = new Map<string, ResolvedKafkaConnection>();
       for (const source of this.#sources.values()) {
         if (source.config.kind !== "kafka" || connections.has(source.config.connectionRef)) continue;
@@ -626,6 +1070,8 @@ export class GatewayRuntime implements SessionOwner {
         if (profile === undefined) throw new StreamOtterError("CONFIG_INVALID", { message: `Unknown connection profile ${source.config.connectionRef}.` });
         connections.set(source.config.connectionRef, await resolveKafkaConnection(profile, this.#configDir));
       }
+      if (this.config.failureHandling !== undefined) await this.#startFailures(connections);
+      else this.#refuseAbandonedJournal();
 
       http = createServer((_request, response) => {
         response.statusCode = 404;
@@ -655,7 +1101,7 @@ export class GatewayRuntime implements SessionOwner {
           ? new FixtureSourceAdapter(
             (this.#development?.fixtures[source.config.fixtureRef] ?? []) as readonly FixtureRecord[],
             this.#sink(source),
-            () => this.recordCommit(source.id)
+            position => this.#committed(source, position)
           )
           : createKafkaSourceAdapter({
             projectId: this.config.projectId,
@@ -663,7 +1109,7 @@ export class GatewayRuntime implements SessionOwner {
             source: source.config,
             connection: connections.get(source.config.connectionRef) as ResolvedKafkaConnection,
             sink: this.#sink(source),
-            onCommit: () => this.recordCommit(source.id),
+            onCommit: position => this.#committed(source, position),
             ...(this.#internal.beforeCommit === undefined ? {} : { beforeCommit: this.#internal.beforeCommit })
           });
         source.adapter = adapter;
@@ -680,6 +1126,12 @@ export class GatewayRuntime implements SessionOwner {
         })
       ]).finally(() => clearTimeout(timer));
 
+      // The validator guarantees stateDirectory and failureHandling, so the operator exists here.
+      if (this.#operatorSocketEnabled && this.#operator !== null && this.#stateDirectory !== undefined) {
+        this.#operatorSocket = await startOperatorSocket({ stateDirectory: this.#stateDirectory, operator: this.#operator, logger: this.core.logger });
+        this.core.logger.info("Operator socket listening", { path: this.#operatorSocket.path });
+      }
+
       const address = http.address() as AddressInfo;
       const host = this.config.gateway.host === "0.0.0.0" || this.config.gateway.host === "::" ? "127.0.0.1" : this.config.gateway.host;
       this.#http = http;
@@ -689,7 +1141,16 @@ export class GatewayRuntime implements SessionOwner {
       this.core.logger.info("Gateway started", { origin: this.#address.origin, path: this.#address.path, mode: this.mode });
       return this.#address;
     } catch (error) {
+      await this.#operatorSocket?.close().catch(() => undefined);
+      this.#operatorSocket = null;
+      await this.#health?.close().catch(() => undefined);
+      this.#health = null;
       await Promise.allSettled(started.map(adapter => adapter.stop(Date.now() + 5_000)));
+      await this.#failures?.stop().catch(() => undefined);
+      await this.#quarantineReader?.stop().catch(() => undefined);
+      this.#quarantineReader = null;
+      this.#failures = null;
+      this.#operator = null;
       for (const source of this.#sources.values()) {
         source.adapter = null;
         source.status = "starting";
@@ -714,10 +1175,22 @@ export class GatewayRuntime implements SessionOwner {
     for (const session of [...this.#sessions]) session.close();
     const deadline = Date.now() + timeoutMs;
     const work = (async () => {
+      // Readiness ends first, so a load balancer stops routing before sessions close.
+      await this.#health?.close().catch(() => undefined);
+      this.#health = null;
+      // Close the operator socket first so no mutation starts while sources drain.
+      await this.#operatorSocket?.close().catch(error => {
+        this.core.logger.error("The operator socket did not close cleanly", { error: (error as Error).message.slice(0, 200) });
+      });
+      this.#operatorSocket = null;
       await Promise.allSettled([...this.#sources.values()].map(async source => {
         await source.adapter?.stop(deadline);
         source.status = "stopped";
       }));
+      await this.#failures?.stop().catch(error => {
+        this.core.logger.error("The failure journal did not close cleanly", { error: (error as Error).message.slice(0, 200) });
+      });
+      await this.#quarantineReader?.stop().catch(() => undefined);
       await Promise.allSettled(this.#stopCallbacks.map(callback => callback()));
       const io = this.#io;
       if (io !== null) await new Promise<void>(resolve => io.close(() => resolve()));
@@ -846,7 +1319,10 @@ export class GatewayRuntime implements SessionOwner {
       onStop: callback => { this.#stopCallbacks.push(callback); },
       connectionCount: () => this.#sessions.size,
       subscriptionCount: () => [...this.#sessions].reduce((sum, session) => sum + session.subscriptionCount, 0),
-      pendingBytes: () => this.core.gatewayBudget.used
+      pendingBytes: () => this.core.gatewayBudget.used,
+      incidentStore: () => this.#failures?.store ?? null,
+      failuresSettled: async () => { await this.#failures?.settled(); },
+      operator: () => this.#operator
     };
   }
 

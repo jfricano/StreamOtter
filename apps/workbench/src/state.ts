@@ -1,8 +1,13 @@
-import type { ChannelSummary, DevelopmentPrincipalSummary, ProjectConfig, SourceStatus } from "@streamotter/contracts";
+import type { ChannelSummary, DevelopmentPrincipalSummary, ProjectConfig, SourceStatus, WorkbenchOperation } from "@streamotter/contracts";
 import type { ManagementApi } from "./api.ts";
+import type { HostSettings } from "./host.ts";
 
 export interface WorkbenchState {
   api: ManagementApi;
+  host: HostSettings;
+  /** True when this environment offers the operation (WHC-1 §4). Surfaces that need a missing one show as unavailable. */
+  can(operation: WorkbenchOperation): boolean;
+  /** Empty when the host names no gateway; Preview is then unavailable. */
   gatewayOrigin: string;
   gatewayPath: string;
   active: { config: ProjectConfig; fingerprint: string };

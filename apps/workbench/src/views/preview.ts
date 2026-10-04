@@ -1,7 +1,7 @@
 import { createClient, type Client, type ConnectionState, type Json, type Params, type StreamError, type Subscription, type SubscriptionState } from "@streamotter/client";
 import type { ChannelMap, Schema } from "@streamotter/contracts";
 import { ApiError } from "../api.ts";
-import { h, pill, replace, time } from "../dom.ts";
+import { h, pill, replace, time, unavailable } from "../dom.ts";
 import type { WorkbenchState } from "../state.ts";
 
 const STATE_TONE: Record<SubscriptionState, "ok" | "warn" | "bad" | "info" | "neutral"> = {
@@ -35,6 +35,17 @@ interface ActivePreview {
 let active: ActivePreview | null = null;
 const log: { at: string; text: string; tone: "ok" | "warn" | "bad" | "info" | "neutral" }[] = [];
 let latest: { kind: string; revision: string; receivedAt: string; data: Json } | null = null;
+
+/**
+ * Closes the running preview, if any, without drawing: the session ended (WHC-1 §3.2), so the
+ * workbench stops every request, including the preview's gateway connection and its reconnects.
+ */
+export function closePreview(): void {
+  const current = active;
+  active = null;
+  latest = null;
+  if (current !== null) void current.client.close();
+}
 
 function paramInputs(schema: Schema | undefined): { element: HTMLElement; read: () => Params } {
   if (schema === undefined || schema.type !== "object") {
@@ -113,14 +124,14 @@ export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
     };
     const current = active;
     replace(controls,
-      current.sourceKind === "fixture" ? act(`Advance "${current.sourceId}" by 1`, async () => {
+      current.sourceKind !== "fixture" ? null : state.can("dev.fixtures.advance") ? act(`Advance "${current.sourceId}" by 1`, async () => {
         const { advanced } = await state.api.advance(current.sourceId, 1);
         note(advanced === 0 ? "No record was committed (the fixture is exhausted or paused)." : "Advanced one fixture record.", advanced === 0 ? "warn" : "info");
-      }) : null,
-      act("Disconnect this preview", async () => {
+      }) : unavailable("Advance fixture", ["dev.fixtures.advance"]),
+      state.can("dev.disconnect") ? act("Disconnect this preview", async () => {
         await state.api.disconnect(current.previewSessionId);
         note("Disconnected the preview connection. Expect stale → resynchronization with a fresh snapshot.", "warn");
-      }),
+      }) : unavailable("Disconnect", ["dev.disconnect"]),
       act("Resync", async () => {
         note("Requested a fresh synchronization.", "info");
         await current.subscription.resync({ timeoutMs: 30_000 });

@@ -3,10 +3,11 @@ import { readFile } from "node:fs/promises";
 import { connect as netConnect, isIP, type Socket } from "node:net";
 import { resolve as resolvePath } from "node:path";
 import { connect as tlsConnect, type ConnectionOptions } from "node:tls";
-import kafkajs, { type Consumer, type ISocketFactory, type KafkaConfig, type SASLOptions } from "kafkajs";
-import { StreamOtterError, type DiagnosticStep, type KafkaConnection, type Source, type SourceRecord } from "@streamotter/contracts";
+import kafkajs, { type Admin, type Consumer, type ISocketFactory, type Kafka as KafkaClient, type KafkaConfig, type SASLOptions } from "kafkajs";
+import { StreamOtterError, type DiagnosticStep, type GatewayLogger, type KafkaConnection, type Source, type SourceRecord } from "@streamotter/contracts";
 import { patchKafkaJsRequestQueue } from "./kafkajs-patch.ts";
-import type { SourceAdapter, SourceSink } from "./types.ts";
+import { flattenKafkaHeaders } from "../failures/evidence.ts";
+import type { AdvanceResult, HeldPosition, SourceAdapter, SourceInput, SourceSink } from "./types.ts";
 
 const { Kafka, logLevel } = kafkajs;
 patchKafkaJsRequestQueue();
@@ -81,12 +82,18 @@ export class TrackedSockets {
   }
 }
 
-function kafkaConfig(
+/** Client settings a caller may override; the quarantine writer uses a shorter request deadline (ADR-15A §5). */
+export interface KafkaClientOverrides {
+  requestTimeout?: number;
+}
+
+export function kafkaConfig(
   clientId: string,
   connection: ResolvedKafkaConnection,
-  sink: SourceSink | null,
+  sink: Pick<SourceSink, "logger"> | null,
   sockets: TrackedSockets,
-  quiet: () => boolean = () => false
+  quiet: () => boolean = () => false,
+  overrides: KafkaClientOverrides = {}
 ): KafkaConfig {
   const config: KafkaConfig = {
     clientId,
@@ -94,7 +101,7 @@ function kafkaConfig(
     brokers: [...connection.brokers],
     connectionTimeout: 3_000,
     authenticationTimeout: 10_000,
-    requestTimeout: 30_000,
+    requestTimeout: overrides.requestTimeout ?? 30_000,
     retry: { initialRetryTime: 300, maxRetryTime: 5_000, retries: 8 },
     logLevel: logLevel.ERROR,
     logCreator: () => entry => {
@@ -108,6 +115,34 @@ function kafkaConfig(
     config.sasl = { mechanism: connection.sasl.mechanism, username: connection.sasl.username, password: connection.sasl.password } as SASLOptions;
   }
   return config;
+}
+
+/** A KafkaJS client on a resolved profile with socket tracking, for clients other than the source consumer. */
+export function createTrackedKafka(
+  clientId: string, connection: ResolvedKafkaConnection, logger: GatewayLogger, overrides: KafkaClientOverrides = {}
+): { kafka: KafkaClient; sockets: TrackedSockets } {
+  const sockets = new TrackedSockets();
+  return { kafka: new Kafka(kafkaConfig(clientId, connection, { logger }, sockets, () => false, overrides)), sockets };
+}
+
+/**
+ * Reads a consumer group's committed offset for one partition with a
+ * short-lived admin client, before the source's consumer starts (startup
+ * reconciliation of prepared advances, spec §6). "-1" means nothing committed.
+ */
+export async function readCommittedOffset(
+  connection: ResolvedKafkaConnection, clientId: string, groupId: string, topic: string, partition: number, logger: GatewayLogger
+): Promise<string | null> {
+  const { kafka, sockets } = createTrackedKafka(clientId, connection, logger);
+  const admin = kafka.admin();
+  try {
+    await admin.connect();
+    const offsets = await admin.fetchOffsets({ groupId, topics: [topic] });
+    return offsets.find(entry => entry.topic === topic)?.partitions.find(entry => entry.partition === partition)?.offset ?? null;
+  } finally {
+    await admin.disconnect().catch(() => undefined);
+    sockets.destroyAll();
+  }
 }
 
 function nextOffset(offset: string): string {
@@ -130,10 +165,17 @@ export class KafkaSourceAdapter implements SourceAdapter {
   readonly #source: Extract<Source, { kind: "kafka" }>;
   readonly #connection: ResolvedKafkaConnection;
   readonly #sink: SourceSink;
-  readonly #onCommit: () => void;
+  readonly #onCommit: (position: SourceRecord["position"]) => void;
   readonly #beforeCommit: ((sourceId: string, position: SourceRecord["position"]) => Promise<void>) | undefined;
   readonly #clientId: string;
   #consumer: Consumer | null = null;
+  #kafka: KafkaClient | null = null;
+  #admin: Admin | null = null;
+  /** The record the source is paused at, if a process() call returned pause. */
+  #held: { topic: string; partition: number; offset: string } | null = null;
+  /** Partitions assigned at the last group join, and a counter that changes on every rejoin. */
+  #assignment: Map<string, Set<number>> | null = null;
+  #assignmentEpoch = 0;
   #status: "starting" | "healthy" | "degraded" | "paused" | "stopped" = "starting";
   #paused = false;
   #rebalancing = false;
@@ -149,7 +191,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     source: Extract<Source, { kind: "kafka" }>;
     connection: ResolvedKafkaConnection;
     sink: SourceSink;
-    onCommit: () => void;
+    onCommit: (position: SourceRecord["position"]) => void;
     beforeCommit?: (sourceId: string, position: SourceRecord["position"]) => Promise<void>;
   }) {
     this.#sourceId = options.sourceId;
@@ -163,6 +205,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
 
   async start(): Promise<void> {
     const kafka = new Kafka(kafkaConfig(this.#clientId, this.#connection, this.#sink, this.#sockets, () => this.#stopping));
+    this.#kafka = kafka;
     const consumer = kafka.consumer({
       groupId: this.#source.consumerGroup,
       sessionTimeout: 30_000,
@@ -184,14 +227,28 @@ export class KafkaSourceAdapter implements SourceAdapter {
         for (const message of batch.messages) {
           if (this.#paused || this.#stopping || !isRunning() || isStale()) return;
           const position = { kind: "kafka" as const, topic: batch.topic, partition: batch.partition, offset: message.offset };
-          const outcome = await this.#sink.process({
+          const timestamp = Number(message.timestamp);
+          const input: SourceInput = {
             key: message.key === null ? null : message.key.toString("utf8"),
             bytes: message.value,
-            position
-          });
+            keyBytes: message.key,
+            headers: flattenKafkaHeaders(message.headers),
+            timestamp: Number.isFinite(timestamp) && timestamp >= 0 ? new Date(timestamp).toISOString() : null,
+            position,
+            heartbeat
+          };
+          const outcome = await this.#sink.process(input);
           if (outcome.kind === "abandon") return;
+          if (outcome.kind === "hold") {
+            this.#pauseAt(batch.topic, batch.partition, message.offset);
+            return;
+          }
           if (outcome.kind === "pause") {
             this.#pauseAt(batch.topic, batch.partition, message.offset);
+            this.#held = { topic: batch.topic, partition: batch.partition, offset: message.offset };
+            const sink = this.#sink;
+            // Disposition runs after eachBatch returns, never inside the fetch loop (ADR-15A §1).
+            setImmediate(() => sink.held(input, outcome));
             return;
           }
           resolveOffset(message.offset);
@@ -199,7 +256,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
           if (this.#stopping) return;
           try {
             await consumer.commitOffsets([{ topic: batch.topic, partition: batch.partition, offset: nextOffset(message.offset) }]);
-            this.#onCommit();
+            this.#onCommit(position);
           } catch (error) {
             // Processing completed; a failed commit only means this record can be redelivered.
             this.#sink.logger.warn("Kafka offset commit failed; the record may be redelivered", {
@@ -222,6 +279,9 @@ export class KafkaSourceAdapter implements SourceAdapter {
     if (this.#watchdog !== null) clearInterval(this.#watchdog);
     this.#joined?.();
     const consumer = this.#consumer;
+    const admin = this.#admin;
+    this.#admin = null;
+    if (admin !== null) await admin.disconnect().catch(() => undefined);
     if (consumer !== null) {
       let timer: NodeJS.Timeout | undefined;
       await Promise.race([
@@ -240,12 +300,80 @@ export class KafkaSourceAdapter implements SourceAdapter {
   async resume(): Promise<void> {
     if (!this.#paused || this.#consumer === null) return;
     this.#paused = false;
+    this.#held = null;
     this.#setStatus("healthy");
     this.#consumer.resume(this.#source.topics.map(topic => ({ topic })));
   }
 
   async check(deadline: number): Promise<DiagnosticStep[]> {
     return runKafkaDiagnostics(this.#connection, this.#source.topics, deadline);
+  }
+
+  /**
+   * Commits exactly offset + 1 for the held record, reads the group's committed
+   * offset back through the admin client, lets the caller record the advance, and
+   * only then seeks past the record and resumes. Any doubt (a failed commit, a failed or different read-back, or a
+   * rebalance while waiting) is "uncertain" and the source stays paused. This is
+   * deliberately stricter than the ordinary commit path, where a failed commit
+   * only means a record may be redelivered.
+   */
+  async advancePast(held: HeldPosition): Promise<AdvanceResult> {
+    const consumer = this.#consumer;
+    const current = this.#held;
+    const position = held.position;
+    if (consumer === null || this.#kafka === null || this.#stopping || !this.#paused || current === null || position.kind !== "kafka") return "not-held";
+    if (current.topic !== position.topic || current.partition !== position.partition || current.offset !== position.offset) return "not-held";
+    if (this.#assignment?.get(position.topic)?.has(position.partition) !== true) return "not-held";
+    const epoch = this.#assignmentEpoch;
+    const next = nextOffset(position.offset);
+    try {
+      await consumer.commitOffsets([{ topic: position.topic, partition: position.partition, offset: next }]);
+    } catch (error) {
+      this.#sink.logger.warn("Advancing past a held record failed at commit; the source stays paused", {
+        sourceId: this.#sourceId, topic: position.topic, partition: position.partition, offset: position.offset, error: (error as Error).name
+      });
+      return "uncertain";
+    }
+    let committed: string | null = null;
+    // stop() disconnects only the admin client it finds, so none may be created or left connected once it has begun.
+    // The commit may have landed, so the advance is uncertain and restart reconciles it.
+    if (this.#stopping) return "uncertain";
+    try {
+      const admin = this.#admin ??= this.#kafka.admin();
+      await admin.connect();
+      if (this.#stopping) {
+        await admin.disconnect().catch(() => undefined);
+        return "uncertain";
+      }
+      const offsets = await admin.fetchOffsets({ groupId: this.#source.consumerGroup, topics: [position.topic] });
+      committed = offsets.find(entry => entry.topic === position.topic)?.partitions.find(entry => entry.partition === position.partition)?.offset ?? null;
+    } catch (error) {
+      this.#sink.logger.warn("The committed offset could not be read back; the source stays paused", {
+        sourceId: this.#sourceId, topic: position.topic, partition: position.partition, error: (error as Error).name
+      });
+      return "uncertain";
+    }
+    if (committed !== next || epoch !== this.#assignmentEpoch || this.#held !== current || this.#stopping) {
+      this.#sink.logger.warn("The committed offset did not match after advancing; the source stays paused", {
+        sourceId: this.#sourceId, topic: position.topic, partition: position.partition, expected: next, observed: committed
+      });
+      return "uncertain";
+    }
+    this.#onCommit(position);
+    // The caller records the advance before anything after the record can be consumed (spec §6).
+    if (held.confirmed !== undefined && !(await held.confirmed().catch(() => false))) {
+      this.#sink.logger.warn("The advance is committed but was not recorded; the source stays paused until a restart reconciles it", {
+        sourceId: this.#sourceId, topic: position.topic, partition: position.partition, offset: position.offset
+      });
+      return "advanced";
+    }
+    if (this.#stopping) return "advanced";
+    this.#held = null;
+    this.#paused = false;
+    consumer.seek({ topic: position.topic, partition: position.partition, offset: next });
+    this.#setStatus("healthy");
+    consumer.resume(this.#source.topics.map(topic => ({ topic })));
+    return "advanced";
   }
 
   #pauseAt(topic: string, partition: number, offset: string): void {
@@ -278,7 +406,9 @@ export class KafkaSourceAdapter implements SourceAdapter {
 
   #instrument(consumer: Consumer): void {
     const { events } = consumer;
-    consumer.on(events.GROUP_JOIN, () => {
+    consumer.on(events.GROUP_JOIN, event => {
+      this.#assignment = new Map(Object.entries(event.payload.memberAssignment).map(([topic, partitions]) => [topic, new Set(partitions)]));
+      this.#assignmentEpoch++;
       this.#rebalancing = false;
       this.#lastActivity = Date.now();
       this.#setStatus("healthy");
@@ -289,6 +419,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
     consumer.on(events.REBALANCING, () => {
       // Continuity cannot be assumed across a rebalance; subscriptions resynchronize after rejoin.
       this.#rebalancing = true;
+      this.#assignment = null;
+      this.#assignmentEpoch++;
       this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
     consumer.on(events.FETCH, () => this.#activity());

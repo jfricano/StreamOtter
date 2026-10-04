@@ -1,5 +1,9 @@
 /** Compile-time acceptance checks, including intentional invalid API uses. */
-import { createClient, type StreamEvent, type SocketAuth, type ProjectConfig } from "./api";
+import {
+  createClient, TransientMappingError,
+  type HandlerRegistry, type ManagementOperations, type ProjectConfig, type SocketAuth, type SourceRecoveryHandlers, type StreamEvent,
+  type HealthListenerOptions, type HealthResponse, type WorkbenchHostConfig, type WorkbenchHostManifest, type WorkbenchOperation
+} from "./api";
 import { project, type AppChannels, type OrderState } from "./example";
 
 const client = createClient<AppChannels>({ getToken: () => "application-token" });
@@ -46,3 +50,110 @@ const invalidProject: ProjectConfig<AppChannels> = {
   }
 };
 void invalidProject;
+
+// --- V1.1 source-failure handling (additive) ----------------------------------
+
+const v11Project: ProjectConfig<AppChannels> = {
+  ...project,
+  failureHandling: {
+    quarantine: { topic: "orders.streamotter.quarantine", capture: "full-record" },
+    sources: { orders: { invalidJson: "quarantine-resync", invalidPublicPayload: "quarantine-hold", boundaryRetirement: "application" } }
+  }
+};
+void v11Project;
+const skipPolicy: ProjectConfig<AppChannels> = {
+  ...project,
+  // @ts-expect-error There is no ignore, discard, or skip policy.
+  failureHandling: { sources: { orders: { invalidJson: "ignore" } } }
+};
+void skipPolicy;
+const integrityPolicy: ProjectConfig<AppChannels> = {
+  ...project,
+  // @ts-expect-error Integrity failures have no policy key; they always hold.
+  failureHandling: { sources: { orders: { revisionConflict: "quarantine-resync" } } }
+};
+void integrityPolicy;
+const metadataCapture: ProjectConfig<AppChannels> = {
+  ...project,
+  // @ts-expect-error Only full-record capture exists in V1.1.
+  failureHandling: { quarantine: { topic: "q", capture: "metadata-only" }, sources: {} }
+};
+void metadataCapture;
+
+const guard: SourceRecoveryHandlers = {
+  recover: ({ prior, incident }) => incident.failureClass === "invalid-json" && prior === null
+    ? { decision: "recoverable", context: { watermark: "42" }, evidenceRef: "outbox:42" }
+    : { decision: "hold", reason: "coverage unknown" },
+  retire: ({ boundary }) => boundary.id.length > 0
+};
+void guard;
+// @ts-expect-error The guard cannot return a skip decision.
+const skippingGuard: SourceRecoveryHandlers = { recover: () => ({ decision: "skip" }) };
+void skippingGuard;
+// @ts-expect-error The gateway assigns boundary IDs; a guard returns only context.
+const forgedBoundary: SourceRecoveryHandlers = { recover: () => ({ decision: "recoverable", boundary: { id: "rb1:x", context: {} }, evidenceRef: "x" }) };
+void forgedBoundary;
+
+declare const v11Handlers: HandlerRegistry<AppChannels>;
+const acknowledging: HandlerRegistry<AppChannels> = {
+  ...v11Handlers,
+  sources: { orders: guard },
+  channels: {
+    orderStatus: {
+      ...v11Handlers.channels.orderStatus,
+      snapshot: ({ recovery }) => ({
+        revision: "7",
+        data: { orderId: "x", status: "done", progress: 100 },
+        ...(recovery === undefined ? {} : { recoveryBoundaryId: recovery.boundaryId })
+      })
+    }
+  }
+};
+void acknowledging;
+void new TransientMappingError("pricing service unavailable");
+
+// Workbench host contract (WHC-1), added with the V1.1 workbench seam.
+const hosted: WorkbenchHostConfig = {
+  hostContract: 1, apiBase: "/workbench/api/v1", auth: { mode: "session" },
+  environment: { kind: "sandbox", label: "Synthetic fixture" }
+};
+void hosted;
+// Revision 0.3: a cross-origin API in session mode. That apiOrigin requires session mode is checked
+// at runtime by validateWorkbenchHostConfig (packages/contracts/test/workbench.test.ts), not here.
+const splitOrigin: WorkbenchHostConfig = {
+  hostContract: 1, apiOrigin: "https://demo.streamotter.app", apiBase: "/workbench/api/v1", auth: { mode: "session" }
+};
+void splitOrigin;
+// @ts-expect-error apiOrigin is one origin string, never a list or a URL object.
+const originList: WorkbenchHostConfig = { hostContract: 1, apiOrigin: ["https://a.example"], auth: { mode: "session" } };
+void originList;
+const entry: WorkbenchHostManifest["entry"] = { script: "app.js", style: "styles.css", hostStyle: "workbench-host.css", icon: "favicon.svg" };
+void entry;
+// @ts-expect-error Revision 0.3 manifests always name the scoped stylesheet for hosts.
+const unscopedOnly: WorkbenchHostManifest["entry"] = { script: "app.js", style: "styles.css", icon: "favicon.svg" };
+void unscopedOnly;
+// @ts-expect-error Only host contract 1 exists.
+const futureContract: WorkbenchHostConfig = { hostContract: 2 };
+void futureContract;
+// @ts-expect-error A boot block never carries a credential.
+const tokenInBootBlock: WorkbenchHostConfig = { hostContract: 1, auth: { mode: "token", token: "secret" } };
+void tokenInBootBlock;
+// @ts-expect-error Retiring a recovery boundary is CLI-only and never a workbench operation.
+const retire: WorkbenchOperation = "sources.retire-boundary";
+void retire;
+const discovered: ManagementOperations["GET /management/v1/workbench"]["response"] = {
+  hostContract: 1, operations: ["health", "failures.list"], limits: { maxRequestBytes: 65_536 }
+};
+void discovered;
+
+// V1.1 health listener (ADR-15C §4).
+const health: HealthListenerOptions = { port: 7402 };
+void health;
+// @ts-expect-error The health port is a number, not a host:port string.
+const healthString: HealthListenerOptions = { port: "127.0.0.1:7402" };
+void healthString;
+const notReady: HealthResponse = { status: "unavailable", reasons: ["source-held", "journal"] };
+void notReady;
+// @ts-expect-error Readiness reasons are categories, never topic names or incident IDs.
+const leaky: HealthResponse = { status: "unavailable", reasons: ["orders-topic"] };
+void leaky;

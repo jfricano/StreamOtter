@@ -43,3 +43,10 @@ export function time(iso: string): string {
 export function short(id: string | undefined, length = 8): string {
   return id === undefined ? "" : id.slice(0, length);
 }
+
+export const UNAVAILABLE_TEXT = "Not available in this environment";
+
+/** Stands in for a control whose operations this environment does not offer. It never calls them. */
+export function unavailable(what: string, requires: readonly string[]): HTMLSpanElement {
+  return h("span", { class: "unavailable small", title: `Requires: ${requires.join(", ")}` }, `${what}: ${UNAVAILABLE_TEXT}`);
+}

@@ -50,6 +50,10 @@ describe("workbench in a browser", { skip: existsSync(resolve(WORKBENCH, "index.
     await page.getByRole("button", { name: "Open workbench" }).click();
     await page.getByText("Sources ready").waitFor();
     assert.equal(await tab("Connect").getAttribute("aria-selected"), "true");
+    // Native mode (no boot block): the mount is not marked, and the page's own styles.css applies.
+    assert.equal(await page.locator("#app").getAttribute("data-streamotter-workbench"), null);
+    assert.deepEqual(await page.evaluate(() => Array.from(document.styleSheets).map(sheet => sheet.href === null ? "inline" : new URL(sheet.href).pathname)), ["/styles.css"]);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--radius").trim()), "8px");
     problems.length = 0; // The deliberate wrong-token attempt logged expected 401 responses.
   });
 

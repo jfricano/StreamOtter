@@ -10,7 +10,7 @@ Security problems: follow [SECURITY.md](./SECURITY.md), not the public issue tra
 
 ## Setup
 
-- Node.js 24 or later (CI runs 24 and 26).
+- Node.js 24 or later (CI runs 24 and 26). Use 24.15 or later to run the failure-journal tests: on earlier Node 24 releases the journal refuses to open, and its SQLite tests skip.
 - pnpm 11.19.0, the version in `packageManager`. `npx pnpm@11.19.0 <command>` works without a global install.
 
 ```bash
@@ -33,6 +33,7 @@ Tests and type-checks run the TypeScript sources through the `streamotter-source
 | `pnpm test:kafka` | `pnpm kafka:setup` once, then `pnpm kafka:start` | Nightly |
 | `pnpm test:browser` | `pnpm browsers:setup` once (Linux may also need Playwright's system libraries) | Nightly |
 | `pnpm test:deploy` | `pnpm deploy:setup` once, plus the running broker | Nightly |
+| `pnpm test:kafka:replicated` (V1.1 F47: quarantine evidence under leader and ISR failure) | `pnpm kafka:setup` once, then `./scripts/kafka/replicated-start.sh` (three brokers on ports 29092–29094 and three controllers; stop with `./scripts/kafka/replicated-stop.sh`). Skips when the cluster isn't running. The scripts are written for Linux and macOS, but have only run on Linux so far | No; run by hand before a release |
 
 With the broker running, `pnpm test:install` also runs the installed `streamotter start` against TLS Kafka.
 
