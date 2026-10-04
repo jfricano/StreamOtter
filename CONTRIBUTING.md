@@ -33,6 +33,7 @@ Tests and type-checks run the TypeScript sources through the `streamotter-source
 | `pnpm test:kafka` | `pnpm kafka:setup` once, then `pnpm kafka:start` | Nightly |
 | `pnpm test:browser` | `pnpm browsers:setup` once (Linux may also need Playwright's system libraries) | Nightly |
 | `pnpm test:deploy` | `pnpm deploy:setup` once, plus the running broker | Nightly |
+| `pnpm test:kafka:replicated` (V1.1 F47: quarantine evidence under leader and ISR failure) | `pnpm kafka:setup` once, then `./scripts/kafka/replicated-start.sh` (three brokers on ports 29092–29094 and three controllers; stop with `./scripts/kafka/replicated-stop.sh`). Skips when the cluster isn't running | No; run by hand before a release |
 
 With the broker running, `pnpm test:install` also runs the installed `streamotter start` against TLS Kafka.
 

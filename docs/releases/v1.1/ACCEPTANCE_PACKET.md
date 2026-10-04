@@ -101,6 +101,8 @@ These ACLs follow from the client calls. They have not been checked against a br
 - Moving a consumer group past a record still in the topic is done with Kafka's own tools, not by StreamOtter.
 - The operator socket is not available on Windows.
 - Some status fields (`store.durable`, `openIncidents`, `circuit.reason`, `quarantine.topic`) are returned but not yet described in the API draft.
+- `KafkaQuarantineReader` reports `unavailable` on a coordinator reload (`GROUP_LOAD_IN_PROGRESS`) right after a broker rejoins, instead of retrying within its deadline. It fails closed; the operator repeats the command.
+- If a source's group coordinator is lost during an advance, the assignment epoch changes and the incident becomes `uncertain`; a restart reconciles it. Seen once in an F47 development run, not covered by a test.
 - The partial and not-run rows in §4.
 
 ## 10. Recommended release status

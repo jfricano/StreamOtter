@@ -191,7 +191,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Health and lifecycle states | F43 | Partial | An unresolved commit has no readiness test of its own. |
 | Firefox and WebKit | F45 | Not run | Only Chromium could run in the build environment. |
 | Packed install, production proxy, crash restart | F46 | Implemented | The proxy deployment test runs without `failureHandling`. |
-| Replicated Kafka under broker failure | F47 | Planned | |
+| Replicated Kafka under broker failure | F47 | Partial | One machine, loopback, one partition, broker SIGKILL only (leader loss, and ISR below `min.insync.replicas`). |
 | Upgrade, then downgrade, with open incidents | F48 | Partial | Restarts in the test are graceful; no SIGKILL during a downgrade. |
 
 ### Runs recorded in the implementation log
@@ -209,7 +209,7 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 
 ### What this does not establish
 
-- **Broker-failure durability.** Every Kafka run used one local broker. Nothing here shows that quarantine evidence survives a broker or leader failure (F47).
+- **Broker-failure durability beyond the F47 envelope.** F47 ran on a local three-broker cluster: acknowledged quarantine copies survived a leader SIGKILL, and writes were refused while the ISR was below `min.insync.replicas`. It says nothing about disk or fsync loss, network partitions, controller failure, managed services or more than one partition. Every other Kafka run used one local broker.
 - **ACL-enabled brokers.** The ACL list in the [runbook](./guides/source-failures.md#61-credentials-and-acls) follows from the client calls; no run used a broker with authorization enabled.
 - **Browsers other than Chromium** (F45).
 - **A crash during a downgrade** (F48), and restart of a production deployment behind a proxy with failure handling on (F46).

@@ -34,6 +34,9 @@ pnpm test:install    # with the broker running, this includes the installed `str
 pnpm test:browser
 pnpm test:deploy
 pnpm kafka:stop
+./scripts/kafka/replicated-start.sh
+pnpm test:kafka:replicated   # F47; skips when the cluster isn't running
+./scripts/kafka/replicated-stop.sh
 ```
 
 - [ ] Every suite passes. Record new results in `docs/IMPLEMENTATION_STATUS.md` if they changed.
