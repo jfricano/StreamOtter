@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { DEFAULT_LIMITS, type Result, type Schema } from "@streamotter/contracts";
 import { ByteBudget, SubscriptionBudget } from "../src/runtime/budget.ts";
+import type { ChannelRuntime, GatewayCore } from "../src/runtime/core.ts";
 import { RevocationLog } from "../src/runtime/identity.ts";
+import { ClientSession } from "../src/runtime/session.ts";
 import { TraceBuffer } from "../src/runtime/traces.ts";
-import { invokeHandler, Semaphore, TokenBucket } from "../src/runtime/util.ts";
+import { invokeHandler, Semaphore, silentLogger, TokenBucket } from "../src/runtime/util.ts";
 
 const principal = { subject: "alice", tenantId: "acme", sessionId: "s1", expiresAt: "2099-01-01T00:00:00.000Z", claims: {} };
 
@@ -112,5 +115,44 @@ describe("revocation log", () => {
     assert.equal(log.revokedSince(started, { ...principal, tenantId: "globex" }, channel), false);
     log.add({ kind: "session", tenantId: "acme", sessionId: "s1" }, null);
     assert.equal(log.revokedSince(started, principal), true);
+  });
+});
+
+describe("client session", () => {
+  const paramsSchema: Schema = {
+    type: "object", additionalProperties: false, required: ["orderId"], properties: { orderId: { type: "string", minLength: 1, maxLength: 128 } }
+  };
+  function session(mode: GatewayCore["mode"]) {
+    const traces = new TraceBuffer(100, 1_000_000);
+    const core = { mode, limits: DEFAULT_LIMITS, traces, logger: silentLogger, gatewayBudget: new ByteBudget(1_000_000) } as unknown as GatewayCore;
+    const channel = { name: "orderStatus", version: 1, paramsSchema, source: { id: "orders" } } as unknown as ChannelRuntime;
+    const transport = { sendHello() {}, sendState() {}, sendData() {}, sendError() {}, bufferedBytes: () => 0, close() {} };
+    const client = new ClientSession({
+      owner: { core, channel: name => (name === "orderStatus" ? channel : undefined), sessionClosed() {} },
+      transport, principal, identityKey: "k", previewSessionId: null
+    });
+    const subscribe = (channelName: string, params: unknown) => {
+      let result: Result<unknown> | undefined;
+      client.handleSubscribe(
+        { requestId: crypto.randomUUID(), subscriptionId: crypto.randomUUID(), channel: channelName, channelVersion: 1, params },
+        (value: Result<unknown>) => { result = value; }
+      );
+      return result!.ok ? null : result!.error;
+    };
+    return { subscribe, traces };
+  }
+
+  it("answers schema-invalid parameters like an unknown channel in production", () => {
+    const production = session("production");
+    const unknown = production.subscribe("secretChannel", {});
+    const invalid = production.subscribe("orderStatus", {});
+    assert.equal(unknown?.code, "FORBIDDEN");
+    assert.deepEqual({ ...invalid, requestId: "" }, { ...unknown, requestId: "" }, "no channel or parameter names are revealed");
+    assert.deepEqual(production.traces.page({ limit: 10 }).items.map(trace => trace.errorCode), ["CHANNEL_NOT_FOUND", "INVALID_PARAMS"]);
+    // Channel-independent checks still say what is wrong.
+    assert.equal(production.subscribe("secretChannel", { orderId: "x".repeat(5_000) })?.code, "INVALID_PARAMS");
+    const development = session("development").subscribe("orderStatus", {});
+    assert.equal(development?.code, "INVALID_PARAMS");
+    assert.match(development?.message ?? "", /orderId/);
   });
 });

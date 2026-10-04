@@ -70,7 +70,7 @@ Every failure is a `StreamError`: `{ code, message, retryable, requestId, detail
 - `FORBIDDEN`: this user may not see this channel instance. Unknown channels also return `FORBIDDEN`, so nothing leaks. Don't retry.
 - `UNAUTHENTICATED`: the session is invalid or expired. Re-authenticate, then `client.reconnect()`.
 - `RESYNC_REQUIRED`, `TIMEOUT`, `SOURCE_UNAVAILABLE`, `OVERLOADED`: may work later. Offer a retry, but don't loop.
-- `INVALID_PARAMS`: the parameters don't match the channel's schema.
+- `INVALID_PARAMS`: the parameters don't match the channel's schema. A production gateway reports a schema mismatch as `FORBIDDEN`, so it doesn't reveal the channel's parameters.
 - `CLIENT_CLOSED`: the client was closed.
 
 A listener that throws, or returns a rejected promise, fails its subscription with `HANDLER_FAILED`. Keep listeners cheap: state replacement, not heavy processing.
