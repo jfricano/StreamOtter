@@ -217,7 +217,8 @@ export interface IncidentStore {
    *   the new one in force, with failureIds = prior.failureIds + this incident;
    * - sets the incident's progress "advance-pending", recovery "boundary-in-force",
    *   guard and boundaryId, with an "advance-pending" event;
-   * - appends `at` to the source's circuit advances (dropping entries beyond 20).
+   * - appends `at` to the source's circuit advances (dropping entries beyond 20); an incident
+   *   prepared before has its earlier entry removed, so each incident counts once (spec §4).
    * Nothing is written when any check fails. Besides a stale revision or prior
    * (StaleRevisionError) it refuses, with details.reason: an unknown incident
    * (404); "incident-resolved", "boundary-exists" (the ID is taken), and
@@ -777,8 +778,12 @@ export class MemoryIncidentStore implements IncidentStore {
     this.#inForce.set(boundary.sourceId, boundary.boundaryId);
     this.#incidents.set(record.failureId, advanced.record);
     this.#addEvent(record.failureId, advanced.event);
+    // Spec §4 counts distinct incidents: an incident advanced again (after a not-held attempt) moves its entry to the new time.
     const circuit = this.circuit(record.sourceId);
-    this.#circuits.set(record.sourceId, { ...circuit, advances: capAdvances([...circuit.advances, input.at]), revision: circuit.revision + 1 });
+    const advances = [...circuit.advances];
+    const earlier = record.boundaryId === null ? -1 : advances.indexOf(this.#boundaries.get(record.boundaryId)?.createdAt ?? "");
+    if (earlier >= 0) advances.splice(earlier, 1);
+    this.#circuits.set(record.sourceId, { ...circuit, advances: capAdvances([...advances, input.at]), revision: circuit.revision + 1 });
     return { record: structuredClone(advanced.record), boundary: structuredClone(boundary) };
   }
 

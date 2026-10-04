@@ -452,7 +452,7 @@ export class GatewayRuntime implements SessionOwner {
     if (source.status === "healthy") return source.summary();
     if (source.status !== "paused") throw conflict(`Source "${sourceId}" is ${source.status}; only paused sources can be resumed.`);
     // With failure handling, a resume is a retry of the held record and is refused while an advance is unresolved (ADR-15C §6).
-    this.#failures?.beforeRetry(sourceId, "operator retry of the held record");
+    await this.#failures?.beforeRetry(sourceId, "operator retry of the held record");
     this.core.logger.info("Resuming source at its uncommitted position", { sourceId });
     await source.adapter.resume();
     return source.summary();

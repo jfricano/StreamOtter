@@ -82,12 +82,18 @@ export class TrackedSockets {
   }
 }
 
-function kafkaConfig(
+/** Client settings a caller may override; the quarantine writer uses a shorter request deadline (ADR-15A §5). */
+export interface KafkaClientOverrides {
+  requestTimeout?: number;
+}
+
+export function kafkaConfig(
   clientId: string,
   connection: ResolvedKafkaConnection,
   sink: Pick<SourceSink, "logger"> | null,
   sockets: TrackedSockets,
-  quiet: () => boolean = () => false
+  quiet: () => boolean = () => false,
+  overrides: KafkaClientOverrides = {}
 ): KafkaConfig {
   const config: KafkaConfig = {
     clientId,
@@ -95,7 +101,7 @@ function kafkaConfig(
     brokers: [...connection.brokers],
     connectionTimeout: 3_000,
     authenticationTimeout: 10_000,
-    requestTimeout: 30_000,
+    requestTimeout: overrides.requestTimeout ?? 30_000,
     retry: { initialRetryTime: 300, maxRetryTime: 5_000, retries: 8 },
     logLevel: logLevel.ERROR,
     logCreator: () => entry => {
@@ -112,9 +118,11 @@ function kafkaConfig(
 }
 
 /** A KafkaJS client on a resolved profile with socket tracking, for clients other than the source consumer. */
-export function createTrackedKafka(clientId: string, connection: ResolvedKafkaConnection, logger: GatewayLogger): { kafka: KafkaClient; sockets: TrackedSockets } {
+export function createTrackedKafka(
+  clientId: string, connection: ResolvedKafkaConnection, logger: GatewayLogger, overrides: KafkaClientOverrides = {}
+): { kafka: KafkaClient; sockets: TrackedSockets } {
   const sockets = new TrackedSockets();
-  return { kafka: new Kafka(kafkaConfig(clientId, connection, { logger }, sockets)), sockets };
+  return { kafka: new Kafka(kafkaConfig(clientId, connection, { logger }, sockets, () => false, overrides)), sockets };
 }
 
 /**
@@ -303,8 +311,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
 
   /**
    * Commits exactly offset + 1 for the held record, reads the group's committed
-   * offset back through the admin client, and only then seeks past the record and
-   * resumes. Any doubt (a failed commit, a failed or different read-back, or a
+   * offset back through the admin client, lets the caller record the advance, and
+   * only then seeks past the record and resumes. Any doubt (a failed commit, a failed or different read-back, or a
    * rebalance while waiting) is "uncertain" and the source stays paused. This is
    * deliberately stricter than the ordinary commit path, where a failed commit
    * only means a record may be redelivered.
@@ -327,10 +335,17 @@ export class KafkaSourceAdapter implements SourceAdapter {
       return "uncertain";
     }
     let committed: string | null = null;
+    // stop() disconnects only the admin client it finds, so none may be created or left connected once it has begun.
+    // The commit may have landed, so the advance is uncertain and restart reconciles it.
+    if (this.#stopping) return "uncertain";
     try {
-      this.#admin ??= this.#kafka.admin();
-      await this.#admin.connect();
-      const offsets = await this.#admin.fetchOffsets({ groupId: this.#source.consumerGroup, topics: [position.topic] });
+      const admin = this.#admin ??= this.#kafka.admin();
+      await admin.connect();
+      if (this.#stopping) {
+        await admin.disconnect().catch(() => undefined);
+        return "uncertain";
+      }
+      const offsets = await admin.fetchOffsets({ groupId: this.#source.consumerGroup, topics: [position.topic] });
       committed = offsets.find(entry => entry.topic === position.topic)?.partitions.find(entry => entry.partition === position.partition)?.offset ?? null;
     } catch (error) {
       this.#sink.logger.warn("The committed offset could not be read back; the source stays paused", {
@@ -345,6 +360,14 @@ export class KafkaSourceAdapter implements SourceAdapter {
       return "uncertain";
     }
     this.#onCommit(position);
+    // The caller records the advance before anything after the record can be consumed (spec §6).
+    if (held.confirmed !== undefined && !(await held.confirmed().catch(() => false))) {
+      this.#sink.logger.warn("The advance is committed but was not recorded; the source stays paused until a restart reconciles it", {
+        sourceId: this.#sourceId, topic: position.topic, partition: position.partition, offset: position.offset
+      });
+      return "advanced";
+    }
+    if (this.#stopping) return "advanced";
     this.#held = null;
     this.#paused = false;
     consumer.seek({ topic: position.topic, partition: position.partition, offset: next });

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
@@ -10,7 +11,7 @@ import { describeError, invokeHandler, newId, nowIso, sha256Hex } from "../runti
 import type { ProcessOutcome, SourceAdapter, SourceInput } from "../sources/types.ts";
 import { evidenceHash, keyAndHeaderBytes, MAX_CAPTURED_KEY_AND_HEADER_BYTES } from "./evidence.ts";
 import type { QuarantineOutcome, QuarantineWriter } from "./quarantine.ts";
-import type { EvidenceSummary, GuardResult, IncidentEventName, IncidentRecord, IncidentStore, RawEvidence, StoredBoundary } from "./store.ts";
+import { StaleRevisionError, type EvidenceSummary, type GuardResult, type IncidentEventName, type IncidentRecord, type IncidentStore, type RawEvidence, type StoredBoundary } from "./store.ts";
 
 /** Spec §13: the recovery guard's budget, independent of handlerTimeoutMs. */
 export const GUARD_TIMEOUT_MS = 10_000;
@@ -22,14 +23,14 @@ export type BoundaryInForce = { id: string; context: Json } | null;
 /** Reads a consumer group's committed offset for one partition ("-1" or null when none). */
 export type CommittedOffsetReader = (source: FailureSource, topic: string, partition: number) => Promise<string | null>;
 
-/** Test-only instrumentation: awaited just before advancePast and just after it reports "advanced". */
+/** Test-only instrumentation: awaited just before advancePast, and just after the adapter confirms the advance (before it is journaled). */
 export interface AdvanceHooks {
   beforeAdvance?: (failureId: string) => Promise<void>;
   afterAdvance?: (failureId: string) => Promise<void>;
 }
 
-/** Progress states that mean the record is still held at its position. */
-const WATCHED_PROGRESS = new Set<IncidentRecord["progress"]>(["held", "retrying", "uncertain"]);
+/** Progress states that mean the record is still held at its position, or that its advance is unresolved. */
+const WATCHED_PROGRESS = new Set<IncidentRecord["progress"]>(["held", "retrying", "advance-pending", "uncertain"]);
 
 type GuardOutcome =
   | { decision: "recoverable"; context: Json; result: GuardResult }
@@ -71,6 +72,10 @@ export class FailureService {
   readonly #fingerprints: IncidentRecord["fingerprints"];
   readonly #maxSourceRecordBytes: number;
   readonly #chains = new Map<string, Promise<void>>();
+  /** The sources whose failure chain the current async context is running in, so run() can nest without waiting on itself. */
+  readonly #inChain = new AsyncLocalStorage<ReadonlySet<string>>();
+  /** Positions handed to held() whose disposition has not started, and whether the record committed meanwhile. */
+  readonly #queued = new Map<string, boolean>();
   readonly #policies = new Map<string, ResolvedSourcePolicy>();
   /** Sources with an incident that a later successful commit could resolve; keeps the commit path cheap. */
   readonly #watched = new Set<string>();
@@ -160,6 +165,12 @@ export class FailureService {
    */
   async #reconcile(source: FailureSource, incident: IncidentRecord, committedOffset: CommittedOffsetReader | undefined): Promise<void> {
     const position = incident.position;
+    const mismatch = this.#clusterMismatch(source, incident);
+    if (mismatch !== null) {
+      // Another cluster's committed offsets say nothing about this advance.
+      this.#update(incident, { progress: "uncertain", diagnosis: mismatch }, "held", "cluster-mismatch at startup");
+      return;
+    }
     if (position.kind !== "kafka") {
       this.#update(incident, { progress: "held" }, "held", "the fixture restarted from its first record, so the advance is evaluated again when the record is reached");
       return;
@@ -191,8 +202,9 @@ export class FailureService {
 
   /** Called by the adapter once it is paused at the failing record. Serialized per source. */
   held(source: FailureSource, input: SourceInput, outcome: Pause): Promise<void> {
+    this.#queued.set(positionKey(source.id, input.position), false);
     const previous = this.#chains.get(source.id) ?? Promise.resolve();
-    const next = previous.then(() => this.#dispose(source, input, outcome)).catch(error => {
+    const next = previous.then(() => this.#inSource(source.id, () => this.#dispose(source, input, outcome))).catch(error => {
       this.#logger.error("Failure handling stopped with an unexpected error; the source stays paused", { sourceId: source.id, error: (error as Error).name });
     });
     this.#chains.set(source.id, next);
@@ -202,13 +214,20 @@ export class FailureService {
   /**
    * Runs operator work in the source's failure chain, after any disposition
    * already queued and before any queued later, so an operator action never
-   * interleaves with the guarded continuation of the same source.
+   * interleaves with the guarded continuation of the same source. Work that
+   * already runs in the source's chain (an operator action that retries the
+   * source, which calls beforeRetry) runs directly instead of waiting on itself.
    */
   run<T>(sourceId: string, work: () => Promise<T> | T): Promise<T> {
+    if (this.#inChain.getStore()?.has(sourceId) === true) return Promise.resolve().then(work);
     const previous = this.#chains.get(sourceId) ?? Promise.resolve();
-    const result = previous.then(work);
+    const result = previous.then(() => this.#inSource(sourceId, work));
     this.#chains.set(sourceId, result.then(() => undefined, () => undefined));
     return result;
+  }
+
+  #inSource<T>(sourceId: string, work: () => Promise<T> | T): Promise<T> | T {
+    return this.#inChain.run(new Set([...(this.#inChain.getStore() ?? []), sourceId]), work);
   }
 
   /** Resolves when every queued disposition has finished; for tests and shutdown. */
@@ -218,9 +237,15 @@ export class FailureService {
 
   /**
    * A record at a held position was processed and committed after a retry or a
-   * restart. The incident is resolved as processed; nothing was skipped.
+   * restart. The incident is resolved as processed; nothing was skipped. The
+   * source stays watched while any other incident is open, including an
+   * advance that is pending or uncertain, which a commit never resolves.
    */
   committed(sourceId: string, position: SourceRecord["position"]): void {
+    if (this.#queued.size > 0) {
+      const key = positionKey(sourceId, position);
+      if (this.#queued.has(key)) this.#queued.set(key, true);
+    }
     if (!this.#watched.has(sourceId)) return;
     let open: IncidentRecord[];
     try {
@@ -230,12 +255,11 @@ export class FailureService {
     }
     let remaining = 0;
     for (const incident of open) {
-      if (incident.progress !== "held" && incident.progress !== "retrying") continue;
-      if (!samePosition(incident.position, position)) {
+      if ((incident.progress === "held" || incident.progress === "retrying") && samePosition(incident.position, position)) {
+        this.#update(incident, { progress: "processed", state: "resolved", resolution: "processed after retry" }, "resolved", "the original record processed successfully");
+      } else {
         remaining++;
-        continue;
       }
-      this.#update(incident, { progress: "processed", state: "resolved", resolution: "processed after retry" }, "resolved", "the original record processed successfully");
     }
     if (remaining === 0) this.#watched.delete(sourceId);
   }
@@ -245,7 +269,9 @@ export class FailureService {
    * later offset on the partition of a held record means the group position
    * moved without an advance this gateway recorded (retention removed the held
    * record, an offset reset, or another consumer committed): the source holds
-   * instead of silently treating the gap as progress (F27, F30). Returns why, or null.
+   * instead of silently treating the gap as progress (F27, F30). An uncertain
+   * advance (unconfirmed, or unexplained at startup) holds every record of the
+   * source until a restart reconciles it (spec §6). Returns why, or null.
    */
   positionProblem(sourceId: string, position: SourceRecord["position"]): string | null {
     if (!this.#watched.has(sourceId) || position.kind !== "kafka") return null;
@@ -254,6 +280,10 @@ export class FailureService {
       open = this.store.open(sourceId);
     } catch (error) {
       return `the failure journal could not be read: ${(error as Error).message.slice(0, 200)}`;
+    }
+    const uncertain = open.find(incident => incident.progress === "uncertain");
+    if (uncertain !== undefined) {
+      return `incident ${uncertain.failureId} has an unresolved advance (uncertain); the source stays held until a restart reconciles it from the group's committed offset`;
     }
     for (const incident of open) {
       const held = incident.position;
@@ -273,8 +303,14 @@ export class FailureService {
    * The guarded form of resumeSource for a source with failure handling
    * (ADR-15C §6): it retries the held record and never skips it. Refused while an
    * advance is pending or uncertain, and while a quarantine-resync source's circuit is open.
+   * Runs in the source's failure chain, so a disposition already queued for the
+   * held record opens its incident before the retry marks it retrying.
    */
-  beforeRetry(sourceId: string, reason: string): void {
+  beforeRetry(sourceId: string, reason: string): Promise<void> {
+    return this.run(sourceId, () => this.#markRetrying(sourceId, reason));
+  }
+
+  #markRetrying(sourceId: string, reason: string): void {
     const open = this.store.open(sourceId);
     const blocking = open.find(incident => incident.progress === "advance-pending" || incident.progress === "uncertain");
     if (blocking !== undefined) {
@@ -306,6 +342,14 @@ export class FailureService {
   // --- disposition ----------------------------------------------------------------
 
   async #dispose(source: FailureSource, input: SourceInput, outcome: Pause): Promise<void> {
+    const key = positionKey(source.id, input.position);
+    const processed = this.#queued.get(key) === true;
+    this.#queued.delete(key);
+    if (processed) {
+      // A retry processed and committed the record before this disposition ran: the source is no longer paused at it.
+      this.#logger.info("A held record processed before its failure was recorded; no incident is opened", { sourceId: source.id, failureClass: outcome.failureClass });
+      return;
+    }
     const failureClass = outcome.failureClass;
     const policy = policyFor(this.policy(source.id), failureClass);
     const raw = rawEvidence(input);
@@ -348,6 +392,8 @@ export class FailureService {
       return;
     }
 
+    // Quarantine and continuation both name the record by its position, which another cluster does not share (ADR-15A §3).
+    if (policy !== "pause" && this.#holdOnClusterMismatch(source, record)) return;
     if (policy === "pause") {
       if (record.recovery !== "not-applicable" || record.quarantine !== "not-required") return;
       this.#emit(record, "held", "pause policy");
@@ -368,20 +414,40 @@ export class FailureService {
     const outcomeOfWrite = await this.#write(source, record, raw);
     switch (outcomeOfWrite.kind) {
       case "acknowledged": {
-        const quarantined = this.#update(record, {
+        const quarantined = this.#recordQuarantine(record, {
           quarantine: "acknowledged",
           quarantineCoordinates: outcomeOfWrite.partition < 0 ? null : { partition: outcomeOfWrite.partition, offset: outcomeOfWrite.offset }
         }, "quarantined", summary.location === "local" ? "stored as local fixture evidence, not Kafka" : `acknowledged at partition ${outcomeOfWrite.partition}`);
-        if (policy === "quarantine-resync" && quarantined !== record) await this.#continue(source, quarantined);
+        if (policy === "quarantine-resync" && quarantined !== null) await this.#continue(source, quarantined);
         return;
       }
       case "unknown":
-        this.#update(record, { quarantine: "unknown" }, "quarantine-unknown", outcomeOfWrite.reason);
+        this.#recordQuarantine(record, { quarantine: "unknown" }, "quarantine-unknown", outcomeOfWrite.reason);
         return;
       case "failed":
-        this.#update(record, { quarantine: "failed" }, "held", `quarantine write refused: ${outcomeOfWrite.reason}`);
+        this.#recordQuarantine(record, { quarantine: "failed" }, "held", `quarantine write refused: ${outcomeOfWrite.reason}`);
         return;
     }
+  }
+
+  /**
+   * Records a quarantine write's outcome. The write can outlast a change to the
+   * incident (an operator retry, or the retried record processing): the outcome
+   * is then applied to the current incident while its quarantine is still
+   * pending, because the write happened either way, and nothing continues from
+   * it. Returns the updated incident, or null when it was superseded or not recorded.
+   */
+  #recordQuarantine(record: IncidentRecord, patch: Parameters<IncidentStore["update"]>[2], event: IncidentEventName, detail: string): IncidentRecord | null {
+    const updated = this.#update(record, patch, event, detail);
+    if (updated !== record) return updated;
+    let current: IncidentRecord | null;
+    try {
+      current = this.store.get(record.failureId);
+    } catch {
+      return null;
+    }
+    if (current !== null && current.revision !== record.revision && current.quarantine === "pending") this.#update(current, patch, event, detail);
+    return null;
   }
 
   // --- guarded continuation (quarantine-resync, ADR-15B) ----------------------------
@@ -430,10 +496,14 @@ export class FailureService {
       return;
     }
     if (prior !== null && prior.generation !== source.config.generation) prior = null;
+    if (this.#holdOnClusterMismatch(source, record)) return;
     const pending = this.#update(record, { recovery: "guard-pending" }, "held", "running the recovery guard");
     if (pending === record) return;
     const outcome = await this.#runGuard(guard, source, pending, prior);
-    if (this.#stopSignal.aborted) return;
+    if (this.#stopSignal.aborted) {
+      this.#releaseGuard(pending, "the gateway stopped while the recovery guard ran; the record stays held");
+      return;
+    }
 
     // Recheck after the await: a stop, a newer observation or an operator action wins over this result (F18, F25).
     const current = this.store.get(pending.failureId);
@@ -447,6 +517,7 @@ export class FailureService {
       return;
     }
 
+    if (this.#holdOnClusterMismatch(source, current)) return;
     const boundaryId = `rb1:${randomBytes(16).toString("hex")}`;
     let prepared: IncidentRecord;
     try {
@@ -459,10 +530,16 @@ export class FailureService {
       }).record;
       this.#journalError = null;
     } catch (error) {
-      this.#journalError = (error as Error).message;
-      this.#logger.error("The recovery boundary could not be persisted; the record stays held and the offset does not move", {
-        failureId: current.failureId, error: (error as Error).message.slice(0, 200)
-      });
+      if (error instanceof StaleRevisionError) {
+        // The incident or the source's boundary changed since the guard ran; that change decides what happens next.
+        this.#logger.warn("The advance was not prepared because the incident or boundary changed meanwhile", { failureId: current.failureId });
+      } else {
+        this.#journalError = (error as Error).message;
+        this.#logger.error("The recovery boundary could not be persisted; the record stays held and the offset does not move", {
+          failureId: current.failureId, error: (error as Error).message.slice(0, 200)
+        });
+      }
+      this.#releaseGuard(current, "the advance could not be prepared; the record stays held");
       return;
     }
     this.#emit(prepared, "advance-pending", boundaryId);
@@ -470,19 +547,37 @@ export class FailureService {
     this.#onBoundary(sourceId, { id: boundaryId, context: outcome.context });
 
     await this.#hooks.beforeAdvance?.(prepared.failureId);
+    // The adapter resumes only after "advanced" is journaled. If that write fails the source stays paused with the
+    // offset moved, and a restart confirms the advance from the group's committed offset (offset + 1), so no later
+    // record is consumed while the journal still says advance-pending (which would read as unexplained progress).
+    let recorded: IncidentRecord | null = null;
+    let asked = false;
+    const confirmed = async (): Promise<boolean> => {
+      asked = true;
+      await this.#hooks.afterAdvance?.(prepared.failureId);
+      const advanced = this.#update(prepared, { progress: "advanced", state: "resolved", resolution: `advanced past under recovery boundary ${boundaryId}` },
+        "advance-confirmed", "committed past the record and confirmed by read-back; snapshots must acknowledge the boundary");
+      if (advanced === prepared) return false;
+      recorded = advanced;
+      return true;
+    };
     const adapter = source.adapter;
     let result: Awaited<ReturnType<NonNullable<FailureSource["adapter"]>["advancePast"]>>;
     try {
-      result = adapter === null ? "not-held" : await adapter.advancePast({ position: prepared.position });
+      result = adapter === null ? "not-held" : await adapter.advancePast({ position: prepared.position, confirmed });
     } catch {
       result = "uncertain";
     }
-    if (result === "advanced") await this.#hooks.afterAdvance?.(prepared.failureId);
     switch (result) {
       case "advanced":
-        this.#update(prepared, { progress: "advanced", state: "resolved", resolution: `advanced past under recovery boundary ${boundaryId}` },
-          "advance-confirmed", "committed past the record and confirmed by read-back; snapshots must acknowledge the boundary");
-        this.#emit(prepared, "snapshot-recovery-required", boundaryId);
+        if (!asked) await confirmed();
+        if (recorded === null) {
+          this.#logger.error("The advance is committed and confirmed, but the journal could not record it; the source stays paused and a restart confirms it", {
+            failureId: prepared.failureId
+          });
+          return;
+        }
+        this.#emit(recorded, "snapshot-recovery-required", boundaryId);
         return;
       case "not-held":
         // Nothing was committed (stop or rebalance). The cumulative boundary stays in force, which only adds obligations.
@@ -493,6 +588,44 @@ export class FailureService {
         this.#update(prepared, { progress: "uncertain" }, "held", "the advance could not be confirmed; the source stays paused until it is reconciled");
         return;
     }
+  }
+
+  /**
+   * Puts recovery back to "held" when the guard's turn ended without an
+   * advance, so the incident does not read as guard-pending (which refuses
+   * operator actions) after a stop or a failed prepare. Best effort: a journal
+   * that cannot be written leaves it as it is, and a changed incident is left alone.
+   */
+  #releaseGuard(pending: IncidentRecord, detail: string): void {
+    let current: IncidentRecord | null;
+    try {
+      current = this.store.get(pending.failureId);
+    } catch {
+      return;
+    }
+    if (current === null || current.revision !== pending.revision || current.recovery !== "guard-pending") return;
+    this.#update(current, { recovery: "held" }, "held", detail);
+  }
+
+  /**
+   * ADR-15A §3: an incident records the Kafka cluster it was captured on, and
+   * the gateway never advances on another one, because the same coordinates may
+   * name a different record there. Returns the integrity diagnosis, or null.
+   */
+  #clusterMismatch(source: FailureSource, incident: IncidentRecord): string | null {
+    if (source.config.kind !== "kafka" || incident.clusterId === null) return null;
+    const current = this.#clusterIds.get(source.id) ?? null;
+    if (current === incident.clusterId) return null;
+    return `Kafka cluster mismatch: the incident was captured on cluster ${incident.clusterId}, but the source now reads ${current === null ? "a cluster whose ID is unknown" : `cluster ${current}`}. The same position may name a different record, so this is an integrity failure: the source stays held and is never advanced. If the source moved to another cluster, change its generation and rebaseline.`;
+  }
+
+  /** Holds the incident with the cluster-mismatch diagnosis when there is one; true when it did. */
+  #holdOnClusterMismatch(source: FailureSource, record: IncidentRecord): boolean {
+    const mismatch = this.#clusterMismatch(source, record);
+    if (mismatch === null) return false;
+    this.#logger.error("The incident was captured on another Kafka cluster; the source stays held and is never advanced", { failureId: record.failureId, sourceId: source.id });
+    this.#update(record, { diagnosis: mismatch, recovery: "held" }, "held", "cluster-mismatch");
+    return true;
   }
 
   async #runGuard(guard: SourceRecoveryHandlers, source: FailureSource, record: IncidentRecord, prior: StoredBoundary | null): Promise<GuardOutcome> {
@@ -628,6 +761,11 @@ export class FailureService {
       this.#emit(updated, event, detail);
       return updated;
     } catch (error) {
+      if (error instanceof StaleRevisionError) {
+        // Not a journal failure: a newer change (an operator action, a commit of the retried record) won, and it decides what happens next.
+        this.#logger.warn("A failure-handling state change was superseded by a newer change to the incident; it was not applied", { failureId: record.failureId, event });
+        return record;
+      }
       this.#journalError = (error as Error).message;
       this.#logger.error("The failure journal could not record a state change; the source stays paused", {
         failureId: record.failureId, event, error: (error as Error).message.slice(0, 200)
@@ -659,6 +797,10 @@ function rawEvidence(input: SourceInput): RawEvidence | null {
   else if (input.value !== undefined) value = encoder.encode(JSON.stringify(input.value));
   else return null;
   return { key: key === null ? null : new Uint8Array(key), value: value === null ? null : new Uint8Array(value), headers: (input.headers ?? []).map(header => ({ name: header.name, value: new Uint8Array(header.value) })) };
+}
+
+function positionKey(sourceId: string, position: SourceRecord["position"]): string {
+  return position.kind === "kafka" ? `${sourceId}\u0000${position.topic}\u0000${position.partition}\u0000${position.offset}` : `${sourceId}\u0000${position.index}`;
 }
 
 function samePosition(a: SourceRecord["position"], b: SourceRecord["position"]): boolean {

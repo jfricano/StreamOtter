@@ -392,6 +392,8 @@ Two topics have retention that matters.
 
 **The source topic.** A held record is uncommitted, so retention can delete it while you work on the fix. The gateway then sees the group's position past the held record without a recorded advance. It holds the source ("Source progress moved past a held record without a recorded advance; the source is held") instead of treating that as progress. Retries hold again, because the record is gone. The way out is a rebaseline ([§6.10](#610-rebaseline-a-source)). Prevent it: keep source retention well above how long a hold may last, and alert on readiness. The same applies when someone resets the group's offsets by hand or another consumer commits on the group.
 
+**Another cluster.** An incident records the Kafka cluster ID it was captured on. If the connection profile now reaches a different cluster (or the quarantine check can't name one), the incident holds with "Kafka cluster mismatch": the record at the same position may be a different record there, so it is never quarantined or advanced, and an advance that was pending at the restart stays `uncertain` instead of being confirmed from the other cluster's offsets. Point the profile back at the original cluster, or, if the source really moved, change its `generation` and rebaseline ([§6.10](#610-rebaseline-a-source)).
+
 ### 6.5 Repair a poison record
 
 `failures show` names the class, the stage and the next action. Then:
@@ -429,7 +431,7 @@ On start, before any source is ready, the gateway:
 
 - **Takes the journal lock.** `journal.lock` names the owning pid and host. A lock left by a dead process on the same host is replaced, including one that names the new gateway's own pid (a container restarted in place often reuses pid 1), but only once SQLite confirms no other process holds the journal open. A lock naming another host is refused, because its owner can't be checked: confirm that gateway is stopped, remove the lock, and start again.
 - **Restores the boundary in force**, so no snapshot after a restart skips it.
-- **Reconciles unresolved advances** (`advance-pending`, `uncertain`) against the consumer group's committed offset. Offset + 1 confirms the advance. At or below the record means it never happened, and the incident is `held` again. Anything further is unexplained, and the source holds. If the committed offset can't be read, the incident stays `uncertain` and held; restart once the broker is reachable.
+- **Reconciles unresolved advances** (`advance-pending`, `uncertain`) against the consumer group's committed offset. Offset + 1 confirms the advance. At or below the record means it never happened, and the incident is `held` again. Anything further is unexplained, and the source holds. If the committed offset can't be read, the incident stays `uncertain` and held; restart once the broker is reachable. While an incident is `uncertain`, the whole source holds: the next record on any partition is not processed.
 - **Marks interrupted operator operations `unknown`.** They're logged ("An operator operation was interrupted by a restart; its outcome is unknown and it is not rerun") and never rerun. A CLI command that was waiting may have exited 1 or 4.
 
 After an `unknown` operation: run `failures show` and read the incident's history, which records each operation ID. Decide again from what you see. For a redrive, evaluate again and approve the new plan with a new operation ID; reusing the old ID returns the recorded `unknown`.

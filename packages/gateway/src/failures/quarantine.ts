@@ -89,6 +89,14 @@ function brokerErrorType(error: unknown): string | null {
 }
 
 /**
+ * The client-side deadline for each quarantine request (ADR-15A §5, spec §13).
+ * The produce request's own `timeout` only bounds the broker's wait for
+ * replicas; this bounds the whole attempt, so an unanswered request becomes
+ * unknown after 10 s instead of the 30 s other clients use.
+ */
+export const QUARANTINE_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
  * Writes quarantine evidence to the pre-provisioned topic on the project's one
  * Kafka cluster: an idempotent producer, acks=all, one request in flight, no
  * automatic topic creation, a 10-second request deadline and two retries
@@ -121,7 +129,7 @@ export class KafkaQuarantineWriter implements QuarantineWriter {
    * hold the largest accepted record plus headroom, then connects the producer.
    */
   async start(): Promise<QuarantineTopicReport> {
-    const { kafka, sockets } = createTrackedKafka(this.#clientId, this.#connection, this.#logger);
+    const { kafka, sockets } = createTrackedKafka(this.#clientId, this.#connection, this.#logger, { requestTimeout: QUARANTINE_REQUEST_TIMEOUT_MS });
     this.#sockets = sockets;
     const admin: Admin = kafka.admin();
     try {
@@ -188,7 +196,7 @@ export class KafkaQuarantineWriter implements QuarantineWriter {
       const [result] = await producer.send({
         topic: this.topic,
         acks: -1,
-        timeout: 10_000,
+        timeout: QUARANTINE_REQUEST_TIMEOUT_MS,
         messages: [{
           key: write.evidence.key === null ? null : Buffer.from(write.evidence.key),
           value: write.evidence.value === null ? null : Buffer.from(write.evidence.value),

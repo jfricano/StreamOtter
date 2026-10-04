@@ -407,6 +407,24 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       store.close();
     });
 
+    it("counts an incident advanced twice once in the circuit, at its latest advance (spec §4)", () => {
+      const store = create();
+      store.claim(PROJECT, SOURCES);
+      store.observe(observation("f1:a"));
+      store.observe(observation("f1:b", { position: { kind: "kafka", topic: "orders", partition: 0, offset: "50" } }));
+      const t1 = "2026-10-03T00:01:00.000Z";
+      const t2 = "2026-10-03T00:01:10.000Z";
+      const t3 = "2026-10-03T00:01:20.000Z";
+      store.prepareAdvance(advance("f1:a", 1, "rb1:one", null, {}, t1));
+      store.prepareAdvance(advance("f1:b", 1, "rb1:two", "rb1:one", {}, t2));
+      // The adapter was no longer paused at f1:a, so nothing was committed and it is held again; its next advance is the same incident.
+      store.update("f1:a", 2, { progress: "held" }, { event: "held", detail: null, operationId: null });
+      store.prepareAdvance(advance("f1:a", 3, "rb1:three", "rb1:two", {}, t3));
+      assert.deepEqual(store.circuit("orders").advances, [t2, t3]);
+      assert.equal(store.circuit("orders").revision, 3);
+      store.close();
+    });
+
     it("retires a boundary only at its revision and never while its incident is held", () => {
       const store = create();
       store.claim(PROJECT, SOURCES);

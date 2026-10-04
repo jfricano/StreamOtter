@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { createServer, type Socket } from "node:net";
 import { describe, it } from "node:test";
 import type { IHeaders } from "kafkajs";
 import type { GatewayLogger } from "@streamotter/contracts";
 import { evidenceHash, flattenKafkaHeaders, sourceHeadersFromQuarantine } from "../src/failures/evidence.ts";
-import { KafkaQuarantineReader, quarantineCoordinateIssue, verifyQuarantineRecord } from "../src/failures/quarantine.ts";
+import {
+  KafkaQuarantineReader, KafkaQuarantineWriter, QUARANTINE_REQUEST_TIMEOUT_MS, quarantineCoordinateIssue, verifyQuarantineRecord
+} from "../src/failures/quarantine.ts";
 import type { RawEvidence } from "../src/failures/store.ts";
 
 /** The pure parts of reading quarantine evidence back: coordinate checks, header reconstruction and record verification. */
@@ -178,5 +181,30 @@ describe("KafkaQuarantineReader without a broker", () => {
     await quarantine.stop();
     assert.deepEqual(await quarantine.read(request), { kind: "unavailable", reason: "the quarantine reader is stopped" });
     await quarantine.stop();
+  });
+});
+
+describe("quarantine writer deadline", () => {
+  it("gives up on an unanswered request after the 10-second ADR-15A §5 deadline, not the 30-second client default", { timeout: 40_000 }, async () => {
+    // A listener that accepts the connection and never answers: the first request can only end at the client's request deadline.
+    const sockets = new Set<Socket>();
+    const server = createServer(socket => { sockets.add(socket); socket.on("error", () => undefined); });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    const writer = new KafkaQuarantineWriter({
+      topic: "orders.quarantine", connection: { brokers: [`127.0.0.1:${port}`], tls: false, ca: null, sasl: null },
+      logger: silent, maxSourceRecordBytes: 1_048_576, clientId: "deadline-test"
+    });
+    const started = Date.now();
+    try {
+      await assert.rejects(writer.start());
+      const elapsed = Date.now() - started;
+      assert.equal(QUARANTINE_REQUEST_TIMEOUT_MS, 10_000);
+      assert.ok(elapsed >= QUARANTINE_REQUEST_TIMEOUT_MS - 500 && elapsed < 20_000, `the unanswered request ended after ${elapsed} ms`);
+    } finally {
+      await writer.stop();
+      for (const socket of sockets) socket.destroy();
+      server.close();
+    }
   });
 });
