@@ -219,10 +219,10 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 ### Known limitations of the implementation
 
 - No command prunes resolved incidents; the journal stops at 256 MiB and then refuses writes, keeping the source held.
-- No command closes an incident whose record can no longer be processed or advanced (for example, deleted by source-topic retention); that needs the runbook's rebaseline procedure.
+- An incident whose record can no longer be processed or advanced (for example, deleted by source-topic retention) is closed only by a rebaseline: the gateway stopped, a deliberate `generation` change, and `streamotter sources rebaseline` ([runbook §6.10](./guides/source-failures.md#610-rebaseline-a-source)). Moving the consumer group past a record still in the topic is done with Kafka's own tools.
 - Quarantine writes and reads use the quarantining sources' connection profile; separate quarantine credentials are not supported.
 - Evidence read-back takes at least the broker's `group.initial.rebalance.delay.ms` (3 s by default). After a lost connection, KafkaJS keeps retrying for about 24 s after the read has reported `unavailable`.
-- The journal engine is `node:sqlite` with a Node 24.15 floor, pending the owner's decision D1 in the [API draft](./releases/v1.1/V1_1_API.md#11-decisions-this-draft-adds).
+- The journal engine is `node:sqlite`, so failure handling with a state directory needs Node 24.15 or later (decision D1 in the [API draft](./releases/v1.1/V1_1_API.md#11-decisions-this-draft-adds), taken 2026-10-04).
 - The operator socket is not available on Windows.
 
 ## Gate A status (home site and demo plan)

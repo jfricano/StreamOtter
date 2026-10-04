@@ -161,7 +161,7 @@ Construction-time checks, each a `CONFIG_INVALID` with an `issues` list:
 - `boundaryRetirement: "application"` with no `retire`.
 - Production mode, a quarantine policy, and no `stateDirectory`.
 - `operatorSocket` without `stateDirectory`.
-- A quarantine policy on Node older than 24.15 (pending the journal-engine decision in §11, row D1).
+- A quarantine policy on Node older than 24.15 (§11, row D1).
 
 Development mode without `stateDirectory` uses an in-memory incident store, labeled `"memory"` in status. It is never durable and says so.
 
@@ -418,6 +418,7 @@ Slice D notes (normative, as implemented in `packages/gateway/src/management/rou
 | `streamotter status --state-dir <dir> [--json]` | `status()` over IPC. |
 | `streamotter failures list\|show\|export\|evaluate\|redrive --state-dir <dir> ...` | §6 over IPC. `show --raw` and `export --include-raw --out <file>` are explicit. |
 | `streamotter sources retry-current\|reassess\|reopen-circuit\|retire-boundary --state-dir <dir> ...` | §6 over IPC. `retire-boundary` prints the ADR-15B §4 warning and requires `--confirm <boundaryId>`. |
+| `streamotter sources rebaseline --config <path> --state-dir <dir> --source <id> --reason <text> --confirm <sourceId> [--json]` | Offline, with the gateway stopped (slice E note below). |
 
 Exit codes extend the existing `0` ok, `1` runtime, `2` invalid: `3` refused (the operation was understood and declined), `4` unknown outcome. `--json` prints the `OperationResult` or data verbatim.
 
@@ -431,11 +432,19 @@ Slice D notes (normative, as implemented in `packages/cli/src/operator.ts`):
 - `start` and `dev` accept `--operator-socket`, which requires `--state-dir`.
 - Slice E: `start` accepts `--health <host:port>` (§8). `dev` does not; the development management server already serves `GET /management/v1/health`.
 
+Slice E note (normative, spec §14 and ADR-15B §4; implemented in `packages/gateway/src/failures/rebaseline.ts`, exported as `rebaselineSource` from `@streamotter/gateway/internals`):
+
+- `sources rebaseline` is the only way to close an incident without processing or advancing its record. It applies after the operator changed the source's `generation` in the configuration (a re-created topic, another cluster, or a consumer group moved past a record with Kafka's own tools). It opens the journal itself, so a running gateway's lock refuses it (`SOURCE_UNAVAILABLE`, `journal-locked`, exit 1). It does not use the operator socket.
+- It exits 2 before opening the journal unless `--confirm` equals `--source` and `--reason` is 1 to 512 characters. An unknown source is `INVALID_REQUEST` (exit 2).
+- Each open incident whose generation differs from the configured one becomes `resolved`, with resolution `rebaselined to generation <G>` and an `operator` event carrying the reason and the operation ID (`op1:` + 32 hex). Then the configured generation is recorded (`claim`), which retires the earlier generation's boundary. The result is an `OperationResult` with outcome `rebaselined` (exit 0) plus `closed` (failure IDs), `retiredBoundary` and `generation`.
+- With nothing from an earlier generation, it is refused with outcome `nothing-to-rebaseline` (exit 3) and changes nothing. Incidents of the configured generation are never touched; no consumer group moves; the quarantine topic is not read or written.
+- Rebaseline operations are not recorded in the operations table: there is no gateway to report an `unknown` outcome to, and the incident history carries the operation ID.
+
 ## 11. Decisions this draft adds
 
 | ID | Decision | Why | Status |
 | --- | --- | --- | --- |
-| D1 | Journal engine: `node:sqlite` with a Node ≥ 24.15 floor for quarantine, else `better-sqlite3` | `node:sqlite` warns as experimental on Node 24.0–24.14 (measured October 3, 2026: 24.0.0, 24.4.0, 24.8.0, 24.12.0, 24.13.0, 24.14.0 warn; 24.15.0, 24.16.0, 24.21.0 and 26.10.0 don't). ADR-15A §2's literal rule picks `better-sqlite3`. | **Asked the owner** |
+| D1 | Journal engine: `node:sqlite` with a Node ≥ 24.15 floor for quarantine | `node:sqlite` warns as experimental on Node 24.0–24.14 (measured October 3, 2026: 24.0.0, 24.4.0, 24.8.0, 24.12.0, 24.13.0, 24.14.0 warn; 24.15.0, 24.16.0, 24.21.0 and 26.10.0 don't). ADR-15A §2's literal rule picks `better-sqlite3`. | **Decided by the owner, October 4, 2026:** `node:sqlite`, Node 24.15 or later |
 | D2 | The guard returns `context`, not a whole boundary; the gateway assigns the ID | Removes a way for application code to forge or reuse an ID | Proposed |
 | D3 | Fixture sources may use quarantine policies, with local evidence clearly labeled | Spec §10's guided fixture needs hold, evaluate and redrive without Kafka | Proposed |
 | D4 | Development without `stateDirectory` uses a memory store, labeled non-durable | Lets the workbench Failures view work under `streamotter dev` without disk setup | Proposed |

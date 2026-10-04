@@ -186,7 +186,7 @@ sources: {
 }
 ```
 
-A guard that always returns `recoverable` is not a guard. If invalid bytes hide which entity changed and your snapshots can lag the topic, the right answer is `hold`. <!-- lead: link the order-dashboard reference guard once it lands -->
+A guard that always returns `recoverable` is not a guard. If invalid bytes hide which entity changed and your snapshots can lag the topic, the right answer is `hold`. The order dashboard has a complete guard to copy: [`decideRecovery`](../../examples/order-dashboard/src/server/domain.ts) checks an outbox watermark and the published position, and its README [explains each check](../../examples/order-dashboard/README.md#source-failures-quarantine-resync-and-the-recovery-guard).
 
 ### 4.2 Acknowledge the boundary in every snapshot
 
@@ -291,6 +291,7 @@ Refusals carry an `outcome` you can act on:
 | `not-replay-safe`, `integrity-fault-open`, `not-advanced` | Redrive isn't allowed for this incident; `failures show` explains the next action. |
 | `retirement-mode`, `incident-held` | Boundary retirement is off for this source, or an incident it covers is still held. |
 | `operation-id-reused`, `operation-in-progress` | Use a new `--operation-id` for a new redrive. |
+| `nothing-to-rebaseline` | `sources rebaseline` found nothing from an earlier generation; see [§6.10](#610-rebaseline-a-source). |
 | `journal-unavailable` | The operation couldn't be recorded, so nothing was done; see [§6.3](#63-full-disk-or-full-journal). |
 
 The full list is in [API §6](../releases/v1.1/V1_1_API.md#6-operator-service-slices-c-d).
@@ -376,7 +377,7 @@ Do:
 
 1. If the disk is full, free space on the volume. Keep the WAL file (`journal.sqlite-wal`) and never delete journal files to make room.
 2. Run `sources retry-current` for each held incident, or restart. A failed journal write is retried when the record is redelivered; readiness clears after the next successful write.
-3. If the journal itself reached 256 MiB, V1.1 has no command to prune resolved incidents, and the limit isn't configurable. Archive the journal and follow [§6.8](#68-lost-or-damaged-local-state). For Kafka sources an incident stores metadata only, so this takes a very large number of incidents; watch `status` (`--json` gives `store.sizeBytes` and `store.limitBytes`). <!-- lead: confirm there is still no incident pruning at integration -->
+3. If the journal itself reached 256 MiB, V1.1 has no command to prune resolved incidents, and the limit isn't configurable. Archive the journal and follow [§6.8](#68-lost-or-damaged-local-state). For Kafka sources an incident stores metadata only, so this takes a very large number of incidents; watch `status` (`--json` gives `store.sizeBytes` and `store.limitBytes`).
 
 ### 6.4 Topic retention and expired evidence
 
@@ -384,7 +385,7 @@ Two topics have retention that matters.
 
 **The quarantine topic.** Its retention decides how long evidence can be read back. A reference policy is 7 days. When a copy has been removed, `failures show --raw` shows no bytes and `evaluate` reports `evidence-expired` (naming the earliest retained offset) and issues no plan. The incident and any boundary stay in the journal; expired evidence never clears a recovery requirement. `quarantine-resync` writes a fresh copy before every advance, so an expired older copy never authorizes one. If you need the bytes longer, export them first: `failures export --include-raw --out <file>`.
 
-**The source topic.** A held record is uncommitted, so retention can delete it while you work on the fix. The gateway then sees the group's position past the held record without a recorded advance. It holds the source ("Source progress moved past a held record without a recorded advance; the source is held") instead of treating that as progress. Retries hold again, because the record is gone. V1.1 has no command to close such an incident; the way out is the rebaseline in [§6.8](#68-lost-or-damaged-local-state). Prevent it: keep source retention well above how long a hold may last, and alert on readiness. The same applies when someone resets the group's offsets by hand or another consumer commits on the group.
+**The source topic.** A held record is uncommitted, so retention can delete it while you work on the fix. The gateway then sees the group's position past the held record without a recorded advance. It holds the source ("Source progress moved past a held record without a recorded advance; the source is held") instead of treating that as progress. Retries hold again, because the record is gone. The way out is a rebaseline ([§6.10](#610-rebaseline-a-source)). Prevent it: keep source retention well above how long a hold may last, and alert on readiness. The same applies when someone resets the group's offsets by hand or another consumer commits on the group.
 
 ### 6.5 Repair a poison record
 
@@ -394,9 +395,9 @@ Two topics have retention that matters.
 | --- | --- |
 | Your mapping is wrong (`mapper-error`, `mapper-timeout`, `routing-invalid`, `payload-schema` from a mapping bug) | Fix `map` or the schema, deploy with a new `--handler-build-id`, and restart. The held record is redelivered first. If it processes, the incident resolves as `processed`; nothing was skipped. When the cause was outside your code (data your mapper reads, a configuration service), fix it and `retry-current` without restarting. |
 | A dependency was down (`mapper-transient`) | When it's back, `retry-current`. |
-| The record itself is bad: `invalid-json`, or a value your schema rightly rejects (`payload-schema`) | The bytes in Kafka can't be repaired, and a retry fails the same way. Either let the guard decide: switch that class to `quarantine-resync`, add an honest guard and snapshot acknowledgment ([§4](#4-write-an-honest-recovery-guard)), and restart; the redelivered record follows the new policy. Or rebaseline ([§6.8](#68-lost-or-damaged-local-state)). |
-| `tombstone`, `oversize` | Never skipped, and never reach `map`, so no handler change helps. Fix the publisher, then rebaseline past the record ([§6.8](#68-lost-or-damaged-local-state)). |
-| `revision-conflict` | Never skipped. If your mapping produced the conflicting revision, fix it and restart. If the publisher did, fix the publisher; the record already in the topic then needs a rebaseline. |
+| The record itself is bad: `invalid-json`, or a value your schema rightly rejects (`payload-schema`) | The bytes in Kafka can't be repaired, and a retry fails the same way. Either let the guard decide: switch that class to `quarantine-resync`, add an honest guard and snapshot acknowledgment ([§4](#4-write-an-honest-recovery-guard)), and restart; the redelivered record follows the new policy. Or rebaseline past it ([§6.10](#610-rebaseline-a-source)). |
+| `tombstone`, `oversize` | Never skipped, and never reach `map`, so no handler change helps. Fix the publisher, then rebaseline past the record ([§6.10](#610-rebaseline-a-source)). |
+| `revision-conflict` | Never skipped. If your mapping produced the conflicting revision, fix it and restart. If the publisher did, fix the publisher; the record already in the topic then needs a rebaseline ([§6.10](#610-rebaseline-a-source)). |
 
 A record whose redelivered bytes differ from the evidence captured for the same position is an integrity failure ("evidence-conflict"): the source stays held. Find out why the topic changed under the same offset (a re-created topic without a `generation` change is the usual reason).
 
@@ -442,25 +443,46 @@ The journal is the only record of incidents, decisions and recovery boundaries. 
 | `project-mismatch` | It belongs to another project |
 | `state-dir-insecure`, `journal-insecure`, `run-dir-insecure` | Permissions or ownership are wrong; see [Run in production](../DEPLOYMENT.md#the-state-directory) |
 | `journal-locked` | Another gateway owns it, or left a lock on another host |
-| `generation-changed-with-open-incidents`, `source-removed-with-open-incidents` | The configuration changed a source's `generation`, or removed a source, while it has open incidents |
+| `generation-changed-with-open-incidents`, `source-removed-with-open-incidents` | The configuration changed a source's `generation`, or removed a source, while it has open incidents. For a generation you changed on purpose, see [§6.10](#610-rebaseline-a-source) |
 | `failure-handling-removed` | `failureHandling` was removed while the journal still holds open incidents or boundaries in force; see [§8](#8-upgrade-and-downgrade) |
 
 The gateway never recreates, repairs or replaces a journal on its own. Don't run `init --failures` as a quick fix: an empty journal forgets every boundary, so snapshots would stop being asked to cover records that were skipped.
 
 **Restore from a backup** when you have one. Back up the state directory with the gateway stopped (`journal.sqlite` and any `journal.sqlite-wal`; skip `run/` and `journal.lock`). A backup older than the latest changes can lack incidents and boundaries created since. The gateway holds a source whose position moved past a held record it knows about, but it can't detect a boundary it never saw. Check `status` after restoring and compare it with what you know happened.
 
-**Rebaseline** when there is no usable backup, or when an incident can't be closed any other way ([§6.4](#64-topic-retention-and-expired-evidence), [§6.5](#65-repair-a-poison-record)). This is a deliberate decision about application consistency, not a reset button:
+**Start a new journal** only when there is no usable backup. If the journal is intact and an incident just can't be closed any other way, don't replace the journal: rebaseline the source with the journal you have ([§6.10](#610-rebaseline-a-source)). A new journal is a deliberate decision about application consistency, not a reset button:
 
 1. Stop the gateway. Move the old journal files aside; don't delete them.
 2. Write down, from the old journal if it can still be read and from your logs, every source that had a boundary in force or an open incident, and its positions.
 3. For each, confirm that your authoritative store already reflects what those records carried, or repair it, and that your snapshots read it.
-4. If a record that can never be processed is still in the topic, the new journal won't help: the gateway would stop on it again. Move the source's consumer group past it with Kafka's own tools while the gateway is stopped, for example `kafka-consumer-groups.sh --bootstrap-server <broker> --group <consumerGroup> --topic <topic>:<partition> --reset-offsets --to-offset <offset + 1> --execute`. That is a skip you decide on, outside StreamOtter; it needs step 3's review like any other. <!-- lead: confirm this manual step belongs in the runbook -->
+4. If a record that can never be processed is still in the topic, the new journal won't help: the gateway would stop on it again. Move the source's consumer group past it with Kafka's own tools while the gateway is stopped, as in [§6.10](#610-rebaseline-a-source) step 4. That is a skip you decide on, outside StreamOtter; it needs step 3's review like any other.
 5. If you re-created topics or pointed a source at another cluster, change its `generation`.
 6. Create a new journal with `streamotter init --failures`, start, and check `status`.
 
 ### 6.9 Two gateways, one state directory
 
 A second gateway on the same state directory is refused: `journal-locked` for the journal, and `socket-in-use` for the operator socket if the first one serves it. Running two gateways for one project is unsupported anyway; stop the extra one.
+
+### 6.10 Rebaseline a source
+
+Some incidents can't be closed by a retry or a repair: source retention deleted the held record ([§6.4](#64-topic-retention-and-expired-evidence)), the record can never be processed (`tombstone`, `oversize`, bytes no mapping should accept), or you re-created the topic or moved the source to another cluster. The way out is a rebaseline: you declare that the source starts again from a new baseline, and StreamOtter records that decision. It is the only way an incident is closed without its record being processed or advanced past by policy, so it needs the same review as a new journal ([§6.8](#68-lost-or-damaged-local-state), steps 2 and 3).
+
+1. **Record what you are leaving behind**, while the gateway still runs: `failures list --source <id>`, then `failures export --failure <fid>` for each open incident, give every incident, its position and its history.
+2. **Stop the gateway.** `sources rebaseline` opens the journal itself and is refused (`journal-locked`, exit 1) while a gateway holds it.
+3. **Check your authoritative store** covers what those records carried, or repair it, and that your snapshots read it.
+4. **Move past the record, if it is still in the topic.** Reset the source's consumer group with Kafka's own tools, for example `kafka-consumer-groups.sh --bootstrap-server <broker> --group <consumerGroup> --topic <topic>:<partition> --reset-offsets --to-offset <offset + 1> --execute`. Skip this when retention already deleted the record, or when the source now reads a new topic or cluster.
+5. **Change the source's `generation`** in `streamotter.json`. Starting now is refused with `generation-changed-with-open-incidents`, which is what you want: the old generation's incidents are still open.
+6. **Run the rebaseline**, naming the source twice:
+
+   ```bash
+   streamotter sources rebaseline --config streamotter.json --state-dir /var/lib/streamotter \
+     --source orders --reason "orders.status re-created after retention loss; store checked against outbox" --confirm orders
+   ```
+
+   It closes each open incident from an earlier generation as `resolved`, with resolution `rebaselined to generation <new>`, your reason and an operation ID in its history, and records the new generation, which retires that generation's recovery boundary. It exits 0 and prints what it closed. It refuses (exit 3, outcome `nothing-to-rebaseline`) when there is nothing from an earlier generation, and leaves incidents of the configured generation alone: those are still yours to retry or repair. Without `--confirm <sourceId>` it changes nothing.
+7. **Start the gateway** and check `status`. The source runs from wherever its consumer group now points.
+
+A rebaseline never moves a consumer group, never skips a record of the current generation, and never touches the quarantine topic.
 
 ## 7. Health checks
 
@@ -483,7 +505,7 @@ The reasons map to the procedures above: `source-held` to [§6.5](#65-repair-a-p
 2. **Retire every boundary in force** (`status` lists them per source). How depends on the source's `boundaryRetirement`:
    - `application`: snapshots that acknowledge it let your `retire` handler end it.
    - `operator`: `sources retire-boundary`, after you have verified the claim ([§4.3](#43-retiring-a-boundary)).
-   - `generation` (the default): only a generation change ends it, and that is a rebaseline. If you don't intend one, switch the source to `"operator"`, restart, verify, and retire it by hand.
+   - `generation` (the default): only a generation change ends it, and that is a rebaseline ([§6.10](#610-rebaseline-a-source)). If you don't intend one, switch the source to `"operator"`, restart, verify, and retire it by hand.
 
    The mode in the running configuration decides, not the mode the boundary was created under.
 3. **Stop the gateway, remove `failureHandling`, and start it again.** If `--state-dir` still points at a journal with an open incident or a boundary in force for a configured source, startup refuses with `CONFIG_INVALID`, `details.reason: "failure-handling-removed"`, naming the sources (`openIncidentSources`, `boundarySources`). A journal with nothing outstanding is left untouched.
