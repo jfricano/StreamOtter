@@ -266,7 +266,7 @@ Every action names the incident (or circuit, or boundary) and the revision you s
 | A record was advanced past, and you want its state delivered now that the mapping works | `failures evaluate --failure <fid> --expected-revision <n>`, then `failures redrive --failure <fid> --plan <planId> --plan-fingerprint <fp> --expected-revision <n>` | Evaluate reads the original back, runs the current mapping without delivering, tracing or committing, and issues a five-minute single-use plan when redrive is allowed. Redrive checks everything again and admits the outputs through the normal revision filter: `reprocessed` if a subscription took a frame, `superseded` if current state was already newer. Nothing is published to Kafka and no offset moves. |
 | Retire a boundary by hand (`boundaryRetirement: "operator"` only) | `sources retire-boundary --source <id> --boundary <bid> --expected-revision <n> --reason "<what you verified>" --confirm <bid>` | See the warning in [§4.3](#43-retiring-a-boundary). The CLI prints it and sends nothing unless `--confirm` repeats the boundary ID. |
 
-Redrive needs: an `advanced` incident of an eligible class, `replaySafeMapping: true`, no open integrity incident on the source, readable evidence, and a mapping that now succeeds. Otherwise `evaluate` says why in `ineligibleReason`.
+Redrive needs: an `advanced` incident of an eligible class, `replaySafeMapping: true`, no unresolved source-integrity fault on the source (an open integrity-class incident, an unconfirmed advance, an evidence conflict, or a position that moved without a recorded advance), readable evidence, and a mapping that now succeeds. Otherwise `evaluate` says why in `ineligibleReason`.
 
 `retry-current`'s outcome `held` exits 0, because the operation completed. Read the outcome, not just the exit code.
 
@@ -412,7 +412,7 @@ A redrive plan is in gateway memory: at most 64 at a time, five minutes each, si
 | Refusal | Why | Do |
 | --- | --- | --- |
 | `plan-expired` | More than five minutes passed | Evaluate again and redrive promptly. |
-| `plan-unknown` | The gateway restarted, or the plan was used | Evaluate again. |
+| `plan-unknown` | The gateway restarted, or the plan (or another plan of the same incident) was used | Evaluate again. |
 | `fingerprint-changed` | The record now maps to different output, or the evidence changed, since the plan was issued; nothing was admitted | Evaluate again and review the new outputs before approving. |
 | `stale-revision`, `generation-changed` | The incident or the source changed | Check `failures show`; evaluate again if redrive still makes sense. |
 

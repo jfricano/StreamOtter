@@ -215,10 +215,12 @@ export class OperatorService implements OperatorApi {
   async redrive(request: RedriveRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("redrive", request);
     const record = this.#failures.store.get(input.failureId);
+    // An unknown incident has no source to journal the operation under; it is refused before anything is recorded.
+    if (record === null) return { operationId: input.operationId ?? `op1:${randomBytes(16).toString("hex")}`, ...refused("not-found", `No incident ${input.failureId}.`) };
     const { operationId: _supplied, ...rest } = input;
-    return this.#mutate("redrive", record?.sourceId ?? "", input.failureId, rest, input.operationId, async operationId => {
+    return this.#mutate("redrive", record.sourceId, input.failureId, rest, input.operationId, async operationId => {
       const plan = this.#plans.get(input.planId);
-      if (plan === undefined) return refused("plan-unknown", "No such plan. Plans are kept in memory for 5 minutes and end when the gateway restarts; evaluate again.");
+      if (plan === undefined) return refused("plan-unknown", "No such plan, or it was already used. Plans are single use, kept in memory for 5 minutes and end when the gateway restarts; evaluate again.");
       if (plan.failureId !== input.failureId) return refused("plan-mismatch", "That plan was issued for a different incident.");
       if (Date.now() >= plan.expiresAtMs) {
         this.#plans.delete(plan.planId);
@@ -233,11 +235,17 @@ export class OperatorService implements OperatorApi {
       if (this.#host.config.sources[current.sourceId]?.generation !== plan.generation) return refused("generation-changed", "The source generation changed since the plan was issued.", current.revision);
       const blocked = this.#redriveBlocker(current);
       if (blocked !== null) return { ...blocked, incidentRevision: current.revision };
+      // A plan approves exactly one redrive. It is claimed here, before the first await, together with every other
+      // plan of this incident (all issued at this revision, which the redrive's own operator event supersedes), so a
+      // concurrent redrive of the incident finds no plan (plan-unknown) instead of mapping and admitting the record twice.
+      for (const [planId, other] of this.#plans) if (other.failureId === plan.failureId) this.#plans.delete(planId);
       const evidence = await this.#evidence(current);
       if (evidence.kind === "missing") return refused(evidence.reason, evidence.message, current.revision);
       if (evidenceHash(evidence.raw) !== plan.evidenceHash) return refused("fingerprint-changed", "The stored evidence changed since the plan was issued.", current.revision);
-      // A plan approves exactly one redrive.
-      this.#plans.delete(plan.planId);
+      const latest = this.#failures.store.get(current.failureId);
+      if (latest === null || latest.revision !== current.revision) {
+        return refused("stale-revision", `Incident ${current.failureId} changed while the redrive was being prepared; evaluate again.`, latest?.revision ?? null);
+      }
       await this.#hooks.afterIntent?.(operationId, "redrive");
       const outcome = await this.#host.redriveRecord(current.sourceId, evidence.raw, current.position, plan.outputHash);
       const draft = redriveResult(outcome, current.revision);
@@ -249,20 +257,20 @@ export class OperatorService implements OperatorApi {
 
   async retryCurrent(request: RetryCurrentRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("retryCurrent", request);
-    return this.#mutate("retry-current", input.sourceId, input.failureId, input, undefined, async operationId => {
+    return this.#mutate("retry-current", input.sourceId, input.failureId, input, undefined, operationId => this.#redeliver(input.sourceId, operationId, () => {
       const checked = this.#heldIncident(input.sourceId, input.failureId, input.expectedRevision);
       if ("result" in checked) return checked;
       const policy = this.#failures.policy(input.sourceId);
       if (usesResync(policy) && this.#failures.store.circuit(input.sourceId).state === "open") {
         return refused("circuit-open", "The source's automatic-continuation circuit is open. Reopen it after correcting the cause, then retry.", checked.revision);
       }
-      return this.#redeliver(checked, operationId, `retry-current${input.reason === undefined ? "" : `: ${input.reason}`}`);
-    });
+      return { record: checked, detail: `retry-current${input.reason === undefined ? "" : `: ${input.reason}`}` };
+    }));
   }
 
   async reassess(request: ReassessRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("reassess", request);
-    return this.#mutate("reassess", input.sourceId, input.failureId, input, undefined, async operationId => {
+    return this.#mutate("reassess", input.sourceId, input.failureId, input, undefined, operationId => this.#redeliver(input.sourceId, operationId, () => {
       const checked = this.#heldIncident(input.sourceId, input.failureId, input.expectedRevision);
       if ("result" in checked) return checked;
       if (!QUARANTINE_ELIGIBLE_CLASSES.includes(checked.failureClass)) {
@@ -278,8 +286,8 @@ export class OperatorService implements OperatorApi {
         return refused("circuit-open", "The automatic-continuation circuit is open. Reopen it after correcting the cause, then reassess.", checked.revision);
       }
       // Reassessment redelivers the held record: a fresh quarantine copy is written and acknowledged, then the guard runs again (spec §6 step 4).
-      return this.#redeliver(checked, operationId, "reassess: run the recovery guard again");
-    });
+      return { record: checked, detail: "reassess: run the recovery guard again" };
+    }));
   }
 
   async reopenCircuit(request: ReopenCircuitRequest): Promise<OperationResult> {
@@ -388,16 +396,33 @@ export class OperatorService implements OperatorApi {
     return record;
   }
 
-  /** Retries the held record (redelivery) and reports where it settled. */
-  async #redeliver(record: IncidentRecord, operationId: string, detail: string): Promise<Draft> {
-    this.#note(record, operationId, detail);
-    try {
-      await this.#host.retry(record.sourceId);
-    } catch (error) {
-      const latest = this.#failures.store.get(record.failureId);
-      return refused(error instanceof StreamOtterError && typeof error.details?.["reason"] === "string" ? error.details["reason"] as string : "not-held",
-        (error as Error).message, latest?.revision ?? null);
-    }
+  /**
+   * Retries the held record (redelivery) and reports where it settled. The
+   * checks, the operator event and the resume run in the source's failure chain,
+   * so they queue behind a disposition already in flight (a quarantine write, the
+   * guard) instead of interleaving with it. The wait for the record to settle runs
+   * outside the chain, because the redelivered record's own disposition needs it.
+   */
+  async #redeliver(sourceId: string, operationId: string, check: () => Draft | { record: IncidentRecord; detail: string }): Promise<Draft> {
+    const started = await this.#failures.run(sourceId, async (): Promise<Draft | IncidentRecord> => {
+      const checked = check();
+      if ("result" in checked) return checked;
+      const { record, detail } = checked;
+      // The refusals the resume itself would give are checked first, so a refused retry leaves no event and keeps the revision.
+      const blocked = this.#retryBlocker(record);
+      if (blocked !== null) return blocked;
+      this.#note(record, operationId, detail);
+      try {
+        await this.#host.retry(record.sourceId);
+      } catch (error) {
+        const reason = error instanceof StreamOtterError && typeof error.details?.["reason"] === "string" ? error.details["reason"] as string : "not-held";
+        const revision = this.#note(record, operationId, `refused (${reason}); the record was not retried`) ?? this.#failures.store.get(record.failureId)?.revision ?? null;
+        return refused(reason, (error as Error).message, revision);
+      }
+      return record;
+    });
+    if ("result" in started) return started;
+    const record = started;
     const settled = await this.#settle(record.failureId, record.sourceId);
     const revision = settled?.revision ?? null;
     if (settled === null) return { result: "unknown", outcome: "unknown", incidentRevision: null, message: "The incident could not be read after the retry." };
@@ -411,6 +436,16 @@ export class OperatorService implements OperatorApi {
       return { result: "completed", outcome: "held", incidentRevision: revision, message: `The record is held again: ${settled.diagnosis.slice(0, 300)}` };
     }
     return { result: "completed", outcome: settled.progress === "retrying" ? "retrying" : settled.progress, incidentRevision: revision, message: "The record was redelivered and has not settled yet; check its status." };
+  }
+
+  /** Why the gateway would refuse to resume the source now, checked before anything is recorded; or null. */
+  #retryBlocker(record: IncidentRecord): Draft | null {
+    if (this.#host.state() !== "running") return refused("gateway-not-running", "The gateway is not running.", record.revision);
+    const unresolved = this.#failures.store.open(record.sourceId).find(incident => incident.progress === "advance-pending" || incident.progress === "uncertain");
+    if (unresolved !== undefined) {
+      return refused("advance-unresolved", `An advance of incident ${unresolved.failureId} on this source is unresolved; it is reconciled from the group's committed offset at restart.`, record.revision);
+    }
+    return null;
   }
 
   async #settle(failureId: string, sourceId: string): Promise<IncidentRecord | null> {
@@ -449,8 +484,10 @@ export class OperatorService implements OperatorApi {
     if (!this.#failures.policy(record.sourceId).replaySafeMapping) {
       return refused("not-replay-safe", `Source "${record.sourceId}" does not declare replaySafeMapping, which stored redrive requires.`);
     }
-    const integrity = this.#failures.store.open(record.sourceId).find(incident => !QUARANTINE_ELIGIBLE_CLASSES.includes(incident.failureClass));
-    if (integrity !== undefined) return refused("integrity-fault-open", `Source "${record.sourceId}" has an unresolved ${integrity.failureClass} incident (${integrity.failureId}); resolve it first.`);
+    for (const incident of this.#failures.store.open(record.sourceId)) {
+      const fault = integrityFault(incident, () => this.#failures.store.events(incident.failureId));
+      if (fault !== null) return refused("integrity-fault-open", `Source "${record.sourceId}" has an unresolved source-integrity fault: ${fault} (${incident.failureId}); resolve it first.`);
+    }
     if (this.#host.state() !== "running") return refused("gateway-not-running", "The gateway is not running.");
     return null;
   }
@@ -591,6 +628,27 @@ export class OperatorService implements OperatorApi {
 }
 
 // --- pure helpers ---------------------------------------------------------------------
+
+/**
+ * Event details the failure service records for a source-integrity fault on an
+ * eligible-class incident: redelivered bytes that differ from the captured
+ * evidence, and group progress that moved past a held record with no recorded advance.
+ */
+const INTEGRITY_EVENT_DETAILS: ReadonlyMap<string, string> = new Map([
+  ["evidence-conflict", "the redelivered bytes differ from the captured evidence"],
+  ["position-moved", "the source position moved past a held record without a recorded advance"]
+]);
+
+/** Why an open incident is an unresolved source-integrity fault (spec §8.3), or null. */
+function integrityFault(incident: IncidentRecord, events: () => readonly { detail: string | null }[]): string | null {
+  if (!QUARANTINE_ELIGIBLE_CLASSES.includes(incident.failureClass)) return `an unresolved ${incident.failureClass} incident`;
+  if (incident.progress === "uncertain") return "an advance that could not be confirmed";
+  for (const event of events()) {
+    const fault = event.detail === null ? undefined : INTEGRITY_EVENT_DETAILS.get(event.detail);
+    if (fault !== undefined) return fault;
+  }
+  return null;
+}
 
 function usesResync(policy: ResolvedSourcePolicy): boolean {
   return policy.invalidJson === "quarantine-resync" || policy.invalidPublicPayload === "quarantine-resync";
