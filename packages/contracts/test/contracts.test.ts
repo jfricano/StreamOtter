@@ -122,6 +122,15 @@ describe("schemas", () => {
     assert.notEqual(validateValue(schema, ""), null);
   });
 
+  it("rejects enum values that the length bounds would always refuse", () => {
+    const issues: ConfigIssue[] = [];
+    validateSchemaDefinition({ type: "string", enum: ["ab", "abcd"], maxLength: 3 }, "/schemas/E", issues);
+    assert.deepEqual(issues.map(issue => `${issue.code} ${issue.path}`), ["INVALID_VALUE /schemas/E/enum"]);
+    issues.length = 0;
+    validateSchemaDefinition({ type: "string", enum: ["ab", "abc"], minLength: 2, maxLength: 3 }, "/schemas/E", issues);
+    assert.deepEqual(issues, []);
+  });
+
   it("validates integers, bounds, arrays, and closed objects", () => {
     assert.equal(validateValue({ type: "integer", minimum: 0, maximum: 100 }, 5), null);
     assert.notEqual(validateValue({ type: "integer" }, 1.5), null);
@@ -250,6 +259,8 @@ describe("project configuration", () => {
     ]);
     config["limits"] = { maxDataFrameBytes: 2_000_000 };
     assert.deepEqual(codes(validateProjectConfig(config).issues), ["INCONSISTENT_LIMITS /limits/maxDataFrameBytes"]);
+    config["limits"] = { handlerTimeoutMs: 2_147_483_648 }; // setTimeout would clamp this to 1 ms.
+    assert.deepEqual(codes(validateProjectConfig(config).issues), ["INVALID_VALUE /limits/handlerTimeoutMs"]);
   });
 });
 
