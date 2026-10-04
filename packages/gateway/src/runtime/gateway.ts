@@ -323,6 +323,8 @@ export class GatewayRuntime implements SessionOwner {
   readonly #stopCallbacks: (() => Promise<void> | void)[] = [];
   #state: LifecycleState = "idle";
   #starting: Promise<{ origin: string; path: string }> | null = null;
+  /** Fails an in-flight start so stop() can roll it back instead of waiting for it. */
+  #cancelStart: ((error: StreamOtterError) => void) | null = null;
   #stopping: Promise<void> | null = null;
   #address: { origin: string; path: string } | null = null;
   #http: HttpServer | null = null;
@@ -1129,8 +1131,12 @@ export class GatewayRuntime implements SessionOwner {
           timer = setTimeout(() => reject(new StreamOtterError("SOURCE_UNAVAILABLE", {
             message: "Sources did not become ready within the 30-second startup deadline."
           })), remaining);
+          this.#cancelStart = reject;
         })
-      ]).finally(() => clearTimeout(timer));
+      ]).finally(() => {
+        clearTimeout(timer);
+        this.#cancelStart = null;
+      });
 
       // The validator guarantees stateDirectory and failureHandling, so the operator exists here.
       if (this.#operatorSocketEnabled && this.#operator !== null && this.#stateDirectory !== undefined) {
@@ -1174,12 +1180,20 @@ export class GatewayRuntime implements SessionOwner {
   }
 
   async #doStop(timeoutMs: number): Promise<void> {
-    if (this.#starting !== null) await this.#starting.catch(() => undefined);
+    const deadline = Date.now() + timeoutMs;
+    if (this.#starting !== null) {
+      // Roll back a start in progress rather than wait out its 30-second deadline.
+      this.#cancelStart?.(new StreamOtterError("SOURCE_UNAVAILABLE", { message: "The gateway was stopped while starting." }));
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        this.#starting.catch(() => undefined),
+        new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); })
+      ]).finally(() => clearTimeout(timer));
+    }
     const wasRunning = this.#state === "running";
     this.#state = "stopping";
     this.#stopController.abort();
     for (const session of [...this.#sessions]) session.close();
-    const deadline = Date.now() + timeoutMs;
     const work = (async () => {
       // Readiness ends first, so a load balancer stops routing before sessions close.
       await this.#health?.close().catch(() => undefined);
@@ -1204,7 +1218,7 @@ export class GatewayRuntime implements SessionOwner {
     let timer: NodeJS.Timeout | undefined;
     const expired = await Promise.race([
       work.then(() => false),
-      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(true), timeoutMs); })
+      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(true), Math.max(0, deadline - Date.now())); })
     ]);
     clearTimeout(timer);
     if (expired) {

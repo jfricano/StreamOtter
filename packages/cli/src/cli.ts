@@ -129,6 +129,20 @@ async function reportStartupFailure(io: CliIO, gateway: Gateway, error: unknown)
   throw new CliError(code === "CONFIG_INVALID" ? EXIT.invalid : EXIT.runtime, "The gateway did not start.");
 }
 
+/**
+ * Waits for a startup step unless a shutdown signal arrives first. A signal during startup ends the
+ * command as one after startup would: stop whatever started, then exit 0.
+ */
+async function unlessSignalled<T>(io: CliIO, step: Promise<T>): Promise<{ value: T } | { signal: string }> {
+  return Promise.race([step.then(value => ({ value })), io.shutdownSignal.then(signal => ({ signal }))]);
+}
+
+async function stopForSignal(io: CliIO, signal: string, gateway?: Gateway): Promise<number> {
+  io.out(`Received ${signal}; shutting down gracefully.`);
+  await gateway?.stop({ timeoutMs: 10_000 });
+  return EXIT.ok;
+}
+
 async function runUntilSignal(io: CliIO, gateway: Gateway): Promise<number> {
   const signal = await io.shutdownSignal;
   io.out(`Received ${signal}; shutting down gracefully.`);
@@ -274,7 +288,9 @@ async function commandGenerate(values: Record<string, unknown>, io: CliIO): Prom
 
 async function commandDev(values: Record<string, unknown>, io: CliIO): Promise<number> {
   const { config, path } = await loadConfig(values["config"] as string | undefined);
-  const { handlers, development } = await loadHandlers(values["handlers"] as string | undefined);
+  const loaded = await unlessSignalled(io, loadHandlers(values["handlers"] as string | undefined));
+  if ("signal" in loaded) return stopForSignal(io, loaded.signal);
+  const { handlers, development } = loaded.value;
   const managementPort = values["management-port"] === undefined ? 7401 : Number(values["management-port"]);
   if (!Number.isInteger(managementPort) || managementPort < 0 || managementPort > 65_535) throw new CliError(EXIT.invalid, "--management-port must be a port number.");
   let gateway: Gateway;
@@ -289,7 +305,9 @@ async function commandDev(values: Record<string, unknown>, io: CliIO): Promise<n
   }
   let address: { origin: string; path: string };
   try {
-    address = await gateway.start();
+    const started = await unlessSignalled(io, gateway.start());
+    if ("signal" in started) return stopForSignal(io, started.signal, gateway);
+    address = started.value;
   } catch (error) {
     return reportStartupFailure(io, gateway, error);
   }
@@ -320,7 +338,9 @@ async function commandDev(values: Record<string, unknown>, io: CliIO): Promise<n
 
 async function commandStart(values: Record<string, unknown>, io: CliIO): Promise<number> {
   const { config, path } = await loadConfig(values["config"] as string | undefined);
-  const { handlers } = await loadHandlers(values["handlers"] as string | undefined);
+  const loaded = await unlessSignalled(io, loadHandlers(values["handlers"] as string | undefined));
+  if ("signal" in loaded) return stopForSignal(io, loaded.signal);
+  const { handlers } = loaded.value;
   let gateway: Gateway;
   try {
     // The module's development export is deliberately ignored in production.
@@ -333,7 +353,9 @@ async function commandStart(values: Record<string, unknown>, io: CliIO): Promise
   }
   let address: { origin: string; path: string };
   try {
-    address = await gateway.start();
+    const started = await unlessSignalled(io, gateway.start());
+    if ("signal" in started) return stopForSignal(io, started.signal, gateway);
+    address = started.value;
   } catch (error) {
     return reportStartupFailure(io, gateway, error);
   }

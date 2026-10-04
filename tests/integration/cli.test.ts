@@ -161,4 +161,22 @@ describe("CLI: init, validate, generate, dev, start", () => {
     assert.equal(invalid.code, 2);
     assert.match(invalid.stderr, /\/configVersion\s+UNSUPPORTED_FEATURE/);
   });
+
+  it("stops on SIGTERM while still loading handlers, with exit 0", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "so-cli-"));
+    const project = join(dir, "app");
+    assert.equal((await runCli(["init", project])).code, 0);
+    await writeFile(join(project, "server/hang.mjs"), "await new Promise(() => { setInterval(() => {}, 1_000); });\nexport const handlers = {};\n");
+    const dev = startCli(["dev", "--config", "streamotter.json", "--handlers", "server/hang.mjs", "--management-port", "0"], project);
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+    const signalled = Date.now();
+    dev.child.kill("SIGTERM");
+    const code = await new Promise<number | null | "still running">(resolve => {
+      dev.child.on("close", resolve);
+      setTimeout(() => { dev.child.kill("SIGKILL"); resolve("still running"); }, 5_000).unref();
+    });
+    assert.equal(code, 0, dev.output());
+    assert.ok(Date.now() - signalled < 5_000);
+    assert.match(dev.output(), /Received SIGTERM/);
+  });
 });

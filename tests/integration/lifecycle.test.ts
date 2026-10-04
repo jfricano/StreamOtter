@@ -241,4 +241,20 @@ describe("acceptance 7: lifecycle, cleanup, and recovery", () => {
     await assert.rejects(gateway.start(), { code: "INVALID_REQUEST" });
     await client.close();
   });
+
+  it("stop() during startup rolls the start back within its own deadline", async () => {
+    const base = orderConfig();
+    const config = {
+      ...base,
+      connections: { cluster: { brokers: ["127.0.0.1:1"], tls: false as const } },
+      sources: { orders: { kind: "kafka" as const, generation: "g1", connectionRef: "cluster", topics: ["orders"], consumerGroup: "lifecycle-stop", codec: "json" as const, startFrom: "earliest" as const } }
+    };
+    const gateway = createGateway<TestChannels>({ config, handlers: new OrderApp().handlers(), mode: "development", development: { principals: {}, fixtures: {} }, logger: silentLogger });
+    const started = gateway.start().then(() => "started", (error: { code?: string }) => error.code);
+    await sleep(200); // The source is now retrying an unreachable broker.
+    const stopping = Date.now();
+    await gateway.stop({ timeoutMs: 500 });
+    assert.ok(Date.now() - stopping < 1_500, `stop took ${Date.now() - stopping} ms`);
+    assert.equal(await started, "SOURCE_UNAVAILABLE");
+  });
 });
