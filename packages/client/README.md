@@ -77,7 +77,7 @@ A listener that throws, or returns a rejected promise, fails its subscription wi
 
 ## Source failures on the server (V1.1)
 
-The unreleased V1.1 source-failure handling changes nothing in the browser: no new state, error code, or protocol message. A source held at a bad record looks like any unavailable source: views go `stale` and recover by themselves once it is repaired. The [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) is for whoever runs the gateway.
+The source-failure handling new in 0.2.0-rc.1 (V1.1) changes nothing in the browser: no new state, error code, or protocol message. A source held at a bad record looks like any unavailable source: views go `stale` and recover by themselves once it is repaired. The [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) is for whoever runs the gateway.
 
 ## Clean up
 
@@ -93,15 +93,24 @@ Unsubscribe when a view unmounts. Close a shared client only when its owning app
 Create one client per signed-in session and one subscription per mounted component:
 
 ```tsx
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createClient, type Client, type StreamError, type SubscriptionState } from "@streamotter/client";
 import { channelVersions, type AppChannels, type JobProgress } from "./generated/streamotter.generated.js";
 
 const ClientContext = createContext<Client<AppChannels> | null>(null);
 
 export function StreamOtterProvider({ getToken, children }: { getToken: () => Promise<string>; children: ReactNode }) {
-  const client = useMemo(() => createClient<AppChannels>({ getToken }), [getToken]);
-  useEffect(() => () => { void client.close(); }, [client]);
+  // Create the client in the effect that closes it. close() is permanent, and React StrictMode runs
+  // effects twice in development, so a client from useMemo would be closed and then reused.
+  const [client, setClient] = useState<Client<AppChannels> | null>(null);
+  useEffect(() => {
+    const created = createClient<AppChannels>({ getToken });
+    setClient(created);
+    return () => {
+      setClient(null);
+      void created.close();
+    };
+  }, [getToken]);
   return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
 }
 

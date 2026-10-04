@@ -2,6 +2,9 @@ import { ApiError } from "../api.ts";
 import { h, replace } from "../dom.ts";
 import { candidateDiffers, type WorkbenchState } from "../state.ts";
 
+/** The last export's download link, released when the next export replaces it. */
+let exportUrl: string | null = null;
+
 export function renderExport(root: HTMLElement, state: WorkbenchState): void {
   const output = h("div", { class: "stack" });
   const button = h("button", { class: "primary", type: "button" }, "Export candidate");
@@ -15,7 +18,9 @@ export function renderExport(root: HTMLElement, state: WorkbenchState): void {
     }
     try {
       const exported = await state.api.export(parsed as never);
+      if (exportUrl !== null) URL.revokeObjectURL(exportUrl);
       const url = URL.createObjectURL(new Blob([exported.content], { type: "application/json" }));
+      exportUrl = url;
       const differs = candidateDiffers(state);
       replace(output,
         differs

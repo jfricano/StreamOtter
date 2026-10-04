@@ -403,7 +403,8 @@ export async function runOperatorCommand(command: string, positionals: readonly 
   const label = `${command}${name === "" ? "" : ` ${name}`}`;
   const json = values["json"] === true;
   if (spec === undefined || positionals.length > (command === "status" ? 0 : 1)) {
-    const choices = Object.keys(group).join("|");
+    // sources rebaseline is offline and handled by the CLI before this point, but it is still a sources command.
+    const choices = [...Object.keys(group), ...(command === "sources" ? ["rebaseline"] : [])].join("|");
     return fail(io, json, INVALID, command === "status" ? `Unexpected arguments for status: ${positionals.join(" ")}` : `Usage: streamotter ${command} ${choices} ...`, usage);
   }
   const extra = Object.keys(values).filter(key => !COMMON.includes(key) && !spec.flags.includes(key));

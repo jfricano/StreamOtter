@@ -89,7 +89,7 @@ NODE_ENV=production npx streamotter start --config streamotter.json --handlers d
 - missing secret environment variables or unreadable CA files, without printing their values;
 - browser connections whose `Origin` is missing or not listed in `gateway.allowedOrigins` (no wildcards).
 
-Startup waits until every source has joined its consumer group (30-second deadline). If a source fails, `start` prints staged diagnostics and exits. `--health 127.0.0.1:7402` adds read-only liveness and readiness probes on their own port (unreleased V1.1; see [health checks](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md#health-checks)). Supervision, restarts after a crash, and the reverse-proxy recipe are in [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md).
+Startup waits until every source has joined its consumer group (30-second deadline). If a source fails, `start` prints staged diagnostics and exits. `--health 127.0.0.1:7402` adds read-only liveness and readiness probes on their own port (new in 0.2.0-rc.1; see [health checks](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md#health-checks)). Supervision, restarts after a crash, and the reverse-proxy recipe are in [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md).
 
 ## Operate a running gateway
 
@@ -111,7 +111,7 @@ Every mutation names the incident (or circuit, or boundary) and the revision it 
 
 `--json` prints the gateway's answer verbatim (the data, or the operation result) for scripts. Every error, usage errors included, goes to stderr as one line `{"error": StreamError}`, stdout stays empty, and the exit code is the same as without `--json`.
 
-Setting up failure handling (`init --failures`, the quarantine topic, policies, recovery guards) and what to do in each kind of incident are in the [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md). Failure handling is part of the unreleased V1.1.
+Setting up failure handling (`init --failures`, the quarantine topic, policies, recovery guards) and what to do in each kind of incident are in the [source-failure runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md). Failure handling is new in 0.2.0-rc.1 (the V1.1 milestone).
 
 ## Commands and exit codes
 

@@ -140,10 +140,10 @@ process.once("SIGTERM", () => void gateway.stop({ timeoutMs: 10_000 }));
 - `start()` rolls back and rejects if startup fails or takes longer than 30 seconds. A stopped gateway cannot restart; create a new one.
 - `mode: "production"` refuses fixture sources, plaintext Kafka, and the `development` option, and requires an exact browser `Origin` on every connection. `mode: "development"` accepts `development: { principals, fixtures }` for local work.
 - `configDir` (optional) is where relative CA paths resolve; it defaults to the working directory (the CLI uses the configuration file's directory). `logger` (optional) receives redacted operator diagnostics: never credentials or payloads.
-- `health` (optional) serves read-only `GET /health/live` and `GET /health/ready` on a separate listener: `{ port, host? }`, `host` defaulting to `127.0.0.1`, port `0` for a free one. Liveness is 200 while the listener answers, broker outages included; readiness is 503 with reason categories (`starting`, `source-held`, `source-unavailable`, `journal`, `quarantine`) when the gateway can't serve. No CORS headers, and never topic names or incident IDs. Unreleased (V1.1); see [health checks](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md#health-checks).
+- `health` (optional) serves read-only `GET /health/live` and `GET /health/ready` on a separate listener: `{ port, host? }`, `host` defaulting to `127.0.0.1`, port `0` for a free one. Liveness is 200 while the listener answers, broker outages included; readiness is 503 with reason categories (`starting`, `source-held`, `source-unavailable`, `journal`, `quarantine`) when the gateway can't serve. No CORS headers, and never topic names or incident IDs. New in 0.2.0-rc.1 (V1.1); see [health checks](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md#health-checks).
 - `stateDirectory`, `handlerBuildId` and `operatorSocket` (optional) are for source-failure handling, below.
 
-## Source-failure handling (V1.1, unreleased)
+## Source-failure handling (V1.1, new in 0.2.0-rc.1)
 
 Opt-in. Without a `failureHandling` section in the configuration, the gateway pauses on a bad record exactly as described above, and none of this applies. The [runbook](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md) covers setup, policies and incident procedures.
 
@@ -263,7 +263,7 @@ The handler serves API routes only (never static files), answers `GET /workbench
 - [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md): handlers, revisions, the outbox, and revocation, step by step
 - [Connect to Kafka](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/kafka.md): topic shape, TLS and SASL, bad records, crashes, and diagnostics
 - [Run in production](https://github.com/jfricano/StreamOtter/blob/main/docs/DEPLOYMENT.md): `streamotter start`, supervision, and the reverse-proxy recipe
-- [Handle bad records](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md): V1.1 failure policies, quarantine, recovery guards, and the operator runbook (unreleased)
+- [Handle bad records](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md): V1.1 failure policies, quarantine, recovery guards, and the operator runbook (new in 0.2.0-rc.1)
 - [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md)
 - [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): handlers and lifecycle (§3), synchronization (§5), source progress and limits (§6), and access (§7)
 - [Reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard): fixture and Kafka handlers for a real app

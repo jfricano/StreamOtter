@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat
+September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat. Next: `0.2.0-rc.1` (V1.1, V1.2 and V1.2.1), released through the same [checklist](./RELEASE_CHECKLIST.md) with the owner's go
 
 ## Goal
 
@@ -17,7 +17,7 @@ Every public claim must match verified behavior: no invented adoption, performan
 | License | MIT, © 2026 Orca Solutions: a root `LICENSE`, a copy in each package, and `license` fields. The workbench also ships the notices of the Socket.IO client code it bundles. |
 | Source control | Public at [github.com/jfricano/StreamOtter](https://github.com/jfricano/StreamOtter) since September 25, 2026 (`main` only; commits authored with a GitHub no-reply address). The pre-push scan found no secrets, keys, certificates, `.local/`, or build output in the tree or history. Both CI workflows pass: `ci.yml` on Node 24 and 26, and `extended.yml` (Kafka, install, browser, and deployment on Linux). |
 | Version fields | Every public package is `0.1.0-rc.1` (`scripts/release/set-version.mjs` keeps them together); nothing is tagged. |
-| Site and demo | A separate project, Lontra Creek, planned for `streamotter.app`; in progress. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md). |
+| Site and demo | A separate project, Lontra Creek, planned for `streamotter.dev`; in progress. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md). |
 | Guides and article | Not started. The README, [deployment guide](./DEPLOYMENT.md), and the [example README](../examples/order-dashboard/README.md) are the starting material. |
 
 ## Decisions for the owner

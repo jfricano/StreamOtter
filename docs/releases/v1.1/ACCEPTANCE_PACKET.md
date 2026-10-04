@@ -23,7 +23,7 @@ What the runtime cannot establish, and says so in the docs and the UI: whether t
 
 ## 2. Baseline-to-release diff
 
-Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: the stack of PRs below, ending at `feat/v1.1-review-fixes`.
+Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: #55 (`review/v1.1`, all of V1.1 in one PR), then #20 (V1.2) and #56 (V1.2.1) on top of it. All three ship together as `0.2.0-rc.1`. #55 replaces the stack V1.1 was built in, #12 to #19, which is closed but kept below as the record of each slice.
 
 | PR | Branch | Content |
 | --- | --- | --- |
@@ -35,6 +35,9 @@ Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: the s
 | #17 | `feat/v1.1-operator` | Slice D: operator service, local socket, CLI, Failures tab, Kafka read-back |
 | #18 | `feat/v1.1-operations-release` | Slice E: health listener, downgrade refusal, `sources rebaseline`, reference guard, runbook and guides, crash tests, replicated-broker test, this packet |
 | #19 | `feat/v1.1-review-fixes` | Fixes for every review finding except J7 (fixture evidence is never deleted), one commit per finding and a regression test for every code fix; see [REVIEW.md](./REVIEW.md) |
+| #55 | `review/v1.1` | The whole V1.1 stack, #12 to #19, as one PR to `main` |
+| #20 | `feat/v1.2-quality-fixes` | [V1.2](../v1.2/README.md): an independent review of V1 and V1.1 together, with fixes for its 15 major and 25 of its minor findings |
+| #56 | `feat/v1.2.1-minor-fixes` | [V1.2.1](../v1.2.1/README.md): fixes for the minor findings V1.2 deferred and this review's J7 (issues #21 to #54) |
 
 Overall against `main`: about 120 files and 20,000 lines added, about half of them in `packages/` and most of the rest tests and docs. The [CHANGELOG](../../../CHANGELOG.md) lists every user-visible change under Unreleased.
 
@@ -61,7 +64,7 @@ Of the acceptance plan's 48 scenarios, by the matrix's own rules (no row is *ver
 | Partial | F09, F13, F15, F18, F25, F41, F43, F47, F48 |
 | Not run | F45 (Firefox and WebKit) |
 
-What each partial row lacks is named in the [matrix](./EVIDENCE.md) and in [implementation status](../../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-unreleased). Failed runs, and what each turned out to be, are kept in the [log](./IMPLEMENTATION_LOG.md).
+What each partial row lacks is named in the [matrix](./EVIDENCE.md) and in [implementation status](../../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1). Failed runs, and what each turned out to be, are kept in the [log](./IMPLEMENTATION_LOG.md).
 
 Final run of every tier on `feat/v1.1-review-fixes` at `483eb82`, October 4, after the review fixes and the second review's follow-ups (Node 24.21.0, pnpm 11.19.0, Kafka 4.1.2, headless Chromium 141). Later commits on that branch change docs only. The run before the review, at `92cf086`, is in the log's slice E entry; this one is in the review-fixes entry.
 
@@ -73,6 +76,8 @@ Final run of every tier on `feat/v1.1-review-fixes` at `483eb82`, October 4, aft
 | `pnpm test:browser` (Chromium only) | 56 / 56 |
 | `pnpm test:install` (packed packages, TLS Kafka) | 22 / 22 |
 | `pnpm test:deploy` (Caddy, HTTPS and WSS) | 4 / 4 |
+
+This table covers V1.1 alone. The runs with V1.2 on top, at the head of #20, are in the [V1.2 log](../v1.2/IMPLEMENTATION_LOG.md#4-test-runs).
 
 ## 5. Dependency and resource changes
 
@@ -110,7 +115,7 @@ These ACLs follow from the client calls. They have not been checked against a br
 - No command prunes resolved incidents. The journal stops at 256 MiB and then holds the source rather than lose state.
 - Moving a consumer group past a record still in the topic is done with Kafka's own tools, not by StreamOtter.
 - The operator socket is not available on Windows.
-- Fixture evidence in the local spool is never deleted (review finding J7). This affects only `streamotter dev` with fixture sources; the spool is capped at 16 MiB.
+- Fixture evidence in the local spool (`streamotter dev` with fixture sources) expires seven days after it was stored (review finding J7, fixed in V1.2.1); the spool is capped at 16 MiB.
 - While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds until a restart reconciles it. This is deliberate (review finding A), but it means one uncertain advance stops every partition of that source.
 - `KafkaQuarantineReader` reports `unavailable` on a coordinator reload (`GROUP_LOAD_IN_PROGRESS`) right after a broker rejoins, instead of retrying within its deadline. It fails closed; the operator repeats the command.
 - If a source's group coordinator is lost during an advance, the assignment epoch changes and the incident becomes `uncertain`; a restart reconciles it. Seen once in an F47 development run, not covered by a test.
@@ -121,7 +126,7 @@ These ACLs follow from the client calls. They have not been checked against a br
 
 **Ready to merge as a release candidate, not as a final release.** Recommended path:
 
-1. Merge the stack in order (#12, #14, #13, #15, #16, #17, #18, then the review fixes), retargeting each PR to `main` as its base merges. The review fixes correct defects in #13 to #18, so the stack should not be released without them.
+1. Merge #55 (V1.1, including the review fixes that correct defects in its slices; merged October 4 as `560c7c0`), then retarget #20 (V1.2) to `main` and merge it, then #56 (V1.2.1). #20 and #56 fix defects across V1 and V1.1 and belong in the same release.
 2. Let CI run the extended tiers on `main`, including the browser tier on Playwright's pinned browser, and add the Firefox and WebKit run for F45.
-3. Publish as `0.2.0-rc.1` (a new minor: new configuration and CLI surface, no breaking change), with the owner's go.
+3. Publish V1.1, V1.2 and V1.2.1 together as `0.2.0-rc.1` (a new minor: new configuration and CLI surface, no breaking change), with the owner's go.
 4. Before a final `0.2.0`: an ACL-enabled broker run, the proxy deployment with failure handling on, and one integrator walking the runbook end to end.

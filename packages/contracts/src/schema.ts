@@ -71,6 +71,10 @@ export function validateSchemaDefinition(schema: unknown, path: string, issues: 
           issues.push({ path: pointer(path, "enum"), code: "INVALID_VALUE", message: "enum must be a non-empty array of strings." });
         } else if (new Set(values).size !== values.length) {
           issues.push({ path: pointer(path, "enum"), code: "INVALID_VALUE", message: "enum values must be unique." });
+        } else if (values.some(item => (isNonNegativeSafeInteger(minLength) && codePointLength(item) < minLength)
+          || (isNonNegativeSafeInteger(maxLength) && codePointLength(item) > maxLength))) {
+          // The generated type would admit a value that validation always rejects.
+          issues.push({ path: pointer(path, "enum"), code: "INVALID_VALUE", message: "Every enum value must satisfy minLength and maxLength." });
         }
       }
       break;

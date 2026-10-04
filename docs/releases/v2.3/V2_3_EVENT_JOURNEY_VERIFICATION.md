@@ -1,15 +1,15 @@
 # V2.3 event journey verification (proposal)
 
-**Status:** proposal, revision 0.2 · September 29, 2026. Not approved and not scheduled. It proposes a V2 increment after V2.2 and does not change the V2.0 delivery-store commitment. Until the owner decisions below are made and the design gate passes, the [roadmap](../API_AND_FEATURE_ROADMAP.md) remains authoritative.
+**Status:** proposal, revision 0.2 · September 29, 2026. Not approved and not scheduled. It proposes a V2 increment after V2.2 and does not change the V2.0 delivery-store commitment. Until the owner decisions below are made and the design gate passes, the [roadmap](../../API_AND_FEATURE_ROADMAP.md) remains authoritative.
 
 ## Revision 0.2 (fit review)
 
 Revision 0.1 was the submitted planning supplement. Revision 0.2 keeps its product job, concepts, and kill criteria, and changes these points to fit the project:
 
-- **Mission and audience fit.** The [founding document](../FOUNDING.md) centers Kafka-to-live-application developers and keeps arbitrary stream processing out of the product. Observing warehouses such as BigQuery reaches a different audience. The first increment now verifies boundaries StreamOtter can already observe (Kafka topics and its own delivery leg). A non-Kafka sink is an explicit owner decision, not a default (see [Fit with the product boundary](#fit-with-the-product-boundary)).
+- **Mission and audience fit.** The [founding document](../../FOUNDING.md) centers Kafka-to-live-application developers and keeps arbitrary stream processing out of the product. Observing warehouses such as BigQuery reaches a different audience. The first increment now verifies boundaries StreamOtter can already observe (Kafka topics and its own delivery leg). A non-Kafka sink is an explicit owner decision, not a default (see [Fit with the product boundary](#fit-with-the-product-boundary)).
 - **Dependencies split.** V2.0 is the only hard dependency. V2.1 and V2.2 constrain or improve the design but don't block a single-gateway, JSON-only first increment.
 - **V1.1 relationship corrected.** V1.1 quarantine covers state channels only. For event channels, V2 holds on a bad record and records a visible history gap. Both are now named as reasons an event may not reach the first boundary.
-- **Authority and security.** Journey evidence is management-plane data under the existing management authorization, never delivered on application channels. Destinations are named connection profiles, never arbitrary URLs, matching `POST /source-checks` in the [V1 API](../V1_API.md).
+- **Authority and security.** Journey evidence is management-plane data under the existing management authorization, never delivered on application channels. Destinations are named connection profiles, never arbitrary URLs, matching `POST /source-checks` in the [V1 API](../../V1_API.md).
 - **Observation must be read-only.** Watching a topic or sink must not change the progress of the application's own consumers or StreamOtter's delivery sources.
 - **Numeric comparison.** The example's `scale` by `0.01` would produce floating-point mismatches (for example `1999 * 0.01` is `19.990000000000002`). Numeric conversions now declare exact decimal semantics.
 - **Gate language.** The research and prototype gate is now the roadmap's design gate for this increment, and the roadmap carries a short V2.3 row marked as proposed.
@@ -287,7 +287,7 @@ V1.1 quarantine evidence may explain why an event never became eligible for a jo
 
 V2.0 supplies stable event identity and the durable evidence model that anchors a journey. The V2.0 delivery store must not be redesigned around V2.3 before V2.3 is approved.
 
-One compatibility seam is worth recording in the [V2.0 store outline](../releases/v2.0/STORE_DESIGN_OUTLINE.md) when that decision is written: retained-event metadata should be able to carry or reference an application correlation ID without making it the StreamOtter cursor.
+One compatibility seam is worth recording in the [V2.0 store outline](../v2.0/STORE_DESIGN_OUTLINE.md) when that decision is written: retained-event metadata should be able to carry or reference an application correlation ID without making it the StreamOtter cursor.
 
 ### V2.1
 

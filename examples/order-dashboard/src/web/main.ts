@@ -69,9 +69,10 @@ function renderSignIn(): void {
 }
 
 async function renderDashboard(session: Session): Promise<void> {
-  const client: Client<AppChannels> = createClient<AppChannels>({ origin: gatewayOrigin(), getToken: () => currentToken(session) });
   const response = await fetch("/api/orders", { headers: { authorization: `Bearer ${session.token}` } });
+  if (!response.ok) throw new Error(`Your orders could not be loaded (${response.status}).`);
   const { orders, restrictedOrderId } = await response.json() as { orders: { orderId: string; status: string }[]; restrictedOrderId: string };
+  const client: Client<AppChannels> = createClient<AppChannels>({ origin: gatewayOrigin(), getToken: () => currentToken(session) });
 
   const connection = el("span", { class: "badge info", role: "status" }, "Connecting");
   const signOut = el("button", { type: "button" }, "Sign out");
@@ -101,9 +102,14 @@ async function renderDashboard(session: Session): Promise<void> {
       const advance = el("button", { type: "button", class: "primary" }, "Advance order");
       advance.addEventListener("click", async () => {
         advance.disabled = true;
-        const result = await fetch(`/api/orders/${current?.orderId ?? ""}/advance`, { method: "POST", headers: { authorization: `Bearer ${session.token}` } });
-        note(result.ok ? "The store changed and the application published the new state to Kafka." : `Advance refused (${result.status}).`);
-        advance.disabled = false;
+        try {
+          const result = await fetch(`/api/orders/${encodeURIComponent(current?.orderId ?? "")}/advance`, { method: "POST", headers: { authorization: `Bearer ${session.token}` } });
+          note(result.ok ? "The store changed and the application published the new state to Kafka." : `Advance refused (${result.status}).`);
+        } catch {
+          note("Advance failed: the application server could not be reached.");
+        } finally {
+          advance.disabled = false;
+        }
       });
       actions.append(advance);
     }
@@ -138,29 +144,33 @@ async function renderDashboard(session: Session): Promise<void> {
       actions));
   };
 
-  const open = async (orderId: string) => {
-    if (current !== null) {
-      await current.subscription.unsubscribe();
-      note(`Unsubscribed from ${current.orderId}.`);
-    }
+  const open = (orderId: string) => {
+    // Switch synchronously, so quick clicks can't interleave; the previous subscription is released
+    // in the background and its late events are ignored below.
+    const previous = current;
     latest = null;
     revision = "";
     lastError = null;
     const subscription = client.subscribe("orderStatus", { channelVersion: channelVersions.orderStatus, params: { orderId } });
     current = { subscription, orderId };
+    if (previous !== null) void previous.subscription.unsubscribe().then(() => note(`Unsubscribed from ${previous.orderId}.`));
     for (const item of list.querySelectorAll("button")) item.setAttribute("aria-pressed", String(item.dataset["orderId"] === orderId));
+    const isCurrent = () => current?.subscription === subscription;
     subscription.on("data", event => {
+      if (!isCurrent()) return;
       latest = event.data;
       revision = event.revision;
       note(`${event.kind === "snapshot" ? "Snapshot" : "Update"}: ${event.data.status} (revision ${event.revision}).`);
       draw();
     });
     subscription.on("state", ({ state, reason }) => {
+      if (!isCurrent()) return;
       if (state === "live") lastError = null;
       note(`Delivery ${state}${reason === undefined ? "" : ` (${reason})`}.`);
       draw();
     });
     subscription.on("error", error => {
+      if (!isCurrent()) return;
       lastError = error;
       draw();
     });
@@ -169,11 +179,11 @@ async function renderDashboard(session: Session): Promise<void> {
 
   for (const order of orders) {
     const button = el("button", { type: "button", "data-order-id": order.orderId, "aria-pressed": "false" }, el("span", {}, order.orderId), el("span", { class: "muted small" }, order.status));
-    button.addEventListener("click", () => void open(order.orderId));
+    button.addEventListener("click", () => open(order.orderId));
     list.append(el("li", {}, button));
   }
   const restricted = el("button", { type: "button" }, `Try order ${restrictedOrderId} (not yours)`);
-  restricted.addEventListener("click", () => void open(restrictedOrderId));
+  restricted.addEventListener("click", () => open(restrictedOrderId));
 
   client.on("state", ({ state }: { state: ConnectionState }) => {
     const tone = state === "connected" ? "ok" : state === "auth-required" ? "bad" : state === "reconnecting" ? "warn" : "info";
@@ -194,7 +204,7 @@ async function renderDashboard(session: Session): Promise<void> {
         detail),
       el("section", { class: "panel" }, el("h2", {}, "Delivery log"), log)));
   draw();
-  if (orders[0] !== undefined) void open(orders[0].orderId);
+  if (orders[0] !== undefined) open(orders[0].orderId);
 }
 
 renderSignIn();

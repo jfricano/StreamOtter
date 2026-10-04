@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-  canonicalJsonPretty, CAPABILITIES, isPlainObject, streamError, StreamOtterError, validateOperatorRequest, validateProjectConfig,
+  MAX_CONFIG_DEPTH, canonicalJsonPretty, CAPABILITIES, isPlainObject, streamError, StreamOtterError, validateOperatorRequest, validateProjectConfig,
   WORKBENCH_HOST_CONTRACT, WORKBENCH_OPERATIONS, WORKBENCH_REQUEST_HEADER, type ErrorCode, type Json, type OperatorApi,
   type ReproductionBundle, type Result, type StreamError, type Trace, type WorkbenchDiscovery, type WorkbenchOperation
 } from "@streamotter/contracts";
@@ -273,7 +273,7 @@ const ROUTES: readonly Route[] = [
           issues: validation.issues.map(issue => ({ path: issue.path, code: issue.code, message: issue.message }))
         });
       }
-      return { filename: "streamotter.json", content: canonicalJsonPretty(config), fingerprint: sha256Hex(config) };
+      return { filename: "streamotter.json", content: canonicalJsonPretty(config, MAX_CONFIG_DEPTH), fingerprint: sha256Hex(config, MAX_CONFIG_DEPTH) };
     }
   },
   {

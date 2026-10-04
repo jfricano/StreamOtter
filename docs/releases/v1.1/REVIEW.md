@@ -48,7 +48,7 @@ Every fix is one commit, named in the table, with a regression test that failed 
 | H | The circuit counted a re-advanced incident twice. | #16 | `a09c2e4` | `journal.test.ts`, "counts an incident advanced twice once" |
 | J5 | KafkaJS adds inherited values for header names like `constructor`, which became invented evidence headers. | #15 | `e5bf7ba` | `quarantine-reader.test.ts`, "Kafka header flattening" |
 | J6 | Lock files were not written atomically. | #15 | `d4a5cc4` | `journal.test.ts`, "never leaves a partly written lock" |
-| J7 | Fixture evidence is never deleted. | #15 | **Not fixed.** It affects only `streamotter dev` without Kafka; recorded as a limitation. | — |
+| J7 | Fixture evidence is never deleted. | #15 | Not fixed in V1.1; it affects only `streamotter dev` without Kafka. **Fixed in V1.2.1** (#56, issue #54): fixture evidence expires seven days after it was stored. | — |
 | O5 | A redrive of an unknown incident reported `journal-unavailable`. | #17 | `29e7834`. It is refused `not-found`. | `operator-races.test.ts`, O5 |
 | O6 | Redrive ignored `uncertain` advances and evidence conflicts as integrity faults. | #17 | `3b8499c` | `operator-races.test.ts`, O6 |
 | O7 | A refused retry still bumped the incident's revision and journaled an event. | #17 | `55587f4` | `operator-races.test.ts`, O7 |

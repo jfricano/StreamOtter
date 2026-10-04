@@ -5,9 +5,9 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type { Server as IoServer } from "socket.io";
 import {
-  assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
+  MAX_CONFIG_DEPTH, assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
   isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
-  resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue,
+  resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue, withoutUndefinedProperties,
   QUARANTINE_ELIGIBLE_CLASSES, type FailureClass, type OperatorApi,
   type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
   type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry, type HealthReason,
@@ -323,6 +323,8 @@ export class GatewayRuntime implements SessionOwner {
   readonly #stopCallbacks: (() => Promise<void> | void)[] = [];
   #state: LifecycleState = "idle";
   #starting: Promise<{ origin: string; path: string }> | null = null;
+  /** Fails an in-flight start so stop() can roll it back instead of waiting for it. */
+  #cancelStart: ((error: StreamOtterError) => void) | null = null;
   #stopping: Promise<void> | null = null;
   #address: { origin: string; path: string } | null = null;
   #http: HttpServer | null = null;
@@ -349,7 +351,7 @@ export class GatewayRuntime implements SessionOwner {
 
     this.config = config;
     this.mode = options.mode;
-    this.fingerprint = sha256Hex(config);
+    this.fingerprint = sha256Hex(config, MAX_CONFIG_DEPTH);
     this.#handlers = options.handlers;
     this.#development = options.development;
     this.#configDir = options.configDir ?? process.cwd();
@@ -536,7 +538,7 @@ export class GatewayRuntime implements SessionOwner {
       if (this.core.revocations.revokedSince(revocationSeq, principal)) return reject("UNAUTHENTICATED", "Access was revoked.", false);
       if (this.#state !== "running") return reject("OVERLOADED", "The gateway is not accepting connections.");
       this.core.traces.record({ requestId, stage: "authorize", outcome: "ok" });
-      return { ok: true, value: { principal, previewSessionId } };
+      return { ok: true, value: { principal, previewSessionId, revocationSeq } };
     } finally {
       this.#pendingHandshakes--;
     }
@@ -552,6 +554,11 @@ export class GatewayRuntime implements SessionOwner {
     });
     this.#sessions.add(session);
     if (this.#state !== "running") queueMicrotask(() => session.close());
+    // A revocation can land after authentication finished but before socket.io opened the connection,
+    // when the session is not yet in #sessions and revoke() can't see it.
+    else if (this.core.revocations.revokedSince(result.revocationSeq, result.principal)) {
+      queueMicrotask(() => session.close(streamError("UNAUTHENTICATED", { message: "Access was revoked; authenticate again.", retryable: false, requestId: newId() })));
+    }
     return session;
   }
 
@@ -813,7 +820,8 @@ export class GatewayRuntime implements SessionOwner {
         return { ...routing(`unexpected field "${key}"`), diagnosis: "unexpected field" };
       }
     }
-    const { tenantId, params, revision, data } = item;
+    const { tenantId, params, revision } = item;
+    const data = withoutUndefinedProperties(item["data"]);
     if (typeof tenantId !== "string" || tenantId.length === 0 || tenantId.length > 512) return routing("tenantId must be a non-empty string");
     const canonical = canonicalizeParams(channel.paramsSchema, params);
     if (!canonical.ok) return { ...routing(`params ${canonical.issue.path}: ${canonical.issue.message}`), diagnosis: issueDiagnosis("params", canonical.issue) };
@@ -1123,8 +1131,12 @@ export class GatewayRuntime implements SessionOwner {
           timer = setTimeout(() => reject(new StreamOtterError("SOURCE_UNAVAILABLE", {
             message: "Sources did not become ready within the 30-second startup deadline."
           })), remaining);
+          this.#cancelStart = reject;
         })
-      ]).finally(() => clearTimeout(timer));
+      ]).finally(() => {
+        clearTimeout(timer);
+        this.#cancelStart = null;
+      });
 
       // The validator guarantees stateDirectory and failureHandling, so the operator exists here.
       if (this.#operatorSocketEnabled && this.#operator !== null && this.#stateDirectory !== undefined) {
@@ -1168,12 +1180,20 @@ export class GatewayRuntime implements SessionOwner {
   }
 
   async #doStop(timeoutMs: number): Promise<void> {
-    if (this.#starting !== null) await this.#starting.catch(() => undefined);
+    const deadline = Date.now() + timeoutMs;
+    if (this.#starting !== null) {
+      // Roll back a start in progress rather than wait out its 30-second deadline.
+      this.#cancelStart?.(new StreamOtterError("SOURCE_UNAVAILABLE", { message: "The gateway was stopped while starting." }));
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        this.#starting.catch(() => undefined),
+        new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); })
+      ]).finally(() => clearTimeout(timer));
+    }
     const wasRunning = this.#state === "running";
     this.#state = "stopping";
     this.#stopController.abort();
     for (const session of [...this.#sessions]) session.close();
-    const deadline = Date.now() + timeoutMs;
     const work = (async () => {
       // Readiness ends first, so a load balancer stops routing before sessions close.
       await this.#health?.close().catch(() => undefined);
@@ -1198,7 +1218,7 @@ export class GatewayRuntime implements SessionOwner {
     let timer: NodeJS.Timeout | undefined;
     const expired = await Promise.race([
       work.then(() => false),
-      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(true), timeoutMs); })
+      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(true), Math.max(0, deadline - Date.now())); })
     ]);
     clearTimeout(timer);
     if (expired) {

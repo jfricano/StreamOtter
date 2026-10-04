@@ -1,10 +1,10 @@
 # StreamOtter V1 implementation status
 
-September 25, 2026 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter` package
+September 25, 2026, updated October 4 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter` package. Next: `0.2.0-rc.1`, carrying V1.1, V1.2 and V1.2.1 (see the [CHANGELOG](../CHANGELOG.md))
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
-V1.1 source-failure handling is implemented but unreleased; its status is in [its own section](#v11-source-failure-handling-unreleased) and does not change anything recorded for V1 below.
+V1.1 source-failure handling is implemented but not yet published, and so are the V1.2 review fixes ([docs/releases/v1.2](./releases/v1.2/README.md)) and V1.2.1's minor fixes; all three are planned for `0.2.0-rc.1`. V1.1's status is in [its own section](#v11-source-failure-handling-020-rc1) and does not change anything recorded for V1 below.
 
 This document records what exists, the commands that verify it, the results observed, and the limitations that remain. The [V1 specification](./V1_API.md) governs behavior; its [section 13](./V1_API.md#13-implementation-refinements-contract-revision-02) lists refinements made during implementation.
 
@@ -160,7 +160,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 - **Timing-sensitive tests (fixed).** On September 25, one of twelve `pnpm test` runs failed a single test. Twenty runs with eight CPU-bound processes competing did not reproduce it. With the local broker also running and `--test-concurrency=10`, runs failed in three places, and all three were test races rather than product faults. `cli.test.ts` parsed the `dev` banner after its `Token` line arrived but before the later lines did (the CLI writes the banner line by line); `install.test.ts` had the same wait. `lifecycle.test.ts` polled for a `stale` state that lasts only until reconnection (0–500 ms of jitter). It, and the example's "Disconnect, change while away" scenario (`example.test.ts`), assumed the change would happen before the client reconnected. The tests now wait for the banner's last line and read `stale` from the state listener. The lifecycle test updates the store before the disconnect, and the scenario holds back the reconnection token until the change is made. After the fixes, forty runs under the same conditions passed.
 - **CI:** on September 25, `.github/workflows/ci.yml` passed on GitHub (Ubuntu 24.04, Node 24 and 26: install, build, `check:contracts`, `typecheck`, `test`, `test:load`, `test:install`). `extended.yml` also passed on its first run (Ubuntu 24.04, Node 24, Temurin 21 from `actions/setup-java`, Kafka 4.1.2): `test:kafka` 20 / 20, `test:install` 14 / 14, `test:browser` 13 / 13, `test:deploy` 4 / 4, none skipped. So the Linux setup paths are verified as well.
 
-## V1.1 source-failure handling (unreleased)
+## V1.1 source-failure handling (0.2.0-rc.1)
 
 October 3, 2026 · Opt-in source-failure policies, durable quarantine, guarded continuation, the operator workflow, and the health listener ([specification](./releases/v1.1/V1_1_SOURCE_FAILURE_SPEC.md), [API draft](./releases/v1.1/V1_1_API.md), [runbook](./guides/source-failures.md)). Not published to npm.
 
@@ -231,6 +231,38 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 - Redrive finds an evidence conflict or a moved position on an incident through its event history, which keeps the newest 200 events, so an incident retried more than about 100 times can lose that marker (second review, [REVIEW.md](./releases/v1.1/REVIEW.md) §5).
 - `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` have run on Linux only; their macOS fix (`bdf1445`) has not run on a Mac yet.
 
+## V1.2 quality review (0.2.0-rc.1)
+
+An independent review of V1 and V1.1 together found 15 major and 57 minor issues. Every major is fixed, each with a regression test confirmed to fail without its fix, and so are 25 minors. The other minors are fixed in V1.2.1, which ships in the same release. The findings, the fix list and the test runs are in [docs/releases/v1.2](./releases/v1.2/README.md). On Node 24.21.0, at the head of #20, every tier passed:
+
+| Tier | Tests passed |
+| --- | --- |
+| `pnpm verify` | 397 |
+| `test:kafka` | 44 |
+| `test:kafka:replicated` | 2 |
+| `test:browser` | 58 |
+| `test:deploy` | 4 |
+| `test:install` | 22 |
+| `test:load` | 1 |
+
+CI ran `pnpm verify` on Node 24 and 26.
+
+## V1.2.1 minor fixes (0.2.0-rc.1)
+
+The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolved ([docs/releases/v1.2.1](./releases/v1.2.1/README.md)). An independent review of the fixes found 19 minor issues, all fixed. On Node 24.21.0, after the review fixes, every tier passed, none skipped:
+
+| Tier | Tests passed |
+| --- | --- |
+| `pnpm verify` | 444 |
+| `test:kafka` | 48 |
+| `test:kafka:replicated` | 3 |
+| `test:browser` | 59 |
+| `test:deploy` | 5 |
+| `test:install` | 22 |
+| `test:load` | 1 |
+
+GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by hand, passed on Node 24 and 26, along with the nightly replicated-Kafka job.
+
 ## Gate A status (home site and demo plan)
 
 | Gate A condition | Status |
@@ -241,4 +273,4 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 | Auth, revocation, synchronization, cleanup, overload/resource limits, broker authentication paths have results and explicit limitations | Met |
 | No unresolved failure contradicts a promised V1 behavior | No known contradiction; limitations are listed above |
 
-Gate A is met. The home site and live demo are a separate project, Lontra Creek, planned for `streamotter.app`; it uses the published packages, and its launch criteria (Gate B) are maintained with it. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md).
+Gate A is met. The home site and live demo are a separate project, Lontra Creek, planned for `streamotter.dev`; it uses the published packages, and its launch criteria (Gate B) are maintained with it. See the [home site plan](./WEBSITE_AND_DEMO_PLAN.md).

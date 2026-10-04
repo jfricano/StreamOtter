@@ -107,4 +107,26 @@ describe("generated contract types agree with schema validation", () => {
       `${diagnostic.file?.fileName.replace(OUT, "") ?? ""}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`);
     assert.deepEqual(diagnostics, []);
   });
+
+  it("keeps line separators in names inside generated string literals", () => {
+    const injection = (tail: string) => `x\u2028export const injected${tail} = 1; //`;
+    const hostile: ProjectConfig = {
+      ...config,
+      schemas: {
+        ...schemas,
+        "shipment-params": {
+          type: "object", additionalProperties: false, required: [injection("1"), "mode"],
+          properties: { [injection("1")]: { type: "string" }, mode: { type: "string", enum: [`a\u2029export const injected2 = 2; //`] } }
+        }
+      }
+    };
+    assert.equal(validateProjectConfig(hostile).valid, true);
+    for (const file of generateFiles(hostile)) {
+      const source = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.ES2022);
+      const declared = source.statements.flatMap(statement => ts.isVariableStatement(statement)
+        ? statement.declarationList.declarations.map(declaration => declaration.name.getText(source)) : []);
+      assert.deepEqual(declared.filter(name => name.startsWith("injected")), [], file.path);
+      assert.doesNotMatch(file.content, /[\u2028\u2029]/, file.path);
+    }
+  });
 });

@@ -176,4 +176,20 @@ describe("acceptance 1–3: synchronization", () => {
     assert.equal(sub.state, "live");
     assert.equal(h.app.snapshotCalls, 4);
   });
+
+  it("treats a mapped property set to undefined as absent, as JSON does", async () => {
+    h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)] });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    // What `{ ...row, note: row.note }` compiles to when an optional field is missing.
+    h.app.mapOverride = value => {
+      const { tenantId, revision, order } = value as { tenantId: string; revision: string; order: Record<string, unknown> };
+      return [{ tenantId, params: { orderId: order["orderId"] }, revision, data: { ...order, note: undefined } }];
+    };
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    const seen = observe(sub);
+    await sub.ready();
+    assert.equal(await h.advance(1), 1, "the record is committed, not paused");
+    await waitFor(() => seen.events.length === 2);
+    assert.deepEqual(seen.events[1]!.data, { orderId: "ord_1", status: "processing", progress: 20 });
+  });
 });

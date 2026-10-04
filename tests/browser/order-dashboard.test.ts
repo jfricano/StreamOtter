@@ -112,6 +112,22 @@ describe("order-dashboard example in a browser", { skip: existsSync(APP) ? false
     assert.ok(stale >= 0 && snapshot > stale && recent.lastIndexOf("Delivery live.") > snapshot, recent.join(" | "));
   });
 
+  it("follows only the last order clicked when orders are clicked in quick succession", async () => {
+    await page.evaluate(() => {
+      const button = (id: string) => document.querySelector<HTMLButtonElement>(`button[data-order-id="${id}"]`)!;
+      button("ord_1002").click();
+      button("ord_1001").click();
+      button("ord_1002").click();
+    });
+    await page.locator("h2", { hasText: "Order ord_1002" }).waitFor();
+    await page.locator(".badge", { hasText: "Live" }).first().waitFor();
+    // Every earlier subscription is released, so no stale one can draw into the panel.
+    await waitFor(() => internals.subscriptionCount() === 1, 5_000, "one subscription left");
+    await page.waitForTimeout(300);
+    assert.equal(internals.subscriptionCount(), 1);
+    assert.match(await page.locator(".panel h2", { hasText: /^Order / }).innerText(), /ord_1002/);
+  });
+
   it("renders the React usage example with live and denied orders", async () => {
     await page.goto(`${appOrigin}/react`);
     await page.locator(".badge", { hasText: "Live" }).nth(1).waitFor();

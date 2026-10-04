@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { generateFiles } from "@streamotter/cli";
+import { MAX_NESTING_DEPTH, validateProjectConfig, type Schema } from "@streamotter/contracts";
 import { createGateway, defineProject, silentLogger, type ProjectConfig } from "@streamotter/gateway";
 import { OrderApp, orderConfig, type TestChannels } from "./harness.ts";
 
@@ -100,5 +102,23 @@ describe("acceptance 8–9: configuration boundaries", () => {
     const second = createGateway({ config, handlers: app.handlers(), mode: "development", development, logger: silentLogger });
     await assert.rejects(second.start(), new RegExp(`Port ${port} is already in use`));
     await first.stop();
+  });
+
+  it("accepts a payload schema nested to the documented limit everywhere the configuration is used", async () => {
+    let deep: Schema = { type: "string", enum: ["leaf"] };
+    for (let level = 1; level < MAX_NESTING_DEPTH; level++) {
+      deep = { type: "object", additionalProperties: false, required: ["k"], properties: { k: deep } };
+    }
+    const base = orderConfig();
+    const config = { ...base, schemas: { ...base.schemas, Deep: deep }, channels: { orderStatus: { ...base.channels.orderStatus, payloadSchema: "Deep" } } };
+    assert.equal(validateProjectConfig(config).valid, true);
+    assert.doesNotThrow(() => defineProject(config));
+    assert.equal(generateFiles(config).length, 2);
+    const gateway = createGateway<TestChannels>({
+      config: config as ProjectConfig<TestChannels>, handlers: new OrderApp().handlers(), mode: "development",
+      development: { principals: {}, fixtures: { orders: [] } }, logger: silentLogger
+    });
+    await gateway.start();
+    await gateway.stop();
   });
 });

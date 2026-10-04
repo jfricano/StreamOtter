@@ -41,7 +41,7 @@ class Checker {
   keys(value: Record<string, unknown>, path: string, required: readonly string[], optional: readonly string[] = []): void {
     for (const key of Object.keys(value)) {
       if (required.includes(key) || optional.includes(key)) continue;
-      const deferred = DEFERRED_FEATURES[key];
+      const deferred = Object.hasOwn(DEFERRED_FEATURES, key) ? DEFERRED_FEATURES[key] : undefined;
       if (deferred !== undefined) this.add(pointer(path, key), "UNSUPPORTED_FEATURE", deferred);
       else this.add(pointer(path, key), "UNKNOWN_KEY", `Unknown key "${key}".`);
     }

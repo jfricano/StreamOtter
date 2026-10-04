@@ -1,6 +1,9 @@
 import { pointer } from "./schema.ts";
 import type { ConfigIssue, Limits } from "./types.ts";
 
+/** The longest delay setTimeout honors. */
+const MAX_TIMER_MS = 2_147_483_647;
+
 /** Starting bounds from the specification; not published capacity claims. */
 export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
   maxConnections: 1_000,
@@ -47,6 +50,12 @@ export function validateLimits(input: unknown, path: string, issues: ConfigIssue
     }
     if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
       issues.push({ path: pointer(path, key), code: "INVALID_VALUE", message: `${key} must be a positive integer.` });
+      valid = false;
+      continue;
+    }
+    // Node clamps a longer timer to 1 ms, so such a timeout would fire at once.
+    if (key.endsWith("Ms") && value > MAX_TIMER_MS) {
+      issues.push({ path: pointer(path, key), code: "INVALID_VALUE", message: `${key} must be at most ${MAX_TIMER_MS} (about 24.8 days).` });
       valid = false;
       continue;
     }

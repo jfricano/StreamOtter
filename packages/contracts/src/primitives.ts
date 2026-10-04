@@ -1,6 +1,12 @@
 import type { Json, Revision } from "./types.ts";
 
 export const MAX_NESTING_DEPTH = 16;
+/**
+ * Nesting allowed when a whole project configuration is canonicalized (fingerprints, export). Each
+ * nested object schema adds two levels (`properties` and the key), so a schema at the full
+ * MAX_NESTING_DEPTH sits about twice as deep in the configuration.
+ */
+export const MAX_CONFIG_DEPTH = 2 * MAX_NESTING_DEPTH + 8;
 export const IDENTIFIER_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 export const REVISION_PATTERN = /^(?:0|[1-9][0-9]{0,38})$/;
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -79,27 +85,45 @@ export function isJsonValue(value: unknown, depth = 1): value is Json {
 }
 
 /**
+ * Drops object properties whose value is undefined, as JSON.stringify does, so `{ note: row.note }`
+ * with no note means "no note" rather than non-JSON data. TypeScript's optional properties accept
+ * undefined unless exactOptionalPropertyTypes is on. Anything else is returned unchanged for
+ * isJsonValue to judge, including undefined array items.
+ */
+export function withoutUndefinedProperties(value: unknown, depth = 1): unknown {
+  if (depth > MAX_NESTING_DEPTH) return value;
+  if (Array.isArray(value)) return value.map(item => withoutUndefinedProperties(item, depth + 1));
+  if (!isPlainObject(value)) return value;
+  const copy: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item === undefined) continue;
+    Object.defineProperty(copy, key, { value: withoutUndefinedProperties(item, depth + 1), enumerable: true, writable: true, configurable: true });
+  }
+  return copy;
+}
+
+/**
  * Canonical JSON: sorted object keys, -0 normalized to 0, no whitespace.
  * Throws on values that are not JSON data.
  */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalize(value, 1));
+export function canonicalJson(value: unknown, maxDepth = MAX_NESTING_DEPTH): string {
+  return JSON.stringify(canonicalize(value, 1, maxDepth));
 }
 
-function canonicalize(value: unknown, depth: number): Json {
-  if (depth > MAX_NESTING_DEPTH) throw new TypeError("Value exceeds the maximum nesting depth");
+function canonicalize(value: unknown, depth: number, maxDepth: number): Json {
+  if (depth > maxDepth) throw new TypeError("Value exceeds the maximum nesting depth");
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new TypeError("Non-finite numbers are not JSON data");
     return Object.is(value, -0) ? 0 : value;
   }
-  if (Array.isArray(value)) return value.map(item => canonicalize(item, depth + 1));
+  if (Array.isArray(value)) return value.map(item => canonicalize(item, depth + 1, maxDepth));
   if (isPlainObject(value)) {
     const sorted: { [key: string]: Json } = {};
     for (const key of Object.keys(value).sort()) {
       const item = value[key];
       if (item === undefined) continue;
-      Object.defineProperty(sorted, key, { value: canonicalize(item, depth + 1), enumerable: true, writable: true, configurable: true });
+      Object.defineProperty(sorted, key, { value: canonicalize(item, depth + 1, maxDepth), enumerable: true, writable: true, configurable: true });
     }
     return sorted;
   }
@@ -107,6 +131,6 @@ function canonicalize(value: unknown, depth: number): Json {
 }
 
 /** Pretty canonical JSON (sorted keys, two-space indent, trailing newline) for files. */
-export function canonicalJsonPretty(value: unknown): string {
-  return `${JSON.stringify(JSON.parse(canonicalJson(value)) as Json, null, 2)}\n`;
+export function canonicalJsonPretty(value: unknown, maxDepth = MAX_NESTING_DEPTH): string {
+  return `${JSON.stringify(JSON.parse(canonicalJson(value, maxDepth)) as Json, null, 2)}\n`;
 }

@@ -4,6 +4,14 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ## Unreleased
 
+Planned as `0.2.0-rc.1`, one release that carries three internal milestones:
+
+- V1.1: source-failure handling and the workbench host contract ([docs/releases/v1.1](docs/releases/v1.1/README.md)).
+- V1.2: an independent quality review of V1 and V1.1 together ([docs/releases/v1.2](docs/releases/v1.2/README.md)).
+- V1.2.1: fixes for the minor findings V1.2 deferred ([docs/releases/v1.2.1](docs/releases/v1.2.1/README.md)).
+
+Milestone labels are not package versions. Configurations without `failureHandling` behave as in `0.1.0-rc.3`, apart from the changes and fixes below. Two of those changes can refuse a configuration or a request that `0.1.0-rc.3` accepted: the `maxControlFrameBytes` minimum, and production answers to invalid subscribe parameters.
+
 ### Added
 
 - V1.1 groundwork (no behavior change for existing configurations): `@streamotter/contracts` types and validation for the optional `failureHandling` configuration section, recovery-guard and snapshot-acknowledgment handler types, the internal `FailureClass` vocabulary, and `TransientMappingError` (also exported by `@streamotter/gateway`). Every V1.1 policy is now accepted. See [docs/releases/v1.1](docs/releases/v1.1/README.md).
@@ -18,7 +26,7 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
   - `quarantine-resync` continues past an eligible quarantined record only when the source's recovery guard (`handlers.sources[id].recover`) returns `recoverable`:
     - The cumulative recovery boundary and the intent to advance are journaled before the offset moves. The commit is confirmed by reading it back.
     - From then on every snapshot on the source receives `recovery` and must echo `recoveryBoundaryId` before a subscription can be `live`, including after restarts and for new subscriptions.
-    - A circuit breaker (default five advances per 60 s) stops automatic continuation and persists across restarts.
+    - A circuit breaker (default five distinct incidents per 60 s) stops automatic continuation and persists across restarts.
     - `boundaryRetirement: "application"` calls `retire()` after acknowledged snapshots.
     - At startup, prepared advances are reconciled against the consumer group's committed offset. While an advance is unresolved, every record of the source holds, on every partition.
 - V1.1 operator workflow (opt-in; nothing changes without `failureHandling`):
@@ -36,10 +44,22 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
   - The refusal for a `generation` changed while incidents are open now names `streamotter sources rebaseline`.
   - The order-dashboard example's orders source has an outbox-based recovery guard and snapshot acknowledgment (`decideRecovery`, `acknowledgeRecovery`), with a `quarantine-resync` configuration (`streamotter.kafka-resync.json`, `pnpm dev:kafka-resync`).
   - New guide: [Handle bad records](docs/guides/source-failures.md), the source-failure policies and operator runbook. The Kafka, deployment and troubleshooting guides and the package READMEs cover failure handling.
+- V1.1 hardening from its [independent review](docs/releases/v1.1/REVIEW.md):
+  - Startup replaces a stale `journal.lock` left by a dead process on the same host, including one naming the new process's own pid (a container restarted in place), once SQLite confirms nothing holds the journal. Lock files are written atomically.
+  - An incident left `guard-pending` by a crash returns to `recovery: held` at startup.
+  - The operator socket's `close()` (the first step of `gateway.stop()`) answers requests already running for up to 5 seconds. `callOperator` errors raised after a request was sent carry `details.reason: "no-answer"`.
+  - `retryCurrent` and `reassess` wait for a quarantine write or guard already running on the source. A retry the gateway would refuse leaves the incident unchanged.
+  - A redrive claims its plan and every other plan of the incident before it starts. A redrive of an unknown incident is refused `not-found`.
+  - Redrive is refused while the source has any unresolved source-integrity fault: an integrity-class incident, an `uncertain` advance, an evidence conflict, a moved position, or an incident from another Kafka cluster.
+  - `sources rebaseline` runs as one journal transaction and changes no other source.
+  - Removing `failureHandling` together with a `generation` change is allowed.
+  - Quarantine requests have a 10-second deadline.
+  - `@streamotter/workbench`: a session end closes a running preview's connection, a 401 whose body is not a `Result` ends the session, and `apiBase` refuses percent-encoded dot segments.
+  - The order-dashboard guard decides "never changed" from the order's seed revision, and holds when two outbox rows record the same position.
 - Gateway operator logs for a paused source now include `failureClass`, the trusted classification of why the record could not be processed.
 - `@streamotter/workbench`: a favicon (the StreamOtter brandmark reduced for a browser tab) in place of the blank one.
 - Workbench host contract, version 1 ([WHC-1](./docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md)), for running the published workbench under a route of your own site:
-  - `@streamotter/workbench` reads an optional `<script type="application/json" id="streamotter-workbench-host">` boot block (API base path, `token` or `session` authentication, gateway, environment label), discovers the offered operations, and shows anything else as "Not available in this environment". Without the block it behaves as before. The package ships `dist/workbench-host.json` (entry files, `sha384` integrity values, required CSP) and exports `@streamotter/workbench/host`, `@streamotter/workbench/dist/*` and `@streamotter/workbench/package.json`.
+  - `@streamotter/workbench` reads an optional `<script type="application/json" id="streamotter-workbench-host">` boot block (API base path, `token` or `session` authentication, gateway, environment label), discovers the offered operations, and shows anything else as "Not available in this environment". Without the block it behaves as before. The package ships `dist/workbench-host.json` (entry files, `sha384` integrity values, required CSP) and exports `@streamotter/workbench/host`, `@streamotter/workbench/dist/*` and `@streamotter/workbench/package.json`. This `exports` map replaces open subpath access: files under `dist/` still resolve through `@streamotter/workbench/dist/*`, but other paths in the package (such as `README.md` and `LICENSE`) no longer resolve.
   - `@streamotter/gateway/management`: `createManagementHandler`, a mountable handler for a development-mode gateway with an operation allowlist and a host `authorize` callback. The development management API gains `GET /management/v1/workbench`.
   - `@streamotter/contracts`: `WorkbenchHostConfig`, `WorkbenchOperation`, `WorkbenchDiscovery`, `WorkbenchHostManifest`, `WORKBENCH_OPERATIONS` and `validateWorkbenchHostConfig`.
   - WHC-1 revision 0.3, for a site whose API is on another origin and whose page keeps its own header, footer and styles: an optional `apiOrigin` boot field (an exact `https:` origin, `session` auth only; requests use CORS with `credentials: "include"` and `redirect: "error"`, and never send `Authorization`), and `isWorkbenchApiOrigin` in `@streamotter/contracts`. `@streamotter/workbench` ships `dist/workbench-host.css`, generated from `styles.css` with every selector scoped under `[data-streamotter-workbench]`, which the workbench sets on its mount when a boot block is present; the manifest names it as `entry.hostStyle` with an integrity value, and `connect-src` gains an `"<api origin>"` placeholder. The native page keeps `styles.css` unchanged.
@@ -49,6 +69,81 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 ### Changed
 
 - Development management API: an unknown route answers 404 before its request body is read (it could previously answer 400 or 413 for a malformed body first).
+- Configuration validation refuses a `limits` timeout above 2,147,483,647 ms (Node would fire it after 1 ms), and an `enum` whose values break the schema's own `minLength` or `maxLength`. `generateFiles` validates its input like the CLI does.
+- `limits.maxControlFrameBytes` must be at least 9216, so that a CONNECT frame carrying an 8 KiB token fits. This assumes a token that JSON doesn't escape, such as a JWT, base64url or hex. A configuration with a smaller value now fails validation with `INCONSISTENT_LIMITS`.
+- In production, subscribe parameters that fail the channel's `paramsSchema` are answered `FORBIDDEN`, like an unknown channel, and traced as `INVALID_PARAMS`. The subscription limit, a reused subscription ID, parameters that aren't an object, and parameters over `maxParamsBytes` are checked before the channel lookup, as `docs/V1_API.md` §7 describes. Development still returns `INVALID_PARAMS` with the failing path.
+- `streamotter init` removes a partial scaffold and exits 2 when a write fails partway (permissions, a full disk). Before, it exited 1 and left files behind.
+- `test:kafka`, `test:kafka:replicated` and `test:deploy` fail when their service isn't running. Set `STREAMOTTER_ALLOW_SKIP=1` to skip them instead.
+
+### Fixed
+
+From the V1.2 review ([findings and log](docs/releases/v1.2/README.md)):
+
+- Gateway:
+  - A client that stops reading is disconnected once its unsent output passes `maxPendingBytesPerConnection`, instead of growing gateway memory without limit.
+  - Malformed and unknown frames count against the control rate limit.
+  - A session revoked while its connection was being set up is refused.
+  - `stop()` and SIGINT/SIGTERM interrupt a startup in progress and honor the stop deadline. Before, they waited for startup to finish, or forever if a handler module never loaded.
+  - A mapped property or snapshot property set to `undefined` is treated as absent, as JSON does. Before, it paused the source as an integrity failure.
+  - A configuration with schemas nested 8 or more levels deep no longer crashes `validate`, `generate` or startup.
+- Kafka source:
+  - A paused source stays paused through a consumer crash and restart. Before, it fetched in a busy loop.
+  - A record that takes longer than the group session timeout keeps heartbeating, so it is committed once instead of being reprocessed forever.
+- `@streamotter/client`:
+  - Unsubscribing before a subscribe is acknowledged now unsubscribes on the gateway.
+  - A rate-limited resync retries after 1 s and then 2 s instead of freezing in `authorizing`.
+  - A rate-limited unsubscribe is retried instead of being reported as done.
+  - The React provider in the README works under StrictMode.
+- `@streamotter/cli`:
+  - Generated example code escapes U+2028 and U+2029, which could otherwise inject code.
+  - `generate` refuses symbolic links and a non-directory `--out` (exit code 2).
+  - `init` checks its paths before writing anything.
+  - Command names such as `constructor` are rejected as unknown.
+  - `--json=…` and malformed `--management-port` values are handled.
+  - `sources rebaseline` is in the usage text.
+- `@streamotter/workbench`:
+  - Preview keeps drawing after a tab switch, and a second Start no longer leaks a preview.
+  - Export URLs are released.
+  - Connect shows the latest status.
+- The order-dashboard example no longer shows one order's data under another's header after quick clicks, and it reports failed requests.
+
+From V1.2.1 ([fixes](docs/releases/v1.2.1/FIXES.md)):
+
+- Gateway:
+  - Refused handshakes are traced at a bounded rate (10/s after a burst of 100). The count of skipped traces is logged within a second and at stop. Connection floods no longer evict operator traces.
+  - `authenticate`'s signal aborts when the client disconnects mid-handshake. A call that ignores it still counts against `maxConnections` until it settles or times out.
+  - Overlapping CONNECTs on one connection close it, instead of opening sessions nothing can reach.
+  - Management GET routes refuse a request body with 400.
+  - When `stop()` passes its deadline, the listening port is released before it returns, and the remaining shutdown work's completion is logged.
+  - Resuming a revision-conflict pause logs a warning. V1_API explains that the retry is checked against current state.
+- `@streamotter/client`:
+  - A gateway that closes the connection right after its hello now leads to a reconnect. Before, the client was stuck in `connected` (Node).
+  - `resync()` on a `stale` subscription keeps it `stale` until the gateway starts the attempt, and concurrent calls send one request.
+  - A resync that gives up before a new epoch ends in `resync-required`, and `resync()` rejects with `RESYNC_REQUIRED` instead of timing out.
+  - A listener removed while an event is being dispatched is no longer called, even for that event.
+- Kafka source:
+  - A failed offset commit is retried in the background, and a commit counts only when KafkaJS actually made it.
+  - With `startFrom: "latest"`, the start position is committed when the gateway joins and starts fetching. A restart before the first record no longer skips records produced in between.
+  - A committed offset outside the retained range is logged.
+  - The start-position read gives up cleanly after 5 s and is closed by `stop()`.
+  - When the watchdog marks a source degraded during a slow record, the warning names the record and how long it has been processing.
+- Development: local fixture evidence expires seven days after it was stored, and is then reported as `evidence-expired`.
+- Codegen: generated type names no longer change when schemas are reordered.
+- `@streamotter/workbench`:
+  - Inspect no longer mixes in rows from a previous filter.
+  - Define clears its validation result when the candidate is edited.
+- `validate` words the journal's Node-version refusal exactly as the gateway does.
+- Scripts:
+  - Caddy and the Temurin 21.0.12.1 JDK (x64 and arm64 Linux) are pinned by checksum.
+  - A missing Java gives a clear message.
+  - `kafka:start` and `kafka:stop` check that the pid is this checkout's broker, including through a symlinked path.
+  - `kafka:start` refuses when the broker ports are taken.
+- Packaging: public packages build on `prepack`.
+- CI:
+  - Actions are pinned by SHA.
+  - The extended tiers run on Node 24 and 26.
+  - A nightly job runs the replicated Kafka tier.
+- Tests: the load, token-expiry and several V1 tests were strengthened so they can fail, and 12 documented V1 behaviors gained coverage.
 
 ## [0.1.0-rc.3] — 2026-09-25
 
