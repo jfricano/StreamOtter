@@ -139,6 +139,15 @@ export class ClientSession implements SubscriptionHost {
         return this.#err("INVALID_PARAMS", requestId);
       }
       if (utf8ByteLength(encoded) > this.#owner.core.limits.maxParamsBytes) return this.#err("INVALID_PARAMS", requestId, "The channel parameters are too large.");
+      // A reused ID is compared with the client's own earlier request, and the subscription limit is
+      // checked, before the lookup, so neither answer can tell a known channel from an unknown one.
+      const existing = this.#subscriptions.get(subscriptionId);
+      if (existing !== undefined && (existing.channel.name !== channelName || existing.channel.version !== version)) {
+        return this.#err("INVALID_REQUEST", requestId, "This subscription ID is already used for a different contract.");
+      }
+      if (existing === undefined && this.#subscriptions.size >= this.#owner.core.limits.maxSubscriptionsPerConnection) {
+        return this.#err("OVERLOADED", requestId, "This connection has reached its subscription limit.");
+      }
       const channel = isIdentifier(channelName) ? this.#owner.channel(channelName) : undefined;
       if (channel === undefined || channel.version !== version) {
         // Unrecognized channels and versions are publicly indistinguishable from denial.
@@ -162,16 +171,13 @@ export class ClientSession implements SubscriptionHost {
         return this.#err("INVALID_PARAMS", requestId, `The channel parameters are invalid at ${canonical.issue.path}.`);
       }
 
-      const existing = this.#subscriptions.get(subscriptionId);
       if (existing !== undefined) {
+        // Same channel the client already holds: only the parameters can differ.
         const contract = JSON.stringify([channel.name, channel.version, canonical.canonical]);
         if (existing.contractKey !== contract) {
           return this.#err("INVALID_REQUEST", requestId, "This subscription ID is already used for a different contract.");
         }
         return { ok: true, requestId, data: { subscriptionId } };
-      }
-      if (this.#subscriptions.size >= this.#owner.core.limits.maxSubscriptionsPerConnection) {
-        return this.#err("OVERLOADED", requestId, "This connection has reached its subscription limit.");
       }
       const subscription = new ServerSubscription({
         id: subscriptionId,
