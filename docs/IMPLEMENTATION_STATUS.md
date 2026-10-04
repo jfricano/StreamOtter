@@ -4,7 +4,7 @@ September 25, 2026 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), inclu
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
-V1.1 source-failure handling is implemented but unreleased, and so are the V1.2 review fixes ([docs/releases/v1.2](./releases/v1.2/README.md)); both are planned for `0.2.0-rc.1`. V1.1's status is in [its own section](#v11-source-failure-handling-unreleased) and does not change anything recorded for V1 below.
+V1.1 source-failure handling is implemented but unreleased, and so are the V1.2 review fixes ([docs/releases/v1.2](./releases/v1.2/README.md)) and V1.2.1's minor fixes; all three are planned for `0.2.0-rc.1`. V1.1's status is in [its own section](#v11-source-failure-handling-unreleased) and does not change anything recorded for V1 below.
 
 This document records what exists, the commands that verify it, the results observed, and the limitations that remain. The [V1 specification](./V1_API.md) governs behavior; its [section 13](./V1_API.md#13-implementation-refinements-contract-revision-02) lists refinements made during implementation.
 

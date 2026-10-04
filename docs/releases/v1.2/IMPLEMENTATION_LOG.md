@@ -34,7 +34,7 @@ Working record for the V1.2 quality review. Anyone resuming starts with §1. New
 
 **Fixed:** P-5 (timer limits capped at 2^31−1 ms), P-7 (claims deep-frozen), the client's missing 1 s then 2 s retry backoff (with C-2), W-3 and W-6 (with C-4), W-4, W-5, W-7, W-10, G-5, G-6, G-7, G-8, K-5, M-2, M-3, M-4, M-6 (the preflight; a mid-write file-system error can still leave a partial scaffold), M-7, M-8, M-9, R-2, R-3, R-4.
 
-**Deferred**, each judged low risk or larger than a minor fix. Each has a GitHub issue titled with its ID, as does the V1.1 review's deferred J7:
+**Deferred**, each judged low risk or larger than a minor fix. Each has a GitHub issue titled with its ID, as does the V1.1 review's deferred J7. All of them are fixed in [V1.2.1](../v1.2.1/README.md) (#56), which ships in the same release:
 
 - Protocol and gateway: P-2, P-3, P-6, P-8, P-9.
 - Client SDK: C-5 `resync()` during a pause shows `authorizing`; C-6 the same-tick hello-then-close stall in Node clients; C-7 a `resync-required` for the old epoch ignored mid-resync; C-8 listeners firing after one unsubscribes.

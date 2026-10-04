@@ -23,7 +23,7 @@ What the runtime cannot establish, and says so in the docs and the UI: whether t
 
 ## 2. Baseline-to-release diff
 
-Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: #55 (`review/v1.1`, all of V1.1 in one PR), then #20 (V1.2) on top of it. V1.1 and V1.2 ship together as `0.2.0-rc.1`. #55 replaces the stack V1.1 was built in, #12 to #19, which is closed but kept below as the record of each slice.
+Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: #55 (`review/v1.1`, all of V1.1 in one PR), then #20 (V1.2) and #56 (V1.2.1) on top of it. All three ship together as `0.2.0-rc.1`. #55 replaces the stack V1.1 was built in, #12 to #19, which is closed but kept below as the record of each slice.
 
 | PR | Branch | Content |
 | --- | --- | --- |
@@ -37,6 +37,7 @@ Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: #55 (
 | #19 | `feat/v1.1-review-fixes` | Fixes for every review finding except J7 (fixture evidence is never deleted), one commit per finding and a regression test for every code fix; see [REVIEW.md](./REVIEW.md) |
 | #55 | `review/v1.1` | The whole V1.1 stack, #12 to #19, as one PR to `main` |
 | #20 | `feat/v1.2-quality-fixes` | [V1.2](../v1.2/README.md): an independent review of V1 and V1.1 together, with fixes for its 15 major and 25 of its minor findings |
+| #56 | `feat/v1.2.1-minor-fixes` | [V1.2.1](../v1.2.1/README.md): fixes for the minor findings V1.2 deferred and this review's J7 (issues #21 to #54) |
 
 Overall against `main`: about 120 files and 20,000 lines added, about half of them in `packages/` and most of the rest tests and docs. The [CHANGELOG](../../../CHANGELOG.md) lists every user-visible change under Unreleased.
 
@@ -125,7 +126,7 @@ These ACLs follow from the client calls. They have not been checked against a br
 
 **Ready to merge as a release candidate, not as a final release.** Recommended path:
 
-1. Merge #55 (V1.1, including the review fixes that correct defects in its slices), then retarget #20 (V1.2) to `main` and merge it. #20 fixes defects across V1 and V1.1 and belongs in the same release.
+1. Merge #55 (V1.1, including the review fixes that correct defects in its slices), then retarget #20 (V1.2) to `main` and merge it, then #56 (V1.2.1). #20 and #56 fix defects across V1 and V1.1 and belong in the same release.
 2. Let CI run the extended tiers on `main`, including the browser tier on Playwright's pinned browser, and add the Firefox and WebKit run for F45.
-3. Publish V1.1 and V1.2 together as `0.2.0-rc.1` (a new minor: new configuration and CLI surface, no breaking change), with the owner's go.
+3. Publish V1.1, V1.2 and V1.2.1 together as `0.2.0-rc.1` (a new minor: new configuration and CLI surface, no breaking change), with the owner's go.
 4. Before a final `0.2.0`: an ACL-enabled broker run, the proxy deployment with failure handling on, and one integrator walking the runbook end to end.
