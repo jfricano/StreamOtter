@@ -1,0 +1,269 @@
+# Explicit releases only; setup and recovery: docs/PUBLISHING.md.
+# SETUP (owner): npm-release must exist, sole required reviewer jfricano, self-review
+# allowed, admin bypass disabled, custom deployment branch policy main only.
+# Set npm trusted publisher on all six
+# packages: jfricano / StreamOtter / publish.yml / npm-release; direct publish
+# allowed. No npm token. Merge automation before preparing and tagging a release.
+# Approval shows the explicit tag/dist-tag in this run name. Rerun only the publish
+# job after a partial release, retaining the original immutable artifact. A complete
+# rerun that repacks to different bytes fails against published integrity by design.
+# No secondary dist-tag promotion. Never dispatch until owner accepts the recorded
+# source release limitations and full candidate checks. No automatic release triggers.
+name: Publish approved npm release
+run-name: Approve ${{ inputs.release_tag }} to npm ${{ inputs.npm_dist_tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing main release tag, e.g. v0.2.0-rc.1
+        required: true
+        type: string
+      npm_dist_tag:
+        description: Explicit npm distribution tag (no secondary tag is moved)
+        required: true
+        type: choice
+        options: [latest, next]
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+concurrency:
+  group: streamotter-npm-release
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  NPM_DIST_TAG: ${{ inputs.npm_dist_tag }}
+  # Exact Node24/npm11 pins, verified against official release index 2026-10-04.
+  NODE_VERSION: 24.21.0
+  NPM_VERSION: 11.19.0
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'jfricano/StreamOtter'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      sha: ${{ steps.select.outputs.sha }}
+      version: ${{ steps.select.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: control
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Test publisher helpers
+        run: node --test control/scripts/release/publishing/release.test.mjs
+      - name: Validate existing environment and release
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node control/scripts/release/publishing/release.mjs select control "$RUNNER_TEMP/selection.json"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ steps.select.outputs.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          package_json_file: candidate/package.json
+          version: 11.19.0
+      - name: Exact tool and clean candidate checks
+        working-directory: candidate
+        run: |
+          test "$(node --version)" = "v24.21.0"
+          test "$(npm --version)" = "11.19.0"
+          test "$(pnpm --version)" = "11.19.0"
+          test -z "$(git status --porcelain)"
+          pnpm install --frozen-lockfile
+          pnpm clean
+          pnpm build
+          pnpm check:contracts
+          pnpm typecheck
+          pnpm test
+          pnpm test:load
+      - name: Start release test tools
+        working-directory: candidate
+        run: |
+          pnpm kafka:setup
+          pnpm kafka:start
+          pnpm browsers:setup
+          sudo "$(command -v node)" tests/node_modules/playwright/cli.js install-deps chromium
+          pnpm deploy:setup
+      - name: Kafka, packed installation, browser and proxy release acceptance
+        working-directory: candidate
+        run: |
+          pnpm test:kafka
+          pnpm test:install
+          pnpm test:browser
+          pnpm test:deploy
+      - name: Stop single broker
+        if: always()
+        working-directory: candidate
+        run: pnpm kafka:stop
+      - name: Replicated broker acceptance
+        working-directory: candidate
+        run: |
+          ./scripts/kafka/replicated-start.sh
+          pnpm test:kafka:replicated
+      - name: Stop replicated brokers
+        if: always()
+        working-directory: candidate
+        run: ./scripts/kafka/replicated-stop.sh
+      - name: Pack immutable six-package release
+        env:
+          RELEASE_SELECTION: ${{ runner.temp }}/selection.json
+        run: node control/scripts/release/publishing/release.mjs pack candidate "$RUNNER_TEMP/npm-release"
+      - name: Stage exact selection
+        run: cp "$RUNNER_TEMP/selection.json" "$RUNNER_TEMP/release-selection.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: approved-npm-tarballs
+          path: ${{ runner.temp }}/npm-release/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-selection
+          path: ${{ runner.temp }}/release-selection.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Release approval evidence
+        env:
+          RELEASE_SELECTION: ${{ runner.temp }}/selection.json
+        run: |
+          node -e 'const fs=require("node:fs"); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"## Candidate to approve\n```json\n"+fs.readFileSync(process.env.RELEASE_SELECTION,"utf8")+"```\n\nArtifact manifest:\n```json\n"+fs.readFileSync(process.env.RUNNER_TEMP+"/npm-release/manifest.json","utf8")+"```\n")'
+
+  publish:
+    needs: prepare
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'jfricano/StreamOtter'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: npm-release
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Do not set registry-url or NODE_AUTH_TOKEN: npm uses the environment's OIDC.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: approved-npm-tarballs
+          path: ${{ runner.temp }}/npm-release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-selection
+          path: ${{ runner.temp }}/selection
+      - name: Recheck protected environment and artifacts, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SELECTION: ${{ runner.temp }}/selection/release-selection.json
+          EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          node control/scripts/release/publishing/release.mjs check control "$RUNNER_TEMP/npm-release"
+          node control/scripts/release/publishing/release.mjs publish control "$RUNNER_TEMP/npm-release"
+          node control/scripts/release/publishing/release.mjs verify control "$RUNNER_TEMP/npm-release"
+
+  verify_registry:
+    needs: [prepare, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # Source/dependency lifecycle scripts get neither OIDC nor repository writes.
+    permissions:
+      contents: read
+      actions: read
+    env:
+      RELEASE_SELECTION: selection/release-selection.json
+      EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: control
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: approved-npm-tarballs
+          path: ${{ runner.temp }}/npm-release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-selection
+          path: selection
+      - name: Verify exact artifacts and registry before installation
+        run: |
+          node control/scripts/release/publishing/release.mjs check control "$RUNNER_TEMP/npm-release"
+          node control/scripts/release/publishing/release.mjs verify control "$RUNNER_TEMP/npm-release"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          package_json_file: candidate/package.json
+          version: 11.19.0
+      - name: Registry installation with real TLS Kafka (no skip override)
+        working-directory: candidate
+        env:
+          STREAMOTTER_INSTALL_FROM: registry
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm kafka:setup
+          pnpm kafka:start
+          pnpm test:install
+      - name: Stop registry test broker
+        if: always()
+        working-directory: candidate
+        run: pnpm kafka:stop
+
+  github_release:
+    needs: [prepare, publish, verify_registry]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Only immutable control helpers run with release-write permission; no OIDC.
+    permissions:
+      contents: write
+      actions: read
+    env:
+      RELEASE_SELECTION: selection/release-selection.json
+      EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: control
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: approved-npm-tarballs
+          path: ${{ runner.temp }}/npm-release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-selection
+          path: selection
+      - name: Verify registry again and create GitHub release after install passes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node control/scripts/release/publishing/release.mjs check control "$RUNNER_TEMP/npm-release"
+          node control/scripts/release/publishing/release.mjs verify control "$RUNNER_TEMP/npm-release"
+          node control/scripts/release/publishing/github-release.mjs "$RELEASE_SELECTION" "$RUNNER_TEMP/npm-release/manifest.json"
