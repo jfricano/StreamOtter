@@ -346,7 +346,9 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#clearRetry();
     this.#replacing = this.#epoch;
     this.#awaitingEpoch = true;
-    this.#setState("authorizing");
+    // A stale view stays stale until the gateway announces the attempt: while its source is
+    // unavailable the gateway holds the request, and showing authorizing would hide the outage.
+    if (this.#state !== "stale") this.#setState("authorizing");
     const replacing = this.#epoch;
     connection.request(EVENTS.resync, { requestId: this.#owner.randomId(), subscriptionId: this.id }).then(result => {
       if (connection !== this.#attached || this.#terminal || result.ok) return;

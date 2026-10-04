@@ -73,6 +73,26 @@ describe("client control requests stay in step with the gateway", () => {
     assert.ok(!seenKeep.states.includes("stale"), "the remaining subscription was never disturbed");
   });
 
+  it("resync() during a source pause stays stale until the source resumes", async () => {
+    h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)] });
+    h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
+    const sub = h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+    await sub.ready({ timeoutMs: 5_000 });
+    const seen = observe(sub);
+    h.app.mapOverride = () => { throw new Error("boom"); };
+    assert.equal(await h.advance(1), 0);
+    assert.equal(h.internals.sources()[0]?.status, "paused");
+    await waitFor(() => sub.state === "stale", 2_000, "stale while paused");
+    const resynced = sub.resync({ timeoutMs: 8_000 });
+    await sleep(300);
+    assert.equal(sub.state, "stale", "the paused source is still reported");
+    assert.ok(!seen.states.includes("authorizing"));
+    h.app.mapOverride = null;
+    await h.internals.resumeSource("orders");
+    await resynced;
+    assert.equal(sub.state, "live");
+  });
+
   it("a hello and a close read together reconnect instead of leaving the client connected to nothing", async () => {
     const io = new Server({ path: DEFAULT_SOCKET_PATH });
     let connections = 0;
