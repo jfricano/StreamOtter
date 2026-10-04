@@ -59,10 +59,26 @@ class SocketIoConnection implements ConnectionTransport {
     this.#socket.emit("so:error", frame);
   }
 
-  close(): void {
+  bufferedBytes(): number {
+    // engine.io queues packets while the WebSocket is still writing earlier ones, and ws holds what the
+    // kernel hasn't accepted. Neither is exposed in socket.io's types.
+    const conn = this.#socket.conn as unknown as EngineConnection;
+    let bytes = conn.transport?.socket?.bufferedAmount ?? 0;
+    for (const packet of conn.writeBuffer ?? []) bytes += typeof packet.data === "string" ? packet.data.length : 64;
+    return bytes;
+  }
+
+  close(force = false): void {
     this.#socket.disconnect(true);
+    // A graceful close waits for queued output to drain, which never happens when the client stopped reading.
+    if (force) (this.#socket.conn as unknown as EngineConnection).transport?.socket?.terminate?.();
   }
 }
+
+type EngineConnection = {
+  writeBuffer?: ReadonlyArray<{ data?: unknown }>;
+  transport?: { socket?: { bufferedAmount?: number; terminate?: () => void } };
+};
 
 /**
  * Socket.IO adapter: namespace "/", WebSocket-only transport, connection-state

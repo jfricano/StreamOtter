@@ -86,7 +86,7 @@ export class ClientSession implements SubscriptionHost {
   // --- SubscriptionHost ------------------------------------------------------------
 
   sendState(frame: SubscriptionFrame): void {
-    if (!this.#closed) this.#transport.sendState(frame);
+    if (!this.#closed && !this.#stalled()) this.#transport.sendState(frame);
   }
 
   sendData(frame: DataFrame): void {
@@ -94,11 +94,11 @@ export class ClientSession implements SubscriptionHost {
   }
 
   sendError(frame: ErrorFrame): void {
-    if (!this.#closed) this.#transport.sendError(frame);
+    if (!this.#closed && !this.#stalled()) this.#transport.sendError(frame);
   }
 
   canDeliver(): boolean {
-    if (this.#closed) return false;
+    if (this.#closed || this.#stalled()) return false;
     if (Date.now() >= this.#expiresAtMs) {
       queueMicrotask(() => this.#expire());
       return false;
@@ -120,7 +120,7 @@ export class ClientSession implements SubscriptionHost {
   // --- protocol handlers -----------------------------------------------------------
 
   handleSubscribe(payload: unknown, reply: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
     this.#control("so:subscribe", payload, reply, SUBSCRIBE_KEYS, (request, requestId) => {
       const subscriptionId = request["subscriptionId"];
       const channelName = request["channel"];
@@ -177,7 +177,7 @@ export class ClientSession implements SubscriptionHost {
   }
 
   handleUnsubscribe(payload: unknown, reply: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
     this.#control("so:unsubscribe", payload, reply, CONTROL_KEYS, (request, requestId) => {
       const subscriptionId = request["subscriptionId"];
       if (!isUuid(subscriptionId)) return this.#err("INVALID_REQUEST", requestId, "subscriptionId must be a UUID.");
@@ -191,7 +191,7 @@ export class ClientSession implements SubscriptionHost {
   }
 
   handleResync(payload: unknown, reply: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
     this.#control("so:resync", payload, reply, CONTROL_KEYS, (request, requestId) => {
       const subscriptionId = request["subscriptionId"];
       if (!isUuid(subscriptionId)) return this.#err("INVALID_REQUEST", requestId, "subscriptionId must be a UUID.");
@@ -202,11 +202,11 @@ export class ClientSession implements SubscriptionHost {
   }
 
   handleReceipt(payload: unknown): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled()) return;
     if (!isPlainObject(payload) || Object.keys(payload).some(key => !RECEIPT_KEYS.has(key))
       || !isUuid(payload["subscriptionId"]) || typeof payload["epoch"] !== "string" || payload["epoch"].length > 64
       || typeof payload["sequence"] !== "number" || !Number.isSafeInteger(payload["sequence"]) || payload["sequence"] < 1) {
-      this.sendError({ error: streamError("INVALID_REQUEST", { message: "The receipt is malformed.", requestId: newId() }) });
+      if (this.#protocolErrorAllowed()) this.sendError({ error: streamError("INVALID_REQUEST", { message: "The receipt is malformed.", requestId: newId() }) });
       return;
     }
     // Unsolicited subscription IDs do not allocate server state.
@@ -214,7 +214,7 @@ export class ClientSession implements SubscriptionHost {
   }
 
   handleUnknown(event: string, args: readonly unknown[]): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#stalled() || !this.#protocolErrorAllowed()) return;
     const error = streamError("UNSUPPORTED_CAPABILITY", {
       message: `The operation "${event.slice(0, 64)}" is not supported by protocol version 1.`,
       requestId: newId()
@@ -247,6 +247,27 @@ export class ClientSession implements SubscriptionHost {
     }));
   }
 
+  /**
+   * True once the client has stopped reading and output it hasn't taken exceeds the connection budget.
+   * The connection is then dropped without waiting for that output to drain. Data frames are also
+   * bounded by the byte budgets; this covers state, error and acknowledgement frames.
+   */
+  #stalled(): boolean {
+    if (this.#closed) return true;
+    if (this.#transport.bufferedBytes() <= this.#owner.core.limits.maxPendingBytesPerConnection) return false;
+    this.#owner.core.logger.warn("Closing a connection that stopped reading", { connectionId: this.connectionId });
+    this.#teardown();
+    this.#transport.close(true);
+    return true;
+  }
+
+  /** Malformed and unknown frames share the control-request rate; a client past it is disconnected. */
+  #protocolErrorAllowed(): boolean {
+    if (this.#bucket.take()) return true;
+    this.close(streamError("OVERLOADED", { message: "Too many invalid frames; reconnect.", requestId: newId() }));
+    return false;
+  }
+
   #teardown(): void {
     if (this.#closed) return;
     this.#closed = true;
@@ -274,7 +295,7 @@ export class ClientSession implements SubscriptionHost {
     operation: (request: Record<string, unknown>, requestId: string) => Result<unknown> & { after?: () => void }
   ): void {
     if (typeof reply !== "function") {
-      this.sendError({ error: streamError("INVALID_REQUEST", { message: `${event} requires an acknowledgement callback.`, requestId: newId() }) });
+      if (this.#protocolErrorAllowed()) this.sendError({ error: streamError("INVALID_REQUEST", { message: `${event} requires an acknowledgement callback.`, requestId: newId() }) });
       return;
     }
     const respond = reply as Reply;
