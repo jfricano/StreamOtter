@@ -198,6 +198,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
   #rebalancing = false;
   #stopping = false;
   #lastActivity = Date.now();
+  /** The record being processed and since when, so the watchdog can say a quiet broker coincides with a slow record. */
+  #processing: { position: Extract<SourceRecord["position"], { kind: "kafka" }>; since: number } | null = null;
   #watchdog: NodeJS.Timeout | null = null;
   #joined: (() => void) | null = null;
   /** Records processed whose commit failed, per partition, retried until a later commit or a rebalance supersedes them. */
@@ -281,10 +283,12 @@ export class KafkaSourceAdapter implements SourceAdapter {
           // while one record takes long, or the group evicts this member and the record is redelivered forever.
           const beating = setInterval(() => { heartbeat().catch(() => undefined); }, HEARTBEAT_INTERVAL_MS);
           let outcome: Awaited<ReturnType<SourceSink["process"]>>;
+          this.#processing = { position, since: Date.now() };
           try {
             outcome = await this.#sink.process(input);
           } finally {
             clearInterval(beating);
+            this.#processing = null;
           }
           if (outcome.kind === "abandon") return;
           if (outcome.kind === "hold") {
@@ -570,7 +574,17 @@ export class KafkaSourceAdapter implements SourceAdapter {
 
   #checkWatchdog(): void {
     if (this.#status === "healthy" && Date.now() - this.#lastActivity > WATCHDOG_MS) {
-      this.#sink.logger.warn("Kafka source has had no broker activity; marking it degraded", { sourceId: this.#sourceId });
+      const processing = this.#processing;
+      if (processing === null) {
+        this.#sink.logger.warn("Kafka source has had no broker activity; marking it degraded", { sourceId: this.#sourceId });
+      } else {
+        // Heartbeats continue while a record is processed, so silence here means the broker isn't answering them,
+        // not just that the record is slow. Name the record so the two can be told apart in the log.
+        this.#sink.logger.warn("Kafka source has had no broker activity while a record is processing; heartbeats are not reaching the broker, marking it degraded", {
+          sourceId: this.#sourceId, topic: processing.position.topic, partition: processing.position.partition, offset: processing.position.offset,
+          processingMs: Date.now() - processing.since
+        });
+      }
       this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     }
   }
