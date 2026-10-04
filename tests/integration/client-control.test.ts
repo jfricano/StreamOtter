@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { afterEach, describe, it } from "node:test";
-import { observe, orderRecord, sleep, startHarness, type Harness } from "./harness.ts";
+import { createClient } from "@streamotter/client";
+import { DEFAULT_SOCKET_PATH, EVENTS, PROTOCOL_VERSION, type Hello } from "@streamotter/contracts";
+import { FAR_FUTURE, observe, orderRecord, sleep, startHarness, waitFor, type Harness, type TestChannels } from "./harness.ts";
+
+// The tests package has no socket.io server dependency; borrow the gateway's.
+type FakeSocket = { emit(event: string, payload: unknown): void; disconnect(close: boolean): void };
+type FakeServer = { on(event: "connection", listener: (socket: FakeSocket) => void): void; listen(port: number): void; close(): Promise<void>; httpServer: import("node:http").Server };
+const { Server } = createRequire(new URL("../../packages/gateway/package.json", import.meta.url))("socket.io") as { Server: new (options: { path: string }) => FakeServer };
 
 describe("client control requests stay in step with the gateway", () => {
   let h: Harness | undefined;
@@ -63,5 +71,29 @@ describe("client control requests stay in step with the gateway", () => {
     await h.advance(1); // An update for ord_9, which was unsubscribed.
     await sleep(1_500);
     assert.ok(!seenKeep.states.includes("stale"), "the remaining subscription was never disturbed");
+  });
+
+  it("a hello and a close read together reconnect instead of leaving the client connected to nothing", async () => {
+    const io = new Server({ path: DEFAULT_SOCKET_PATH });
+    let connections = 0;
+    io.on("connection", socket => {
+      connections++;
+      const hello: Hello = {
+        protocolVersion: PROTOCOL_VERSION, configVersions: [1], transport: "socket.io", deliveryModes: ["state"], operations: ["subscribe", "unsubscribe", "resync", "receipt"],
+        connectionId: `c${connections}`, identityKey: "alice", authExpiresAt: FAR_FUTURE
+      };
+      socket.emit(EVENTS.hello, hello);
+      if (connections === 1) socket.disconnect(true); // Same tick: the client reads both together.
+    });
+    io.listen(0);
+    const { port } = io.httpServer.address() as import("node:net").AddressInfo;
+    const client = createClient<TestChannels>({ origin: `http://127.0.0.1:${port}`, getToken: () => "alice@acme" });
+    try {
+      client.subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } });
+      await waitFor(() => connections === 2, 3_000, "a second connection");
+    } finally {
+      await client.close();
+      await io.close();
+    }
   });
 });
