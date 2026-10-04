@@ -188,6 +188,8 @@ export class KafkaSourceAdapter implements SourceAdapter {
   #consumer: Consumer | null = null;
   #kafka: KafkaClient | null = null;
   #admin: Admin | null = null;
+  /** Counts the consumer's COMMIT_OFFSETS events; a commit that raised none did not happen. */
+  #commitEvents = 0;
   /** The record the source is paused at, if a process() call returned pause. */
   #held: { topic: string; partition: number; offset: string } | null = null;
   /** Partitions assigned at the last group join, and a counter that changes on every rejoin. */
@@ -306,13 +308,15 @@ export class KafkaSourceAdapter implements SourceAdapter {
           resolveOffset(message.offset);
           if (this.#beforeCommit !== undefined) await this.#beforeCommit(this.#sourceId, position);
           if (this.#stopping) return;
+          // Taken before the commit: a crash or rebalance while it runs makes the retry stale, not current.
+          const epoch = this.#assignmentEpoch;
           try {
             await this.#commit(consumer, position);
             this.#onCommit(position);
           } catch (error) {
             // Processing completed; a failed commit only means this record can be redelivered. It is retried
             // in the background, so the last record before a quiet period doesn't stay uncommitted.
-            this.#uncommitted.set(`${batch.topic}:${batch.partition}`, { position, epoch: this.#assignmentEpoch });
+            this.#uncommitted.set(`${batch.topic}:${batch.partition}`, { position, epoch });
             this.#sink.logger.warn("Kafka offset commit failed; the record may be redelivered", {
               sourceId: this.#sourceId, topic: batch.topic, partition: batch.partition, offset: message.offset,
               error: (error as Error).name
@@ -443,13 +447,28 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const commit = this.#commits.then(async () => {
       // Checked in turn, so a retry queued behind a later commit doesn't move the offset back.
       if (!still()) return false;
-      await consumer.commitOffsets([{ topic: position.topic, partition: position.partition, offset: nextOffset(position.offset) }]);
+      await this.#commitOffsets(consumer, [{ topic: position.topic, partition: position.partition, offset: nextOffset(position.offset) }]);
       const pending = this.#uncommitted.get(key);
       if (pending !== undefined && BigInt(pending.position.offset) <= BigInt(position.offset)) this.#uncommitted.delete(key);
       return true;
     });
     this.#commits = commit.catch(() => undefined);
     return commit;
+  }
+
+  /**
+   * KafkaJS resolves commitOffsets without committing while its consumer is not running (between a
+   * crash or stop and the restarted consumer's join), so a commit counts only if it raised COMMIT_OFFSETS.
+   * Callers serialize commits through #commits, so the event seen during the call is this commit's.
+   */
+  async #commitOffsets(consumer: Consumer, offsets: { topic: string; partition: number; offset: string }[]): Promise<void> {
+    const before = this.#commitEvents;
+    await consumer.commitOffsets(offsets);
+    if (this.#commitEvents === before) {
+      const error = new Error("The Kafka consumer was not running, so the offset was not committed.");
+      error.name = "KafkaConsumerNotRunning";
+      throw error;
+    }
   }
 
   /** Retries failed commits still current: none after a rebalance, when the partition's next owner starts from the committed offset. */
@@ -535,7 +554,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     const commit = this.#commits.then(async () => {
       if (this.#stopping) return;
       try {
-        await consumer.commitOffsets(offsets);
+        await this.#commitOffsets(consumer, offsets);
         this.#sink.logger.info("Recorded the latest start position for partitions with no committed offset", { sourceId: this.#sourceId, partitions: offsets.length });
       } catch (error) {
         this.#sink.logger.warn("The start position could not be committed; a restart before the first commit starts from the latest offset again", {
@@ -616,21 +635,32 @@ export class KafkaSourceAdapter implements SourceAdapter {
     consumer.on(events.FETCH_START, () => { if (this.#startJoin !== null) this.#commitStartPositions(consumer); });
     consumer.on(events.FETCH, () => this.#activity());
     consumer.on(events.HEARTBEAT, () => this.#activity());
-    consumer.on(events.COMMIT_OFFSETS, () => this.#activity());
+    consumer.on(events.COMMIT_OFFSETS, () => {
+      this.#commitEvents++;
+      this.#activity();
+    });
     consumer.on(events.CRASH, event => {
       this.#sink.logger.warn("Kafka consumer crashed", {
         sourceId: this.#sourceId,
         error: event.payload.error.name,
         restart: event.payload.restart
       });
+      this.#lostAssignment();
       this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
     consumer.on(events.DISCONNECT, () => {
       if (!this.#stopping) this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
     consumer.on(events.STOP, () => {
+      this.#lostAssignment();
       if (!this.#stopping) this.#setStatus("degraded", "SOURCE_UNAVAILABLE");
     });
+  }
+
+  /** The consumer stopped (a crash restarts it): its assignment is gone and failed commits are no longer current. */
+  #lostAssignment(): void {
+    this.#assignment = null;
+    this.#assignmentEpoch++;
   }
 }
 
