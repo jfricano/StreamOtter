@@ -9,7 +9,9 @@ describe("order-dashboard reference example", () => {
   it("demonstrates the snapshot race, disconnect/resynchronization, and rejected access", async () => {
     const results = await runScenarios();
     for (const result of results) assert.ok(result.passed, `${result.name}: ${result.detail}`);
-    assert.equal(results.length, 3);
+    assert.deepEqual(results.map(result => result.name), [
+      "Update arrives while the snapshot is loading", "Disconnect, change while away, resynchronize", "Rejected access fails closed"
+    ]);
   });
 
   it("keeps its committed generated contract in sync with streamotter.json", async () => {

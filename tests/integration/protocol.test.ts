@@ -116,6 +116,11 @@ describe("Socket.IO protocol v1 contract", () => {
     const results = await Promise.all(Array.from({ length: 60 }, () => ack(socket, "so:unsubscribe", { requestId: uuid(), subscriptionId: uuid() })));
     const limited = results.filter(result => !result.ok && result.error.code === "OVERLOADED").length;
     assert.ok(limited >= 15 && limited <= 20, `expected about 20 limited requests, got ${limited}`);
+    // The bucket refills at 20 per second: half a second later about ten more are admitted.
+    await sleep(500);
+    const refill = await Promise.all(Array.from({ length: 30 }, () => ack(socket, "so:unsubscribe", { requestId: uuid(), subscriptionId: uuid() })));
+    const admitted = refill.filter(result => result.ok).length;
+    assert.ok(admitted >= 5 && admitted <= 16, `expected about 10 admitted after refilling, got ${admitted}`);
     socket.close();
   });
 
@@ -123,6 +128,10 @@ describe("Socket.IO protocol v1 contract", () => {
     const { socket } = await rawConnect(h.origin, AUTH);
     let disconnected = false;
     socket.on("disconnect", () => { disconnected = true; });
+    // Below the 16 KiB default the frame is answered (refusing the unknown field) and the connection stays.
+    const below = await ack(socket, "so:unsubscribe", { requestId: uuid(), subscriptionId: uuid(), padding: "x".repeat(12_000) });
+    assert.equal(below.ok, false);
+    assert.equal(disconnected, false);
     socket.emit("so:unsubscribe", { requestId: uuid(), subscriptionId: uuid(), padding: "x".repeat(20_000) }, () => undefined);
     await waitFor(() => disconnected, 3_000, "disconnect");
   });
