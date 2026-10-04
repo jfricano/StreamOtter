@@ -8,9 +8,12 @@ export function renderConnect(root: HTMLElement, state: WorkbenchState): void {
   const table = h("tbody");
   const results = h("div", { class: "stack" });
 
+  let latestRefresh = 0;
   const refresh = async () => {
+    const attempt = ++latestRefresh;
     try {
       const [{ items }, health] = await Promise.all([state.api.sources(), state.api.health()]);
+      if (attempt !== latestRefresh) return; // A newer refresh started; its answer wins.
       state.sources = items;
       state.ready = health.ready;
       state.refreshShell();
