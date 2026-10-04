@@ -34,14 +34,14 @@ Working record for the V1.2 quality review. Anyone resuming starts with §1. New
 
 **Fixed:** P-5 (timer limits capped at 2^31−1 ms), P-7 (claims deep-frozen), the client's missing 1 s then 2 s retry backoff (with C-2), W-3 and W-6 (with C-4), W-4, W-5, W-7, W-10, G-5, G-6, G-7, G-8, K-5, M-2, M-3, M-4, M-6 (the preflight; a mid-write file-system error can still leave a partial scaffold), M-7, M-8, M-9, R-2, R-3, R-4.
 
-**Deferred**, each judged low risk or larger than a minor fix:
+**Deferred**, each judged low risk or larger than a minor fix. Each has a GitHub issue titled with its ID, as does the V1.1 review's deferred J7:
 
 - Protocol and gateway: P-2, P-3, P-6, P-8, P-9.
-- Client SDK: `resync()` during a pause shows `authorizing`; the same-tick hello-then-close stall in Node clients; a `resync-required` for the old epoch ignored mid-resync; listeners firing after one unsubscribes.
+- Client SDK: C-5 `resync()` during a pause shows `authorizing`; C-6 the same-tick hello-then-close stall in Node clients; C-7 a `resync-required` for the old epoch ignored mid-resync; C-8 listeners firing after one unsubscribes.
 - Codegen: G-4.
-- CLI and management: M-5.
+- CLI and management: M-5, and the rest of M-6 (a mid-write error can still leave a partial scaffold).
 - Gateway and Kafka: K-4, K-6 (mostly addressed by the K-3 heartbeat), K-7, K-8, K-9.
-- Example, scripts and tests: W-8, W-9, W-11 to W-18.
+- Example, scripts and tests: W-8, W-9, W-11 to W-18, and W-19 (the 12 documented V1 behaviors with no test).
 - Workbench, docs and release: R-5 to R-9.
 
 ## 4. Test runs
