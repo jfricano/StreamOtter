@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat. Prepared source candidate: `0.2.0-rc.1` (V1.1, V1.2 and V1.2.1), not yet published; release follows the [checklist](./RELEASE_CHECKLIST.md) with the owner's go
+September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat. Update (October 5, 2026): `0.2.0-rc.1` (V1.1, V1.2 and V1.2.1) is published on npm `latest` with provenance; releases follow the [checklist](./RELEASE_CHECKLIST.md) with the owner's go.
 
 ## Goal
 
@@ -26,6 +26,7 @@ Every public claim must match verified behavior: no invented adoption, performan
 | --- | --- |
 | License | **Decided: MIT**, copyright "Orca Solutions" (also the packages' `author`). |
 | First version | **Decided: `0.1.0-rc.1`** (pre-1.0 API). Package SemVer is independent of product milestones and `protocolVersion`, per the roadmap. |
+| `1.0.0` | **Decided (October 5, 2026): the V1 public launch.** The `0.2.0-rc.N` candidates prove V1.1; `1.0.0-rc.1` follows the acceptance packet's final-release checks, then `1.0.0`. Later milestones are `1.x` minors; see the roadmap's [npm versions](./API_AND_FEATURE_ROADMAP.md#npm-versions). |
 | GitHub location | **Decided and done: `jfricano/StreamOtter`, public** since September 25, 2026. |
 | Which packages are public | **Decided:** the five `@streamotter/*` packages, plus, from `0.1.0-rc.3`, the all-in-one `streamotter` (the `streamotter` command and subpaths such as `streamotter/client` and `streamotter/gateway`), so that `npm install streamotter` is the front door. |
 | npm organization | **Done:** the owner created the `streamotter` organization on September 25. The owner holds the credentials and 2FA; Claude never handles npm tokens or logins. |

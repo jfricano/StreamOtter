@@ -6,7 +6,7 @@ September 24, 2026 · Planning revision 0.2
 
 > **Owner amendment (October 1, reconciled October 2, 2026):** The increment previously labeled V1.5 is now V1.1. Preserve the approved source-failure decisions and V2/V3 sequencing. Lontra Creek owns the separate hosted Workbench sandbox; the library owns its published frontend/integration contract. Neither milestone label asserts a new npm version.
 
-> **Current status (September 29, 2026):** V1 release candidates are published on npm; see [implementation status](./IMPLEMENTATION_STATUS.md). V1.1 is approved and specified in [releases/v1.1](./releases/v1.1/README.md). V1.2 is an independent quality review of V1 and V1.1 together ([releases/v1.2](./releases/v1.2/README.md)), and V1.2.1 fixes the minor findings it deferred. All three ship in `0.2.0-rc.1`. The rest of this document is the original plan.
+> **Current status (September 29, 2026):** V1 release candidates are published on npm; see [implementation status](./IMPLEMENTATION_STATUS.md). V1.1 is approved and specified in [releases/v1.1](./releases/v1.1/README.md). V1.2 is an independent quality review of V1 and V1.1 together ([releases/v1.2](./releases/v1.2/README.md)), and V1.2.1 fixes the minor findings it deferred. All three ship in `0.2.0-rc.1`. [npm versions](#npm-versions) maps each milestone to its npm version; `1.0.0` is the V1 public launch. The rest of this document is the original plan.
 
 ## Purpose and authority
 
@@ -394,6 +394,24 @@ These are ordered increments, not calendar estimates. Each adds working behavior
 Before each dependency-heavy increment, a short design decision settles the question its correctness depends on: the delivery store and crash boundaries for V2.0 (evaluate PostgreSQL and at most one alternative), ingestion versus connection ownership for V2.1, correlation and read-only observation for the proposed V2.3, durable command acceptance for V3.0, environment isolation for V3.1, and a transport-independent test suite before V3.2. These are design gates for the increment they serve, not a freeze on other work. State-only regression tests come first, so that a V1 user never picks up a database, coordinator, or workspace just by upgrading.
 
 The V2 and V3 visions are complete across their listed increments. Documentation must state which increment actually contains a feature; the broader version label cannot imply that all planned features already shipped.
+
+### npm versions
+
+Decided by the owner on October 5, 2026. Product milestones map to npm minor versions. The npm major changes only for a breaking change, which V2 and V3 are designed to avoid (§1, §9). The `1.0.0` release is the V1 public launch: from then on, every public operation keeps working until a new major.
+
+| Milestone | npm version |
+| --- | --- |
+| V1 | `0.1.0-rc.1` to `0.1.0-rc.3` (published) |
+| V1.1, V1.2 and V1.2.1 | `0.2.0-rc.1`, with fixes as `0.2.0-rc.N`. There is no final `0.2.0`. |
+| V1 public launch | `1.0.0`, after a `1.0.0-rc.1` |
+| V1.x | `1.0.x` patches, or a `1.x` minor for new options |
+| V2.0 | `1.1.0` |
+| V2.1 | `1.2.0` |
+| V2.2 | `1.3.0` |
+| V2.3 (proposed) | `1.4.0`, if adopted |
+| V3.0, V3.1, V3.2 | `1.5.0`, `1.6.0`, `1.7.0`, or `2.0.0` only if commands require a breaking change |
+
+The `0.2.0-rc.N` candidates are where the V1.1 surface (`failureHandling`, the operator CLI and the incident journal) can still change. `1.0.0-rc.1` follows once the checks the V1.1 acceptance packet requires before a final release pass ([§10](./releases/v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status)): a Kafka broker with ACLs enabled, Firefox and WebKit, the proxy deployment with failure handling on, and one integrator walking the [source-failure runbook](./guides/source-failures.md) end to end. Versions after `1.0.0` are a plan: a milestone that ships in pieces may take more than one minor, and a later milestone shifts its number up rather than reusing one.
 
 ### Public experience sequencing
 
