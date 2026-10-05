@@ -1,10 +1,10 @@
 # StreamOtter V1 implementation status
 
-September 25, 2026, updated October 4 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter` package. Next: `0.2.0-rc.1`, carrying V1.1, V1.2 and V1.2.1 (see the [CHANGELOG](../CHANGELOG.md))
+September 25, 2026, updated October 4 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter` package. Prepared source candidate: `0.2.0-rc.1`, carrying V1.1, V1.2 and V1.2.1; not yet published (see the [CHANGELOG](../CHANGELOG.md))
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
-V1.1 source-failure handling is implemented but not yet published, and so are the V1.2 review fixes ([docs/releases/v1.2](./releases/v1.2/README.md)) and V1.2.1's minor fixes; all three are planned for `0.2.0-rc.1`. V1.1's status is in [its own section](#v11-source-failure-handling-020-rc1) and does not change anything recorded for V1 below.
+V1.1 source-failure handling is implemented but not yet published, and so are the V1.2 review fixes ([docs/releases/v1.2](./releases/v1.2/README.md)) and V1.2.1's minor fixes; all three are prepared as `0.2.0-rc.1`; npm publication remains owner-controlled and pending. V1.1's status is in [its own section](#v11-source-failure-handling-020-rc1) and does not change anything recorded for V1 below.
 
 This document records what exists, the commands that verify it, the results observed, and the limitations that remain. The [V1 specification](./V1_API.md) governs behavior; its [section 13](./V1_API.md#13-implementation-refinements-contract-revision-02) lists refinements made during implementation.
 
@@ -229,7 +229,7 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 - Fixture evidence in the local spool (`streamotter dev` with fixture sources) expires seven days after it was stored, like a quarantine topic's copy under Kafka's default `retention.ms`; it is pruned when the gateway starts and before new evidence is stored, so evidence past seven days can still be read until then. The spool is capped at 16 MiB (review finding J7).
 - While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds, on every partition, until a restart reconciles it.
 - Redrive finds an evidence conflict or a moved position on an incident through its event history, which keeps the newest 200 events, so an incident retried more than about 100 times can lose that marker (second review, [REVIEW.md](./releases/v1.1/REVIEW.md) §5).
-- `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` have run on Linux only; their macOS fix (`bdf1445`) has not run on a Mac yet.
+- `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` also passed on macOS in the October 4 release-preparation rehearsal (`2bcc8302`): the three-test replicated tier passed without skips, all six nodes stopped and no owned Kafka process remained. Final candidate acceptance is recorded in the [release handoff](./releases/0.2.0-rc.1/RELEASE_HANDOFF.md).
 
 ## V1.2 quality review (0.2.0-rc.1)
 

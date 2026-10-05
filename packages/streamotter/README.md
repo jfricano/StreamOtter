@@ -6,7 +6,7 @@ Live state from Kafka in the browser, in a form you can trust. Browsers subscrib
 
 This package is StreamOtter in one install: the `streamotter` command (scaffold, validate, generate TypeScript types, develop with the local workbench, and run the production gateway), the Node.js gateway, and the browser SDK.
 
-> **Release candidate** of StreamOtter `0.1.0`; the API may still change before `0.1.0`. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
+> **Release candidate `0.2.0-rc.1`** of StreamOtter `0.2.0`; the API may still change before `0.2.0`. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
 
 ```bash
 npm install streamotter

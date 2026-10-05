@@ -1,6 +1,6 @@
 {
   "name": "streamotter",
-  "version": "0.1.0-rc.3",
+  "version": "0.2.0-rc.1",
   "description": "StreamOtter in one install: the CLI and local workbench, the Node.js gateway, and the browser SDK, for live Kafka state in the browser that is either verifiably live or visibly stale.",
   "keywords": [
     "streamotter",
