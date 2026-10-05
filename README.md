@@ -19,7 +19,7 @@ It is a Node.js gateway, a TypeScript browser SDK over Socket.IO, a CLI with a l
 
 The gateway consumes Kafka and runs your application-owned mapping and snapshot handlers; the SDK handles browser subscriptions, receipts, and recovery while your frontend renders the state. Live subscriptions require a compatible running gateway over the network, even when the frontend installs only `@streamotter/client`. Contracts and local validation work independently. See [runtime and package requirements](./docs/guides/existing-app.md#runtime-and-package-requirements).
 
-> **Status: release candidate `0.2.0-rc.1`, published on npm (`latest`).** The API may still change before a stable release. What is verified, how, and the known limitations: [implementation status](./docs/IMPLEMENTATION_STATUS.md).
+> **Status: release candidate `0.2.0-rc.1`, published on npm (`latest`).** All six packages are published with verified artifact integrity, provenance and a clean registry installation including TLS Kafka ([publication receipt](./docs/releases/0.2.0-rc.1/RELEASE_HANDOFF.md#verified-publication)). The API may still change before a stable release. What is verified, how, and the known limitations: [implementation status](./docs/IMPLEMENTATION_STATUS.md).
 
 ## Install
 
