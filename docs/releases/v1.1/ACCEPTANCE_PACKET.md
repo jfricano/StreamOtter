@@ -5,8 +5,8 @@
 Three words are used strictly here:
 
 - **Implemented:** code and tests are on the V1.1 branches, and the tests passed in a recorded run in this build environment.
-- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. **Nothing in V1.1 is independently verified yet.** No V1.1 branch has merged, so CI has not run the extended tiers (Kafka, browser, deploy) on it. The [independent review](./REVIEW.md) was a code review by reviewers who did not write the code, run in the same build environment; it found and fixed defects, but it is not an independent run of the evidence.
-- **Published:** on npm. **Nothing in V1.1 is published.** The latest release is still `0.1.0-rc.3`.
+- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. When this packet was written, nothing in V1.1 was independently verified and CI had not run the extended tiers on it. *Update, October 5:* V1.1 is on `main`, and on the release commit `fc7f47c` CI ran `pnpm verify` and the [extended tiers](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser, deploy, replicated Kafka) green; the evidence matrix rows have not been re-marked against those runs. The [independent review](./REVIEW.md) was a code review by reviewers who did not write the code, run in the same build environment; it found and fixed defects, but it is not an independent run of the evidence.
+- **Published:** on npm. V1.1 is published in `0.2.0-rc.1` on npm `latest` (October 5, [GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1)).
 
 ## 1. The product question
 
@@ -124,9 +124,11 @@ These ACLs follow from the client calls. They have not been checked against a br
 
 ## 10. Recommended release status
 
+*Update, October 5:* steps 1 and 3 are done, and CI ran the extended tiers on `main` ([run](https://github.com/jfricano/StreamOtter/actions/runs/37252966584)); the Firefox and WebKit run in step 2, and step 4, remain.
+
 **Ready to merge as a release candidate, not as a final release.** Recommended path:
 
 1. Merge #55 (V1.1, including the review fixes that correct defects in its slices; merged October 4 as `560c7c0`), then retarget #20 (V1.2) to `main` and merge it, then #56 (V1.2.1). #20 and #56 fix defects across V1 and V1.1 and belong in the same release.
 2. Let CI run the extended tiers on `main`, including the browser tier on Playwright's pinned browser, and add the Firefox and WebKit run for F45.
 3. Publish V1.1, V1.2 and V1.2.1 together as `0.2.0-rc.1` (a new minor: new configuration and CLI surface, no breaking change), with the owner's go.
-4. Before a final `0.2.0`: an ACL-enabled broker run, the proxy deployment with failure handling on, and one integrator walking the runbook end to end.
+4. Before a stable release: an ACL-enabled broker run, the proxy deployment with failure handling on, and one integrator walking the runbook end to end.

@@ -2,7 +2,7 @@
 
 The [publishing workflow](../.github/workflows/publish.yml) automates StreamOtter's six-package release after explicit owner selection and approval. Pushes, merges, tag creation, GitHub releases, and schedules do **not** publish. Start it manually from `main`, select an existing release tag, and explicitly choose `latest` or `next`.
 
-This setup does not prepare a version, merge development branches, create a source tag, or deploy the Lontra Creek website/backend. All six manifests remain unchanged by installing it. The `0.2.0-rc.1` release requires the code from the stacked development PRs (#55 → #20 → #56), a separate version/documentation preparation commit, and green CI on that exact final `main` commit. Publisher #57 is reconciled after the feature merges; source integration alone does not publish the prepared version. The selected release must include this workflow and its helpers, and must contain the replicated-Kafka scripts/tests used by release acceptance. Older code without that tier fails preparation rather than silently skipping it.
+This setup does not prepare a version, merge development branches, create a source tag, or deploy the Lontra Creek website/backend. All six manifests remain unchanged by installing it. `0.2.0-rc.1` was the first release published this way, on October 5, 2026 ([run](https://github.com/jfricano/StreamOtter/actions/runs/37253704865)). The selected release must include this workflow and its helpers, and must contain the replicated-Kafka scripts/tests used by release acceptance. Older code without that tier fails preparation rather than silently skipping it.
 
 ## One-time owner settings
 
@@ -27,7 +27,7 @@ On npm, configure a **GitHub Actions trusted publisher on each existing package*
 
 Packages: `streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/workbench`, `@streamotter/cli`.
 
-No long-lived npm write token, `NODE_AUTH_TOKEN`, or `NPM_TOKEN` is required. Do not add one. Secondary dist-tag management is not configured or automated. The repository/workflow/environment settings must match exactly. Saving trust settings does not prove OIDC publication; the first explicitly approved release establishes that evidence.
+No long-lived npm write token, `NODE_AUTH_TOKEN`, or `NPM_TOKEN` is required. Do not add one. Secondary dist-tag management is not configured or automated. The repository/workflow/environment settings must match exactly. Saving trust settings does not prove OIDC publication; the first explicitly approved release establishes that evidence, and for this repository that was `0.2.0-rc.1` ([run](https://github.com/jfricano/StreamOtter/actions/runs/37253704865)).
 
 ## Run an approved release
 

@@ -9,7 +9,7 @@ Use the approval-gated [publishing workflow and setup/recovery guide](PUBLISHING
 - [ ] The selected code, publishing workflow/helpers, and release tests are merged into public `jfricano/StreamOtter`.
 - [ ] **owner** `npm-release` exists with only `jfricano` as required reviewer, self-review allowed, administrator bypass disabled, and a branch-only `main` deployment rule.
 - [ ] **owner** All six existing npm packages trust `jfricano/StreamOtter`, workflow `publish.yml`, environment `npm-release`, with direct `npm publish` allowed. No stored npm write token.
-- [ ] Record known release acceptance limitations and obtain the owner's disposition. Installing automation does not publish `0.2.0-rc.1` or complete the stacked development PRs.
+- [ ] Record known release acceptance limitations and obtain the owner's disposition. Installing automation does not publish a release.
 
 ## 1. Prepare the release commit
 
