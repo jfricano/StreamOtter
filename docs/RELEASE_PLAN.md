@@ -1,6 +1,6 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat. Prepared source candidate: `0.2.0-rc.1` (V1.1, V1.2 and V1.2.1), not yet published; release follows the [checklist](./RELEASE_CHECKLIST.md) with the owner's go
+September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat. Update (October 5, 2026): `0.2.0-rc.1` (V1.1, V1.2 and V1.2.1) is published on npm `latest` with provenance; releases follow the [checklist](./RELEASE_CHECKLIST.md) with the owner's go.
 
 ## Goal
 
