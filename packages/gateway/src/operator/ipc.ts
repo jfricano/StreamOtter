@@ -27,6 +27,8 @@ const TOKEN_BYTES = 32;
 const DEFAULT_RATE_PER_SECOND = 10;
 const DEFAULT_BURST = 20;
 const DEFAULT_IDLE_MS = 5_000;
+/** How long a connection stays open after its answer is flushed, waiting for the caller to end its side. */
+const REPLY_LINGER_MS = 1_000;
 const DEFAULT_MAX_CONNECTIONS = 16;
 const DEFAULT_CLIENT_TIMEOUT_MS = 30_000;
 /** How long close() lets answers already being computed be written before it drops their connections. */
@@ -346,7 +348,15 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
     }
   }
 
-  function reply(socket: Socket, response: OperatorIpcResponse): void {
+  /**
+   * Writes the answer and closes. With `linger`, used when input may still be
+   * arriving, the connection keeps reading (and discarding) after the answer:
+   * closing with unread input resets the connection on some platforms (macOS),
+   * and a caller still writing would lose the answer. It then closes when the
+   * caller ends its side, or after REPLY_LINGER_MS, so a caller that keeps
+   * sending cannot hold it open. Otherwise it is destroyed once flushed.
+   */
+  function reply(socket: Socket, response: OperatorIpcResponse, linger = false): void {
     if (socket.destroyed) return;
     let line: string;
     try {
@@ -354,8 +364,15 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
     } catch {
       line = JSON.stringify(failure(response.id, new StreamOtterError("INTERNAL")));
     }
-    // Destroy once flushed, so a caller that keeps sending cannot hold the connection open.
-    socket.end(`${line}\n`, () => socket.destroy());
+    if (!linger) {
+      socket.end(`${line}\n`, () => socket.destroy());
+      return;
+    }
+    socket.resume();
+    socket.end(`${line}\n`, () => {
+      const timer = setTimeout(() => socket.destroy(), REPLY_LINGER_MS);
+      socket.once("close", () => clearTimeout(timer));
+    });
   }
 
   const closingError = (): StreamOtterError => new StreamOtterError("UNSUPPORTED_CAPABILITY", { message: "The operator socket is closing; the request was not run." });
@@ -370,10 +387,10 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
     let size = 0;
     let done = false;
     const idle = setTimeout(() => { done = true; socket.destroy(); }, idleMs);
-    const finish = (response: OperatorIpcResponse | Promise<OperatorIpcResponse>): void => {
+    const finish = (response: OperatorIpcResponse | Promise<OperatorIpcResponse>, linger = false): void => {
       done = true;
       clearTimeout(idle);
-      void Promise.resolve(response).then(value => reply(socket, value), () => reply(socket, failure("", new StreamOtterError("INTERNAL"))));
+      void Promise.resolve(response).then(value => reply(socket, value, linger), () => reply(socket, failure("", new StreamOtterError("INTERNAL")), linger));
     };
     // Before its request is handed over, a connection is refused by close(); after, it is left to finish.
     connections.set(socket, () => { if (!done) finish(failure("", closingError())); });
@@ -387,7 +404,8 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
       if (done) return;
       const newline = chunk.indexOf(0x0a);
       if (newline === -1 ? size + chunk.length >= OPERATOR_IPC_MAX_REQUEST_BYTES : size + newline + 1 > OPERATOR_IPC_MAX_REQUEST_BYTES) {
-        finish(failure("", invalid(`The request line is longer than ${OPERATOR_IPC_MAX_REQUEST_BYTES} bytes.`)));
+        // The caller may still be writing the rest of the line.
+        finish(failure("", invalid(`The request line is longer than ${OPERATOR_IPC_MAX_REQUEST_BYTES} bytes.`)), true);
         return;
       }
       if (newline === -1) {

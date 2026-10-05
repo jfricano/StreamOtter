@@ -9,7 +9,7 @@ import { startManagementServer, type ManagementServer } from "@streamotter/gatew
 import { createGatewayRuntime } from "@streamotter/gateway/internals";
 import { deferred, FAR_FUTURE, observe, sleep, OrderApp, orderConfig, orderRecord, startHarness, waitFor, type Harness, type TestChannels } from "./harness.ts";
 import { createHash } from "node:crypto";
-import { request as httpRequest } from "node:http";
+import { Agent, request as httpRequest } from "node:http";
 
 const PRINCIPALS = {
   alice: { subject: "alice", tenantId: "acme", sessionId: "dev-alice", expiresAt: FAR_FUTURE, claims: { plan: "pro" } },
@@ -192,11 +192,30 @@ describe("management API (development only)", () => {
       } finally {
         local.internals.checkSource = realCheck;
       }
-      // 100 requests per second with a burst of 200: a burst of 300 must be refused in part.
-      const statuses = await Promise.all(Array.from({ length: 300 }, () => request("GET", "/management/v1/health").then(async response => {
-        const body = await response.json() as Result<unknown>;
-        return response.status === 429 ? (!body.ok && body.error.code) : response.status;
-      })));
+      // 100 requests per second with a burst of 200: a burst of 400 must be refused in part. The burst
+      // goes over a few kept-alive connections rather than 400 at once, so it measures the rate limit,
+      // not the listen backlog (macOS caps it at 128 and resets the connections past it).
+      const agent = new Agent({ keepAlive: true, maxSockets: 8 });
+      const health = (): Promise<number | string | false> => new Promise((resolve, reject) => {
+        const req = httpRequest(`${server.origin}/management/v1/health`, { agent, headers: { authorization: `Bearer ${server.token}` } }, response => {
+          let text = "";
+          response.setEncoding("utf8");
+          response.on("data", chunk => { text += chunk; });
+          response.on("end", () => {
+            const body = JSON.parse(text) as Result<unknown>;
+            resolve(response.statusCode === 429 ? (!body.ok && body.error.code) : response.statusCode ?? 0);
+          });
+          response.on("error", reject);
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      let statuses: (number | string | false)[];
+      try {
+        statuses = await Promise.all(Array.from({ length: 400 }, health));
+      } finally {
+        agent.destroy();
+      }
       assert.ok(statuses.includes("OVERLOADED"), "some requests were rate limited with OVERLOADED");
       assert.ok(statuses.includes(200));
       assert.deepEqual(new Set(statuses), new Set([200, "OVERLOADED"]));

@@ -145,6 +145,11 @@ From V1.2.1 ([fixes](docs/releases/v1.2.1/FIXES.md)):
   - A nightly job runs the replicated Kafka tier.
 - Tests: the load, token-expiry and several V1 tests were strengthened so they can fail, and 12 documented V1 behaviors gained coverage.
 
+From the release-candidate run on macOS:
+
+- Gateway: the operator socket answers an oversize request line to a caller that is still writing, instead of closing with its input unread, which reset the connection on macOS so the caller never saw the answer. It reads and discards the rest for at most one second.
+- Tests: the management rate-limit burst and the refused-handshake floods connect at bounded concurrency, so they no longer overflow macOS's 128-connection listen backlog and fail on reset connections.
+
 ## [0.1.0-rc.3] — 2026-09-25
 
 ### Added

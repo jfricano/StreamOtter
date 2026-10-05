@@ -170,6 +170,53 @@ describe("operator socket (API §7, ADR-15C §3)", { skip: POSIX ? false : "Unix
     }
   });
 
+  it("F38: answers an oversize line to a caller still writing, without resetting it, then closes", async () => {
+    const { socket } = await serve();
+    try {
+      // Far larger than any socket buffer, so the caller is mid-write when the answer comes.
+      const payload = Buffer.alloc(OPERATOR_IPC_MAX_REQUEST_BYTES * 32, 0x61);
+      const outcome = await new Promise<{ text: string; payloadError: string | undefined; lingerMs: number }>((resolve, reject) => {
+        // allowHalfOpen: the caller keeps its side open and keeps sending after the answer.
+        const client = createConnection({ path: socket.path, allowHalfOpen: true });
+        const codeOf = (error: Error): string => (error as NodeJS.ErrnoException).code ?? error.message;
+        let text = "";
+        let payloadError: string | undefined;
+        let answeredAt = 0;
+        let ticker: NodeJS.Timeout | undefined;
+        client.on("connect", () => client.write(payload, error => { if (error) payloadError = codeOf(error); }));
+        client.on("data", chunk => { text += chunk.toString("utf8"); });
+        client.on("end", () => {
+          answeredAt = performance.now();
+          ticker = setInterval(() => { if (!client.destroyed) client.write("more"); }, 50);
+        });
+        client.on("error", error => { if (codeOf(error) === "ENOENT") reject(error); });
+        client.on("close", () => {
+          clearInterval(ticker);
+          resolve({ text, payloadError, lingerMs: answeredAt === 0 ? -1 : performance.now() - answeredAt });
+        });
+      });
+      assert.equal(outcome.payloadError, undefined, "the server keeps reading after it answers, so the caller's write is not reset");
+      const response = JSON.parse(outcome.text) as OperatorIpcResponse;
+      assert.equal(errorOf(response).code, "INVALID_REQUEST");
+      assert.match(errorOf(response).message, /longer than 65536 bytes/);
+      // A caller that keeps sending is still cut off shortly after the answer (REPLY_LINGER_MS).
+      assert.ok(outcome.lingerMs >= 800 && outcome.lingerMs < 5_000, `closed ${outcome.lingerMs} ms after the answer`);
+
+      // A caller that ends its side after the answer is closed at once, not after the linger.
+      const ended = await new Promise<number>((resolve, reject) => {
+        const started = performance.now();
+        const client = createConnection(socket.path);
+        client.on("connect", () => client.write(Buffer.alloc(OPERATOR_IPC_MAX_REQUEST_BYTES + 10, 0x61)));
+        client.on("data", () => client.end());
+        client.on("error", reject);
+        client.on("close", () => resolve(performance.now() - started));
+      });
+      assert.ok(ended < 900, `closed after ${ended} ms`);
+    } finally {
+      await socket.close();
+    }
+  });
+
   it("F38: refuses an oversize line, malformed JSON, invalid UTF-8 and bad shapes with INVALID_REQUEST", async () => {
     const { operator, socket, token } = await serve();
     try {

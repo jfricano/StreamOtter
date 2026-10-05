@@ -3,6 +3,19 @@ import { afterEach, describe, it } from "node:test";
 import { deferred, observe, orderRecord, sleep, startHarness, waitFor, type Harness } from "./harness.ts";
 import { rawConnect, rawConnectError, rawSocket } from "./raw.ts";
 
+/**
+ * Refuses `count` handshakes with a bad token, at most `concurrency` connecting at once. More
+ * simultaneous connects than the listen backlog holds are reset by the OS before the gateway sees
+ * them (macOS caps the backlog at 128), which tests the OS rather than the gateway.
+ */
+async function refuseHandshakes(origin: string, count: number, concurrency = 10): Promise<void> {
+  for (let started = 0; started < count; started += concurrency) {
+    const batch = Math.min(concurrency, count - started);
+    const errors = await Promise.all(Array.from({ length: batch }, () => rawConnectError(origin, { token: "nobody", protocolVersion: 1 })));
+    for (const error of errors) assert.equal(error.code, "UNAUTHENTICATED");
+  }
+}
+
 describe("acceptance 4: access fails closed", () => {
   let h: Harness | undefined;
   afterEach(async () => { await h?.close(); h = undefined; });
@@ -353,9 +366,7 @@ describe("acceptance 4: access fails closed", () => {
     await h.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }).ready();
     const before = h.internals.traces({ limit: 500, channel: "orderStatus" }).items.length;
     assert.ok(before > 0);
-    for (let batch = 0; batch < 8; batch++) {
-      await Promise.all(Array.from({ length: 50 }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
-    }
+    await refuseHandshakes(h.origin, 400);
     const traces = h.internals.traces({ limit: 500 }).items;
     assert.equal(traces.filter(trace => trace.channel === "orderStatus").length, before, "the subscription's traces survive");
     const traced = traces.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
@@ -368,7 +379,7 @@ describe("acceptance 4: access fails closed", () => {
     const logger = { info() {}, error() {}, warn(message: string, fields?: Record<string, unknown>) { if (message.startsWith("Refused handshakes were not traced")) skipped.push(fields?.["count"] as number); } };
     h = await startHarness({ logger });
     const refused = 150;
-    await Promise.all(Array.from({ length: refused }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    await refuseHandshakes(h.origin, refused);
     const traced = () => h!.internals.traces({ limit: 500 }).items.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
     const reported = () => skipped.reduce((sum, count) => sum + count, 0);
     assert.ok(traced() < refused, "the flood exceeded the trace rate");
@@ -380,7 +391,7 @@ describe("acceptance 4: access fails closed", () => {
     const logger = { info() {}, error() {}, warn(message: string, fields?: Record<string, unknown>) { if (message.startsWith("Refused handshakes were not traced")) skipped.push(fields?.["count"] as number); } };
     h = await startHarness({ logger });
     const refused = 150;
-    await Promise.all(Array.from({ length: refused }, () => rawConnectError(h!.origin, { token: "nobody", protocolVersion: 1 })));
+    await refuseHandshakes(h.origin, refused);
     const traced = h.internals.traces({ limit: 500 }).items.filter(trace => trace.errorCode === "UNAUTHENTICATED").length;
     await h.gateway.stop();
     assert.equal(traced + skipped.reduce((sum, count) => sum + count, 0), refused);
