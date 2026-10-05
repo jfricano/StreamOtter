@@ -4,7 +4,9 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ## Unreleased
 
-Planned as `0.2.0-rc.1`, one release that carries three internal milestones:
+## [0.2.0-rc.1] — 2026-10-04
+
+Prepared release candidate; npm publication is pending owner-controlled dispatch and approval. One release carrying three internal milestones:
 
 - V1.1: source-failure handling and the workbench host contract ([docs/releases/v1.1](docs/releases/v1.1/README.md)).
 - V1.2: an independent quality review of V1 and V1.1 together ([docs/releases/v1.2](docs/releases/v1.2/README.md)).

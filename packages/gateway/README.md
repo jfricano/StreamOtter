@@ -4,7 +4,7 @@
 
 The StreamOtter Node.js gateway. It consumes Kafka (or deterministic fixtures during development), runs **your** handlers to decide identity, access, public payload, and authoritative state, and delivers state channels to browsers using [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client). Each subscription gets a snapshot, then full-state updates ordered by revision, with bounded queues and explicit `live`/`stale` states.
 
-> **Release candidate** of StreamOtter `0.1.0`; the API may still change before `0.1.0`. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
+> **Release candidate `0.2.0-rc.1`** of StreamOtter `0.2.0`; the API may still change before `0.2.0`. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
 
 ```bash
 npm install @streamotter/gateway

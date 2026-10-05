@@ -6,7 +6,7 @@ The static assets of the StreamOtter local workbench. You don't usually use this
 
 Workbench is development tooling, not a required stage between the gateway and production frontends. Production subscriptions use the browser SDK connected to a compatible running gateway. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements).
 
-> **Release candidate** of StreamOtter `0.1.0`.
+> **Release candidate `0.2.0-rc.1`** of StreamOtter `0.2.0`.
 
 `dist/THIRD_PARTY_LICENSES.txt` lists the MIT-licensed Socket.IO client packages bundled into `dist/app.js`.
 
