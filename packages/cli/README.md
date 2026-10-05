@@ -4,7 +4,7 @@
 
 The `streamotter` command: scaffold a project, validate its configuration, generate TypeScript channel types, run a development gateway with the local workbench, and start the production gateway.
 
-> **Release candidate `0.2.0-rc.1`** of StreamOtter `0.2.0`; the API may still change before `0.2.0`. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
+> **Release candidate `0.2.0-rc.1`** of StreamOtter `0.2.0`; the API may still change before a stable release. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
 
 ```bash
 npm install @streamotter/cli

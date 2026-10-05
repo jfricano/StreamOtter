@@ -1,12 +1,12 @@
 # StreamOtter 0.2.0-rc.1 — release handoff
 
-October 4, 2026. A short handoff for the coordinated deployment checklist. It links the detailed documents instead of repeating them. Nothing here contains credentials.
+October 4, 2026; updated October 5 after publication. **Published:** all six packages at `0.2.0-rc.1` on npm `latest`, with provenance, from tag `v0.2.0-rc.1` at `fc7f47c` ([publishing run](https://github.com/jfricano/StreamOtter/actions/runs/37253704865), [GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1)). A short handoff for the coordinated deployment checklist. It links the detailed documents instead of repeating them. Nothing here contains credentials.
 
 ## What ships
 
-One npm release, `0.2.0-rc.1`, carrying three internal milestones: V1.1 (source-failure handling, workbench host contract), V1.2 (independent quality review fixes) and V1.2.1 (the deferred minor fixes). The user-facing story is the `0.2.0-rc.1` entry in [CHANGELOG.md](../../../CHANGELOG.md) (dated October 4 as a prepared candidate; npm publication remains pending).
+One npm release, `0.2.0-rc.1`, carrying three internal milestones: V1.1 (source-failure handling, workbench host contract), V1.2 (independent quality review fixes) and V1.2.1 (the deferred minor fixes). The user-facing story is the `0.2.0-rc.1` entry in [CHANGELOG.md](../../../CHANGELOG.md) (dated October 4, the release commit's date).
 
-All six packages publish together at one version: `streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli` and `@streamotter/workbench`. The release-preparation branch sets all six manifests to `0.2.0-rc.1`; npm `latest` remains `0.1.0-rc.3` until verified publication ([checklist §1](../../RELEASE_CHECKLIST.md#1-prepare-the-release-commit)).
+All six packages publish together at one version: `streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli` and `@streamotter/workbench`. The release-preparation PR set all six manifests to `0.2.0-rc.1` ([checklist §1](../../RELEASE_CHECKLIST.md#1-prepare-the-release-commit)).
 
 **dist-tag:** Jason approved `latest` for this release. No stable version exists, and every RC so far used `latest`, so unpinned `npm install streamotter` and the npm pages move to `0.2.0-rc.1`. Secondary `next` promotion is a separate owner action, not part of the approved publisher workflow. Two changes can refuse a configuration or request that `0.1.0-rc.3` accepted: the `limits.maxControlFrameBytes` minimum (9216), and production answering invalid subscribe parameters with `FORBIDDEN`.
 
@@ -20,7 +20,7 @@ The owner merged the feature code in the required order:
 | 2 | [#20](https://github.com/jfricano/StreamOtter/pull/20) | `70f9f05` — V1.2 review fixes and release docs |
 | 3 | [#56](https://github.com/jfricano/StreamOtter/pull/56) | `2c1af737978005809ef3dc97b3b68affe8fc05ed` — V1.2.1 fixes |
 
-Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is reconciled against that final feature main, preserving its pinned CI and release acceptance while replacing owner-local publication with the approved workflow. The owner merged it as `86690f1bdbba55ac0d55809d63e48c51cd831a23`. The owner then merged the macOS acceptance fixes in [#59](https://github.com/jfricano/StreamOtter/pull/59) as `d47b98783430538b479989389e6ca5fb476ed7b3`. Release-preparation [#58](https://github.com/jfricano/StreamOtter/pull/58) brings that exact main into the separate six-package version/date/documentation candidate. Exact-source main CI, release acceptance, source tag, explicit workflow dispatch and publication approval still follow. Integrating code does not publish it.
+Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is reconciled against that final feature main, preserving its pinned CI and release acceptance while replacing owner-local publication with the approved workflow. The owner merged it as `86690f1bdbba55ac0d55809d63e48c51cd831a23`. The owner then merged the macOS acceptance fixes in [#59](https://github.com/jfricano/StreamOtter/pull/59) as `d47b98783430538b479989389e6ca5fb476ed7b3`. Release-preparation [#58](https://github.com/jfricano/StreamOtter/pull/58) brings that exact main into the separate six-package version/date/documentation candidate. The owner merged #58 as `fc7f47c`, then created the `v0.2.0-rc.1` tag on it, dispatched the publishing workflow and approved it.
 
 ## Verification
 
@@ -36,7 +36,7 @@ Reported development runs on Node 24.21.0 (Kafka 4.1.2, headless Chromium 141), 
 | `test:install` | 22 | 22 | 22 |
 | `test:load` | — | 1 | 1 |
 
-GitHub CI: `Verify (Node 24)` and `Verify (Node 26)` are green on every head above. The extended workflow (Kafka, install, browser, deploy) was run by hand on the V1.2.1 branch and passed on Node 24 and 26, as did the nightly replicated-Kafka job. It has not yet run on `main`.
+GitHub CI: `Verify (Node 24)` and `Verify (Node 26)` are green on every head above. The extended workflow (Kafka, install, browser, deploy) was run by hand on the V1.2.1 branch and passed on Node 24 and 26, as did the nightly replicated-Kafka job. On `main` at the release commit `fc7f47c`, CI and the [extended workflow](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) passed on Node 24 and 26, with replicated Kafka on Node 24.
 
 Details: [V1.1 acceptance packet](../v1.1/ACCEPTANCE_PACKET.md) §4, [V1.2 log](../v1.2/IMPLEMENTATION_LOG.md) §4, [V1.2.1 log](../v1.2.1/IMPLEMENTATION_LOG.md), [implementation status](../../IMPLEMENTATION_STATUS.md).
 
@@ -48,21 +48,22 @@ Oversized IPC requests now receive a response while excess input is discarded, w
 
 There is no default state folder: `--operator-socket` requires an explicit `--state-dir`. An ordinary `./state` under the primary Mac project yields a 62-byte socket path. Real 103-byte paths succeed; oversized 104-byte paths receive clear startup and client refusal. The packed-install fixture now chooses a short state folder, and its operator crash/restart and production TLS Kafka tests passed with the default macOS `TMPDIR` unchanged. The earlier global temporary-directory workaround is no longer required.
 
-Use release PR #58's review and check results for the final reconciled six-package candidate's exact-source acceptance/packing receipts. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md) for clean build, verify, load, native Kafka, packed installation, browser, proxy and replicated-broker checks on that candidate. Local tarballs are rehearsal evidence; the protected workflow must regenerate actual publication artifacts against the owner's final main/tag. No source tag or publication has been created by this preparation.
+Use release PR #58's review and check results for the final reconciled six-package candidate's exact-source acceptance/packing receipts. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md) for clean build, verify, load, native Kafka, packed installation, browser, proxy and replicated-broker checks on that candidate. Local tarballs are rehearsal evidence; the protected workflow must regenerate actual publication artifacts against the owner's final main/tag. 
+## Remaining limitations
 
-## Remaining blockers
-
-- **Owner integration/publication gates:** review and merge the reconciled version/documentation candidate after its checks; obtain exact-main CI and full release acceptance; create the approved source tag; then explicitly dispatch and approve npm publication. Feature PRs, publisher #57 and macOS fixes #59 are already merged. Saved GitHub/npm account settings are setup evidence, not proof of the first OIDC publication.
+- **Publication: done.** The owner merged #58, tagged `v0.2.0-rc.1`, and dispatched and approved the publishing workflow; it was the first publication through npm OIDC.
 - **Not verified, and not required for an RC** (required before a final `0.2.0`, [packet §10](../v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status)): a Kafka broker with ACLs enabled, Firefox and WebKit (F45), the proxy deployment with failure handling on, and one integrator walking the [runbook](../../guides/source-failures.md) end to end.
 - **Review findings:** all recorded findings, including J7 and the four macOS acceptance failures, are fixed and independently verified as described above.
 
 ## Who publishes
 
-Jason selects and approves the release through the [approval-gated Trusted Publishing workflow](../../PUBLISHING.md). Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is merged and reconciled against the final feature code. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md): prepare the separate six-package version/date/README commit, obtain green main CI on that exact commit and full release acceptance, then create the owner-approved `v0.2.0-rc.1` tag. Prepared manifests are `0.2.0-rc.1`; this does not assert that npm publication has happened.
+Jason selects and approves the release through the [approval-gated Trusted Publishing workflow](../../PUBLISHING.md). Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is merged and reconciled against the final feature code. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md): prepare the separate six-package version/date/README commit, obtain green main CI on that exact commit and full release acceptance, then create the owner-approved `v0.2.0-rc.1` tag. This is how `0.2.0-rc.1` was published.
 
 Dispatch `publish.yml` **from main**, explicitly choosing the existing source tag and npm `latest`. Review its source/artifact evidence and approve `npm-release`. The workflow publishes all six packages with npm OIDC, verifies exact versions/integrities and registry installation with TLS Kafka, then creates the GitHub release. Ordinary merges, pushes, tags, and GitHub releases never publish. No long-lived npm token/login/OTP is supplied to Actions. An owner-local fallback or metadata correction requires separate authorization; agents do not handle owner credentials.
 
 ## Acceptance checks after publishing
+
+The publishing workflow's `verify_registry` job covered checks 1 and 2 for this release (exact integrity, the `latest` tag, and a registry install with TLS Kafka) before it created the GitHub release. Checks 3 and 4 are not recorded here.
 
 1. `npm dist-tag ls <package>` shows `0.2.0-rc.1` on the chosen tag (`latest`; `next` only if separately authorized) for all six packages.
 2. `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` passes against the registry, with the broker running. Wait about a minute after publishing first, because the registry can briefly report a new version as missing.

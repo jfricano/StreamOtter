@@ -5,8 +5,8 @@
 Three words are used strictly here:
 
 - **Implemented:** code and tests are on the V1.1 branches, and the tests passed in a recorded run in this build environment.
-- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. **Nothing in V1.1 is independently verified yet.** No V1.1 branch has merged, so CI has not run the extended tiers (Kafka, browser, deploy) on it. The [independent review](./REVIEW.md) was a code review by reviewers who did not write the code, run in the same build environment; it found and fixed defects, but it is not an independent run of the evidence.
-- **Published:** on npm. **Nothing in V1.1 is published.** The latest release is still `0.1.0-rc.3`.
+- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. When this packet was written, nothing in V1.1 was independently verified and CI had not run the extended tiers on it. *Update, October 5:* V1.1 is on `main`, and on the release commit `fc7f47c` CI ran `pnpm verify` and the [extended tiers](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser, deploy, replicated Kafka) green; the evidence matrix rows have not been re-marked against those runs. The [independent review](./REVIEW.md) was a code review by reviewers who did not write the code, run in the same build environment; it found and fixed defects, but it is not an independent run of the evidence.
+- **Published:** on npm. V1.1 is published in `0.2.0-rc.1` on npm `latest` (October 5, [GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1)).
 
 ## 1. The product question
 
