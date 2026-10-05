@@ -1,4 +1,4 @@
-<p align="center"><img src="https://raw.githubusercontent.com/jfricano/StreamOtter/main/docs/assets/streamotter-logo.png" alt="StreamOtter" width="420"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/jfricano/StreamOtter/main/docs/assets/streamotter-readme-lockup.png" alt="StreamOtter" width="240"></p>
 
 # StreamOtter
 

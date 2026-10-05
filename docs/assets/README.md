@@ -1,6 +1,6 @@
 # StreamOtter brand assets
 
-StreamOtter has two logos. Use the **detailed logo** where there's room for an illustration: the README, the npm pages, articles, and title slides. Use the **brandmark** (the flat S-otter mark, its lockups, and its icon) wherever the logo is small or repeated: headers, footers, favicons, app icons, link cards, stickers, and slide corners. Don't recolor, redraw, stretch, or crop any of them, and don't set "StreamOtter" in a font in place of the wordmark.
+StreamOtter has two logos. Use the **brandmark** (the flat S-otter mark, its lockups, and its icon) in the READMEs and on the npm pages, and wherever the logo is small or repeated: headers, footers, favicons, app icons, link cards, stickers, and slide corners. Use the **detailed logo** where there's room for an illustration: articles and title slides. Don't recolor, redraw, stretch, or crop any of them, and don't set "StreamOtter" in a font in place of the wordmark.
 
 ## The detailed logo
 
@@ -8,8 +8,8 @@ An otter swimming through a stream of code, with the wordmark below. It's raster
 
 | File | Size | Use |
 | --- | --- | --- |
-| `streamotter-logo.png` | 800 × 455, white background | README and npm pages on light backgrounds. The published npm pages link to this file on `main`, so it never moves or changes name. |
-| `streamotter-logo-dark.png` | 1397 × 791, transparent | Dark backgrounds: "Stream" in light ink. The README shows it in GitHub's dark mode. |
+| `streamotter-logo.png` | 800 × 455, white background | Light backgrounds. npm pages for `0.2.0-rc.1` and earlier link to this file on `main`, so it never moves or changes name. |
+| `streamotter-logo-dark.png` | 1397 × 791, transparent | Dark backgrounds: "Stream" in light ink. |
 | `streamotter-logo-full.png` | 1536 × 1024, white background | Large uses: article headers, title slides. |
 
 Keep it at least 240 px wide. Below that, the code lines and whiskers turn to noise; use the brandmark instead.
@@ -22,6 +22,7 @@ Flat vectors, each in a light version (for light backgrounds) and a `-dark` vers
 | --- | --- | --- |
 | `streamotter-lockup-horizontal.svg`, `-dark.svg` | The default signature: site and app headers, slide corners, and link cards that need a wide shape | 120 px wide |
 | `streamotter-lockup-stacked.svg`, `-dark.svg` | Centered and formal uses: footers, title cards, and square spaces | 96 px wide |
+| `streamotter-readme-lockup.svg`, `-dark.svg`, `.png` | The stacked lockup cropped tight, for the READMEs. The repository README shows the SVGs (dark in GitHub's dark mode); the package READMEs link to the PNG (720 × 516, white background) on `main`, because npm needs an absolute URL. Keep its name and location. | 240 px wide |
 | `streamotter-mark.svg`, `-dark.svg` | The symbol alone, when the name is already next to it: 404 pages, avatars, stickers | 24 px tall |
 | `streamotter-wordmark.svg`, `-dark.svg` | The name alone, rarely: where the mark would repeat something beside it | 80 px wide |
 | `streamotter-app-icon.svg`, `streamotter-app-icon-512.png` | App and touch icons: the dark mark on an ink rounded square | 32 px |
