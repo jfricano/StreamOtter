@@ -24,7 +24,7 @@ Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is reconciled a
 
 ## Verification
 
-Local runs on Node 24.21.0 (Kafka 4.1.2, headless Chromium 141), all passing with nothing skipped:
+Reported development runs on Node 24.21.0 (Kafka 4.1.2, headless Chromium 141), before the separate release-preparation rehearsal:
 
 | Tier | V1.1 at `483eb82` | V1.2 at #20 | V1.2.1 at #56 (final code) |
 | --- | --- | --- | --- |
@@ -40,11 +40,37 @@ GitHub CI: `Verify (Node 24)` and `Verify (Node 26)` are green on every head abo
 
 Details: [V1.1 acceptance packet](../v1.1/ACCEPTANCE_PACKET.md) §4, [V1.2 log](../v1.2/IMPLEMENTATION_LOG.md) §4, [V1.2.1 log](../v1.2.1/IMPLEMENTATION_LOG.md), [implementation status](../../IMPLEMENTATION_STATUS.md).
 
+### Release-preparation rehearsal — publication held
+
+The isolated version/date/docs candidate `2bcc8302ab4cc86f6613e2d21537d5e2be13b472`, based on merged main `86690f1`, was tested on macOS with Node 24.21.0, npm/pnpm 11.19.0, Kafka 4.1.2, Temurin 21.0.12.1+1 and Caddy 2.11.4. Clean build, contract checking, type checking, publisher controls (13 tests), load (1), browser (59), Kafka (48), proxy deployment (5) and replicated Kafka (3) passed. All broker-dependent tiers completed without skips, and this checkout's brokers were stopped afterward.
+
+Packed installation passed all 22 tests, including production TLS Kafka and operator crash/restart, with `TMPDIR=/private/tmp`. The default macOS temporary directory makes that fixture's operator socket path exceed the 103-byte limit; the default-path compatibility question remains open. A short temporary path is a rehearsal workaround, not resolution of that review.
+
+`pnpm test` remains blocked: 439 of 444 tests passed, four failed, and the existing ownership test intentionally skipped because this run is not root. All four failures reproduced serially against both the candidate and an unmodified snapshot of merged main `86690f1`:
+
+| Test | Observed failure |
+| --- | --- |
+| `packages/gateway/test/operator-ipc.test.ts:173` — F38 oversized/invalid request handling | Empty oversized-request reply; JSON parsing throws `Unexpected end of JSON input`. |
+| `tests/integration/access.test.ts:366` — count untraced refused handshakes within a second | 150 concurrent refused handshakes are not all traced/counted before the deadline. |
+| `tests/integration/access.test.ts:378` — count untraced refused handshakes on stop | Baseline recorded 128 rather than 150. |
+| `tests/integration/management.test.ts:170` — rate/dependency/deadline statuses | 300 concurrent local health requests include a transport `ECONNRESET`. |
+
+Minimal reproduction, after frozen installation using the pinned Node:
+
+```bash
+node --conditions=streamotter-source --test --test-force-exit --test-concurrency=1 \
+  packages/gateway/test/operator-ipc.test.ts \
+  tests/integration/access.test.ts tests/integration/management.test.ts
+```
+
+The local publisher packing rehearsal verified all six `0.2.0-rc.1` tarballs, exact internal dependencies, distribution exports, file lists and SHA256/SHA512 integrity. Its rehearsal-only manifest SHA256 is `ff4f3504edf8533975997287db1f089d98ccf32bcfcd1b4982489fc4374cb9c3`; it records candidate `2bcc8302`, not an approved main tag. No tag or publication was created. Reconcile the development fixes, rerun acceptance, and regenerate actual publication artifacts against the owner's final main/tag before releasing.
+
 ## Remaining blockers
 
-- **Owner integration/publication gates:** integrate the feature PRs and reconciled publisher #57; prepare the separate version/documentation commit; obtain exact-main CI and full release acceptance; create the approved source tag; then explicitly dispatch and approve npm publication. Saved GitHub/npm account settings are setup evidence, not proof of the first OIDC publication.
+- **Acceptance hold:** resolve the four macOS failures and disposition the default operator-path compatibility review above. The separate candidate is draft review material, not permission to publish. No runtime fix or test relaxation is included here.
+- **Owner integration/publication gates:** review the separate version/documentation candidate after development fixes; obtain exact-main CI and full release acceptance; create the approved source tag; then explicitly dispatch and approve npm publication. Feature PRs and publisher #57 are already merged. Saved GitHub/npm account settings are setup evidence, not proof of the first OIDC publication.
 - **Not verified, and not required for an RC** (required before a final `0.2.0`, [packet §10](../v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status)): a Kafka broker with ACLs enabled, Firefox and WebKit (F45), the proxy deployment with failure handling on, and one integrator walking the [runbook](../../guides/source-failures.md) end to end.
-- **No open code findings.** All review findings are fixed, including J7.
+- **Earlier review findings:** all previously recorded findings, including J7, are fixed. The new macOS acceptance failures remain open as described above.
 
 ## Who publishes
 
