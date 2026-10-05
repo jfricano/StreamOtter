@@ -124,9 +124,11 @@ These ACLs follow from the client calls. They have not been checked against a br
 
 ## 10. Recommended release status
 
+*Update, October 5:* steps 1 and 3 are done, and CI ran the extended tiers on `main` ([run](https://github.com/jfricano/StreamOtter/actions/runs/37252966584)); the Firefox and WebKit run in step 2, and step 4, remain.
+
 **Ready to merge as a release candidate, not as a final release.** Recommended path:
 
 1. Merge #55 (V1.1, including the review fixes that correct defects in its slices; merged October 4 as `560c7c0`), then retarget #20 (V1.2) to `main` and merge it, then #56 (V1.2.1). #20 and #56 fix defects across V1 and V1.1 and belong in the same release.
 2. Let CI run the extended tiers on `main`, including the browser tier on Playwright's pinned browser, and add the Firefox and WebKit run for F45.
 3. Publish V1.1, V1.2 and V1.2.1 together as `0.2.0-rc.1` (a new minor: new configuration and CLI surface, no breaking change), with the owner's go.
-4. Before a final `0.2.0`: an ACL-enabled broker run, the proxy deployment with failure handling on, and one integrator walking the runbook end to end.
+4. Before a stable release: an ACL-enabled broker run, the proxy deployment with failure handling on, and one integrator walking the runbook end to end.

@@ -58,7 +58,7 @@ Runs on September 24, 2026 in the environment above, repeated on September 25 af
 | `pnpm test:deploy` | **4 / 4 passed**: the Caddy-fronted production deployment below (builds first; needs the broker and Caddy). |
 | `pnpm test:install` | **20 / 20 passed** with the broker running (19 plus one skipped without it), for `0.1.0-rc.3`: the installed-package checks below, including the all-in-one `streamotter`. Earlier versions of the test (14 checks) passed on Node 24.21.0 and 26.9.0. |
 | `pnpm publish --dry-run` (all six) | Passes in dependency order (contracts, client, gateway, workbench, cli, then `streamotter`). |
-| `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` | **14 / 14 passed** against the published `0.1.0-rc.1` and `0.1.0-rc.2`, and **20 / 20** against `0.1.0-rc.3` (including a project that installs only `streamotter` from the registry), with the broker running on Node 26.9.0, after each publish on September 25. |
+| `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` | **14 / 14 passed** against the published `0.1.0-rc.1` and `0.1.0-rc.2`, and **20 / 20** against `0.1.0-rc.3` (including a project that installs only `streamotter` from the registry), with the broker running on Node 26.9.0, after each publish on September 25. `0.2.0-rc.1` passed it in the publishing workflow's registry check with TLS Kafka on October 5 ([run](https://github.com/jfricano/StreamOtter/actions/runs/37253704865)). |
 | Clean checkout | The tree copied without `node_modules`, build output, `.local/`, or data: install, build, `check:contracts`, `typecheck`, `test` (103 tests at that point), `test:load`, and `pnpm example` all succeeded. |
 
 ### Installed packages (`pnpm test:install`)
@@ -203,7 +203,7 @@ All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, 
 | `pnpm build && pnpm verify` | 384 tests, all pass |
 | `pnpm test:kafka` | 42 tests, all pass, against the local single-node Kafka 4.1.2 broker |
 | `pnpm test:kafka:replicated` | 2 tests, all pass, against a local three-broker Kafka 4.1.2 cluster (F47) |
-| `pnpm test:browser` | 56 tests, all pass, in headless **Chromium 141** linked in place of Playwright 1.63's pinned Chrome Headless Shell 153, which could not be downloaded in that environment; CI's pinned browser has not run these tests yet |
+| `pnpm test:browser` | 56 tests, all pass, in headless **Chromium 141** linked in place of Playwright 1.63's pinned Chrome Headless Shell 153, which could not be downloaded in that environment; CI's pinned browser has since run the browser tier, on the release commit `fc7f47c` (see the V1.2.1 section) |
 | `pnpm test:install` | 22 tests, all pass, including the TLS Kafka case |
 | `pnpm test:deploy` | 4 tests, all pass (without `failureHandling`) |
 
