@@ -6,6 +6,7 @@ This directory owns native package behavior, APIs/configuration, CLI/workbench t
 - [V1.2 — Quality review](v1.2/README.md): an independent review of V1 and V1.1 together, and its fixes.
 - [V1.2.1 — Deferred minor fixes](v1.2.1/README.md): fixes for the 33 minor findings V1.2 deferred and the V1.1 review's J7 (issues #21 to #54).
 - **Next release:** V1.1, V1.2 and V1.2.1 ship together as `0.2.0-rc.1`, with one CHANGELOG entry. The milestone folders keep each increment's plan, evidence and log.
+- **After that:** `1.0.0` is the V1 public launch, with later milestones as `1.x` minors ([npm versions](../API_AND_FEATURE_ROADMAP.md#npm-versions)).
 - [0.2.0-rc.1 release handoff](0.2.0-rc.1/RELEASE_HANDOFF.md): PRs and merge order, verification, blockers, publishing, acceptance checks and rollback.
 - [V2.0 delivery-store outline](v2.0/STORE_DESIGN_OUTLINE.md): a separate future design.
 - [V2.3 event journey verification](v2.3/V2_3_EVENT_JOURNEY_VERIFICATION.md): a proposal, not approved. It moved here from `docs/v2/` on October 4, 2026, so all release plans live under `docs/releases/`.
