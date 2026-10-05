@@ -12,6 +12,6 @@ window.ARTICLES = {
   // (2) "Making it lie", the owner's own short piece after launch week.
   "making-it-lie": {
     eyebrow: "Field notes · reviews and launch week",
-    title: "Making it lie: what our reviews and launch week broke",
+    title: "Making it lie: what the pre-1.0 reviews and launch week broke",
   },
 };

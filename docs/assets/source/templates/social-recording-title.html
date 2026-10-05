@@ -3,7 +3,7 @@
 <meta name="output" content="../../social/recording-title.png">
 <meta name="size" content="1920x1080">
 <!-- Title card for the silent Failure Lab screen recording.
-     Before publishing, set DATE and VERSION below (one string each) and re-render: node render.mjs social-recording -->
+     Before publishing, set DATE, VERSION and (if needed) WHERE below and re-render: node render.mjs social-recording -->
 <link rel="stylesheet" href="../brand.css">
 <link rel="stylesheet" href="launch-motifs.css">
 <script src="social-motifs.js"></script>
@@ -26,15 +26,16 @@
   <div class="layer copy">
     <div class="eyebrow">Screen recording</div>
     <div class="head">Failure Lab</div>
-    <div class="sub">Foul a sensor, cut the relay, stall a laptop, restart the gateway.<br>Every view either stays <em class="l">live</em> or says it isn’t.</div>
+    <div class="sub">Break the pipeline on purpose and watch the views.<br>Every view either stays <em class="l">live</em> or says it isn’t.</div>
   </div>
   <div class="layer slate" id="slate"></div>
 </div>
 <script>
   const DATE = "2026-10-XX";
   const VERSION = "X.Y.Z";
+  const WHERE = ""; // e.g. "local stack" when the recording isn't the hosted demo
   document.getElementById("slate").innerHTML =
-    `Recording · <b>${DATE}</b> · <b>streamotter@${VERSION}</b> · Lontra Creek is fictional; the Kafka pipeline is real.`;
+    `Recording · <b>${DATE}</b> · <b>streamotter@${VERSION}</b>${WHERE ? ` · <b>${WHERE}</b>` : ""} · Lontra Creek is fictional; the Kafka pipeline is real.`;
   const W = 1920, H = 1080;
   const c = SO.creek(W, H, { top: 1000, rise: 40, seed: 25, scale: 1.2, streams: 1, phase: 1.7, drops: false });
   let o = SO.texture(W, H, { rows: 9, y0: 30, y1: 800, opacity: 0.04, width: 7 });

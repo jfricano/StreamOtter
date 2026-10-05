@@ -106,7 +106,8 @@ PNG cards for link previews, social posts, articles and recordings. None prints 
 | `social/article-*-og.png` | 1200 × 630 | Link cards for the two launch articles: the 1.0 announcement and "Making it lie". `article-1-0-launch-og` shows "1.0": publish it only with that release |
 | `articles/article-*.png` | 2000 × 1125 | Blog and Medium headers for the same two articles. `article-1-0-launch` shows "1.0": publish it only with that release |
 | `articles/lineage-strip.png`, `-dark.png`, `-square.png` | 2000 × 840, 1200 × 1200 | Earlier open-source work on getting Kafka to the browser (b/kafka-websocket, KafkaSocks, kafka-penguin) and where StreamOtter picks up, with no dates and no other projects' logos |
-| `social/recording-title.png`, `recording-end.png` | 1920 × 1080 | Title and end cards for a Failure Lab screen recording. The title card's date and version are placeholders (`2026-10-XX`, `X.Y.Z`): set `DATE` and `VERSION` in its template and re-render before use |
+| `social/recording-title.png`, `recording-end.png` | 1920 × 1080 | Title and end cards for a Failure Lab screen recording. The title card's date and version are placeholders (`2026-10-XX`, `X.Y.Z`): set `DATE`, `VERSION` and, for a local recording, `WHERE` in its template and re-render before use |
+| `social/recording-label-local.png` | 744 × 72, transparent | Corner label for recording segments filmed on a local stack instead of the hosted demo; overlay it on every frame of such a segment |
 | `social/gif-caption.png` | 1200 × 80 | Caption strip for the home page's "Drop my connection" GIF. Its date is a placeholder: set `DATE` in its template and re-render |
 | `social/kafkasocks-banner-draft.png` | 1280 × 220 | A draft README banner for the KafkaSocks co-authors to consider. Not for use without their agreement |
 

@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/recording-label-local.png">
+<meta name="size" content="744x72">
+<meta name="transparent" content="true">
+<!-- Corner label for recording segments filmed on a local stack rather than the hosted demo.
+     Overlay it on every frame of such a segment. Re-render: node render.mjs social-recording-label -->
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<style>
+  html, body { background: transparent; }
+  .tag { position: absolute; inset: 6px; border-radius: 999px; background: rgba(4, 24, 63, 0.88); border: 2px solid var(--panel-line);
+    display: flex; align-items: center; gap: 14px; padding: 0 24px; font: 600 24px/1 var(--mono); color: var(--light-ink); white-space: nowrap; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--stale); flex: none; }
+  .tag span { color: var(--whisker); font-weight: 500; }
+</style></head>
+<body>
+<div class="tag"><i class="dot"></i>Recording · local stack<span id="note"></span></div>
+<script>
+  const NOTE = " · not the hosted demo";
+  document.getElementById("note").textContent = NOTE;
+</script>
+</body></html>
