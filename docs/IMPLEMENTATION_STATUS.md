@@ -229,7 +229,7 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 - Fixture evidence in the local spool (`streamotter dev` with fixture sources) expires seven days after it was stored, like a quarantine topic's copy under Kafka's default `retention.ms`; it is pruned when the gateway starts and before new evidence is stored, so evidence past seven days can still be read until then. The spool is capped at 16 MiB (review finding J7).
 - While an advance is unresolved (`advance-pending` or `uncertain`), the whole source holds, on every partition, until a restart reconciles it.
 - Redrive finds an evidence conflict or a moved position on an incident through its event history, which keeps the newest 200 events, so an incident retried more than about 100 times can lose that marker (second review, [REVIEW.md](./releases/v1.1/REVIEW.md) §5).
-- `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` have run on Linux only; their macOS fix (`bdf1445`) has not run on a Mac yet.
+- `scripts/kafka/replicated-start.sh` and `replicated-stop.sh` also passed on macOS in the October 4 release-preparation rehearsal (`2bcc8302`): the three-test replicated tier passed without skips, all six nodes stopped and no owned Kafka process remained. Final candidate acceptance is recorded in the [release handoff](./releases/0.2.0-rc.1/RELEASE_HANDOFF.md).
 
 ## V1.2 quality review (0.2.0-rc.1)
 

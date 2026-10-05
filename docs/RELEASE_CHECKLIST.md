@@ -19,6 +19,7 @@ Use the approval-gated [publishing workflow and setup/recovery guide](PUBLISHING
 - [ ] `README.md` and `docs/IMPLEMENTATION_STATUS.md` distinguish the prepared candidate from what is currently published.
 - [ ] **owner** Review and merge the release preparation commit after the intended development PRs.
 - [ ] The exact final `main` commit passes main-push CI `Verify (Node 24)` and `Verify (Node 26)`. Earlier branch results are insufficient.
+- [ ] **owner** Run **Extended checks** against that exact final release `main`: native Kafka, packed installation, browser and proxy tiers on Node 24/26, plus its separate replicated Kafka tier on Node 24. Earlier development-branch runs are insufficient; this check does not publish.
 
 ## 2. Release acceptance and packing
 

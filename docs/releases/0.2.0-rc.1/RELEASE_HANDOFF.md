@@ -20,7 +20,7 @@ The owner merged the feature code in the required order:
 | 2 | [#20](https://github.com/jfricano/StreamOtter/pull/20) | `70f9f05` — V1.2 review fixes and release docs |
 | 3 | [#56](https://github.com/jfricano/StreamOtter/pull/56) | `2c1af737978005809ef3dc97b3b68affe8fc05ed` — V1.2.1 fixes |
 
-Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is reconciled against that final feature main, preserving its pinned CI and release acceptance while replacing owner-local publication with the approved workflow. The owner merged it as `86690f1bdbba55ac0d55809d63e48c51cd831a23`. The separate version/date/documentation candidate is prepared for owner review. Exact-source main CI, release acceptance, source tag, explicit workflow dispatch and publication approval still follow. Integrating code does not publish it.
+Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is reconciled against that final feature main, preserving its pinned CI and release acceptance while replacing owner-local publication with the approved workflow. The owner merged it as `86690f1bdbba55ac0d55809d63e48c51cd831a23`. The owner then merged the macOS acceptance fixes in [#59](https://github.com/jfricano/StreamOtter/pull/59) as `d47b98783430538b479989389e6ca5fb476ed7b3`. Release-preparation [#58](https://github.com/jfricano/StreamOtter/pull/58) brings that exact main into the separate six-package version/date/documentation candidate. Exact-source main CI, release acceptance, source tag, explicit workflow dispatch and publication approval still follow. Integrating code does not publish it.
 
 ## Verification
 
@@ -40,37 +40,21 @@ GitHub CI: `Verify (Node 24)` and `Verify (Node 26)` are green on every head abo
 
 Details: [V1.1 acceptance packet](../v1.1/ACCEPTANCE_PACKET.md) §4, [V1.2 log](../v1.2/IMPLEMENTATION_LOG.md) §4, [V1.2.1 log](../v1.2.1/IMPLEMENTATION_LOG.md), [implementation status](../../IMPLEMENTATION_STATUS.md).
 
-### Release-preparation rehearsal — publication held
+### macOS acceptance fixes — verified
 
-The isolated version/date/docs candidate `2bcc8302ab4cc86f6613e2d21537d5e2be13b472`, based on merged main `86690f1`, was tested on macOS with Node 24.21.0, npm/pnpm 11.19.0, Kafka 4.1.2, Temurin 21.0.12.1+1 and Caddy 2.11.4. Clean build, contract checking, type checking, publisher controls (13 tests), load (1), browser (59), Kafka (48), proxy deployment (5) and replicated Kafka (3) passed. All broker-dependent tiers completed without skips, and this checkout's brokers were stopped afterward.
+The four failures found in the initial release rehearsal were resolved by #59. Its exact source `63864aa4be0bb884a9e9ce4f740cd4775faee917` was independently tested on macOS with Node 24.21.0, npm/pnpm 11.19.0, Kafka 4.1.2, Temurin 21.0.12.1+1 and Caddy 2.11.4. The three-file reproduction passed 55 tests and `pnpm verify` passed 446; each had only the existing ownership test skipped because the run was not root. Clean build, contracts, type checking, publisher controls (13), load (1), browser (59), Kafka (48), packed installation (22) and proxy deployment (5) passed. Broker-dependent tiers had no skips, and owned brokers were stopped afterward.
 
-Packed installation passed all 22 tests, including production TLS Kafka and operator crash/restart, with `TMPDIR=/private/tmp`. The default macOS temporary directory makes that fixture's operator socket path exceed the 103-byte limit; the default-path compatibility question remains open. A short temporary path is a rehearsal workaround, not resolution of that review.
+Oversized IPC requests now receive a response while excess input is discarded, with a one-second limit and at most `maxConnections` lingering sockets. Shutdown closes answered sockets immediately. If the linger cap is exhausted, the fallback closes immediately and can reset that excess caller. The refusal-accounting assertions remain intact, with each handshake also required to return `UNAUTHENTICATED`; the management burst uses 400 requests over eight kept-alive connections and still requires both success and `OVERLOADED`.
 
-`pnpm test` remains blocked: 439 of 444 tests passed, four failed, and the existing ownership test intentionally skipped because this run is not root. All four failures reproduced serially against both the candidate and an unmodified snapshot of merged main `86690f1`:
+There is no default state folder: `--operator-socket` requires an explicit `--state-dir`. An ordinary `./state` under the primary Mac project yields a 62-byte socket path. Real 103-byte paths succeed; oversized 104-byte paths receive clear startup and client refusal. The packed-install fixture now chooses a short state folder, and its operator crash/restart and production TLS Kafka tests passed with the default macOS `TMPDIR` unchanged. The earlier global temporary-directory workaround is no longer required.
 
-| Test | Observed failure |
-| --- | --- |
-| `packages/gateway/test/operator-ipc.test.ts:173` — F38 oversized/invalid request handling | Empty oversized-request reply; JSON parsing throws `Unexpected end of JSON input`. |
-| `tests/integration/access.test.ts:366` — count untraced refused handshakes within a second | 150 concurrent refused handshakes are not all traced/counted before the deadline. |
-| `tests/integration/access.test.ts:378` — count untraced refused handshakes on stop | Baseline recorded 128 rather than 150. |
-| `tests/integration/management.test.ts:170` — rate/dependency/deadline statuses | 300 concurrent local health requests include a transport `ECONNRESET`. |
-
-Minimal reproduction, after frozen installation using the pinned Node:
-
-```bash
-node --conditions=streamotter-source --test --test-force-exit --test-concurrency=1 \
-  packages/gateway/test/operator-ipc.test.ts \
-  tests/integration/access.test.ts tests/integration/management.test.ts
-```
-
-The local publisher packing rehearsal verified all six `0.2.0-rc.1` tarballs, exact internal dependencies, distribution exports, file lists and SHA256/SHA512 integrity. Its rehearsal-only manifest SHA256 is `ff4f3504edf8533975997287db1f089d98ccf32bcfcd1b4982489fc4374cb9c3`; it records candidate `2bcc8302`, not an approved main tag. No tag or publication was created. Reconcile the development fixes, rerun acceptance, and regenerate actual publication artifacts against the owner's final main/tag before releasing.
+Use release PR #58's review and check results for the final reconciled six-package candidate's exact-source acceptance/packing receipts. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md) for clean build, verify, load, native Kafka, packed installation, browser, proxy and replicated-broker checks on that candidate. Local tarballs are rehearsal evidence; the protected workflow must regenerate actual publication artifacts against the owner's final main/tag. No source tag or publication has been created by this preparation.
 
 ## Remaining blockers
 
-- **Acceptance hold:** resolve the four macOS failures and disposition the default operator-path compatibility review above. The separate candidate is draft review material, not permission to publish. No runtime fix or test relaxation is included here.
-- **Owner integration/publication gates:** review the separate version/documentation candidate after development fixes; obtain exact-main CI and full release acceptance; create the approved source tag; then explicitly dispatch and approve npm publication. Feature PRs and publisher #57 are already merged. Saved GitHub/npm account settings are setup evidence, not proof of the first OIDC publication.
+- **Owner integration/publication gates:** review and merge the reconciled version/documentation candidate after its checks; obtain exact-main CI and full release acceptance; create the approved source tag; then explicitly dispatch and approve npm publication. Feature PRs, publisher #57 and macOS fixes #59 are already merged. Saved GitHub/npm account settings are setup evidence, not proof of the first OIDC publication.
 - **Not verified, and not required for an RC** (required before a final `0.2.0`, [packet §10](../v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status)): a Kafka broker with ACLs enabled, Firefox and WebKit (F45), the proxy deployment with failure handling on, and one integrator walking the [runbook](../../guides/source-failures.md) end to end.
-- **Earlier review findings:** all previously recorded findings, including J7, are fixed. The new macOS acceptance failures remain open as described above.
+- **Review findings:** all recorded findings, including J7 and the four macOS acceptance failures, are fixed and independently verified as described above.
 
 ## Who publishes
 
@@ -97,4 +81,4 @@ A gateway that ran `0.2.0-rc.1` with `failureHandling` and a state directory mus
 
 ## Downstream
 
-Lontra Creek pins `streamotter` exactly at `0.1.0-rc.3`. Publishing this release changes nothing on the demo or the site until a Lontra Creek PR moves that pin. The cross-project sequence is in the [rollout plan](https://github.com/jfricano/lontra-creek/blob/fix/streamotter-dev-domain/docs/releases/0.2.0-rc.1/ROLLOUT_PLAN.md) in the Lontra Creek repository (it moves to `main` when lontra-creek #41 merges).
+Lontra Creek pins `streamotter` exactly at `0.1.0-rc.3`. Publishing this release changes nothing on the demo or the site until a Lontra Creek PR moves that pin. The cross-project sequence is in the [owner-merged rollout plan](https://github.com/jfricano/lontra-creek/blob/91c05a51bb2ead93f95e65b10751547e75c724f2/docs/releases/0.2.0-rc.1/ROLLOUT_PLAN.md), saved at an immutable commit after lontra-creek #41 merged.

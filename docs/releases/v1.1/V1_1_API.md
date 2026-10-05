@@ -361,7 +361,7 @@ Slice D notes (normative, as implemented in `packages/gateway/src/operator/servi
 
 ADR-15C §3 fixes the socket location and permissions. The wire format:
 
-- One request per connection. The client writes one UTF-8 JSON line of at most 64 KiB, terminated by `\n`. The server writes one JSON line and closes.
+- One request per connection. The client writes one UTF-8 JSON line of at most 64 KiB, terminated by `\n`. The server writes one JSON line and closes. A longer line is answered with `INVALID_REQUEST` while the caller may still be writing; the server then reads and discards input until the caller ends its side, for at most one second after the answer, so the answer is not lost to a reset. A connection refused with `OVERLOADED` past the connection limit is treated the same way.
 - Request: `{ "v": 1, "id": string, "token": string, "op": string, "args": object }`. `op` is a method name from §6 (`status`, `listFailures`, …).
 - Response: `{ "v": 1, "id": string, "ok": true, "data": … }` or `{ "v": 1, "id": string, "ok": false, "error": StreamError }`.
 - The token is compared in constant time. Ten requests per second per gateway, burst twenty; excess gets `OVERLOADED`. Connections idle for 5 seconds are closed.

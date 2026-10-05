@@ -27,6 +27,8 @@ const TOKEN_BYTES = 32;
 const DEFAULT_RATE_PER_SECOND = 10;
 const DEFAULT_BURST = 20;
 const DEFAULT_IDLE_MS = 5_000;
+/** How long a connection stays open after its answer is flushed, waiting for the caller to end its side. */
+const REPLY_LINGER_MS = 1_000;
 const DEFAULT_MAX_CONNECTIONS = 16;
 const DEFAULT_CLIENT_TIMEOUT_MS = 30_000;
 /** How long close() lets answers already being computed be written before it drops their connections. */
@@ -293,6 +295,8 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
   const connections = new Map<Socket, () => void>();
   let closing = false;
   let drained: (() => void) | null = null;
+  /** Answered connections kept reading until the caller ends its side (see reply). close() ends them at once. */
+  const lingering = new Set<Socket>();
   let lastOverloadLog = 0;
 
   const tokenMatches = (candidate: string): boolean => timingSafeEqual(digest(candidate), expected);
@@ -346,7 +350,15 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
     }
   }
 
-  function reply(socket: Socket, response: OperatorIpcResponse): void {
+  /**
+   * Writes the answer and closes. With `linger`, used when input may still be
+   * arriving, the connection keeps reading (and discarding) after the answer:
+   * closing with unread input resets the connection on some platforms (macOS),
+   * and a caller still writing would lose the answer. It then closes when the
+   * caller ends its side, or after REPLY_LINGER_MS, so a caller that keeps
+   * sending cannot hold it open. Otherwise it is destroyed once flushed.
+   */
+  function reply(socket: Socket, response: OperatorIpcResponse, linger = false): void {
     if (socket.destroyed) return;
     let line: string;
     try {
@@ -354,8 +366,26 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
     } catch {
       line = JSON.stringify(failure(response.id, new StreamOtterError("INTERNAL")));
     }
-    // Destroy once flushed, so a caller that keeps sending cannot hold the connection open.
-    socket.end(`${line}\n`, () => socket.destroy());
+    if (!linger) {
+      socket.end(`${line}\n`, () => socket.destroy());
+      return;
+    }
+    socket.resume();
+    socket.end(`${line}\n`, () => {
+      // Answered: no longer something close() should wait for.
+      connections.delete(socket);
+      if (connections.size === 0) drained?.();
+      if (socket.destroyed) return;
+      // Closing, or already holding as many as it serves (so at most twice maxConnections are open):
+      // no lingering, so refused floods stay bounded.
+      if (closing || lingering.size >= maxConnections) {
+        socket.destroy();
+        return;
+      }
+      lingering.add(socket);
+      const timer = setTimeout(() => socket.destroy(), REPLY_LINGER_MS);
+      socket.once("close", () => { clearTimeout(timer); lingering.delete(socket); });
+    });
   }
 
   const closingError = (): StreamOtterError => new StreamOtterError("UNSUPPORTED_CAPABILITY", { message: "The operator socket is closing; the request was not run." });
@@ -363,17 +393,18 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
   function serve(socket: Socket): void {
     if (closing || connections.size >= maxConnections) {
       socket.on("error", () => undefined);
-      reply(socket, failure("", closing ? closingError() : overloaded("Too many operator connections; try again shortly.")));
+      // The caller may still be writing its request.
+      reply(socket, failure("", closing ? closingError() : overloaded("Too many operator connections; try again shortly.")), true);
       return;
     }
     const chunks: Buffer[] = [];
     let size = 0;
     let done = false;
     const idle = setTimeout(() => { done = true; socket.destroy(); }, idleMs);
-    const finish = (response: OperatorIpcResponse | Promise<OperatorIpcResponse>): void => {
+    const finish = (response: OperatorIpcResponse | Promise<OperatorIpcResponse>, linger = false): void => {
       done = true;
       clearTimeout(idle);
-      void Promise.resolve(response).then(value => reply(socket, value), () => reply(socket, failure("", new StreamOtterError("INTERNAL"))));
+      void Promise.resolve(response).then(value => reply(socket, value, linger), () => reply(socket, failure("", new StreamOtterError("INTERNAL")), linger));
     };
     // Before its request is handed over, a connection is refused by close(); after, it is left to finish.
     connections.set(socket, () => { if (!done) finish(failure("", closingError())); });
@@ -387,7 +418,8 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
       if (done) return;
       const newline = chunk.indexOf(0x0a);
       if (newline === -1 ? size + chunk.length >= OPERATOR_IPC_MAX_REQUEST_BYTES : size + newline + 1 > OPERATOR_IPC_MAX_REQUEST_BYTES) {
-        finish(failure("", invalid(`The request line is longer than ${OPERATOR_IPC_MAX_REQUEST_BYTES} bytes.`)));
+        // The caller may still be writing the rest of the line.
+        finish(failure("", invalid(`The request line is longer than ${OPERATOR_IPC_MAX_REQUEST_BYTES} bytes.`)), true);
         return;
       }
       if (newline === -1) {
@@ -433,6 +465,7 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
       closed ??= (async () => {
         closing = true;
         const stopped = new Promise<void>(resolve => server.close(() => resolve()));
+        for (const socket of lingering) socket.destroy();
         for (const refuse of [...connections.values()]) refuse();
         // A mutation already running is answered rather than cut off, so the caller learns its outcome.
         let timer: NodeJS.Timeout | undefined;
@@ -529,8 +562,10 @@ export async function callOperator<O extends OperatorOperation>(
   const timeoutMs = positive(options.timeoutMs, DEFAULT_CLIENT_TIMEOUT_MS, "timeoutMs");
   if (!isOperatorOperation(op)) throw invalid("Unknown operator operation.");
   const validated = validateOperatorRequest(op, args);
-  const token = readToken(stateDirectory);
   const socketPath = join(stateDirectory, RUN_DIRECTORY, OPERATOR_SOCKET_FILE);
+  // No gateway can listen there (it refuses at startup), and connecting would fail with a bare EINVAL.
+  if (Buffer.byteLength(socketPath) > MAX_SOCKET_PATH_BYTES) throw notRunning(stateDirectory, `the socket path ${socketPath} is longer than ${MAX_SOCKET_PATH_BYTES} bytes`);
+  const token = readToken(stateDirectory);
   const id = randomUUID();
   const line = `${JSON.stringify({ v: OPERATOR_IPC_VERSION, id, token, op, args: validated })}\n`;
   if (Buffer.byteLength(line) > OPERATOR_IPC_MAX_REQUEST_BYTES) throw invalid(`The request is longer than ${OPERATOR_IPC_MAX_REQUEST_BYTES} bytes.`);
