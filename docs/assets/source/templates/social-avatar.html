@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/avatar.png">
+<meta name="size" content="1024x1024">
+<!-- Square avatar that also survives a circle crop: everything sits inside r=512. The mark is unaltered. -->
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<script src="social-motifs.js"></script>
+<style>
+  .stage { background: radial-gradient(90% 90% at 30% 15%, #0a3d86 0%, #04173a 60%, #020a1c 100%); }
+  .mark { left: 182px; top: 246px; width: 660px; }
+</style></head>
+<body><div class="stage dark">
+  <svg class="art" id="art"></svg>
+  <img class="layer mark logo" src="../../streamotter-mark-dark.svg" alt="StreamOtter">
+</div>
+<script>
+  const S = 1024, C = 512;
+  // a circular current of code-stream dashes around the mark, inside the circle crop
+  const ring = (r, a0, a1, opts) => {
+    // walk the arc by mapping x -> angle so codeStream's arc walker can be reused
+    const f = (x) => 0; // unused
+    const pts = []; let out = "";
+    const rand = SO.rng(opts.seed); let a = a0;
+    while (a < a1) {
+      const len = [0, 0.05, 0.09, 0.14, 0.2][Math.floor(rand() * 5)];
+      const col = opts.colors[Math.floor(rand() * opts.colors.length)];
+      if (len === 0) out += SO.dot(C + r * Math.cos(a), C + r * Math.sin(a), opts.w / 2, col, `opacity="${opts.op}"`);
+      else out += `<path d="M${(C + r * Math.cos(a)).toFixed(1)} ${(C + r * Math.sin(a)).toFixed(1)}A${r} ${r} 0 0 1 ${(C + r * Math.cos(a + len)).toFixed(1)} ${(C + r * Math.sin(a + len)).toFixed(1)}" fill="none" stroke="${col}" stroke-width="${opts.w}" stroke-linecap="round" opacity="${opts.op}"/>`;
+      a += len + opts.gap * (0.8 + rand() * 0.6) + opts.w / r;
+    }
+    return out;
+  };
+  let o = "";
+  // a faint current of code-stream dashes circling behind the mark (inside the circle crop)
+  o += ring(448, Math.PI * 0.8, Math.PI * 2.2, { seed: 3, w: 12, gap: 0.075, colors: ["#04BDFD", "#048DFC", "#A9BAD5"], op: 0.55 });
+  // full-bleed water at the bottom; the circle crop trims it to a lens
+  const crest = SO.wave({ y: 862, amp: 16, len: 640, phase: 0.9, amp2: 5, len2: 230 });
+  o += SO.water(SO.wave({ y: 842, amp: 18, len: 760, phase: 2.2 }), 0, S, S, "#0B2453");
+  o += SO.water(SO.shift(crest, 16), 0, S, S, "#0E2A5C");
+  o += SO.water(SO.shift(crest, 44), 0, S, S, "#081B45");
+  o += SO.ribbon(SO.shift(crest, 4), 90, 760, 22, "url(#azsp)", { peak: 0.55, hang: 0.75 });
+  o += SO.ribbon(SO.shift(crest, 26), 300, 980, 16, "#E9F2FC", { peak: 0.6, hang: 0.4 });
+  o += SO.ribbon(SO.shift(crest, -12), 520, 1040, 12, "#04BDFD", { peak: 0.45, hang: 0.8 });
+  o += SO.codeStream(SO.shift(crest, 82), 170, 900, { seed: 4, width: 11, colors: ["#04BDFD", "#E9F2FC", "#048DFC"], lens: [0, 26, 44, 66], gap: [12, 20], chevron: true });
+  // droplets thrown off the current
+  o += SO.dot(860, 236, 12, "#04BDFD") + SO.dot(900, 288, 6, "#048DFC") + SO.drop(186, 790, 11, "#048DFC", -200) + SO.dot(160, 744, 6, "#04BDFD");
+  SO.paint(document.getElementById("art"), o);
+</script>
+</body></html>

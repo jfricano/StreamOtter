@@ -1,0 +1,30 @@
+/* Shared tokens for StreamOtter brand templates (rendered to PNG by render.mjs). */
+@font-face { font-family: "Figtree"; src: url("fonts/Figtree-latin.woff2") format("woff2"); font-weight: 300 900; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-latin.woff2") format("woff2"); font-weight: 400 700; }
+:root {
+  /* Core palette, sampled from the brandmark (see ../README.md#colors) */
+  --ink: #04183F;
+  --azure: #048DFC;
+  --splash: #04BDFD;
+  --otter: #7F5447;
+  --cream: #EBE6DF;
+  --light-ink: #E9F2FC;
+  --whisker: #A9BAD5;
+  --azure-text: #0369C9;
+  /* Navy creek gradient, shared with the streamotter.dev link card */
+  --creek-top: #0a3d86;
+  --creek-mid: #04173a;
+  --creek-deep: #020a1c;
+  --creek: radial-gradient(120% 90% at 20% 0%, var(--creek-top) 0%, var(--creek-mid) 55%, var(--creek-deep) 100%);
+  /* View states, matching streamotter.dev (dark / light backgrounds) */
+  --live: #01e1fc;      --live-on-light: #00728a;
+  --stale: #f2b84b;     --stale-on-light: #7f4f00;
+  --resync: #ff9c52;    --resync-on-light: #9c4300;
+  --failed: #ff6f76;    --failed-on-light: #ae1f2c;
+  /* Type */
+  --display: "Figtree", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body { font-family: var(--display); -webkit-font-smoothing: antialiased; }

@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/logo-dont.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<style>
+  .grid { position: absolute; left: 64px; right: 64px; top: 168px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 410px 410px; gap: 28px 32px; }
+  .card { border-radius: 18px; border: 1.5px solid #DCE3EE; background: #fff; overflow: hidden; display: flex; flex-direction: column; }
+  .stage { height: 290px; position: relative; display: grid; place-items: center; overflow: hidden; background: var(--azure-wash); }
+  .stage.dark { background: var(--ink); }
+  .cap { padding: 18px 24px 0 24px; display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; }
+  .x { width: 40px; height: 40px; border-radius: 50%; background: #AE1F2C; display: grid; place-items: center; }
+  .cap h3 { font-size: 24px; font-weight: 800; letter-spacing: -.01em; line-height: 1.1; }
+  .cap p { font-size: 15.5px; line-height: 1.4; color: #2B3F66; margin-top: 4px; }
+  .cap p code { font-family: var(--mono); font-size: .88em; color: var(--azure-text); white-space: nowrap; }
+  .badx { position: absolute; right: 16px; top: 16px; }
+  /* the misuses, applied to the real files */
+  .recolor img { filter: hue-rotate(150deg) saturate(1.3); }
+  .stretch img { transform: scaleX(1.5) scaleY(.82); }
+  .crop .win { width: 300px; height: 190px; overflow: hidden; position: relative; border-radius: 4px; }
+  .crop .win img { position: absolute; left: -70px; top: -38px; width: 420px; }
+  .rotate img { transform: rotate(-16deg); }
+  .effects img { filter: drop-shadow(6px 8px 0 #7F5447) drop-shadow(0 0 14px #04BDFD) blur(.4px); }
+  .typed .t { display: flex; align-items: center; gap: 18px; }
+  .typed .t span { font-size: 54px; font-weight: 400; letter-spacing: .01em; color: var(--ink); font-style: italic; }
+  .typed .t span b { color: var(--azure); font-weight: 400; }
+</style></head>
+<body>
+<div class="press-head">
+  <div><div class="eyebrow">StreamOtter press kit · 04</div><h1>Logo misuse</h1></div>
+  <div class="note">Each example below is the real file with a CSS transform or filter applied, to show what not to do. Use the files exactly as supplied, at or above their minimum size, with clear space.</div>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="stage recolor"><img src="../../streamotter-lockup-horizontal.svg" style="width:430px"></div>
+    <div class="cap"><div class="x"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div><div><h3>Don’t recolor</h3><p>No new colors, filters or tints. On dark backgrounds, switch to the <code>-dark</code> file instead.</p></div></div></div>
+
+  <div class="card"><div class="stage stretch"><img src="../../streamotter-lockup-horizontal.svg" style="width:330px"></div>
+    <div class="cap"><div class="x"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div><div><h3>Don’t stretch or squash</h3><p>Scale only in proportion. Need a different shape? Pick the stacked lockup or the mark.</p></div></div></div>
+
+  <div class="card"><div class="stage crop"><div class="win"><img src="../../streamotter-lockup-stacked.svg"></div></div>
+    <div class="cap"><div class="x"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div><div><h3>Don’t crop</h3><p>Show the whole lockup with its clear space: the height of the wordmark’s O on every side.</p></div></div></div>
+
+  <div class="card"><div class="stage rotate"><img src="../../streamotter-lockup-horizontal.svg" style="width:400px"></div>
+    <div class="cap"><div class="x"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div><div><h3>Don’t rotate or tilt</h3><p>The logo sits level. Let the waves and ribbons around it carry the motion.</p></div></div></div>
+
+  <div class="card"><div class="stage dark effects"><img src="../../streamotter-lockup-horizontal-dark.svg" style="width:420px"></div>
+    <div class="cap"><div class="x"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div><div><h3>Don’t add effects</h3><p>No drop shadows, glows, outlines, bevels or blur. The brandmark is flat.</p></div></div></div>
+
+  <div class="card"><div class="stage typed"><div class="t"><img src="../../streamotter-mark.svg" style="height:88px"><span>Stream<b>Otter</b></span></div></div>
+    <div class="cap"><div class="x"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div><div><h3>Don’t type the wordmark</h3><p>Never set “StreamOtter” in a font beside the mark. Use a lockup SVG, which spaces them correctly.</p></div></div></div>
+</div>
+
+<div class="press-foot"><span>Correct files and sizes: press/logo-sheet.png · docs/assets/README.md</span><span>Misuse renders are CSS-only; no altered logo files exist.</span></div>
+</body></html>

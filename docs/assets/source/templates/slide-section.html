@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/slides/slide-section.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<link rel="stylesheet" href="slide-common.css">
+<style>
+  body { background: var(--azure); color: var(--ink); }
+  .num { position: absolute; left: 120px; top: 150px; font-family: var(--mono); font-size: 30px; font-weight: 700; letter-spacing: .1em; color: var(--ink); display: flex; align-items: center; gap: 22px; }
+  .num i { display: block; width: 120px; height: 4px; border-radius: 2px; background: var(--ink); }
+  h1 { position: absolute; left: 120px; top: 250px; font-size: 128px; font-weight: 800; letter-spacing: -.03em; line-height: .98; max-width: 1500px; }
+  .sub { position: absolute; left: 120px; top: 560px; font-size: 34px; line-height: 1.4; max-width: 1150px; color: var(--ink); font-weight: 500; }
+  .ghost { position: absolute; right: 110px; top: 40px; font-family: var(--display); font-size: 600px; font-weight: 900; letter-spacing: -.05em; line-height: 1; color: var(--splash); }
+</style></head>
+<body>
+<div class="ghost">02</div>
+<div class="num">02 <i></i> Section</div>
+<h1>Contain, explain,<br>recover.</h1>
+<div class="sub">Opt-in in V1.1: hold at a bad record, journal every incident, keep a <span style="white-space:nowrap">byte-for-byte</span> copy, and redrive a record you moved past.</div>
+<div class="flair" id="flair" style="top:700px"></div>
+<script src="slide-common.js"></script>
+<script>flair(document.getElementById("flair"), { h: 380, tone: "azure", seed: 5 });</script>
+</body></html>

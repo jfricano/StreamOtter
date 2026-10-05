@@ -1,0 +1,105 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/typography.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<style>
+  .faces { position: absolute; left: 64px; right: 64px; top: 160px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 32px; }
+  .face { border-radius: 20px; height: 300px; padding: 24px 32px; position: relative; overflow: hidden; display: grid; grid-template-columns: 250px 1fr; gap: 28px; }
+  .face.fig { background: var(--azure-wash); }
+  .face.jb { background: var(--ink); color: var(--light-ink); }
+  .aa { font-size: 200px; line-height: 1; letter-spacing: -.04em; align-self: center; }
+  .fig .aa { font-weight: 800; color: var(--ink); }
+  .jb .aa { font-family: var(--mono); font-weight: 700; font-size: 168px; letter-spacing: -.06em; color: var(--splash); }
+  .fmeta { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .fname { font-size: 38px; font-weight: 800; letter-spacing: -.01em; }
+  .jb .fname { font-family: var(--mono); font-weight: 700; font-size: 32px; }
+  .frole { font-family: var(--mono); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--azure-text); }
+  .jb .frole { color: var(--splash); }
+  .weights { display: flex; gap: 18px; font-size: 26px; flex-wrap: wrap; align-items: baseline; }
+  .weights span small { font-family: var(--mono); font-size: 11px; color: #5D6F91; margin-left: 4px; font-weight: 400; letter-spacing: 0; }
+  .jb .weights { font-family: var(--mono); font-size: 22px; }
+  .jb .weights span small { color: var(--whisker); }
+  .glyphs { font-size: 18px; line-height: 1.5; color: #2B3F66; }
+  .jb .glyphs { font-family: var(--mono); font-size: 17px; color: var(--whisker); }
+  .sample-fig { font-size: 23px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; color: var(--ink); margin-top: 6px; }
+  .sample-jb { font-family: var(--mono); font-size: 19px; color: var(--light-ink); margin-top: 6px; padding: 10px 14px; border-radius: 8px; background: var(--ink-raised); align-self: flex-start; }
+  .lic { position: absolute; right: 24px; top: 22px; font-family: var(--mono); font-size: 11.5px; color: #5D6F91; }
+  .jb .lic { color: var(--whisker); }
+  .scale { position: absolute; left: 64px; top: 492px; width: 1176px; display: flex; flex-direction: column; }
+  .lvl { display: grid; grid-template-columns: 236px 1fr; gap: 24px; align-items: center; padding: 13px 0; border-top: 1.5px solid #DCE3EE; }
+  .lvl:last-child { border-bottom: 1.5px solid #DCE3EE; }
+  .lvl .k { font-family: var(--mono); font-size: 12px; line-height: 1.55; color: #5D6F91; }
+  .lvl .k b { display: block; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--azure-text); }
+  .s-display { font-size: 84px; font-weight: 800; letter-spacing: -.025em; line-height: 1; }
+  .s-head { font-size: 42px; font-weight: 700; letter-spacing: -.012em; line-height: 1.1; }
+  .s-body { font-size: 21px; font-weight: 400; line-height: 1.5; color: #1D3358; max-width: 860px; }
+  .s-body code { font-family: var(--mono); font-size: .9em; color: var(--azure-text); }
+  .s-eyebrow { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--azure-text); }
+  .s-code { font-family: var(--mono); font-size: 19px; line-height: 1.6; background: var(--ink); color: var(--light-ink); border-radius: 10px; padding: 10px 18px; }
+  .s-code .p { color: var(--whisker); } .s-code .c { color: var(--splash); } .s-code .a { color: var(--azure); }
+  .wm { position: absolute; right: 64px; top: 492px; width: 584px; height: 518px; border-radius: 20px; background: var(--ink); color: var(--light-ink); padding: 30px 34px; display: flex; flex-direction: column; gap: 18px; }
+  .wm h2 { font-size: 30px; font-weight: 800; line-height: 1.15; letter-spacing: -.01em; }
+  .wm p { font-size: 17px; line-height: 1.5; color: var(--whisker); }
+  .wm p b { color: var(--light-ink); font-weight: 600; }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 4px; }
+  .cmp > div { border-radius: 12px; background: var(--ink-raised); height: 176px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .cmp .lab { position: absolute; left: 12px; bottom: 9px; font-family: var(--mono); font-size: 11.5px; color: var(--whisker); }
+  .cmp .typed { font-size: 27px; font-weight: 800; letter-spacing: -.01em; color: var(--light-ink); }
+  .cmp .typed i { font-style: normal; color: var(--azure); }
+  .yes, .no { position: absolute; right: 10px; top: 10px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; }
+  .yes { background: var(--live); } .no { background: var(--failed); }
+</style></head>
+<body>
+<div class="press-head">
+  <div><div class="eyebrow">StreamOtter press kit · 03</div><h1>Typography</h1></div>
+  <div class="note">Two open-source families, bundled in docs/assets/source/fonts/. Figtree carries the voice; JetBrains Mono carries code, eyebrows and labels. Heads 700–900, body 400.</div>
+</div>
+
+<div class="faces">
+  <div class="face fig">
+    <div class="aa">Aa</div>
+    <div class="fmeta">
+      <div class="frole">Display · headings · body</div>
+      <div class="fname">Figtree</div>
+      <div class="weights"><span style="font-weight:400">Regular<small>400</small></span><span style="font-weight:600">Semibold<small>600</small></span><span style="font-weight:700">Bold<small>700</small></span><span style="font-weight:800">Extra<small>800</small></span><span style="font-weight:900">Black<small>900</small></span></div>
+      <div class="glyphs">ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 &amp;→·“”?!</div>
+      <div class="sample-fig">Make live data straightforward to build with, and understandable when it breaks.</div>
+    </div>
+    <div class="lic">SIL OFL 1.1</div>
+  </div>
+  <div class="face jb">
+    <div class="aa">{a}</div>
+    <div class="fmeta">
+      <div class="frole">Code · eyebrows · labels</div>
+      <div class="fname">JetBrains Mono</div>
+      <div class="weights"><span style="font-weight:400">Regular<small>400</small></span><span style="font-weight:600">Semi<small>600</small></span><span style="font-weight:700">Bold<small>700</small></span></div>
+      <div class="glyphs">ABCDEFGHIJKLM abcdefghijklm 0O 1lI {}[]()=&gt;</div>
+      <div class="sample-jb">authorizing → synchronizing → <span style="color:var(--live)">live</span></div>
+    </div>
+    <div class="lic">SIL OFL 1.1</div>
+  </div>
+</div>
+
+<div class="scale">
+  <div class="lvl"><div class="k"><b>Display</b>Figtree 800 · 84/84<br>tracking −2.5%</div><div class="s-display">Never silently wrong.</div></div>
+  <div class="lvl"><div class="k"><b>Heading</b>Figtree 700 · 42/46<br>tracking −1.2%</div><div class="s-head">Live state from Kafka to the browser.</div></div>
+  <div class="lvl"><div class="k"><b>Body</b>Figtree 400 · 21/31<br>ink or #1D3358 on light</div><div class="s-body">Browsers subscribe to state channels, not raw topics. Each view starts from an authoritative snapshot, then receives full-state updates in revision order.</div></div>
+  <div class="lvl"><div class="k"><b>Eyebrow / label</b>Mono 600 · 15 · caps<br>tracking +14%</div><div class="s-eyebrow">State channels · snapshot · revision order</div></div>
+  <div class="lvl"><div class="k"><b>Code</b>Mono 400 · 19/30<br>on ink, palette syntax</div><div class="s-code"><span class="p">$</span> <span class="c">npm</span> install <span class="a">streamotter</span><br><span class="p">$</span> <span class="c">npx</span> streamotter init <span class="a">.</span></div></div>
+</div>
+
+<div class="wm">
+  <div class="eyebrow on-dark">The one rule</div>
+  <h2>The wordmark is never typeset.</h2>
+  <p>As a logo, “StreamOtter” is always the wordmark or lockup SVG: its letterforms are drawn, not Figtree. In running text, write the name in the text face like any other word.</p>
+  <div class="cmp">
+    <div><img src="../../streamotter-wordmark-dark.svg" style="width:180px"><span class="lab">wordmark-dark.svg</span><span class="yes"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6.5l2.6 2.5L10 3.2" fill="none" stroke="#04183F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    <div><span class="typed">Stream<i>Otter</i></span><span class="lab">typed in Figtree</span><span class="no"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="#04183F" stroke-width="2.2" stroke-linecap="round"/></svg></span></div>
+  </div>
+  <p style="font-size:15px">The wordmark alone is rare: only where the mark would repeat something beside it, at <b>80 px wide</b> or more, with the height of its <b>O</b> clear on every side. Otherwise use a lockup.</p>
+</div>
+
+<div class="press-foot"><span>Figtree and JetBrains Mono · SIL Open Font License 1.1</span><span>streamotter.dev</span></div>
+</body></html>

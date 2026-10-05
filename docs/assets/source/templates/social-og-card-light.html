@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/og-card-light.png">
+<meta name="size" content="1200x630">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<script src="social-motifs.js"></script>
+<style>
+  .lockup { left: 64px; top: 58px; width: 380px; }
+  .copy { left: 64px; top: 168px; width: 720px; }
+  .head { font-size: 66px; }
+  .sub { margin-top: 22px; font-size: 25px; }
+</style></head>
+<body><div class="stage light" id="stage">
+  <svg class="art" id="art"></svg>
+  <img class="layer lockup logo" id="lockup" src="../../streamotter-lockup-horizontal.svg" alt="StreamOtter">
+  <div class="layer copy">
+    <div class="head">Live state from Kafka to&nbsp;the&nbsp;browser. <em>Never silently wrong.</em></div>
+    <div class="sub">Open-source Node.js gateway + TypeScript browser SDK.</div>
+  </div>
+</div>
+<script>
+  const THEME = document.getElementById("stage").classList.contains("light") ? "light" : "dark";
+  const W = 1200, H = 630;
+  const c = SO.creek(W, H, { theme: THEME, top: 548, rise: 30, seed: 8, scale: 0.85, streams: 2, phase: 1.4 });
+  SO.paint(document.getElementById("art"),
+    (THEME === "dark" ? SO.texture(W, H, { rows: 7, y0: 20, y1: 470, opacity: 0.045 }) : SO.texture(W, H, { rows: 7, y0: 20, y1: 470, opacity: 0.07, color: "#A6CBF3" })) +
+    SO.viewCard(860, 196, 276, 150, { title: "den-sites", state: "stale", rev: "r41 · held", theme: THEME, size: 17, seed: 4 }) +
+    SO.viewCard(822, 300, 300, 160, { title: "gauge-3", state: "live", rev: "r43", theme: THEME, size: 18, seed: 9 }) +
+    c.svg);
+</script>
+</body></html>
