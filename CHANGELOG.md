@@ -4,6 +4,10 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ## Unreleased
 
+### Changed
+
+- The package READMEs, and so the npm pages, show the flat brandmark lockup that the repository README uses, in place of the detailed logo.
+
 ## [0.2.0-rc.1] — 2026-10-04
 
 Published to npm on `latest` with provenance, from the `v0.2.0-rc.1` tag ([GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1)). One release carrying three internal milestones:

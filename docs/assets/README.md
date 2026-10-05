@@ -8,7 +8,7 @@ An otter swimming through a stream of code, with the wordmark below. It's raster
 
 | File | Size | Use |
 | --- | --- | --- |
-| `streamotter-logo.png` | 800 × 455, white background | Light backgrounds. npm pages published before October 2026 link to this file on `main`, so it never moves or changes name. |
+| `streamotter-logo.png` | 800 × 455, white background | Light backgrounds. npm pages for `0.2.0-rc.1` and earlier link to this file on `main`, so it never moves or changes name. |
 | `streamotter-logo-dark.png` | 1397 × 791, transparent | Dark backgrounds: "Stream" in light ink. |
 | `streamotter-logo-full.png` | 1536 × 1024, white background | Large uses: article headers, title slides. |
 
