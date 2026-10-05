@@ -1,10 +1,10 @@
 # StreamOtter V1 implementation status
 
-September 25, 2026, updated October 4 · V1 release candidate `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter` package. Prepared source candidate: `0.2.0-rc.1`, carrying V1.1, V1.2 and V1.2.1; not yet published (see the [CHANGELOG](../CHANGELOG.md))
+September 25, 2026, updated October 4 · Release candidate `0.2.0-rc.1` is published on npm (`latest`) for all six packages, including the all-in-one `streamotter` package and the V1.1, V1.2 and V1.2.1 milestones (see the [CHANGELOG](../CHANGELOG.md)).
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
-V1.1 source-failure handling is implemented but not yet published, and so are the V1.2 review fixes ([docs/releases/v1.2](./releases/v1.2/README.md)) and V1.2.1's minor fixes; all three are prepared as `0.2.0-rc.1`; npm publication remains owner-controlled and pending. V1.1's status is in [its own section](#v11-source-failure-handling-020-rc1) and does not change anything recorded for V1 below.
+V1.1 source-failure handling, the V1.2 review fixes ([docs/releases/v1.2](./releases/v1.2/README.md)) and V1.2.1's minor fixes ship together in `0.2.0-rc.1`. [Publication run 37253704865](https://github.com/jfricano/StreamOtter/actions/runs/37253704865) completed successfully on attempt 3 from source `fc7f47c7cd642164302f5076581ac02a84325fde`: all six registry versions, `latest` tags, tarball hashes and provenance were verified; clean registry installation passed **22 / 22**, with no skips, including real TLS Kafka. The [GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1) carries the original manifest, SHA256 `af4ccbfa247c653f9f431dd781540517929cdf80d59559c0eb7020dbda01d952`. See the [publication receipt](./releases/0.2.0-rc.1/RELEASE_HANDOFF.md#verified-publication) for recovery and provenance details. Future publication remains owner-controlled; ordinary merges do not publish. The dated development results below remain historical evidence.
 
 This document records what exists, the commands that verify it, the results observed, and the limitations that remain. The [V1 specification](./V1_API.md) governs behavior; its [section 13](./V1_API.md#13-implementation-refinements-contract-revision-02) lists refinements made during implementation.
 
@@ -162,7 +162,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 
 ## V1.1 source-failure handling (0.2.0-rc.1)
 
-October 3, 2026 · Opt-in source-failure policies, durable quarantine, guarded continuation, the operator workflow, and the health listener ([specification](./releases/v1.1/V1_1_SOURCE_FAILURE_SPEC.md), [API draft](./releases/v1.1/V1_1_API.md), [runbook](./guides/source-failures.md)). Not published to npm.
+October 3, 2026 development snapshot · Opt-in source-failure policies, durable quarantine, guarded continuation, the operator workflow, and the health listener ([specification](./releases/v1.1/V1_1_SOURCE_FAILURE_SPEC.md), [API draft](./releases/v1.1/V1_1_API.md), [runbook](./guides/source-failures.md)). Unpublished at that snapshot; subsequently shipped in `0.2.0-rc.1` as recorded above.
 
 This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) and adds nothing to it. Scenario IDs (F01–F48) are those of the [acceptance plan](./releases/v1.1/V1_1_ACCEPTANCE_PLAN.md). The matrix marks a row *implemented* when code and tests are in, *partial* when some named tiers or cases are missing, and *verified* only with a recorded run per its rules; no row is marked verified yet. The commands, results and failed runs are in the [implementation log](./releases/v1.1/IMPLEMENTATION_LOG.md).
 

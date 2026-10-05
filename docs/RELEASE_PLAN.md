@@ -1,6 +1,8 @@
 # StreamOtter first public release plan
 
-September 25, 2026 · `0.1.0-rc.3` on npm (`latest`), including the all-in-one `streamotter`, the guides, and the logo; source public on GitHub; the home site and live demo are a separate project (Lontra Creek); the article has its own chat. Prepared source candidate: `0.2.0-rc.1` (V1.1, V1.2 and V1.2.1), not yet published; release follows the [checklist](./RELEASE_CHECKLIST.md) with the owner's go
+Updated October 4, 2026 · All six packages are published as `0.2.0-rc.1` on npm `latest`, carrying V1.1, V1.2 and V1.2.1. [Publication run 37253704865](https://github.com/jfricano/StreamOtter/actions/runs/37253704865) succeeded on attempt 3 from `fc7f47c7cd642164302f5076581ac02a84325fde`; clean registry installation passed **22 / 22**, no skips, including TLS Kafka. The [GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1) attaches the original manifest, SHA256 `af4ccbfa247c653f9f431dd781540517929cdf80d59559c0eb7020dbda01d952` ([receipt](./releases/0.2.0-rc.1/RELEASE_HANDOFF.md#verified-publication)). The home site and live demo remain a separate Lontra Creek rollout. Future releases follow the owner-approved [checklist](./RELEASE_CHECKLIST.md); ordinary merges never publish, and secondary npm tag changes require separate authorization.
+
+The first-release planning records below retain their dated September 25 evidence. Their package versions and original publication method describe that first release, not the current registry or future release controls.
 
 ## Goal
 
@@ -8,7 +10,7 @@ Make StreamOtter V1 publicly usable and discoverable: installable npm packages, 
 
 Every public claim must match verified behavior: no invented adoption, performance, or capacity numbers, and nothing presented as shipped before it is ([founding document](./FOUNDING.md), [home site and demo plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
-## Where things stand
+## First-release snapshot (September 25)
 
 | Item | State |
 | --- | --- |
@@ -53,7 +55,7 @@ Work that needs no owner decisions:
 - `CHANGELOG.md`, and a release checklist covering build, every suite, the install test, tag, publish, and verification from the registry.
 - Plan corrections: prefer `npm deprecate` and a patch release over `unpublish` (npm restricts unpublishing after 72 hours).
 
-Publish the release candidate under the `next` dist-tag first; promote to `latest` at launch. (npm assigned `latest` to `0.1.0-rc.1` anyway, because the packages were new. Until the first stable version, each release candidate therefore goes to both `latest` and `next`, and the npm pages show the newest one.)
+For future releases, the owner explicitly chooses the distribution tag through the [protected publishing workflow](./PUBLISHING.md). Jason selected `latest` for `0.2.0-rc.1`; no secondary `next` promotion was performed. npm assigned both tags to the brand-new `0.1.0-rc.1` packages during the first release; that historical behavior is not an automatic promotion policy.
 
 **Status (September 25):** done, except `CHANGELOG.md`'s publication date, which is set at publish time. The install test is `pnpm test:install`, and its registry mode (`STREAMOTTER_INSTALL_FROM=registry`) is the verification step after publishing. The build, every suite, the install test, tagging, publishing, registry verification, promotion, and corrections are in the [release checklist](./RELEASE_CHECKLIST.md). For a brand-new package, the registry may also point `latest` at the first version published; the checklist says how to check.
 
