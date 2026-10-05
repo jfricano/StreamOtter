@@ -63,6 +63,35 @@ function exchange(path: string, payload: string | Buffer | null, options: { end?
   });
 }
 
+/**
+ * Writes `payload` and, once the server has answered and ended its side, keeps sending until the
+ * server closes. Reports the answer, any error on the payload write, and how long the server kept
+ * the connection after answering.
+ */
+function keepWriting(path: string, payload: Buffer, onAnswered: () => void = () => undefined): Promise<{ text: string; payloadError: string | undefined; lingerMs: number }> {
+  return new Promise((resolve, reject) => {
+    // allowHalfOpen: the caller keeps its side open after the server ends its own.
+    const client = createConnection({ path, allowHalfOpen: true });
+    const codeOf = (error: Error): string => (error as NodeJS.ErrnoException).code ?? error.message;
+    let text = "";
+    let payloadError: string | undefined;
+    let answeredAt = 0;
+    let ticker: NodeJS.Timeout | undefined;
+    client.on("connect", () => client.write(payload, error => { if (error) payloadError = codeOf(error); }));
+    client.on("data", chunk => { text += chunk.toString("utf8"); });
+    client.on("end", () => {
+      answeredAt = performance.now();
+      ticker = setInterval(() => { if (!client.destroyed) client.write("more"); }, 50);
+      onAnswered();
+    });
+    client.on("error", error => { if (codeOf(error) === "ENOENT") reject(error); });
+    client.on("close", () => {
+      clearInterval(ticker);
+      resolve({ text, payloadError, lingerMs: answeredAt === 0 ? -1 : performance.now() - answeredAt });
+    });
+  });
+}
+
 async function send(path: string, request: unknown): Promise<OperatorIpcResponse> {
   const { text } = await exchange(path, `${JSON.stringify(request)}\n`);
   assert.ok(text.endsWith("\n"), `one response line, got ${JSON.stringify(text)}`);
@@ -175,26 +204,7 @@ describe("operator socket (API §7, ADR-15C §3)", { skip: POSIX ? false : "Unix
     try {
       // Far larger than any socket buffer, so the caller is mid-write when the answer comes.
       const payload = Buffer.alloc(OPERATOR_IPC_MAX_REQUEST_BYTES * 32, 0x61);
-      const outcome = await new Promise<{ text: string; payloadError: string | undefined; lingerMs: number }>((resolve, reject) => {
-        // allowHalfOpen: the caller keeps its side open and keeps sending after the answer.
-        const client = createConnection({ path: socket.path, allowHalfOpen: true });
-        const codeOf = (error: Error): string => (error as NodeJS.ErrnoException).code ?? error.message;
-        let text = "";
-        let payloadError: string | undefined;
-        let answeredAt = 0;
-        let ticker: NodeJS.Timeout | undefined;
-        client.on("connect", () => client.write(payload, error => { if (error) payloadError = codeOf(error); }));
-        client.on("data", chunk => { text += chunk.toString("utf8"); });
-        client.on("end", () => {
-          answeredAt = performance.now();
-          ticker = setInterval(() => { if (!client.destroyed) client.write("more"); }, 50);
-        });
-        client.on("error", error => { if (codeOf(error) === "ENOENT") reject(error); });
-        client.on("close", () => {
-          clearInterval(ticker);
-          resolve({ text, payloadError, lingerMs: answeredAt === 0 ? -1 : performance.now() - answeredAt });
-        });
-      });
+      const outcome = await keepWriting(socket.path, payload);
       assert.equal(outcome.payloadError, undefined, "the server keeps reading after it answers, so the caller's write is not reset");
       const response = JSON.parse(outcome.text) as OperatorIpcResponse;
       assert.equal(errorOf(response).code, "INVALID_REQUEST");
@@ -215,6 +225,28 @@ describe("operator socket (API §7, ADR-15C §3)", { skip: POSIX ? false : "Unix
     } finally {
       await socket.close();
     }
+  });
+
+  it("F38: answers OVERLOADED to a caller still writing, and close() ends answered connections without waiting", async () => {
+    const { socket, logger } = await serve({ maxConnections: 1, drainMs: 300, idleMs: 150 });
+    const idle = exchange(socket.path, '{"v":1');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const crowded = await keepWriting(socket.path, Buffer.alloc(OPERATOR_IPC_MAX_REQUEST_BYTES * 8, 0x61));
+    assert.equal(crowded.payloadError, undefined);
+    assert.equal(errorOf(JSON.parse(crowded.text) as OperatorIpcResponse).code, "OVERLOADED");
+    await idle;
+
+    let closedMs = -1;
+    const answered = keepWriting(socket.path, Buffer.alloc(OPERATOR_IPC_MAX_REQUEST_BYTES * 8, 0x61), () => {
+      const started = performance.now();
+      void socket.close().then(() => { closedMs = performance.now() - started; });
+    });
+    const outcome = await answered;
+    assert.equal(errorOf(JSON.parse(outcome.text) as OperatorIpcResponse).code, "INVALID_REQUEST");
+    assert.ok(outcome.lingerMs < 250, `close() ended the answered connection after ${outcome.lingerMs} ms`);
+    await socket.close();
+    assert.ok(closedMs >= 0 && closedMs < 250, `close() took ${closedMs} ms`);
+    assert.doesNotMatch(logger.lines.join("\n"), /before every answer was written/);
   });
 
   it("F38: refuses an oversize line, malformed JSON, invalid UTF-8 and bad shapes with INVALID_REQUEST", async () => {

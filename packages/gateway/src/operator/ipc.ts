@@ -295,6 +295,8 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
   const connections = new Map<Socket, () => void>();
   let closing = false;
   let drained: (() => void) | null = null;
+  /** Answered connections kept reading until the caller ends its side (see reply). close() ends them at once. */
+  const lingering = new Set<Socket>();
   let lastOverloadLog = 0;
 
   const tokenMatches = (candidate: string): boolean => timingSafeEqual(digest(candidate), expected);
@@ -370,8 +372,17 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
     }
     socket.resume();
     socket.end(`${line}\n`, () => {
+      // Answered: no longer something close() should wait for.
+      connections.delete(socket);
+      if (connections.size === 0) drained?.();
+      // Closing, or already holding as many as it serves: no lingering, so refused floods stay bounded.
+      if (closing || lingering.size >= maxConnections) {
+        socket.destroy();
+        return;
+      }
+      lingering.add(socket);
       const timer = setTimeout(() => socket.destroy(), REPLY_LINGER_MS);
-      socket.once("close", () => clearTimeout(timer));
+      socket.once("close", () => { clearTimeout(timer); lingering.delete(socket); });
     });
   }
 
@@ -380,7 +391,8 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
   function serve(socket: Socket): void {
     if (closing || connections.size >= maxConnections) {
       socket.on("error", () => undefined);
-      reply(socket, failure("", closing ? closingError() : overloaded("Too many operator connections; try again shortly.")));
+      // The caller may still be writing its request.
+      reply(socket, failure("", closing ? closingError() : overloaded("Too many operator connections; try again shortly.")), true);
       return;
     }
     const chunks: Buffer[] = [];
@@ -451,6 +463,7 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
       closed ??= (async () => {
         closing = true;
         const stopped = new Promise<void>(resolve => server.close(() => resolve()));
+        for (const socket of lingering) socket.destroy();
         for (const refuse of [...connections.values()]) refuse();
         // A mutation already running is answered rather than cut off, so the caller learns its outcome.
         let timer: NodeJS.Timeout | undefined;

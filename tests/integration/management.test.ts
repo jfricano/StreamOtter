@@ -202,8 +202,12 @@ describe("management API (development only)", () => {
           response.setEncoding("utf8");
           response.on("data", chunk => { text += chunk; });
           response.on("end", () => {
-            const body = JSON.parse(text) as Result<unknown>;
-            resolve(response.statusCode === 429 ? (!body.ok && body.error.code) : response.statusCode ?? 0);
+            try {
+              const body = JSON.parse(text) as Result<unknown>;
+              resolve(response.statusCode === 429 ? (!body.ok && body.error.code) : response.statusCode ?? 0);
+            } catch (error) {
+              reject(error);
+            }
           });
           response.on("error", reject);
         });
