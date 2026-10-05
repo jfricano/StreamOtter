@@ -365,12 +365,15 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     }
   });
 
-  it("CLI: the operator socket survives a crash and restart of the installed gateway (V1.1 API §7, §10)", { skip: process.platform === "win32" ? "Unix-domain sockets only" : false }, async () => {
+  it("CLI: the operator socket survives a crash and restart of the installed gateway (V1.1 API §7, §10)", { skip: process.platform === "win32" ? "Unix-domain sockets only" : false }, async t => {
     const config = JSON.parse(await readFile(join(consumer, "app/streamotter.json"), "utf8")) as { gateway: { port: number }; sources: Record<string, unknown> };
     config.gateway.port = 0;
     const sourceId = Object.keys(config.sources)[0]!;
     await writeFile(join(consumer, "app/streamotter.failures.json"), `${JSON.stringify({ ...config, failureHandling: { sources: { [sourceId]: { invalidJson: "quarantine-hold" } } } }, null, 2)}\n`);
-    const state = join(consumer, "state");
+    // The socket path must fit in 103 bytes, and macOS's per-user temporary directory alone takes about 50,
+    // so the state directory lives under /tmp rather than inside the work directory.
+    const state = await realpath(await mkdtemp("/tmp/so-state-"));
+    t.after(() => rm(state, { recursive: true, force: true }));
     const init = await run(bin("streamotter"), ["init", "--failures", "--config", "app/streamotter.failures.json", "--state-dir", state], { cwd: consumer });
     assert.equal(init.code, 0, init.stderr);
     const args = ["dev", "--config", "app/streamotter.failures.json", "--handlers", "app/server/handlers.mjs", "--management-port", "0", "--state-dir", state, "--operator-socket"];

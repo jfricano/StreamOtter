@@ -549,6 +549,8 @@ export async function callOperator<O extends OperatorOperation>(
   const validated = validateOperatorRequest(op, args);
   const token = readToken(stateDirectory);
   const socketPath = join(stateDirectory, RUN_DIRECTORY, OPERATOR_SOCKET_FILE);
+  // No gateway can listen there (it refuses at startup), and connecting would fail with a bare EINVAL.
+  if (Buffer.byteLength(socketPath) > MAX_SOCKET_PATH_BYTES) throw notRunning(stateDirectory, `the socket path ${socketPath} is longer than ${MAX_SOCKET_PATH_BYTES} bytes`);
   const id = randomUUID();
   const line = `${JSON.stringify({ v: OPERATOR_IPC_VERSION, id, token, op, args: validated })}\n`;
   if (Buffer.byteLength(line) > OPERATOR_IPC_MAX_REQUEST_BYTES) throw invalid(`The request is longer than ${OPERATOR_IPC_MAX_REQUEST_BYTES} bytes.`);

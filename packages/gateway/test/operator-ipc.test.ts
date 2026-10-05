@@ -460,6 +460,35 @@ describe("operator socket (API §7, ADR-15C §3)", { skip: POSIX ? false : "Unix
     }
   });
 
+  it("F38: refuses a socket path longer than macOS allows (103 bytes), at startup and in the client", async () => {
+    // A state directory whose socket path is exactly `bytes` long.
+    const sized = (bytes: number): string => {
+      const base = stateDirectory();
+      const name = "p".repeat(bytes - Buffer.byteLength(join(base, "x", "run", "operator.sock")) + 1);
+      const state = join(base, name);
+      mkdirSync(join(state, "run"), { recursive: true, mode: 0o700 });
+      chmodSync(state, 0o700);
+      assert.equal(Buffer.byteLength(join(state, "run", "operator.sock")), bytes);
+      return state;
+    };
+    const fits = await serve({ stateDirectory: sized(103) });
+    try {
+      assert.equal((await connectOperator(fits.directory).status()).sources[0]?.sourceId, "orders");
+    } finally {
+      await fits.socket.close();
+    }
+    const long = sized(104);
+    const refused = await rejection(serve({ stateDirectory: long }));
+    assert.equal(refused.code, "CONFIG_INVALID");
+    assert.equal(refusalOf(refused), "socket-path-too-long");
+    assert.equal(existsSync(join(long, "run/operator.token")), false);
+    // A client pointed at such a directory says why nothing answers instead of failing with EINVAL.
+    writeFileSync(join(long, "run/operator.token"), `${"a".repeat(43)}\n`, { mode: 0o600 });
+    const client = await rejection(callOperator(long, "status", {}));
+    assert.equal(refusalOf(client), "operator-not-running");
+    assert.match(client.message, /longer than 103 bytes/);
+  });
+
   it("the client validates arguments locally and reports a gateway that is not running", async () => {
     const { directory, operator, socket } = await serve();
     const invalid = await rejection(callOperator(directory, "retryCurrent", { ...ARGS.retryCurrent, expectedRevision: -1 }));
