@@ -375,7 +375,9 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
       // Answered: no longer something close() should wait for.
       connections.delete(socket);
       if (connections.size === 0) drained?.();
-      // Closing, or already holding as many as it serves: no lingering, so refused floods stay bounded.
+      if (socket.destroyed) return;
+      // Closing, or already holding as many as it serves (so at most twice maxConnections are open):
+      // no lingering, so refused floods stay bounded.
       if (closing || lingering.size >= maxConnections) {
         socket.destroy();
         return;
@@ -560,10 +562,10 @@ export async function callOperator<O extends OperatorOperation>(
   const timeoutMs = positive(options.timeoutMs, DEFAULT_CLIENT_TIMEOUT_MS, "timeoutMs");
   if (!isOperatorOperation(op)) throw invalid("Unknown operator operation.");
   const validated = validateOperatorRequest(op, args);
-  const token = readToken(stateDirectory);
   const socketPath = join(stateDirectory, RUN_DIRECTORY, OPERATOR_SOCKET_FILE);
   // No gateway can listen there (it refuses at startup), and connecting would fail with a bare EINVAL.
   if (Buffer.byteLength(socketPath) > MAX_SOCKET_PATH_BYTES) throw notRunning(stateDirectory, `the socket path ${socketPath} is longer than ${MAX_SOCKET_PATH_BYTES} bytes`);
+  const token = readToken(stateDirectory);
   const id = randomUUID();
   const line = `${JSON.stringify({ v: OPERATOR_IPC_VERSION, id, token, op, args: validated })}\n`;
   if (Buffer.byteLength(line) > OPERATOR_IPC_MAX_REQUEST_BYTES) throw invalid(`The request is longer than ${OPERATOR_IPC_MAX_REQUEST_BYTES} bytes.`);
