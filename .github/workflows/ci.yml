@@ -32,6 +32,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Check publication controls (no registry writes)
+        run: node --test scripts/release/publishing/release.test.mjs
       - run: pnpm build
       - run: pnpm check:contracts
       - run: pnpm typecheck

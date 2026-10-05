@@ -8,17 +8,19 @@ One npm release, `0.2.0-rc.1`, carrying three internal milestones: V1.1 (source-
 
 All six packages publish together at one version: `streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli` and `@streamotter/workbench`. The manifests still say `0.1.0-rc.3`; `node scripts/release/set-version.mjs 0.2.0-rc.1` sets them during the release ([checklist §1](../../RELEASE_CHECKLIST.md#1-prepare-the-release-commit)).
 
-**dist-tag:** `latest`, then `next` too. This is deliberate and already documented, not a default. No stable version exists, and npm pointed `latest` at `0.1.0-rc.1` on the first publish, so every release candidate since has gone on `latest`; `0.1.0-rc.3` is `latest` today ([checklist §5, "Which tag"](../../RELEASE_CHECKLIST.md#5-publish-owner)). Publishing on `next` alone would leave `npm install streamotter` and the npm pages on `0.1.0-rc.3`. **Decision for jason:** keep the documented `latest` (recommended, so new users get the current code and docs), or use `next` only for a quieter candidate. With `latest`, every unpinned `npm install streamotter` moves to `0.2.0-rc.1`. Two changes can refuse a configuration or request that `0.1.0-rc.3` accepted: the `limits.maxControlFrameBytes` minimum (9216), and production answering invalid subscribe parameters with `FORBIDDEN`.
+**dist-tag:** Jason approved `latest` for this release. No stable version exists, and every RC so far used `latest`, so unpinned `npm install streamotter` and the npm pages move to `0.2.0-rc.1`. Secondary `next` promotion is a separate owner action, not part of the approved publisher workflow. Two changes can refuse a configuration or request that `0.1.0-rc.3` accepted: the `limits.maxControlFrameBytes` minimum (9216), and production answering invalid subscribe parameters with `FORBIDDEN`.
 
-## PRs and merge order
+## PR integration and remaining release order
 
-| Order | PR | Branch → base | Content | Head at handoff |
-| --- | --- | --- | --- | --- |
-| 1 | [#55](https://github.com/jfricano/StreamOtter/pull/55) | `review/v1.1` → `main` | All of V1.1, with its review fixes | **Merged** October 4 as `560c7c0` |
-| 2 | [#20](https://github.com/jfricano/StreamOtter/pull/20) | `feat/v1.2-quality-fixes` → `main` | V1.2 review fixes and the release docs | `976bb8d` |
-| 3 | [#56](https://github.com/jfricano/StreamOtter/pull/56) | `feat/v1.2.1-minor-fixes` → `feat/v1.2-quality-fixes` | V1.2.1 fixes for issues #21–#54 | `4e67ef8` |
+The owner merged the feature code in the required order:
 
-#55 is merged, and #20 now targets `main`. Next, merge #20, then #56. Each PR was mergeable with green CI at the heads above. Only jason merges.
+| Order | PR | Merged on main |
+| --- | --- | --- |
+| 1 | [#55](https://github.com/jfricano/StreamOtter/pull/55) | `560c7c0` — V1.1 and its review fixes |
+| 2 | [#20](https://github.com/jfricano/StreamOtter/pull/20) | `70f9f05` — V1.2 review fixes and release docs |
+| 3 | [#56](https://github.com/jfricano/StreamOtter/pull/56) | `2c1af737978005809ef3dc97b3b68affe8fc05ed` — V1.2.1 fixes |
+
+Publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) is reconciled against that final feature main, preserving its pinned CI and release acceptance while replacing owner-local publication with the approved workflow. Only Jason merges it. The separate six-package version/date/documentation preparation, exact-source main CI, release acceptance, source tag, explicit workflow dispatch and publication approval still follow. Integrating code does not publish it.
 
 ## Verification
 
@@ -40,17 +42,19 @@ Details: [V1.1 acceptance packet](../v1.1/ACCEPTANCE_PACKET.md) §4, [V1.2 log](
 
 ## Remaining blockers
 
-- **Owner actions:** jason merges the three PRs and gives the go to publish. Nothing else blocks the release candidate.
+- **Owner integration/publication gates:** integrate the feature PRs and reconciled publisher #57; prepare the separate version/documentation commit; obtain exact-main CI and full release acceptance; create the approved source tag; then explicitly dispatch and approve npm publication. Saved GitHub/npm account settings are setup evidence, not proof of the first OIDC publication.
 - **Not verified, and not required for an RC** (required before a final `0.2.0`, [packet §10](../v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status)): a Kafka broker with ACLs enabled, Firefox and WebKit (F45), the proxy deployment with failure handling on, and one integrator walking the [runbook](../../guides/source-failures.md) end to end.
 - **No open code findings.** All review findings are fixed, including J7.
 
 ## Who publishes
 
-jason, from his own machine, with his npm credentials and on his go. Claude never handles npm tokens or publishes. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md) §§1–7: set the version and date the CHANGELOG, run the clean build and every suite, dry run, tag `v0.2.0-rc.1`, publish all six with the chosen tag (`--tag latest` unless jason picks `next`), verify from the registry, then create the GitHub release from the CHANGELOG entry.
+Jason selects and approves the release through the [approval-gated Trusted Publishing workflow](../../PUBLISHING.md). Merge publisher [#57](https://github.com/jfricano/StreamOtter/pull/57) only after reconciling its CI and release checklist against the final feature code. Follow [RELEASE_CHECKLIST.md](../../RELEASE_CHECKLIST.md): prepare the separate six-package version/date/README commit, obtain green main CI on that exact commit and full release acceptance, then create the owner-approved `v0.2.0-rc.1` tag. Manifests remain rc.3 until that preparation commit.
+
+Dispatch `publish.yml` **from main**, explicitly choosing the existing source tag and npm `latest`. Review its source/artifact evidence and approve `npm-release`. The workflow publishes all six packages with npm OIDC, verifies exact versions/integrities and registry installation with TLS Kafka, then creates the GitHub release. Ordinary merges, pushes, tags, and GitHub releases never publish. No long-lived npm token/login/OTP is supplied to Actions. An owner-local fallback or metadata correction requires separate authorization; agents do not handle owner credentials.
 
 ## Acceptance checks after publishing
 
-1. `npm dist-tag ls <package>` shows `0.2.0-rc.1` on the chosen tag (`latest`, and `next` if it was added) for all six packages.
+1. `npm dist-tag ls <package>` shows `0.2.0-rc.1` on the chosen tag (`latest`; `next` only if separately authorized) for all six packages.
 2. `STREAMOTTER_INSTALL_FROM=registry pnpm test:install` passes against the registry, with the broker running. Wait about a minute after publishing first, because the registry can briefly report a new version as missing.
 3. `npx streamotter@0.2.0-rc.1 --help` runs. `streamotter validate` accepts a `0.1.0-rc.3` configuration that has no `failureHandling`, as long as its `maxControlFrameBytes` is unset or at least 9216.
 4. The npm pages show the `0.2.0-rc.1` READMEs.
@@ -59,9 +63,9 @@ jason, from his own machine, with his npm credentials and on his go. Claude neve
 
 Never unpublish. If `0.2.0-rc.1` is broken:
 
-1. If it was published on `latest`: `npm dist-tag add <package>@0.1.0-rc.3 latest` for all six packages, one at a time if using a passkey ([checklist](../../RELEASE_CHECKLIST.md#5-publish-owner) has the rate-limit note).
+1. If it was published on `latest`: `npm dist-tag add <package>@0.1.0-rc.3 latest` for all six packages, one at a time if using a passkey (metadata correction needs separate owner authorization; no workflow automatically changes secondary tags).
 2. `npm deprecate <package>@0.2.0-rc.1 "<what is wrong>; use 0.1.0-rc.3"` for all six.
-3. Fix forward as `0.2.0-rc.2` through the same checklist ([corrections](../../RELEASE_CHECKLIST.md#corrections)).
+3. Fix forward as `0.2.0-rc.2` through the same checklist ([corrections](../../RELEASE_CHECKLIST.md#corrections-and-partial-releases)).
 
 A gateway that ran `0.2.0-rc.1` with `failureHandling` and a state directory must have its incidents resolved and its recovery boundaries retired before it goes back to `0.1.0-rc.3`. `0.1.0-rc.3` refuses a configuration with `failureHandling` and never reads the journal ([runbook §8](../../guides/source-failures.md#8-upgrade-and-downgrade)).
 
