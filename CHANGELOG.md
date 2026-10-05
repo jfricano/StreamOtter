@@ -149,6 +149,7 @@ From the release-candidate run on macOS:
 
 - Gateway: the operator socket answers an oversize request line to a caller that is still writing, instead of closing with its input unread, which reset the connection on macOS so the caller never saw the answer. It reads and discards the rest for at most one second.
 - Tests: the management rate-limit burst and the refused-handshake floods connect at bounded concurrency, so they no longer overflow macOS's 128-connection listen backlog and fail on reset connections.
+- CLI: an operator command pointed at a state directory whose socket path is over 103 bytes (macOS's limit) says so, instead of failing with `EINVAL`. The gateway already refused to start there. The packed-install test now keeps its state directory short enough for macOS.
 
 ## [0.1.0-rc.3] — 2026-09-25
 
