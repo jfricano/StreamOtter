@@ -69,4 +69,4 @@ On October 6, 2026 (Pacific), after the review, the owner decided the hooks ship
 ## Open items
 
 - The owner's review and merge of the consolidated V1.3 pull request, ahead of the `1.0.0` release candidate.
-- The demo, [Pup Patrol](./PUP_PATROL.md), remains planning only.
+- The demo, [Pup Patrol](./PUP_PATROL.md), is built in its own repository and in lontra-creek, and is in independent review there.
