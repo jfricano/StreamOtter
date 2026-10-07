@@ -363,7 +363,7 @@ Not done in this kit. Each was checked in the repo clone on Oct 5.
 - Optional: the README's "verifiably `live`" (the kit drops "verifiably" from short copy).
 
 ## 11. Open items (couldn't verify)
-- **HN account:** none yet (Oct 7); create it now. Its username, karma and age: not recorded; check them privately (five-things #1) and don't record them in this repo.
+- **HN account:** created Oct 7, so it's brand new; comment normally in your own words from now on, and check at T-7 whether it can submit Show HN, else Plan B (D8). Its username, karma and age: not recorded; check them privately (five-things #1) and don't record them in this repo.
 - **Whether the live demo answers:** the static HTML is only the no-JavaScript fallback. The GIF (five-things #5) settles it.
 - **Measured bench and connection capacity on the host** (only the contract defaults are known), and whether phase one is deployed: to confirm on the host.
 - **Who ran the V1.2 review:** unconfirmed; assume AI agent sessions until checked.
