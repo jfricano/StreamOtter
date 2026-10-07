@@ -165,7 +165,7 @@ order.on("error", error => renderError(error));
 ```
 
 - **Origin:** by default the SDK connects to the page's own origin at `/streamotter/socket.io`, which is what you want behind a reverse proxy that serves both your app and the gateway (see [Run in production](../DEPLOYMENT.md)). Otherwise pass `origin`, and list the page's exact origin in `gateway.allowedOrigins`.
-- **Rendering states and errors, cleanup, and a React hook:** see the [client guide](https://www.npmjs.com/package/@streamotter/client); it applies unchanged with `streamotter/client`.
+- **Rendering states and errors, cleanup, and React:** see the [client guide](https://www.npmjs.com/package/@streamotter/client); it applies unchanged with `streamotter/client`. React apps can use the provider and hooks from `streamotter/react` (or `@streamotter/client/react`).
 
 ## 7. Handle access changes
 

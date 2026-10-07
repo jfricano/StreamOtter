@@ -13,7 +13,7 @@ owns subscriptions, synchronization, delivery, and diagnostics.
 | Gateway handlers (Kafka mode) | `src/server/kafka-handlers.ts`, `src/server/kafka-resync-handlers.ts` | Application |
 | Application server (UI, demo sign-in, store, outbox, publisher) | `src/server/app.ts` | Application |
 | Vanilla TypeScript view | `src/web/main.ts` | Application |
-| React usage | `src/web/react.tsx` | Application |
+| React usage, on the SDK's hooks (`@streamotter/client/react`) | `src/web/react.tsx` | Application |
 | Reproducible scenarios | `scripts/scenarios.ts` | Example |
 
 Demo identities (`alice`, `carol`, `bob`, and development principal `mallory`) and the

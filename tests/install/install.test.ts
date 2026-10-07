@@ -182,7 +182,9 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     const tools = [
       `typescript@${rootManifest.devDependencies?.["typescript"]}`,
       `@types/node@${rootManifest.devDependencies?.["@types/node"]}`,
-      `esbuild@${workspaceManifests.get("@streamotter/workbench")!.devDependencies?.["esbuild"]}`
+      `esbuild@${workspaceManifests.get("@streamotter/workbench")!.devDependencies?.["esbuild"]}`,
+      // React for the V1.3 hooks (an optional peer dependency): the versions the client package develops against.
+      ...["react", "react-dom", "@types/react"].map(name => `${name}@${workspaceManifests.get("@streamotter/client")!.devDependencies?.[name]}`)
     ];
     const spec = (name: string) => FROM_REGISTRY ? `${name}@${VERSION}` : tarballs.get(name)!.file;
     const freshness = FROM_REGISTRY ? "--prefer-online" : "--prefer-offline";
@@ -249,7 +251,7 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
         for (const source of sources) assert.ok(entries.includes(`dist/${source}.d.ts`), `declarations for ${source}`);
         if (pkg.name === "streamotter") {
           assert.equal(manifest.main, undefined, "no root entry point: browser and server code are separate subpaths");
-          assert.deepEqual([...sources].sort(), ["cli", "client", "contracts", "gateway", "management", "operator"]);
+          assert.deepEqual([...sources].sort(), ["cli", "client", "contracts", "gateway", "management", "operator", "react"]);
         } else {
           assert.equal(manifest.main, "./dist/index.js");
           assert.equal(manifest.types, "./dist/index.d.ts");
@@ -426,11 +428,27 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     const bundle = await readFile(join(consumer, "out/web.js"), "utf8");
     assert.match(bundle, /so:subscribe/);
     assert.match(bundle, /\/streamotter\/socket\.io/);
+    assert.ok(!inputs.some(input => /node_modules\/react(-dom)?\//.test(input) || input.endsWith("/dist/react.js")), "an app without React bundles no React");
+  });
+
+  it("bundles a React app with @streamotter/client/react from the published build (V1.3)", async () => {
+    await mkdir(join(consumer, "react"), { recursive: true });
+    await writeFile(join(consumer, "react/app.ts"), REACT_APP);
+    const bundled = await run(bin("esbuild"), [
+      "react/app.ts", "--bundle", "--format=esm", "--platform=browser", "--target=es2022", "--define:process.env.NODE_ENV=\"production\"",
+      "--outfile=out/react.js", "--metafile=out/react.meta.json", "--log-level=warning"
+    ], { cwd: consumer });
+    assert.equal(bundled.code, 0, bundled.stderr);
+    const inputs = Object.keys((JSON.parse(await readFile(join(consumer, "out/react.meta.json"), "utf8")) as { inputs: Record<string, unknown> }).inputs);
+    assert.ok(inputs.includes("node_modules/@streamotter/client/dist/react.js"), "the hooks from dist");
+    assert.ok(inputs.some(input => input.startsWith("node_modules/react/")), "the application's own React");
+    assert.ok(!inputs.some(input => /@streamotter\/[^/]+\/src\//.test(input)), "no TypeScript sources bundled");
   });
 
   it("type-checks application code against the published declarations", async () => {
     await mkdir(join(consumer, "check"), { recursive: true });
     await writeFile(join(consumer, "check/web.ts"), WEB_CHECK);
+    await writeFile(join(consumer, "check/react.ts"), REACT_CHECK);
     await writeFile(join(consumer, "check/server.ts"), SERVER_CHECK);
     await typeCheck(consumer);
   });
@@ -536,11 +554,27 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     for (const input of inputs) {
       assert.doesNotMatch(input, /node_modules\/(@streamotter\/(gateway|cli|workbench)\/|kafkajs\/|socket\.io\/|engine\.io\/)/, `server code in the browser bundle: ${input}`);
     }
+    assert.ok(!inputs.some(input => /node_modules\/react(-dom)?\//.test(input)), "an app without React bundles no React");
+  });
+
+  it("streamotter: bundles a React app from streamotter/react (V1.3)", async () => {
+    await mkdir(join(umbrella, "react"), { recursive: true });
+    await writeFile(join(umbrella, "react/app.ts"), throughUmbrella(REACT_APP));
+    const bundled = await run(umbrellaBin("esbuild"), [
+      "react/app.ts", "--bundle", "--format=esm", "--platform=browser", "--target=es2022", "--define:process.env.NODE_ENV=\"production\"",
+      "--outfile=out/react.js", "--metafile=out/react.meta.json", "--log-level=warning"
+    ], { cwd: umbrella });
+    assert.equal(bundled.code, 0, bundled.stderr);
+    const inputs = Object.keys((JSON.parse(await readFile(join(umbrella, "out/react.meta.json"), "utf8")) as { inputs: Record<string, unknown> }).inputs);
+    assert.ok(inputs.includes("node_modules/streamotter/dist/react.js"), "through streamotter/react");
+    assert.ok(inputs.includes("node_modules/@streamotter/client/dist/react.js"), "the hooks themselves");
+    for (const input of inputs) assert.doesNotMatch(input, /node_modules\/(@streamotter\/(gateway|cli|workbench)\/|kafkajs\/)/, `server code in the browser bundle: ${input}`);
   });
 
   it("streamotter: type-checks browser and server code through its subpaths", async () => {
     await mkdir(join(umbrella, "check"), { recursive: true });
     await writeFile(join(umbrella, "check/web.ts"), throughUmbrella(WEB_CHECK));
+    await writeFile(join(umbrella, "check/react.ts"), throughUmbrella(REACT_CHECK));
     await writeFile(join(umbrella, "check/server.ts"), throughUmbrella(SERVER_CHECK));
     await typeCheck(umbrella);
   });
@@ -558,7 +592,7 @@ async function typeCheck(project: string): Promise<void> {
   const strict = { strict: true, noEmit: true, skipLibCheck: false, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ES2023" };
   await writeFile(join(project, "tsconfig.web.json"), JSON.stringify({
     compilerOptions: { ...strict, module: "ESNext", moduleResolution: "Bundler", lib: ["ES2023", "DOM", "DOM.Iterable"], types: [] },
-    include: ["check/web.ts", "app/web/**/*.ts", "app/generated/**/*.ts"]
+    include: ["check/web.ts", "check/react.ts", "app/web/**/*.ts", "app/generated/**/*.ts"]
   }, null, 2));
   await writeFile(join(project, "tsconfig.server.json"), JSON.stringify({
     compilerOptions: { ...strict, module: "NodeNext", moduleResolution: "NodeNext", lib: ["ES2023"], types: ["node"] },
@@ -570,8 +604,8 @@ async function typeCheck(project: string): Promise<void> {
   }
 }
 
-/** The same code, importing through the all-in-one package's subpaths (`streamotter/client`, …). */
-const throughUmbrella = (code: string) => code.replaceAll('"@streamotter/', '"streamotter/');
+/** The same code, importing through the all-in-one package's subpaths (`streamotter/client`, `streamotter/react`, …). */
+const throughUmbrella = (code: string) => code.replaceAll('"@streamotter/client/react"', '"streamotter/react"').replaceAll('"@streamotter/', '"streamotter/');
 
 /** Run in the consumer project: a preview session on `streamotter dev`, subscribed with the installed SDK. */
 const DEV_SUBSCRIBE = `import { createClient } from "@streamotter/client";
@@ -730,6 +764,45 @@ export function watchJob(element: HTMLElement): () => Promise<void> {
     await client.close();
   };
 }
+`;
+
+/** V1.3 hooks type-checked against the published declarations and the generated contract (no JSX, so no compiler option). */
+const REACT_CHECK = `import { createElement, type ReactElement } from "react";
+import { createStreamOtterHooks, StreamOtterProvider, useStreamOtterClient, type SubscriptionResult } from "@streamotter/client/react";
+import { channelVersions, type AppChannels, type JobProgress } from "../app/generated/streamotter.generated.js";
+
+const { useSubscription, useConnectionState, useClient } = createStreamOtterHooks<AppChannels>();
+
+export function Job({ jobId }: { jobId: string | null }): ReactElement {
+  const job: SubscriptionResult<JobProgress> = useSubscription("jobProgress", jobId === null ? null : { channelVersion: channelVersions.jobProgress, params: { jobId } });
+  const percent: number | undefined = job.data?.percent;
+  const connection: "idle" | "connecting" | "connected" | "reconnecting" | "auth-required" | "closed" = useConnectionState();
+  const client = useClient();
+  void client?.reconnect;
+  void useStreamOtterClient();
+  // @ts-expect-error: parameters are typed from the generated contract
+  useSubscription("jobProgress", { channelVersion: channelVersions.jobProgress, params: { orderId: "x" } });
+  // @ts-expect-error: unknown channels are rejected
+  useSubscription("unknownChannel", { channelVersion: 1, params: {} });
+  return createElement("p", { "data-state": job.state, "data-live": String(job.live) }, connection + " " + String(percent) + " " + (job.error?.code ?? ""));
+}
+
+export const app = createElement(StreamOtterProvider, { options: { getToken: () => "session-token" } }, createElement(Job, { jobId: "job_1" }));
+export const owned = createElement(StreamOtterProvider, { client: null }, createElement(Job, { jobId: null }));
+`;
+
+/** A React page bundled from the published build: the provider and a hook-driven component. */
+const REACT_APP = `import { createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { createStreamOtterHooks, StreamOtterProvider } from "@streamotter/client/react";
+import { channelVersions, type AppChannels } from "../app/generated/streamotter.generated.js";
+
+const { useSubscription } = createStreamOtterHooks<AppChannels>();
+function Job() {
+  const { data, live } = useSubscription("jobProgress", { channelVersion: channelVersions.jobProgress, params: { jobId: "job_1" } });
+  return createElement("p", null, live ? String(data?.percent) : "stale");
+}
+createRoot(document.getElementById("root")!).render(createElement(StreamOtterProvider, { options: { getToken: () => "t" } }, createElement(Job)));
 `;
 
 /** Server code type-checked against the published gateway, contracts, and CLI declarations (NodeNext). */

@@ -1,6 +1,6 @@
 # V1.3 — React hooks
 
-**Status: plan approved by the owner on October 6, 2026 (Pacific); not built.** A single-feature release that brings the React hooks forward from V2.2. This document is the approved plan; nothing here is installable yet.
+**Status: built on `feat/v1.3-react-hooks`, not released.** Plan approved by the owner on October 6, 2026 (Pacific); build started the same evening at his go. A single-feature release that brings the React hooks forward from V2.2. Nothing is published to npm; see the [implementation log](./IMPLEMENTATION_LOG.md) for what was built and verified, and [folding V1.3 into the launch](./IMPLEMENTATION_LOG.md#folding-v13-into-the-100-launch) for the owner's option to ship it with `1.0.0`.
 
 ## Why now
 
@@ -72,7 +72,7 @@ Suspense and `use()` integration, React Server Components, React Native, event c
 | Install test | `tests/install/install.test.ts` adds a React consumer: bundles `@streamotter/client/react` and `streamotter/react` from the packed tarballs, type-checks against the published declarations, and confirms a non-React consumer's bundle contains no React |
 | Documentation | Client README "React hook pattern" becomes "React hooks"; the existing-app guide §6 and getting-started point at them; V1_API.md §13 records the addition; IMPLEMENTATION_STATUS.md lists the hooks and the tests that verify them; README.md and CHANGELOG.md; the roadmap's feature-allocation and increment tables (done in this plan's PR) |
 
-A prototype of exactly this surface was written and run against the fixture gateway while planning; all the unit and integration tests above pass on it. It is kept outside the repository until the owner opens the build. See the [prototype handoff](./PROTOTYPE_HANDOFF.md) for where it is, what was verified, and what was learned.
+The build started from the prototype written while planning ([prototype handoff](./PROTOTYPE_HANDOFF.md)).
 
 ## Versioning and sequencing
 

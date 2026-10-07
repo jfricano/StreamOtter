@@ -1,6 +1,6 @@
 # V1.3 prototype handoff
 
-For whoever builds V1.3. Written October 6, 2026, when the owner paused the build to plan first.
+For whoever builds V1.3. Written October 6, 2026, when the owner paused the build to plan first. **Superseded:** the build started from this patch on October 6 (Pacific) on `feat/v1.3-react-hooks`; see the [implementation log](./IMPLEMENTATION_LOG.md). Kept for its notes.
 
 ## What exists
 

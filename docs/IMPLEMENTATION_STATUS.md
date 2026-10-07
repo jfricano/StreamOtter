@@ -32,7 +32,7 @@ This document records what exists, the commands that verify it, the results obse
 | Sources | `packages/gateway/src/sources` | Deterministic fixture source; KafkaJS 2.2.4 adapter with explicit per-record commits, pause-and-seek on poison records, rebalance/crash/inactivity detection, staged diagnostics, tracked sockets. |
 | Transport | `packages/gateway/src/transport/socketio.ts`, `packages/client/src/connection.ts` | Socket.IO 4.8.3, namespace `/`, WebSocket only, recovery and client reconnection disabled; the only files that import Socket.IO. |
 | Management API | `packages/gateway/src/management` | All specified `/management/v1` routes plus `GET /dev/principals`; bearer token, exact-origin/Referer checks, `Result` envelopes and status codes, 1 MiB bodies, rate limit, workbench hosting with CSP. Refuses production gateways. |
-| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. |
+| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. Unreleased (V1.3): React hooks on `@streamotter/client/react` and `streamotter/react`; see below. |
 | CLI | `packages/cli` | `init`, `validate` (prints the canonical fingerprint), `generate` (manifest-guarded overwrite), `dev`, `start`; exit codes 0/1/2; SIGINT/SIGTERM graceful shutdown; startup diagnostics. |
 | Workbench | `apps/workbench` | Connect (status, staged checks, resume, fixture advance), Define (channel contracts, candidate editor, validation, restart-required indicator), Preview (real SDK subscription as a development principal; advance, disconnect, resync), Inspect (filterable, polling trace table), Export (canonical file, fingerprint, CLI commands). |
 | Reference example | `examples/order-dashboard` | Application-owned identity, ownership rules, snapshot storage; fixture and Kafka modes; vanilla TypeScript and React views; reproducible scenarios. |
@@ -262,6 +262,10 @@ The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolv
 | `test:load` | 1 |
 
 GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by hand, passed on Node 24 and 26, along with the nightly replicated-Kafka job. On the release commit `fc7f47c` on `main`, CI and the [extended workflow](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser and deploy on Node 24 and 26, replicated Kafka on Node 24) passed, and the publishing workflow ran the full release checks again before publishing.
+
+## V1.3 React hooks (unreleased)
+
+`@streamotter/client/react` and `streamotter/react` add a provider and hooks over the SDK ([docs/releases/v1.3](./releases/v1.3/README.md)). Built on `feat/v1.3-react-hooks`; not published. On Node 24.21.0: `pnpm verify` 460 passed; `test:install` 23 passed and 1 skipped (TLS Kafka, no local broker), including bundling and type-checking React apps against the packed packages; `test:browser` 59 passed, including the reference example's React page on the hooks, on a preinstalled Chromium headless shell (revision 1194) rather than the pinned one. Not yet reviewed independently; details in the [implementation log](./releases/v1.3/IMPLEMENTATION_LOG.md).
 
 ## Gate A status (home site and demo plan)
 
