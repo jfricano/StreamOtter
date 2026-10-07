@@ -1,6 +1,6 @@
-# StreamOtter V1.2.1: independent review
+# StreamOtter V1.2.1: review of the fixes
 
-At the owner's request, the V1.2.1 fixes were reviewed independently before the PR was opened. Three reviewers who had not written the code read the whole diff from the V1.2 branch (`aa3bc69`) to the merged fixes, reproduced findings where it was cheap, and checked each regression test against reverted code. Each finding was then fixed with a test where testable, and every tier was run again.
+At the owner's request, the V1.2.1 fixes were reviewed in a separate pass before the PR was opened. Three reviewers who had not written the code read the whole diff from the V1.2 branch (`aa3bc69`) to the merged fixes, reproduced findings where it was cheap, and checked each regression test against reverted code. Each finding was then fixed with a test where testable, and every tier was run again.
 
 **Result:** no major findings; 19 minor, all fixed. Two flaky tests seen during the review were also fixed, one of them a V1.1 test outside this diff.
 

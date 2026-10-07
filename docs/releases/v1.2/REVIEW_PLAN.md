@@ -1,10 +1,10 @@
-# StreamOtter V1.2: independent quality review plan
+# StreamOtter V1.2: quality review plan
 
 **Status:** planned October 4, 2026. The review itself waits until the V1.1 fix PR (stacked on #18) and its second review are done. Then it runs on the top of the V1.1 stack, or on `main` if the stack has merged by then.
 
 ## Why
 
-V1 shipped without an independent code review. The only review so far, the six-reviewer pass of October 4 ([V1.1 findings](#what-is-already-covered)), looked at the V1.1 diff. About 7,300 lines of V1 code were never touched by V1.1 and have never been read by anyone but their author. Reviewing V1 alone would risk fixes that conflict with V1.1, so V1.2 reviews the whole package as integrated through V1.1.
+V1 shipped without a separate code review. The only review so far, the six-reviewer pass of October 4 ([V1.1 findings](#what-is-already-covered)), looked at the V1.1 diff. About 7,300 lines of V1 code were never touched by V1.1 and have never been read by anyone but their author. Reviewing V1 alone would risk fixes that conflict with V1.1, so V1.2 reviews the whole package as integrated through V1.1.
 
 ## Scope
 

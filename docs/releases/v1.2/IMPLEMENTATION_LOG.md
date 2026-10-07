@@ -14,7 +14,7 @@ Working record for the V1.2 quality review. Anyone resuming starts with §1. New
 
 ### October 4, 2026 — planning
 
-- Found no record of an independent review of V1. Listed the V1 files V1.1 never touched (about 7,300 lines) and the V1 files V1.1 changed, against `feat/v1.1-operations-release` at `24abe81`.
+- Found no record of a separate review of V1. Listed the V1 files V1.1 never touched (about 7,300 lines) and the V1 files V1.1 changed, against `feat/v1.1-operations-release` at `24abe81`.
 - Wrote the [review plan](./REVIEW_PLAN.md): six reviewers by area, a seam pass, the V1.1 findings excluded.
 
 ### October 4, 2026 — phase A review

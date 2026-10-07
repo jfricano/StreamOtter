@@ -6,7 +6,7 @@ September 24, 2026 · Planning revision 0.2
 
 > **Owner amendment (October 1, reconciled October 2, 2026):** The increment previously labeled V1.5 is now V1.1. Preserve the approved source-failure decisions and V2/V3 sequencing. Lontra Creek owns the separate hosted Workbench sandbox; the library owns its published frontend/integration contract. Neither milestone label asserts a new npm version.
 
-> **Current status (September 29, 2026):** V1 release candidates are published on npm; see [implementation status](./IMPLEMENTATION_STATUS.md). V1.1 is approved and specified in [releases/v1.1](./releases/v1.1/README.md). V1.2 is an independent quality review of V1 and V1.1 together ([releases/v1.2](./releases/v1.2/README.md)), and V1.2.1 fixes the minor findings it deferred. All three ship in `0.2.0-rc.1`. [npm versions](#npm-versions) maps each milestone to its npm version; `1.0.0` is the V1 public launch. The rest of this document is the original plan.
+> **Current status (September 29, 2026):** V1 release candidates are published on npm; see [implementation status](./IMPLEMENTATION_STATUS.md). V1.1 is approved and specified in [releases/v1.1](./releases/v1.1/README.md). V1.2 is a quality review of V1 and V1.1 together ([releases/v1.2](./releases/v1.2/README.md)), and V1.2.1 fixes the minor findings it deferred. All three ship in `0.2.0-rc.1`. [npm versions](#npm-versions) maps each milestone to its npm version; `1.0.0` is the V1 public launch. The rest of this document is the original plan.
 
 ## Purpose and authority
 

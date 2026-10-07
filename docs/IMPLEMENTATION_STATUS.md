@@ -196,7 +196,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 
 ### Runs recorded in the implementation log
 
-All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, after the [independent review](./releases/v1.1/REVIEW.md)'s fixes (October 4):
+All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, after the [code review](./releases/v1.1/REVIEW.md)'s fixes (October 4):
 
 | Command | Result |
 | --- | --- |
@@ -233,7 +233,7 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 
 ## V1.2 quality review (0.2.0-rc.1)
 
-An independent review of V1 and V1.1 together found 15 major and 57 minor issues. Every major is fixed, each with a regression test confirmed to fail without its fix, and so are 25 minors. The other minors are fixed in V1.2.1, which ships in the same release. The findings, the fix list and the test runs are in [docs/releases/v1.2](./releases/v1.2/README.md). On Node 24.21.0, at the head of #20, every tier passed:
+A review of V1 and V1.1 together, by reviewers who hadn't written the code, found 15 major and 57 minor issues. Every major is fixed, each with a regression test confirmed to fail without its fix, and so are 25 minors. The other minors are fixed in V1.2.1, which ships in the same release. The findings, the fix list and the test runs are in [docs/releases/v1.2](./releases/v1.2/README.md). On Node 24.21.0, at the head of #20, every tier passed:
 
 | Tier | Tests passed |
 | --- | --- |
@@ -249,7 +249,7 @@ CI ran `pnpm verify` on Node 24 and 26.
 
 ## V1.2.1 minor fixes (0.2.0-rc.1)
 
-The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolved ([docs/releases/v1.2.1](./releases/v1.2.1/README.md)). An independent review of the fixes found 19 minor issues, all fixed. On Node 24.21.0, after the review fixes, every tier passed, none skipped:
+The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolved ([docs/releases/v1.2.1](./releases/v1.2.1/README.md)). A separate review of the fixes found 19 minor issues, all fixed. On Node 24.21.0, after the review fixes, every tier passed, none skipped:
 
 | Tier | Tests passed |
 | --- | --- |

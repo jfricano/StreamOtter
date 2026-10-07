@@ -1,6 +1,6 @@
 # StreamOtter V1.2 review, phase A: V1 code that V1.1 never touched
 
-October 4, 2026. Four independent reviewers read the V1 code that no one but its author had read before: the wire protocol and sessions, the client SDK, codegen and contracts, and the workbench views, example web client, scripts and V1 tests. The code was reviewed at `feat/v1.1-operations-release` @ `24abe81`. Nothing in the repo was changed, and fixes wait until V1.1 is finished.
+October 4, 2026. Four reviewers read the V1 code that no one but its author had read before: the wire protocol and sessions, the client SDK, codegen and contracts, and the workbench views, example web client, scripts and V1 tests. The code was reviewed at `feat/v1.1-operations-release` @ `24abe81`. Nothing in the repo was changed, and fixes wait until V1.1 is finished.
 
 **Result: 10 major and 33 minor findings in V1 code, plus one major in V1.1 code that was passed to the V1.1 thread.** I re-ran every major reproduction myself, and each one failed as described. Reproductions are under `.review-scratch/<P|C|G|W>/` in the review container.
 
