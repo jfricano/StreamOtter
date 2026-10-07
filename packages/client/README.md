@@ -131,7 +131,8 @@ function JobCard({ jobId }: { jobId: string }) {
 - **`useSubscription(channel, options)`** subscribes while the component is mounted and unsubscribes on unmount, or when the channel, version, param values, or client change. A new `params` object with the same values keeps the subscription. Pass `null` to wait (for example, until an id is known). It returns `data` and `revision` (kept while `stale`, so render them as last known; cleared when the subscription changes), `state`, `live`, `error` (the latest error, cleared when the subscription is `live` again), and `resync()`.
 - **`useConnectionState()`** returns the client's connection state, and **`useClient()`** the client itself (for `reconnect()`), or `null` before the provider has one.
 - Hooks subscribe in effects, so nothing connects during server rendering, and React StrictMode's development double mount leaves exactly one subscription per component. The hooks add no caching or retries: two components that subscribe to the same channel and params are two subscriptions, as with `subscribe`.
-- Without the factory, `useSubscription`, `useConnectionState` and `useStreamOtterClient` are exported directly, typed against a generic channel map.
+- Without the factory, `useSubscription`, `useConnectionState` and `useStreamOtterClient` are exported directly, typed against a generic channel map. `SubscriptionOptions<AppChannels, "jobProgress">` names the type of the options argument, for wrappers around `useSubscription`.
+- Hooks used outside a `StreamOtterProvider` throw a `StreamOtterError` with code `INVALID_REQUEST`.
 
 The [reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard) has a React page built on these hooks, including denied access.
 

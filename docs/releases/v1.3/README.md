@@ -1,6 +1,6 @@
 # V1.3 — React hooks
 
-**Status: built on `feat/v1.3-react-hooks`, not released.** Plan approved by the owner on October 6, 2026 (Pacific); build started the same evening at his go. A single-feature release that brings the React hooks forward from V2.2. Nothing is published to npm; see the [implementation log](./IMPLEMENTATION_LOG.md) for what was built and verified, and [folding V1.3 into the launch](./IMPLEMENTATION_LOG.md#folding-v13-into-the-100-launch) for the owner's option to ship it with `1.0.0`.
+**Status: built on `feat/v1.3-react-hooks`, not released.** Plan approved by the owner on October 6, 2026 (Pacific); build started the same evening at his go. A single-feature release that brings the React hooks forward from V2.2. The exact public API is locked in the [API contract](./API.md). Nothing is published to npm; see the [implementation log](./IMPLEMENTATION_LOG.md) for what was built and verified, and [folding V1.3 into the launch](./IMPLEMENTATION_LOG.md#folding-v13-into-the-100-launch) for the owner's option to ship it with `1.0.0`.
 
 ## Why now
 
@@ -22,6 +22,8 @@ A new subpath export of the existing client package, not a new package:
 `react` (18 or later) becomes an **optional** peer dependency of `@streamotter/client` and `streamotter`. Applications without React install nothing new and import nothing new: `@streamotter/client` itself does not import React, so bundlers never pull it in unless `…/react` is imported. The alternative, a seventh package `@streamotter/react`, was rejected: one more thing to version, publish, pack-test and document, for a module small enough to live beside the SDK it binds.
 
 ### API
+
+This section is the plan's summary. The [API contract](./API.md) has the exact declarations, numbered behavior clauses that the tests cite, and the decisions log.
 
 ```tsx
 import { createStreamOtterHooks, StreamOtterProvider } from "@streamotter/client/react";

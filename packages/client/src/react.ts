@@ -1,8 +1,37 @@
 /**
- * React bindings for the browser SDK (V1.3). A provider shares one client with a component tree,
- * and hooks render a subscription's data together with the delivery state that says whether it is
- * current. Hooks subscribe in effects, so nothing connects during server rendering, and a React
- * StrictMode double mount subscribes and unsubscribes before the first request leaves the page.
+ * React bindings for the browser SDK (V1.3), published as `@streamotter/client/react` and
+ * `streamotter/react`. A provider shares one client with a component tree, and hooks render a
+ * subscription's data together with the delivery state that says whether it is current.
+ *
+ * Hooks subscribe in effects, so nothing connects during server rendering, and a React StrictMode
+ * double mount subscribes and unsubscribes before the first request leaves the page.
+ *
+ * The behavior below is specified clause by clause in `docs/releases/v1.3/API.md`; the clause IDs
+ * in these comments (P1, S2, ...) refer to it, and the tests cite the same IDs.
+ *
+ * @example
+ * ```tsx
+ * import { createStreamOtterHooks, StreamOtterProvider } from "@streamotter/client/react";
+ * import type { AppChannels } from "./generated/streamotter.ts";
+ *
+ * export const { useSubscription, useConnectionState } = createStreamOtterHooks<AppChannels>();
+ *
+ * function OrderStatus({ orderId }: { orderId: string }) {
+ *   const order = useSubscription("orderStatus", { channelVersion: 1, params: { orderId } });
+ *   if (order.data === undefined) return <p>Loading…</p>;
+ *   return <p className={order.live ? "" : "stale"}>{order.data.status}</p>;
+ * }
+ *
+ * export function App({ user }: { user: string }) {
+ *   return (
+ *     <StreamOtterProvider key={user} options={{ getToken: fetchStreamToken }}>
+ *       <OrderStatus orderId="ord_1" />
+ *     </StreamOtterProvider>
+ *   );
+ * }
+ * ```
+ *
+ * @module
  */
 import {
   createContext, createElement, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore,
@@ -18,18 +47,54 @@ import { createClient } from "./client.ts";
 /** `undefined` means no provider above the hook; `null` means the provider has no client yet. */
 const ClientContext = createContext<Client<ChannelMap> | null | undefined>(undefined);
 
-export type StreamOtterProviderProps = { children?: ReactNode } & (
-  /** A client you create and close yourself. Pass `null` while there is none (for example, before sign-in). */
-  | { client: Client<any> | null; options?: never }
-  /**
-   * Options for a client the provider creates after mounting and closes on unmount. A new `origin`
-   * or `path` replaces the client; `getToken` is always read from the latest render, so an inline
-   * function does not. To switch users, give the provider a `key` for the signed-in identity.
-   */
-  | { options: ClientOptions; client?: never }
+/**
+ * Props for {@link StreamOtterProvider}: either a `client` you manage or `options` for a client the
+ * provider manages, never both.
+ */
+export type StreamOtterProviderProps = {
+  /** The components that use the hooks. */
+  children?: ReactNode;
+} & (
+  | {
+    /**
+     * A client you create with `createClient` and close yourself. The provider supplies it unchanged
+     * and never closes it (P4). Pass `null` while there is none, for example before sign-in; hooks
+     * then report their "no client" values.
+     */
+    client: Client<any> | null;
+    options?: never;
+  }
+  | {
+    /**
+     * Options for a client the provider creates after mounting and closes when it unmounts (P1).
+     * A new `origin` or `path` closes the client and creates another (P2). `getToken` is always read
+     * from the latest render, so an inline function keeps the client (P3). To switch users, give the
+     * provider a `key` for the signed-in identity (P5).
+     */
+    options: ClientOptions;
+    client?: never;
+  }
 );
 
-/** Shares one StreamOtter client with the hooks below it. */
+/**
+ * Shares one StreamOtter client with the hooks below it. Every hook must have a provider above it.
+ *
+ * With `options`, the provider supplies `null` until its client exists: on the first client render
+ * and throughout server rendering.
+ *
+ * @example
+ * ```tsx
+ * // The provider owns the client; a new key closes it and creates one for the next user.
+ * <StreamOtterProvider key={session.user} options={{ getToken: () => fetchStreamToken(session) }}>
+ *   <Dashboard />
+ * </StreamOtterProvider>
+ *
+ * // Or share a client you manage yourself.
+ * <StreamOtterProvider client={client}>
+ *   <Dashboard />
+ * </StreamOtterProvider>
+ * ```
+ */
 export function StreamOtterProvider(props: StreamOtterProviderProps): ReactElement {
   const owned = useOwnedClient(props.options);
   const value = props.options === undefined ? props.client ?? null : owned;
@@ -65,7 +130,14 @@ function useOwnedClient(options: ClientOptions | undefined): Client<ChannelMap> 
   return client;
 }
 
-/** The provider's client, or `null` before it exists. Throws outside a `StreamOtterProvider`. */
+/**
+ * The provider's client, or `null` while the provider has none (K1). Use it for imperative calls such
+ * as `reconnect()` after the application's session is restored. Prefer the `useClient` returned by
+ * {@link createStreamOtterHooks}, which is the same function typed for your channels.
+ *
+ * @typeParam C - The channel map the client is typed for.
+ * @throws {@link StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider} (A1).
+ */
 export function useStreamOtterClient<C extends ChannelMap = ChannelMap>(): Client<C> | null {
   const client = useContext(ClientContext);
   if (client === undefined) {
@@ -76,7 +148,20 @@ export function useStreamOtterClient<C extends ChannelMap = ChannelMap>(): Clien
 
 const noop = (): void => {};
 
-/** The client's connection state; `"idle"` while there is no client and during server rendering. */
+/**
+ * The client's `ConnectionState`, re-rendering on each change (C1). It is `"idle"` while there is no
+ * client and during server rendering, so a server-rendered page and its first client render agree.
+ *
+ * @example
+ * ```tsx
+ * function ConnectionBadge() {
+ *   const state = useConnectionState();
+ *   return state === "connected" ? null : <span>Reconnecting…</span>;
+ * }
+ * ```
+ *
+ * @throws {@link StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider} (A1).
+ */
 export function useConnectionState(): ConnectionState {
   const client = useStreamOtterClient();
   const subscribe = useCallback((onChange: () => void) => client === null ? noop : client.on("state", onChange), [client]);
@@ -84,18 +169,53 @@ export function useConnectionState(): ConnectionState {
   return useSyncExternalStore(subscribe, read, () => "idle");
 }
 
+/**
+ * The `options` argument of {@link useSubscription}: the channel version the component was written
+ * against and the params that select one stream on the channel. Exported so applications can type
+ * wrappers around `useSubscription`.
+ *
+ * @typeParam C - The channel map, usually the generated `AppChannels`.
+ * @typeParam K - The channel name.
+ */
+export type SubscriptionOptions<C extends ChannelMap, K extends keyof C & string> = {
+  /** The channel contract version this component renders. */
+  channelVersion: C[K]["version"];
+  /** The channel's params. Compared by value, so a new object with equal values keeps the subscription (S2). */
+  params: C[K]["params"];
+};
+
+/**
+ * What {@link useSubscription} renders: the latest data and the delivery state that says whether it
+ * is current. Absent values are `undefined`, because `null` is valid channel data.
+ *
+ * @typeParam D - The channel's data type.
+ */
 export interface SubscriptionResult<D extends Json> {
-  /** The latest snapshot or update. Kept while `stale`, so render it as last known; cleared when the channel, version, params, or client change. */
+  /**
+   * The latest snapshot or update (S4). Kept while the subscription is `stale` or otherwise not
+   * `live`, so render it as last known. `undefined` until the first event, and again after the
+   * channel, version, param values or client change.
+   */
   data: D | undefined;
-  /** The revision of `data`. */
+  /** The revision of `data`, or `undefined` when there is no `data`. */
   revision: Revision | undefined;
-  /** `"idle"` while there is no client or `options` is `null`. */
+  /** The subscription's state, or `"idle"` while there is no client or `options` is `null`. */
   state: SubscriptionState;
-  /** `state === "live"`: `data` is current. */
+  /** `true` when `state` is `"live"`: `data` is current. */
   live: boolean;
-  /** The latest error since the subscription was last `live`. */
+  /**
+   * The latest error the subscription reported (S5), such as `FORBIDDEN` or `SOURCE_UNAVAILABLE`.
+   * Cleared when the subscription becomes `live` and when the channel, version, param values or
+   * client change.
+   */
   error: StreamError | undefined;
-  /** Requests a fresh snapshot; see `Subscription.resync`. Rejects while there is no subscription. */
+  /**
+   * Requests a fresh snapshot from the gateway; see `Subscription.resync` (S6). The function is the
+   * same on every render, so it can go in a dependency list.
+   *
+   * @returns The subscription's `resync` promise, or a promise rejected with `StreamOtterError` code
+   * `INVALID_REQUEST` while there is no subscription.
+   */
   resync(options?: WaitOptions): Promise<void>;
 }
 
@@ -120,12 +240,36 @@ function paramsKey(params: Params): string {
 }
 
 /**
- * Subscribes while mounted and unsubscribes on unmount, or when the channel, version, param values,
- * or client change. Pass `null` as `options` to hold off (for example, until an id is known).
+ * Subscribes to one channel stream while the component is mounted, and renders its data and state.
+ *
+ * The hook subscribes in an effect and unsubscribes on unmount (S1), or when the client, channel,
+ * version or param values change (S2). Params are compared by value, so an inline object literal is
+ * fine. Pass `null` as `options` to hold off, for example until an id is known (S3). Each call holds
+ * its own subscription; the hook adds no caching, retries or sharing (S8).
+ *
+ * Prefer the `useSubscription` returned by {@link createStreamOtterHooks}, which is this function
+ * typed for your channels.
+ *
+ * @example
+ * ```tsx
+ * function OrderStatus({ orderId }: { orderId: string | null }) {
+ *   const order = useSubscription("orderStatus", orderId === null ? null : { channelVersion: 1, params: { orderId } });
+ *   if (order.error?.code === "FORBIDDEN") return <p>You can't see this order.</p>;
+ *   if (order.data === undefined) return <p>Loading…</p>;
+ *   return <p>{order.data.status}{order.live ? "" : " (reconnecting)"}</p>;
+ * }
+ * ```
+ *
+ * @typeParam C - The channel map, usually the generated `AppChannels`.
+ * @typeParam K - The channel name.
+ * @param channel - The channel to subscribe to.
+ * @param options - The channel version and params, or `null` for no subscription.
+ * @throws {@link StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider}
+ * (A1), or when `options` has no params object.
  */
 export function useSubscription<C extends ChannelMap = ChannelMap, K extends keyof C & string = keyof C & string>(
   channel: K,
-  options: { channelVersion: C[K]["version"]; params: C[K]["params"] } | null
+  options: SubscriptionOptions<C, K> | null
 ): SubscriptionResult<C[K]["data"]> {
   const client = useStreamOtterClient<C>();
   const key = options === null
@@ -173,18 +317,39 @@ export function useSubscription<C extends ChannelMap = ChannelMap, K extends key
   };
 }
 
+/**
+ * The hooks typed for one channel map, returned by {@link createStreamOtterHooks}.
+ *
+ * @typeParam C - The channel map, usually the generated `AppChannels`.
+ */
 export interface StreamOtterHooks<C extends ChannelMap> {
-  useSubscription<K extends keyof C & string>(
-    channel: K,
-    options: { channelVersion: C[K]["version"]; params: C[K]["params"] } | null
-  ): SubscriptionResult<C[K]["data"]>;
+  /**
+   * {@link useSubscription} typed for `C`: the channel name, `channelVersion` and params are checked
+   * against your channels, and `data` has the channel's data type.
+   */
+  useSubscription<K extends keyof C & string>(channel: K, options: SubscriptionOptions<C, K> | null): SubscriptionResult<C[K]["data"]>;
+  /** {@link useStreamOtterClient} typed for `C`. */
   useClient(): Client<C> | null;
+  /** {@link useConnectionState}. */
   useConnectionState(): ConnectionState;
 }
 
 /**
- * The hooks typed for your generated channels:
- * `export const { useSubscription, useConnectionState } = createStreamOtterHooks<AppChannels>();`
+ * Returns the hooks typed for your generated channels (A4). Call it once in a module of your own
+ * and import the hooks from there. It returns the same functions as the direct exports, so it costs
+ * nothing at run time; a channel not in `C`, a wrong `channelVersion` or a wrong params shape fails
+ * to compile.
+ *
+ * @example
+ * ```ts
+ * // src/streamotter.ts
+ * import { createStreamOtterHooks } from "@streamotter/client/react";
+ * import type { AppChannels } from "./generated/streamotter.ts";
+ *
+ * export const { useSubscription, useClient, useConnectionState } = createStreamOtterHooks<AppChannels>();
+ * ```
+ *
+ * @typeParam C - The channel map, usually the generated `AppChannels`.
  */
 export function createStreamOtterHooks<C extends ChannelMap>(): StreamOtterHooks<C> {
   return {
