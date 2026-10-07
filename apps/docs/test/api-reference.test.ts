@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { documentedModules, loadApiReference, sourceUrlFor } from "../integrations/api-reference.mjs";
-import { buildApiReference, KIND, type ApiReference, type TdProject, type TdReflection } from "../src/api-reference/build.ts";
+import { buildApiReference, KIND, type ApiReference, type BuildOptions, type TdProject, type TdReflection } from "../src/api-reference/build.ts";
 import { API_MODULES, API_ROOT } from "../src/api-reference/modules.ts";
 import { RELEASE } from "../src/site.ts";
 
@@ -15,12 +15,15 @@ function model(declared: TdReflection[], extra: Record<string, TdReflection[]> =
     }))
   };
 }
+/** The site's modules without sections, so the small models below needn't contain every contracts name. */
+const PLAIN = API_MODULES.map(({ sections: _sections, ...module }) => module);
+const build = (project: TdProject, options: BuildOptions) => buildApiReference(project, { modules: PLAIN, ...options });
 const text = (value: string) => ({ summary: [{ kind: "text" as const, text: value }] });
 const hrefs = (html: string) => [...html.matchAll(/href="([^"]*)"/g)].map(match => match[1]!);
 
 describe("buildApiReference", () => {
   test("documents a re-exported symbol once, where it is declared, and lists every path that exports it", () => {
-    const reference = buildApiReference(model(
+    const reference = build(model(
       [{ id: 1, name: "Client", kind: KIND.Interface, comment: text("A client."), children: [] }],
       { client: [{ id: 2, name: "Client", kind: KIND.Reference, target: 1 }] }
     ), { release: "1.2.3" });
@@ -33,7 +36,7 @@ describe("buildApiReference", () => {
   });
 
   test("links references and {@link} tags to their pages, members to their anchors, and leaves outside types plain", () => {
-    const reference = buildApiReference(model([
+    const reference = build(model([
       { id: 1, name: "Options", kind: KIND.Interface, children: [{ id: 3, name: "origin", kind: KIND.Property, type: { type: "intrinsic", name: "string" } }] },
       {
         id: 2, name: "connect", kind: KIND.Function,
@@ -54,7 +57,7 @@ describe("buildApiReference", () => {
   });
 
   test("escapes names, literals and comments; raw HTML in a comment stays text", () => {
-    const reference = buildApiReference(model([{
+    const reference = build(model([{
       id: 1, name: "Tag", kind: KIND.TypeAlias, comment: text("Matches <script>alert(1)</script> & more."),
       type: { type: "literal", value: "</code><img src=x>" }
     }]), { release: "1.2.3" });
@@ -65,7 +68,7 @@ describe("buildApiReference", () => {
   });
 
   test("names that differ only in case get distinct paths, the type keeping the bare name", () => {
-    const reference = buildApiReference(model([
+    const reference = build(model([
       { id: 1, name: "streamError", kind: KIND.Function, signatures: [] },
       { id: 2, name: "StreamError", kind: KIND.Interface, children: [] }
     ]), { release: "1.2.3" });
@@ -85,7 +88,7 @@ describe("buildApiReference", () => {
   });
 
   test("an object type alias shows its members, not `unknown`", () => {
-    const reference = buildApiReference(model([{
+    const reference = build(model([{
       id: 1, name: "Config", kind: KIND.TypeAlias, comment: text("Settings."),
       children: [{ id: 2, name: "port", kind: KIND.Property, comment: text("The port."), type: { type: "intrinsic", name: "number" } }]
     }]), { release: "1.2.3" });
@@ -95,7 +98,7 @@ describe("buildApiReference", () => {
   });
 
   test("types keep their precedence: keyof in an array, and a function type in a union", () => {
-    const reference = buildApiReference(model([
+    const reference = build(model([
       { id: 1, name: "KEYS", kind: KIND.Variable, flags: { isConst: true }, type: { type: "typeOperator", operator: "readonly", target: { type: "array", elementType: { type: "typeOperator", operator: "keyof", target: { type: "reference", name: "Limits" } } } } },
       { id: 2, name: "Listener", kind: KIND.TypeAlias, type: { type: "union", types: [
         { type: "reflection", declaration: { id: 3, name: "__type", kind: KIND.TypeLiteral, signatures: [{ id: 4, name: "__type", kind: 4096, type: { type: "intrinsic", name: "void" } }] } },
@@ -108,7 +111,7 @@ describe("buildApiReference", () => {
   });
 
   test("static members, computed keys, type parameter docs and nested field docs are shown", () => {
-    const reference = buildApiReference(model([{
+    const reference = build(model([{
       id: 1, name: "Brand", kind: KIND.Class, typeParameters: [{ id: 9, name: "T", kind: 131072, comment: text("The branded value.") }],
       children: [
         { id: 2, name: "is", kind: KIND.Method, flags: { isStatic: true }, signatures: [{ id: 3, name: "is", kind: 4096, comment: text("Checks."), type: { type: "intrinsic", name: "boolean" } }] },
@@ -129,7 +132,7 @@ describe("buildApiReference", () => {
 
   test("a union or intersection alias lists its documented fields; an undocumented `?: never` adds none", () => {
     const object = (id: number, children: TdReflection[]) => ({ type: "reflection" as const, declaration: { id, name: "__type", kind: KIND.TypeLiteral, children } });
-    const reference = buildApiReference(model([{
+    const reference = build(model([{
       id: 1, name: "Props", kind: KIND.TypeAlias,
       type: { type: "intersection", types: [
         object(2, [{ id: 3, name: "children", kind: KIND.Property, flags: { isOptional: true }, comment: text("The children."), type: { type: "intrinsic", name: "unknown" } }]),
@@ -143,7 +146,49 @@ describe("buildApiReference", () => {
       ] }
     }]), { release: "1.2.3" });
     const strip = (html: string) => html.replace(/<[^>]*>/g, "");
-    assert.deepEqual(reference.symbols[0]!.fields.map(field => strip(field.codeHtml)), ["children?: unknown", "client: unknown", "options: string"]);
+    assert.deepEqual(reference.symbols[0]!.fieldGroups.map(group => [group.labelHtml && strip(group.labelHtml), group.fields.map(field => strip(field.codeHtml))]), [
+      [null, ["children?: unknown"]], ["With client", ["client: unknown"]], ["With options", ["options: string"]]
+    ]);
+  });
+
+  test("a union's variants are labeled by their discriminant, and nested fields by their path", () => {
+    const object = (id: number, children: TdReflection[]) => ({ type: "reflection" as const, declaration: { id, name: "__type", kind: KIND.TypeLiteral, children } });
+    const field = (id: number, name: string, type: NonNullable<TdReflection["type"]>, doc: string): TdReflection => ({ id, name, kind: KIND.Property, comment: text(doc), type });
+    const reference = build(model([{
+      id: 1, name: "Revocation", kind: KIND.TypeAlias,
+      type: { type: "union", types: [
+        object(2, [field(3, "kind", { type: "literal", value: "session" }, "One session."), field(4, "tenantId", { type: "intrinsic", name: "string" }, "The tenant.")]),
+        object(5, [
+          field(6, "kind", { type: "literal", value: "channel" }, "One channel."),
+          field(7, "gateway", object(8, [field(9, "port", { type: "intrinsic", name: "number" }, "The port.")]), "Where.")
+        ])
+      ] }
+    }]), { release: "1.2.3" });
+    const strip = (html: string) => html.replace(/<[^>]*>/g, "").replace(/&#34;/g, "\"");
+    assert.deepEqual(reference.symbols[0]!.fieldGroups.map(group => [strip(group.labelHtml!), group.fields.map(entry => strip(entry.codeHtml).split(":")[0])]), [
+      ['kind: "session"', ["kind", "tenantId"]], ['kind: "channel"', ["kind", "gateway", "gateway.port"]]
+    ]);
+  });
+
+  test("sections group an entry point's exports, and re-exports land in their home sections", () => {
+    const sections = [
+      { slug: "basics", title: "Basics", description: "For apps.", everyApp: true, names: ["Client"] },
+      { slug: "wire", title: "Wire", description: "For clients.", everyApp: false, names: ["Hello"] }
+    ];
+    const modules = PLAIN.map(module => module.slug === "contracts" ? { ...module, sections } : module);
+    const reference = build(model(
+      [{ id: 1, name: "Client", kind: KIND.Interface, children: [] }, { id: 2, name: "Hello", kind: KIND.Interface, children: [] }],
+      { client: [{ id: 3, name: "createClient", kind: KIND.Function, signatures: [] }, { id: 4, name: "Client", kind: KIND.Reference, target: 1 }] }
+    ), { release: "1.2.3", modules });
+    const shape = (slug: string) => reference.modules.find(module => module.slug === slug)!.sections?.map(section => [section.slug, section.exports.map(entry => entry.name)]) ?? null;
+    assert.deepEqual(shape("contracts"), [["basics", ["Client"]], ["wire", ["Hello"]]]);
+    assert.deepEqual(shape("client"), [["own-client", ["createClient"]], ["basics", ["Client"]]]);
+    assert.equal(shape("cli"), null);
+    const broken = PLAIN.map(module => module.slug === "contracts" ? { ...module, sections: [{ ...sections[0]!, names: ["Client", "Gone"] }] } : module);
+    assert.throws(
+      () => build(model([{ id: 1, name: "Client", kind: KIND.Interface, children: [] }, { id: 2, name: "Hello", kind: KIND.Interface, children: [] }]), { release: "1.2.3", modules: broken }),
+      /add Hello to a section; remove Gone, which it doesn't export/
+    );
   });
 });
 

@@ -18,6 +18,36 @@ const sample = module.exports.find(entry => !entry.reexport && entry.kind === "f
     {sample && <pre class="api-code"><code>{`import { ${sample.name} } from "${module.importPath}";`}</code></pre>}
     <p class="api-intro">The same exports are published as <code>{module.scopedImport}</code>. {own === module.exports.length ? "Every export here is declared here." : `Of its ${module.exports.length} exports, ${module.exports.length - own} are re-exported from the entry point that declares them, and link there.`}</p>
   </section>
-  <ExportList exports={module.exports} />
+  {module.sections === null ? <ExportList exports={module.exports} /> : (
+    <>
+      <nav class="api-toc" aria-labelledby="api-toc">
+        <h2 id="api-toc">Sections</h2>
+        {[true, false].map(everyApp => {
+          const listed = module.sections!.filter(section => section.everyApp === everyApp);
+          return listed.length > 0 && (
+            <div class="api-toc-group">
+              <p class="eyebrow">{everyApp ? "What most apps use" : "For specific jobs"}</p>
+              <ul>{listed.map(section => <li><a href={`#section-${section.slug}`}>{section.title}</a> <span class="muted">{section.exports.length}</span></li>)}</ul>
+            </div>
+          );
+        })}
+      </nav>
+      {module.sections.map(section => (
+        <section aria-labelledby={`section-${section.slug}`}>
+          <h2 id={`section-${section.slug}`}>{section.title}</h2>
+          {section.description && <p class="api-intro">{section.description}</p>}
+          <ExportList exports={section.exports} byKind={false} />
+        </section>
+      ))}
+    </>
+  )}
 </ApiPage>
-<style>.api-intro { max-width: 75ch; color: var(--ink-2); }</style>
+<style>
+.api-intro { max-width: 75ch; color: var(--ink-2); }
+.api-toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px 32px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.api-toc h2 { grid-column: 1 / -1; font-size: 1.16rem; letter-spacing: 0; }
+.api-toc-group { display: grid; gap: 8px; align-content: start; }
+.api-toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.api-toc a { font-weight: 600; }
+.muted { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+</style>

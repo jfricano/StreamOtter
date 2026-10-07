@@ -1,14 +1,15 @@
 ---
 /**
  * Every docs.streamotter.dev page: the header with the docs sections, the page, and the footer.
- * The palette, type and header follow streamotter.dev, so the two read as one site, and the
- * header links back to it.
+ * The palette and header follow streamotter.dev, and the header links back to it. The type follows
+ * Under the Hood: Schibsted Grotesk and Source Sans 3 (the demo site keeps Figtree).
  */
 import "@fontsource-variable/schibsted-grotesk";
 import "@fontsource-variable/source-sans-3";
 import "@fontsource-variable/source-sans-3/wght-italic.css";
 import "@fontsource-variable/jetbrains-mono";
 import "../styles/global.css";
+import schibstedLatin from "@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2?url";
 import sourceSansLatin from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url";
 import LockupHorizontal from "../assets/brand/lockup-horizontal.svg";
 import LockupStacked from "../assets/brand/lockup-stacked.svg";
@@ -37,6 +38,7 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
     <meta name="description" content={description} />
     {!noindex && <link rel="canonical" href={canonical} />}
     <link rel="preload" href={sourceSansLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={schibstedLatin} as="font" type="font/woff2" crossorigin />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

@@ -1,4 +1,4 @@
-import { type Principal, type Revocation, type SourceRecord } from "@streamotter/contracts";
+import type { Principal, Revocation, SourceRecord } from "@streamotter/contracts";
 import { isJsonValue, isPlainObject, parseUtcTimestamp } from "@streamotter/contracts/internal";
 import { sha256Hex } from "./util.ts";
 

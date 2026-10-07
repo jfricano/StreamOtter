@@ -67,6 +67,8 @@ describe("public API", () => {
   const exported = exportsOf();
 
   it("no streamotter entry point exports a name made private before 1.0.0", () => {
+    // An entry point whose re-exports stopped resolving exports nothing, so it would leak nothing.
+    for (const entry of ENTRIES) assert.ok(exported(`${SRC}${entry}.ts`).size > 0, `streamotter/${entry} exports nothing; its re-exports did not resolve`);
     const leaks = ENTRIES.flatMap(entry => PRIVATE.filter(name => exported(`${SRC}${entry}.ts`).has(name)).map(name => `streamotter/${entry}: ${name}`));
     assert.deepEqual(leaks, []);
   });

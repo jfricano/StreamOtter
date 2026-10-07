@@ -29,21 +29,22 @@ function typeLiterals(node: ts.TypeNode): ts.TypeLiteralNode[] {
   return [];
 }
 
+/** `client?: never` only makes the variants of a union exclusive; it has nothing to describe. */
+const exclusionOnly = (member: ts.Symbol) => member.declarations?.every(declaration => ts.isPropertySignature(declaration) && declaration.type?.kind === ts.SyntaxKind.NeverKeyword) ?? false;
+
 /** The members a reader expects described: an interface's or class's own, or those of an object type alias. */
 function members(symbol: ts.Symbol, checker: ts.TypeChecker): { name: string; symbol: ts.Symbol }[] {
   const declaration = symbol.declarations?.[0];
   if (declaration === undefined) return [];
   if (ts.isInterfaceDeclaration(declaration) || ts.isClassDeclaration(declaration)) {
-    const own = [...symbol.members?.values() ?? []].filter(member => !(member.flags & ts.SymbolFlags.TypeParameter) && member.escapedName !== "__index");
+    const own = [...symbol.members?.values() ?? []].filter(member => !(member.flags & ts.SymbolFlags.TypeParameter) && member.escapedName !== "__index" && !exclusionOnly(member));
     const statics = [...symbol.exports?.values() ?? []].filter(member => member.flags & (ts.SymbolFlags.Method | ts.SymbolFlags.Property));
     return [...own, ...statics].map(member => ({ name: member.escapedName === "__constructor" ? "constructor" : member.name, symbol: member }));
   }
   if (ts.isTypeAliasDeclaration(declaration)) {
-    // `client?: never` only makes a union's variants exclusive; it has nothing to describe.
     return typeLiterals(declaration.type).flatMap(literal => literal.members.flatMap(member => {
-      if (ts.isPropertySignature(member) && member.type?.kind === ts.SyntaxKind.NeverKeyword) return [];
       const memberSymbol = member.name === undefined ? undefined : checker.getSymbolAtLocation(member.name);
-      return memberSymbol === undefined ? [] : [{ name: memberSymbol.name, symbol: memberSymbol }];
+      return memberSymbol === undefined || exclusionOnly(memberSymbol) ? [] : [{ name: memberSymbol.name, symbol: memberSymbol }];
     }));
   }
   return [];

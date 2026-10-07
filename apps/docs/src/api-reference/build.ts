@@ -5,7 +5,7 @@
  * in it is built here, from escaped text, so the pages only place them.
  */
 import MarkdownIt from "markdown-it";
-import { API_MODULES, apiModuleHref, apiSymbolHref, type ApiModuleInfo } from "./modules.ts";
+import { API_MODULES, apiModuleHref, apiSymbolHref, type ApiModuleInfo, type ApiSectionInfo } from "./modules.ts";
 
 /* TypeDoc's JSON output (typedoc's JSONOutput), reduced to the fields this file reads. */
 
@@ -84,7 +84,14 @@ export type ApiKind = "function" | "class" | "interface" | "type" | "variable" |
 /** One row of an export list. `summaryHtml` is inline HTML (no block elements). */
 export interface ApiExport { name: string; kind: ApiKind; href: string; summaryHtml: string; summaryText: string; reexport: boolean }
 
-export interface ApiModule extends ApiModuleInfo { href: string; exports: ApiExport[] }
+/** One labeled group of an entry point's export list (see `sections` in modules.ts). */
+export interface ApiSection { slug: string; title: string; description: string; everyApp: boolean; exports: ApiExport[] }
+/**
+ * `sections` groups the exports by audience: the entry point's own sections, or for one that
+ * re-exports a sectioned entry point's names, its own exports first and then those names in their
+ * home sections. Null when the entry point lists its exports in one plain list.
+ */
+export interface ApiModule extends Omit<ApiModuleInfo, "sections"> { href: string; exports: ApiExport[]; sections: ApiSection[] | null }
 
 /** A labelled block under a declaration: Returns, Throws, Default, See, or an unrecognized tag. */
 export interface ApiNote { label: string; html: string }
@@ -96,6 +103,8 @@ export interface ApiParameter { name: string; typeHtml: string; optional: boolea
 export interface ApiTypeParameter { name: string; typeHtml: string; html: string }
 /** A documented field of a property's inline object type, named by its path from the property (`gateway.port`). */
 export interface ApiField { name: string; codeHtml: string; html: string }
+/** One variant's fields (labeled by its discriminant, or by the fields it requires), or the shared fields (no label). */
+export interface ApiFieldGroup { labelHtml: string | null; fields: ApiField[] }
 export interface ApiSignature {
   /** The whole signature as linked, escaped code. */
   codeHtml: string;
@@ -140,8 +149,11 @@ export interface ApiSymbol {
   typeParameters: ApiTypeParameter[];
   signatures: ApiSignature[];
   members: ApiMember[];
-  /** A union or intersection type alias's documented fields, from the object types it combines. */
-  fields: ApiField[];
+  /**
+   * A union or intersection type alias's documented fields, from the object types it combines: the
+   * fields every variant shares first (unlabeled), then one group per variant of a union.
+   */
+  fieldGroups: ApiFieldGroup[];
   notes: ApiNote[];
   examples: ApiExample[];
   deprecatedHtml: string | null;
@@ -232,21 +244,71 @@ export function buildApiReference(project: TdProject, options: BuildOptions): Ap
     renderSymbol(ctx, info, declaration, segment, importPaths.get(declaration.id) ?? [info.importPath], anchorsOf.get(declaration.id)!));
   const bySymbolId = new Map(homes.map(({ declaration }, index) => [declaration.id, symbols[index]!]));
 
+  const homeOf = new Map<ApiExport, ApiSymbol>();
   const modules = documented.map(info => {
     const exports: ApiExport[] = [];
     for (const child of byName.get(info.entry)!.children ?? []) {
       const id = child.kind === KIND.Reference ? child.target : child.id;
       const symbol = id === undefined ? undefined : bySymbolId.get(id);
       if (symbol === undefined) continue;
-      exports.push({
+      const entry = {
         name: child.name, kind: symbol.kind, href: symbol.href, summaryHtml: symbol.summaryHtml, summaryText: symbol.summaryText,
         reexport: symbol.module !== info.slug
-      });
+      };
+      homeOf.set(entry, symbol);
+      exports.push(entry);
     }
     exports.sort((a, b) => a.name.localeCompare(b.name, "en"));
     return { ...info, href: apiModuleHref(info.slug), exports };
   });
-  return { release: options.release, modules, symbols };
+  const sectionsBySlug = new Map(documented.filter(info => info.sections !== undefined).map(info => [info.slug, info.sections!]));
+  for (const module of modules) {
+    if (module.sections !== undefined) checkSections(module.importPath, module.sections, module.exports.filter(entry => !entry.reexport));
+  }
+  return {
+    release: options.release,
+    modules: modules.map(module => ({ ...module, sections: sectionsOf(module, entry => homeOf.get(entry)!, sectionsBySlug) })),
+    symbols
+  };
+}
+
+/** Fails the build unless every own export is in exactly one section and every listed name is exported. */
+function checkSections(importPath: string, sections: readonly ApiSectionInfo[], own: readonly ApiExport[]): void {
+  const listed = sections.flatMap(section => section.names);
+  const exported = new Set(own.map(entry => entry.name));
+  const unlisted = [...exported].filter(name => !listed.includes(name));
+  const unknown = listed.filter(name => !exported.has(name));
+  const twice = listed.filter((name, index) => listed.indexOf(name) !== index);
+  const problems = [
+    unlisted.length > 0 ? `add ${unlisted.join(", ")} to a section` : "",
+    unknown.length > 0 ? `remove ${unknown.join(", ")}, which it doesn't export` : "",
+    twice.length > 0 ? `list ${twice.join(", ")} only once` : ""
+  ].filter(Boolean);
+  if (problems.length > 0) throw new Error(`API reference: in the sections of ${importPath} in src/api-reference/modules.ts, ${problems.join("; ")}.`);
+}
+
+/** See `ApiModule.sections`. */
+function sectionsOf(module: ApiModuleInfo & { exports: ApiExport[] }, home: (entry: ApiExport) => ApiSymbol, sectionsBySlug: Map<string, readonly ApiSectionInfo[]>): ApiSection[] | null {
+  const own = module.exports.filter(entry => !entry.reexport);
+  const borrowed = module.exports.filter(entry => entry.reexport && sectionsBySlug.has(home(entry).module));
+  if (module.sections === undefined && borrowed.length === 0) return null;
+  const grouped = (info: ApiSectionInfo, entries: readonly ApiExport[]): ApiSection => ({
+    slug: info.slug, title: info.title, description: info.description, everyApp: info.everyApp,
+    exports: entries.filter(entry => info.names.includes(home(entry).name))
+  });
+  const sections: ApiSection[] = module.sections === undefined
+    ? [{ slug: `own-${module.slug}`, title: module.title, description: "", everyApp: true, exports: own }]
+    : module.sections.map(info => grouped(info, own));
+  // Re-exports from other sectioned entry points, in their home sections and order.
+  for (const [slug, homeSections] of sectionsBySlug) {
+    if (slug === module.slug) continue;
+    const entries = borrowed.filter(entry => home(entry).module === slug);
+    sections.push(...homeSections.map(info => grouped(info, entries)));
+  }
+  // Re-exports from entry points without sections.
+  const rest = module.exports.filter(entry => entry.reexport && !sectionsBySlug.has(home(entry).module));
+  if (rest.length > 0) sections.push({ slug: "other-re-exports", title: "Other re-exports", description: "", everyApp: false, exports: rest });
+  return sections.filter(section => section.exports.length > 0);
 }
 
 /** Type declarations first: in a clash, the interface or type keeps the bare name. */
@@ -305,7 +367,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
   let codeHtml: string | null = null;
   let signatures: ApiSignature[] = [];
   let members: ApiMember[] = [];
-  let fields: ApiField[] = [];
+  let fieldGroupList: ApiFieldGroup[] = [];
   if (kind === "function") {
     signatures = (declaration.signatures ?? []).map(signature => renderSignature(ctx, signature, `function ${declaration.name}`, signature === declaration.signatures?.[0] && declaration.comment === undefined));
   } else if (kind === "variable") {
@@ -318,7 +380,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
     codeHtml = `<span class="kw">type</span> ${escapeHtml(declaration.name)}${typeParametersHtml(ctx, declaration.typeParameters)} = ${objectLike ? "{ … }" : typeHtml(ctx, target, { block: true })}`;
     // A union or intersection of object types (Schema, StreamOtterProviderProps) shows in full above;
     // its fields' doc comments are listed under it.
-    if (target?.type === "union" || target?.type === "intersection") fields = fieldDocs(ctx, target, "");
+    fieldGroupList = fieldGroups(ctx, target);
     // A function type's code is already the declaration; its signature is listed only for what it documents.
     if (target?.type === "reflection" && target.declaration?.signatures?.length) {
       signatures = target.declaration.signatures.map(signature => renderSignature(ctx, signature, null, false))
@@ -367,7 +429,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
     typeParameters: kind === "function" ? [] : typeParameterDocs(ctx, declaration.typeParameters),
     signatures,
     members,
-    fields,
+    fieldGroups: fieldGroupList,
     notes: doc.notes,
     examples: doc.examples,
     deprecatedHtml: doc.deprecated,
@@ -426,11 +488,39 @@ function fieldDocs(ctx: Context, type: TdType | undefined, prefix: string): ApiF
     const doc = commentHtml(ctx, child.comment ?? child.signatures?.[0]?.comment);
     const own: ApiField[] = doc.html === "" ? [] : [{
       name: path,
-      codeHtml: `${child.flags?.isReadonly ? "readonly " : ""}${escapeHtml(memberName(child.name))}${child.flags?.isOptional ? "?" : ""}: ${child.kind === KIND.Method ? reflectionTypeHtml(ctx, { ...child, kind: KIND.TypeLiteral, children: [] }) : typeHtml(ctx, child.type)}`,
+      codeHtml: `${child.flags?.isReadonly ? "readonly " : ""}${escapeHtml(path)}${child.flags?.isOptional ? "?" : ""}: ${child.kind === KIND.Method ? reflectionTypeHtml(ctx, { ...child, kind: KIND.TypeLiteral, children: [] }) : typeHtml(ctx, child.type)}`,
       html: doc.html
     }];
     return [...own, ...fieldDocs(ctx, child.type, `${path}.`)];
   }));
+}
+
+/** See `ApiSymbol.fieldGroups`. Anything other than a union or intersection has none. */
+function fieldGroups(ctx: Context, type: TdType | undefined): ApiFieldGroup[] {
+  if (type?.type === "union") {
+    return (type.types ?? []).map((variant, index) => ({ labelHtml: variantLabel(ctx, variant, index), fields: fieldDocs(ctx, variant, "") }))
+      .filter(group => group.fields.length > 0);
+  }
+  if (type?.type === "intersection") {
+    const parts = type.types ?? [];
+    const shared = parts.filter(part => part.type !== "union").flatMap(part => fieldDocs(ctx, part, ""));
+    return [...(shared.length > 0 ? [{ labelHtml: null, fields: shared }] : []), ...parts.filter(part => part.type === "union").flatMap(part => fieldGroups(ctx, part))];
+  }
+  return [];
+}
+
+/**
+ * A union variant's label: its discriminant (`kind: "session"`), the first field whose type is a
+ * literal or a union of literals; otherwise the fields it requires ("With client"); otherwise its position.
+ */
+function variantLabel(ctx: Context, variant: TdType, index: number): string {
+  const children = inlineObjects(variant).flatMap(object => object.children ?? []);
+  const literal = (type: TdType | undefined): boolean => type?.type === "literal" || (type?.type === "union" && (type.types ?? []).every(literal));
+  const discriminant = children.find(child => literal(child.type));
+  if (discriminant !== undefined) return `<code>${escapeHtml(memberName(discriminant.name))}: ${typeHtml(ctx, discriminant.type)}</code>`;
+  const required = children.filter(child => !child.flags?.isOptional && !(child.type?.type === "intrinsic" && child.type.name === "never"));
+  if (required.length > 0) return `With ${required.map(child => `<code>${escapeHtml(memberName(child.name))}</code>`).join(", ")}`;
+  return `Variant ${index + 1}`;
 }
 
 function typeParameterDocs(ctx: Context, parameters: TdReflection[] | undefined): ApiTypeParameter[] {

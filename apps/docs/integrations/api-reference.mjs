@@ -53,7 +53,9 @@ export function sourceUrlFor(version) {
 /** Runs TypeDoc over the installed release's entry points and returns its JSON model. */
 export async function readStreamotterModel(installed = installedStreamotter()) {
   // Contracts first: a symbol several entry points export is documented where it is declared.
-  const order = ["contracts", ...documentedModules(installed).map(module => module.entry).filter(entry => entry !== "contracts")];
+  const entries = documentedModules(installed).map(module => module.entry);
+  if (!entries.includes("contracts")) throw new Error("API reference: streamotter no longer exports ./contracts, where the shared types are declared.");
+  const order = ["contracts", ...entries.filter(entry => entry !== "contracts")];
   const entryPoints = order.map(entry => join(installed.dir, "dist", `${entry}.d.ts`));
   // The declarations import node: modules; @types/node is this app's own dependency.
   const typesNode = dirname(createRequire(import.meta.url).resolve("@types/node/package.json"));

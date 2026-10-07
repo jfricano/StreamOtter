@@ -36,12 +36,17 @@ const description = symbol.summaryText || `The ${label.toLowerCase()} ${symbol.n
       {symbol.sourceUrl && <p><a href={symbol.sourceUrl}>View source on GitHub ↗</a></p>}
     </div>
   </section>
-  {symbol.fields.length > 0 && (
+  {symbol.fieldGroups.length > 0 && (
     <section aria-labelledby="group-fields">
       <h2 id="group-fields">Fields</h2>
-      <dl class="api-fields">{symbol.fields.map(field => (
-        <div><dt><code set:html={field.codeHtml} /></dt><dd class="api-doc" set:html={field.html} /></div>
-      ))}</dl>
+      {symbol.fieldGroups.map(group => (
+        <div class="api-variant">
+          {group.labelHtml && <h3 set:html={group.labelHtml} />}
+          <dl class="api-fields">{group.fields.map(field => (
+            <div><dt><code set:html={field.codeHtml} /></dt><dd class="api-doc" set:html={field.html} /></div>
+          ))}</dl>
+        </div>
+      ))}
     </section>
   )}
   {groups.map(group => (
@@ -70,6 +75,9 @@ const description = symbol.summaryText || `The ${label.toLowerCase()} ${symbol.n
 .api-import { display: grid; gap: 8px; color: var(--ink-2); }
 .api-import p { margin: 0; }
 .api-member { display: grid; gap: 12px; padding-top: 20px; border-top: 1px solid var(--line); min-width: 0; }
+.api-variant { display: grid; gap: 10px; min-width: 0; }
+.api-variant h3 { font-size: 1rem; overflow-wrap: anywhere; }
+.api-variant h3 :global(code) { font-size: .9rem; }
 .api-fields { margin: 0; display: grid; gap: 0; border-left: 2px solid var(--line); }
 .api-fields div { display: grid; gap: 4px; padding: 10px 0 10px 16px; min-width: 0; }
 .api-fields dt code { background: none; padding: 0; font-size: .88rem; overflow-wrap: anywhere; }
