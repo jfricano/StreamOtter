@@ -193,7 +193,7 @@ describe("V1.1: incident diagnoses never quote payload text", () => {
   const HOLD: FailureHandlingConfig = { sources: { orders: { invalidJson: "quarantine-hold", invalidPublicPayload: "quarantine-hold" } } };
   const SECRET = "SSN=078-05-1120";
 
-  it("names a mapper error without its message, while the V1 log line keeps it", async () => {
+  it("names a mapper error without its message, in the incident and the log line alike", async () => {
     const { logger, pauses } = capturingLogger();
     h = await startHarness({ failureHandling: HOLD, logger, fixtures: [{ key: "k", value: { tenantId: "acme", revision: "1", embedded: SECRET } }] });
     h.app.mapOverride = value => { JSON.parse((value as { embedded: string }).embedded); return []; };
@@ -202,7 +202,8 @@ describe("V1.1: incident diagnoses never quote payload text", () => {
     const [incident] = [...h.internals.incidentStore()!.list({ state: "all" }).items];
     assert.equal(incident?.failureClass, "mapper-error");
     assert.equal(incident?.diagnosis, "map handler threw SyntaxError");
-    assert.ok(String(pauses[0]?.["reason"]).includes("SyntaxError"), "the operator log keeps V1's reason");
+    assert.equal(pauses[0]?.["reason"], "map handler threw SyntaxError");
+    assert.ok(!JSON.stringify(pauses[0]).includes("078-05"), JSON.stringify(pauses[0]));
   });
 
   it("keeps an error code but never a payload-derived property name", async () => {
@@ -222,4 +223,48 @@ describe("V1.1: incident diagnoses never quote payload text", () => {
     const [thrown] = [...h.internals.incidentStore()!.list({ state: "all" }).items];
     assert.equal(thrown?.diagnosis, "map handler threw Error (code ELOOKUP)");
   });
+});
+
+/**
+ * The "Source paused" log line is metadata only (V1_1_SOURCE_FAILURE_SPEC.md §5):
+ * its reason is the same sanitized diagnosis an incident gets, with or without
+ * failureHandling, and never quotes record data.
+ */
+describe("the Source paused log line never quotes record data", () => {
+  let h: Harness | undefined;
+  afterEach(async () => { await h?.close(); h = undefined; });
+
+  const SECRET = "SSN=078-05-1120";
+  const cases: { name: string; map: (value: Json) => unknown; reason: string }[] = [
+    { name: "a JSON.parse error quoting its input", map: () => { JSON.parse(SECRET); return []; }, reason: "map handler threw SyntaxError" },
+    { name: "an error message with a code", map: () => { throw Object.assign(new Error(`lookup failed for ${SECRET}`), { code: "ELOOKUP" }); }, reason: "map handler threw Error (code ELOOKUP)" },
+    { name: "a TransientMappingError message", map: () => { throw new TransientMappingError(`pricing failed for ${SECRET}`); }, reason: "map handler threw TransientMappingError" },
+    { name: "a thrown non-Error", map: () => { throw SECRET; }, reason: "map handler threw a non-Error string" },
+    { name: "an unexpected output field named by the record", map: value => [{ ...valid(value), [SECRET]: true }], reason: "output 0: unexpected field" },
+    { name: "a data property the schema doesn't allow", map: value => [{ ...valid(value), data: { ...(value as Value).order, [SECRET]: true } }], reason: "output 0: data: a property is not allowed by the schema" }
+  ];
+
+  for (const withFailureHandling of [false, true]) {
+    for (const testCase of cases) {
+      it(`logs ${testCase.name} by its diagnosis only${withFailureHandling ? " (with failureHandling)" : ""}`, async () => {
+        const { logger, pauses } = capturingLogger();
+        h = await startHarness({
+          fixtures: [orderRecord("acme", "ord_1", 2, "processing", 20)],
+          logger,
+          ...(withFailureHandling ? { failureHandling: { sources: { orders: { invalidPublicPayload: "quarantine-hold" } } } } : {})
+        });
+        h.app.mapOverride = testCase.map;
+        assert.equal(await h.advance(1), 0);
+        assert.equal(pauses.length, 1);
+        assert.equal(pauses[0]?.["reason"], testCase.reason);
+        assert.ok(!JSON.stringify(pauses[0]).includes("078-05"), JSON.stringify(pauses[0]));
+        assert.deepEqual(Object.keys(pauses[0]!).sort(), ["channel", "code", "failureClass", "position", "reason", "sourceId"]);
+        if (withFailureHandling) {
+          await h.internals.failuresSettled();
+          const [incident] = [...h.internals.incidentStore()!.list({ state: "all" }).items];
+          assert.equal(incident?.diagnosis, testCase.reason, "the log line and the incident share one diagnosis");
+        }
+      });
+    }
+  }
 });

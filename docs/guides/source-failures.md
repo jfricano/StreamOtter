@@ -324,7 +324,7 @@ Protect the quarantine topic, the state directory and their backups as you prote
 
 ## 6. Incident procedures
 
-Each procedure starts from what you see: readiness reasons from the [health listener](../DEPLOYMENT.md#health-checks), `streamotter status`, and gateway log lines. Log lines carry IDs and categories, never payloads or credentials. The one exception is V1's "Source paused" line, which includes up to 200 characters of a `map` error's message; keep record contents out of the errors your mappers throw.
+Each procedure starts from what you see: readiness reasons from the [health listener](../DEPLOYMENT.md#health-checks), `streamotter status`, and gateway log lines. Log lines carry IDs and categories, never payloads or credentials.
 
 ### 6.1 Credentials and ACLs
 
@@ -401,7 +401,7 @@ Two topics have retention that matters.
 
 ### 6.5 Repair a poison record
 
-`failures show` names the class, the stage and the next action. Its diagnosis names a `map` error by its type and code only, never its message, because a message can quote the record (a `JSON.parse` error does). The full message is in the gateway's "Source paused" log line, as in V1. Then:
+`failures show` names the class, the stage and the next action. Its diagnosis names a `map` error by its type and code only, never its message, because a message can quote the record (a `JSON.parse` error does). The gateway's "Source paused" log line names it the same way. To see the message, read the record with `failures show --raw` where evidence was captured, and run your mapper on it outside the gateway. Then:
 
 | Cause | Repair |
 | --- | --- |
