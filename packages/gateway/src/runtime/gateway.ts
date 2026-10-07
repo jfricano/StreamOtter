@@ -665,17 +665,18 @@ export class GatewayRuntime implements SessionOwner {
       traces.record({ requestId, stage, outcome, sourceId: source.id, ...extra });
     // The log line and the incident share one diagnosis, which never quotes record data.
     const pause = (stage: "validate" | "map" | "queue", code: ErrorCode, failureClass: FailureClass, diagnosis: string, channel: string | null): ProcessOutcome => {
+      const reason = diagnosis.slice(0, 512);
       trace(stage, stage === "map" ? "failed" : "rejected", channel === null ? { errorCode: code } : { errorCode: code, channel });
       this.core.logger.warn("Source paused on an unprocessable record; it will not be committed or skipped", {
         sourceId: source.id,
         position: input.position as unknown as Json,
         code,
         failureClass,
-        reason: diagnosis.slice(0, 512),
+        reason,
         ...(channel === null ? {} : { channel })
       });
       this.#setSourceStatus(source, "paused", code);
-      return { kind: "pause", code, failureClass, stage, channel, diagnosis: diagnosis.slice(0, 512) };
+      return { kind: "pause", code, failureClass, stage, channel, diagnosis: reason };
     };
     trace("source", "ok");
 

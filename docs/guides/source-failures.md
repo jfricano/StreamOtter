@@ -401,7 +401,7 @@ Two topics have retention that matters.
 
 ### 6.5 Repair a poison record
 
-`failures show` names the class, the stage and the next action. Its diagnosis names a `map` error by its type and code only, never its message, because a message can quote the record (a `JSON.parse` error does). The gateway's "Source paused" log line names it the same way. To see the message, read the record with `failures show --raw` where evidence was captured, and run your mapper on it outside the gateway. Then:
+`failures show` names the class, the stage and the next action. Its diagnosis names a `map` error by its type and code only, never its message, because a message can quote the record (a `JSON.parse` error does). The gateway's "Source paused" log line names it the same way. To see the message, read the record with your Kafka tooling at the topic, partition and offset in the log line or the incident, and run your mapper on it outside the gateway. (A `map` error captures no evidence, so `failures show --raw` has no bytes for it.) Then:
 
 | Cause | Repair |
 | --- | --- |

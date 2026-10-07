@@ -226,7 +226,7 @@ describe("V1.1: incident diagnoses never quote payload text", () => {
 });
 
 /**
- * The "Source paused" log line is metadata only (V1_1_SOURCE_FAILURE_SPEC.md §5):
+ * The "Source paused" log line is metadata only (V1_1_SOURCE_FAILURE_SPEC.md §5.3):
  * its reason is the same sanitized diagnosis an incident gets, with or without
  * failureHandling, and never quotes record data.
  */
@@ -241,6 +241,7 @@ describe("the Source paused log line never quotes record data", () => {
     { name: "a TransientMappingError message", map: () => { throw new TransientMappingError(`pricing failed for ${SECRET}`); }, reason: "map handler threw TransientMappingError" },
     { name: "a thrown non-Error", map: () => { throw SECRET; }, reason: "map handler threw a non-Error string" },
     { name: "an unexpected output field named by the record", map: value => [{ ...valid(value), [SECRET]: true }], reason: "output 0: unexpected field" },
+    { name: "a params property the schema doesn't allow", map: value => [{ ...valid(value), params: { orderId: "ord_1", [SECRET]: "x" } }], reason: "output 0: params: a property is not allowed by the schema" },
     { name: "a data property the schema doesn't allow", map: value => [{ ...valid(value), data: { ...(value as Value).order, [SECRET]: true } }], reason: "output 0: data: a property is not allowed by the schema" }
   ];
 
