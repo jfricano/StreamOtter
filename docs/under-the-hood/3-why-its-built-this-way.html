@@ -420,6 +420,7 @@ section[id], aside { scroll-margin-top: 84px; }
         <tr><td><b>JSON only</b></td><td>One format, done well.</td><td>Schema Registry and Avro come in V2; Protobuf is beyond V3.</td><td class="ref">V1_API.md §1</td></tr>
         <tr><td><b>Built-in <code>node:sqlite</code> for the V1.1 journal</b></td><td>Turning on quarantine adds no npm dependency. The journal sits behind a store interface, so another engine could be swapped in, but none ships.</td><td>It needs Node 24.15 or later.</td><td class="ref">V1_1_API.md §11 D1 (owner decision, October 4, refining ADR-15A §2)</td></tr>
         <tr><td><b>Few dependencies, homegrown helpers</b></td><td>Fewer upgrades to chase and a smaller attack surface. Each piece can be reviewed in place.</td><td>Validation, argument parsing and the UI are maintained here.</td><td class="ref">packages/*/package.json</td></tr>
+        <tr><td><b>React hooks as a thin subpath (1.0)</b></td><td>React apps were all copying the same hook pattern from the client README, and it's easy to get subtly wrong: StrictMode closes a client made in <code>useMemo</code>, and a params object rebuilt on each render resubscribes. A subpath of the client (<code>/react</code>) is one less package to version and publish, and React is an optional peer, so apps without it install nothing.</td><td>No caching, retries or sharing between components: two components showing the same view hold two subscriptions.</td><td class="ref">releases/v1.3/README.md · API.md “Decisions” (PR #73)</td></tr>
         <tr><td><b>Compiled JavaScript handlers only</b></td><td>No hidden TypeScript compilation at runtime, so what you deploy is what runs.</td><td>A build step for your handlers.</td><td class="ref">V1_API.md §11</td></tr>
       </tbody>
     </table>
@@ -449,6 +450,7 @@ section[id], aside { scroll-margin-top: 84px; }
     <ul>
       <li><b>The “Alternatives” lines</b> sometimes name options the docs only imply. Example: deltas aren't discussed as a rejected design; the docs simply require full state.</li>
       <li><b>The costs</b> are my reading of each decision's consequences, except where a document states them.</li>
+      <li><b>The React hooks</b> (new in 1.0) were read on PR #73 (<code>feat/v1.3-react-hooks</code> at e919cc0), not at 1c75aaa.</li>
     </ul>
   </div>
 </section>

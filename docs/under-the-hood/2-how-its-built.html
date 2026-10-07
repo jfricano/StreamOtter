@@ -215,7 +215,7 @@ section[id], aside { scroll-margin-top: 84px; }
     <div class="idea"><b>Functions outside, classes inside</b><span>Users get <code>createGateway()</code> and <code>createClient()</code>, which return interfaces. The classes stay internal.</span></div>
     <div class="idea"><b>Composition, not inheritance</b><span>Almost nothing uses <code>extends</code>. Classes hold references to each other through interfaces.</span></div>
     <div class="idea"><b>A core with plug-in edges</b><span>Kafka, sockets, SQLite and the quarantine topic are adapters behind interfaces, so tests can swap in fakes.</span></div>
-    <div class="idea"><b>Few dependencies</b><span>kafkajs, socket.io and socket.io-client, and that's all. Validation, argument parsing, the UI and storage use built-ins or small homegrown code.</span></div>
+    <div class="idea"><b>Few dependencies</b><span>kafkajs, socket.io and socket.io-client, and that's all. React is only an optional peer, for the 1.0 hooks. Validation, argument parsing, the UI and storage use built-ins or small homegrown code.</span></div>
   </div>
   <nav class="toc" aria-label="Sections">
     <a href="#repo">Repo and build</a>
@@ -239,7 +239,7 @@ section[id], aside { scroll-margin-top: 84px; }
   <pre class="code">packages/
   contracts/   types, validators, wire protocol, limits      (0 dependencies)
   gateway/     the server: runtime/ sources/ transport/ failures/ operator/ management/
-  client/      browser SDK
+  client/      browser SDK, plus React hooks in src/react.ts (1.0)
   cli/         streamotter init | validate | generate | dev | start, plus operator commands (status, failures …, sources …)
   streamotter/ all-in-one package that re-exports the four above
 apps/workbench/            the dev inspector UI (bundled by esbuild)
@@ -271,6 +271,7 @@ contracts/v1/              type-level checks of the public contract</pre>
         <li>The JSON Schema subset is a homegrown validator in <code>contracts/src/schema.ts</code>, which rejects unsupported keywords instead of ignoring them. There's no zod or ajv.</li>
         <li>The CLI parses arguments with <code>node:util parseArgs</code>, and the failure journal uses the built-in <code>node:sqlite</code>.</li>
         <li>The workbench is plain DOM code with a tiny <code>h()</code> element builder that never parses HTML. It uses no framework.</li>
+        <li><b>React</b> 18 or later is an optional peer dependency of the client, for the hooks new in 1.0. The SDK's main entry never imports it, so apps without React install and bundle nothing new.</li>
       </ul>
       <span class="ref">packages/*/package.json · apps/workbench/src/dom.ts · cli/src/cli.ts</span>
     </div>
@@ -321,6 +322,15 @@ export function createGatewayRuntime(options, internal = {}) {
         <li>All shared shapes (frames, <code>Principal</code>, <code>StreamEvent</code>, error codes, limits) live in <code>@streamotter/contracts</code>, which has no runtime dependencies.</li>
       </ul>
       <span class="ref">contracts/src/types.ts · cli/src/generate.ts</span>
+    </div>
+    <div class="comp">
+      <h3>React hooks: functions over the same factory (1.0)</h3>
+      <ul>
+        <li><code>@streamotter/client/react</code> is plain functions and one React context, with no class. <code>StreamOtterProvider</code> calls <code>createClient()</code> inside the effect that closes it, because <code>close()</code> is permanent and StrictMode runs effects twice in development.</li>
+        <li><code>useSubscription</code> turns the channel, version and param values (sorted by name, with their types) into one identity key, subscribes in an effect keyed on it, and removes its listeners before it unsubscribes.</li>
+        <li><code>useConnectionState</code> reads the client through <code>useSyncExternalStore</code>. <code>createStreamOtterHooks&lt;AppChannels&gt;()</code> returns the same functions typed for your channels, so the typing costs nothing at run time.</li>
+      </ul>
+      <span class="ref">client/src/react.ts · docs/releases/v1.3/API.md (PR #73)</span>
     </div>
   </div>
 </section>
@@ -661,6 +671,7 @@ export function createGatewayRuntime(options, internal = {}) {
     </table>
   </div>
   <p class="prose">The adapter interfaces are what make the integration layer cheap. Most behavior is proven with the fixture source in seconds, and only Kafka-specific behavior needs a broker.</p>
+  <p class="prose">The React hooks new in 1.0 (PR #73) add two test files: a unit file that renders against a fake client in happy-dom, and an integration file against the fixture gateway. Every test name starts with the API contract clauses it covers.</p>
 </section>
 
 <section id="reading">
@@ -675,6 +686,7 @@ export function createGatewayRuntime(options, internal = {}) {
     <li><code>runtime/session.ts</code> and <code>transport/socketio.ts</code>: one browser connection, from the socket up.</li>
     <li><code>sources/kafka.ts</code>: kafkajs, offsets, pause and seek.</li>
     <li><code>packages/client/src/client.ts</code> and <code>subscription.ts</code>: the browser half.</li>
+    <li><code>packages/client/src/react.ts</code> (1.0): the React provider and hooks, about 380 lines over the same SDK.</li>
     <li>Then V1.1: <code>failures/service.ts</code>, <code>operator/service.ts</code> and <code>docs/guides/source-failures.md</code>.</li>
   </ol>
 </section>
@@ -683,7 +695,7 @@ export function createGatewayRuntime(options, internal = {}) {
   <div class="section-head">
     <span class="eyebrow">Confidence</span>
     <h2>What's inferred rather than read</h2>
-    <p>Everything with a file reference was read in the code at 1c75aaa. These points are my interpretation.</p>
+    <p>Everything with a file reference was read in the code at 1c75aaa, except the React hooks, which were read on PR #73 at e919cc0. These points are my interpretation.</p>
   </div>
   <div class="inferred">
     <ul>

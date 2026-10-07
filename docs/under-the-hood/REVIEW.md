@@ -22,3 +22,7 @@ Before publication, five independent reviewers who had not written the pages che
 - **Code structure in part 2.** The CLI command list, which objects implement `SourceSink` and `OperatorHost`, `WaiterSet`, generations versus epochs, and `ProcessOutcome`'s four variants.
 
 Configurable defaults are now labeled as defaults throughout.
+
+## React hooks addition (October 7, 2026)
+
+The React hooks ship in 1.0, so short passages about them were added to the introduction and parts 1 to 5, read from PR #73 (`feat/v1.3-react-hooks` at e919cc0). A fresh reviewer checked each added claim against that branch: line counts, the `streamotter/react` shim, React as an optional peer, the identity key and effect cleanup, the tests, the part 5 snippet against the declared API, and that two components on one view take two `maxSubscriptionsPerConnection` slots. No corrections were needed. The same pass removed three line-number citations in part 1 that the first trim missed.

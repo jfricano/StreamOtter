@@ -310,8 +310,24 @@ order.on("state", ({ state }) =&gt; showFreshness(state));
 order.on("error", err =&gt; showError(err));</pre>
       <ul>
         <li>Treat any state other than <code>live</code> as “may be out of date”.</li>
-        <li>Behind the same-origin proxy, no <code>origin</code> option is needed. A React hook is described in the client package guide.</li>
+        <li>Behind the same-origin proxy, no <code>origin</code> option is needed.</li>
       </ul>
+      <p><b>In React</b> (new in 1.0), use the provider and hooks from <code>streamotter/react</code> instead:</p>
+<pre class="code">export const { useSubscription } =
+  createStreamOtterHooks&lt;AppChannels&gt;();
+
+&lt;StreamOtterProvider key={user.id}
+  options={{ getToken: () =&gt; session.getAccessToken() }}&gt;
+
+const order = useSubscription("orderStatus", {
+  channelVersion: channelVersions.orderStatus,
+  params: { orderId } });
+// order.data, order.live, order.state, order.error</pre>
+      <ul>
+        <li>The provider creates the client after mounting and closes it on unmount. A new <code>key</code> switches users.</li>
+        <li><code>useSubscription</code> subscribes while the component is mounted, compares params by value, keeps the last data while <code>stale</code>, and takes <code>null</code> to wait until an id is known. Each call is its own subscription.</li>
+      </ul>
+      <span class="ref">client/src/react.ts · docs/releases/v1.3/API.md (PR #73)</span>
     </div>
     <div class="comp">
       <h3>5. Handle access changes</h3>
@@ -521,6 +537,7 @@ order.on("error", err =&gt; showError(err));</pre>
       <li><b>“The usual adjustments”</b> under Tuning is my reading of which limits matter most. The docs don't rank them.</li>
       <li><b>The production figure</b> draws the documented setup. Only Caddy is verified; nginx is documented but “not exercised”.</li>
       <li><b>Code snippets are trimmed</b> from the guides. Use the guides for copy-paste.</li>
+      <li><b>The React hooks</b> (new in 1.0) were read on PR #73 (<code>feat/v1.3-react-hooks</code> at e919cc0), not at 1c75aaa.</li>
     </ul>
   </div>
 </section>

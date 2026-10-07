@@ -266,6 +266,7 @@ section[id], aside { scroll-margin-top: 84px; }
     <div><b>No history or replay.</b> A browser that was away gets the current state, not the updates it missed. Retained event channels are V2.</div>
     <div><b><code>live</code> isn't a promise of freshness.</b> It means caught up with the source while the source is healthy. It doesn't say how recent the data is, or that your UI drew it.</div>
     <div><b>A receipt isn't a render.</b> A receipt means the SDK validated the frame and handed it to your listener. The SDK doesn't wait on promises your listener returns.</div>
+    <div><b>The React hooks add no promises of their own.</b> <code>useSubscription</code> (new in 1.0) reports the SDK's state unchanged and keeps the last data while <code>stale</code>, so <code>live: false</code> means “may be out of date”, as above. Two components showing the same view hold two subscriptions, and each counts toward <code>maxSubscriptionsPerConnection</code>.</div>
     <div><b>It can't fix your data.</b> If your database and your topic disagree, for example because a change was saved but never published, StreamOtter can't tell. That's why the outbox pattern is required (section 05).</div>
     <div><b>One gateway only.</b> There's no clustering in V1. Two gateways on one consumer group would each deliver only part of the data.</div>
     <div><b>Total memory isn't capped.</b> Budgets cap queued frames, not Node's total memory or kafkajs's buffers.</div>
@@ -453,6 +454,8 @@ section[id], aside { scroll-margin-top: 84px; }
       <li><b>The headline promise</b>, “a view is never silently wrong”, is my summary of V1_API.md §5–§6 (“Never silently switch to data dropping while still reporting <code>live</code>”). The spec doesn't use that phrase as a slogan.</li>
       <li><b>The “user sees” column</b> of the failure matrix describes the SDK's states. What a person actually sees depends on how the app renders <code>stale</code>.</li>
       <li><b>The client backoff and token refresh timing</b> come from my earlier reading of <code>client/src/client.ts</code>, not from a spec table.</li>
+      <li><b>That each hook subscription counts</b> toward <code>maxSubscriptionsPerConnection</code> follows from the hooks adding no sharing (API.md S8) and from what the limit counts. I didn't test it.</li>
+      <li><b>The React hooks</b> (new in 1.0) were read on PR #73 (<code>feat/v1.3-react-hooks</code> at e919cc0), not at 1c75aaa.</li>
     </ul>
   </div>
 </section>

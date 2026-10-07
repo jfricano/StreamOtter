@@ -1,6 +1,6 @@
 # Under the Hood
 
-October 7, 2026 · Written from `main` at 1c75aaa (packages at `0.2.0-rc.1`) · Reviewed for publication
+October 7, 2026 · Written from `main` at 1c75aaa (packages at `0.2.0-rc.1`), plus the React hooks shipping in 1.0 from PR #73 (e919cc0) · Reviewed for publication
 
 Five short parts that explain StreamOtter without reading every line of code, for engineers deciding whether to adopt it, would-be contributors, and curious readers. Start with the [introduction](./index.html), which says what each part covers and suggests a reading order for each kind of reader. Each page is a self-contained HTML file: open it in a browser. The pages link to each other.
 
@@ -14,4 +14,4 @@ Five short parts that explain StreamOtter without reading every line of code, fo
 
 **Reading order for contributors:** 1, then the first-run section of 5, then 2, 3, 4, and the rest of 5 as reference. Then [CONTRIBUTING](../../CONTRIBUTING.md).
 
-**Status.** Written from the code and docs at 1c75aaa, then checked claim by claim against `main` by independent reviewers, and corrected. File references name files, not line numbers, so they stay valid as the code moves; re-check the pages when the packages change behavior. [REVIEW.md](./REVIEW.md) records the review. Each part ends with the points that are interpretation rather than something read in the code. The [specification](../V1_API.md), the [guides](../guides/) and the code win wherever they disagree with these pages. They are meant to be linked from the streamotter.dev Docs page. "Under the Hood" is a working title.
+**Status.** Written from the code and docs at 1c75aaa, then checked claim by claim against `main` by independent reviewers, and corrected. File references name files, not line numbers, so they stay valid as the code moves; re-check the pages when the packages change behavior. The React hooks passages were read on PR #73 and reviewed the same way. [REVIEW.md](./REVIEW.md) records the review. Each part ends with the points that are interpretation rather than something read in the code. The [specification](../V1_API.md), the [guides](../guides/) and the code win wherever they disagree with these pages. They are meant to be linked from the streamotter.dev Docs page. "Under the Hood" is a working title.

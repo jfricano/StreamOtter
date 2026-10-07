@@ -223,7 +223,7 @@ section[id], aside { scroll-margin-top: 84px; }
   </div>
   <figure>
     <div class="diagram">
-      <svg viewBox="0 0 1250 800" role="img" aria-label="Kafka records flow through the Kafka source adapter, the record pipeline that calls your map handler, the subscription router and per-subscription queues, the Socket.IO client session, and into the browser SDK. Offsets are committed back to Kafka after a record is queued; browsers send receipts back. Failed records go to the failure service, which writes the SQLite journal and the Kafka quarantine topic and can advance the source. The operator CLI reaches the operator service over a local socket. The development workbench calls the management API for config, sources, traces, preview tokens and failures, and its Preview tab subscribes through the browser SDK like any browser.">
+      <svg viewBox="0 0 1250 800" role="img" aria-label="Kafka records flow through the Kafka source adapter, the record pipeline that calls your map handler, the subscription router and per-subscription queues, the Socket.IO client session, and into the browser SDK or its React hooks. Offsets are committed back to Kafka after a record is queued; browsers send receipts back. Failed records go to the failure service, which writes the SQLite journal and the Kafka quarantine topic and can advance the source. The operator CLI reaches the operator service over a local socket. The development workbench calls the management API for config, sources, traces, preview tokens and failures, and its Preview tab subscribes through the browser SDK like any browser.">
         <defs>
           <marker id="md" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="m-data" d="M0,0 L10,5 L0,10 z"/></marker>
           <marker id="mb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="m-back" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -326,6 +326,7 @@ section[id], aside { scroll-margin-top: 84px; }
         <text x="1142" y="262">receipts frames</text>
         <text x="1142" y="279">jittered</text>
         <text x="1142" y="296">reconnect</text>
+        <text x="1142" y="320">+ React hooks</text>
 
         <!-- forward data arrows -->
         <path class="a-data" d="M160,200 L228,200" marker-end="url(#md)"/>
@@ -487,10 +488,10 @@ section[id], aside { scroll-margin-top: 84px; }
       <tbody>
         <tr><td><span class="pkg">@streamotter/contracts</span></td><td>The shared vocabulary: every public type (<code>types.ts</code>), config validation, the small JSON Schema dialect and param canonicalization, default limits, protocol constants and event names, V1.1 failure, operator and workbench-host contracts. Imported by everything.</td><td class="ref">contracts/src/types.ts, config.ts, schema.ts, limits.ts, protocol.ts, failures.ts, operator.ts</td><td class="num">2,271</td></tr>
         <tr><td><span class="pkg">@streamotter/gateway</span></td><td>The server. <code>createGateway()</code> and <code>defineProject()</code>, the Kafka and fixture sources, the record pipeline, subscriptions and backpressure, the Socket.IO transport, V1.1 failure handling. Subpaths <code>/management</code> (dev HTTP API), <code>/operator</code> (operator API + socket), <code>/internals</code> (CLI and tests only).</td><td class="ref">gateway/src/index.ts, runtime/, sources/, transport/, failures/, operator/, management/</td><td class="num">10,242</td></tr>
-        <tr><td><span class="pkg">@streamotter/client</span></td><td>The browser SDK. <code>createClient&lt;AppChannels&gt;()</code>, one Socket.IO connection, typed subscriptions, frame validation, receipts, reconnect, token refresh.</td><td class="ref">client/src/client.ts, connection.ts, subscription.ts, frames.ts</td><td class="num">1,226</td></tr>
+        <tr><td><span class="pkg">@streamotter/client</span></td><td>The browser SDK. <code>createClient&lt;AppChannels&gt;()</code>, one Socket.IO connection, typed subscriptions, frame validation, receipts, reconnect, token refresh. New in 1.0: React hooks on the <code>/react</code> subpath (<code>StreamOtterProvider</code>, <code>useSubscription</code>, <code>useConnectionState</code>), 382 more lines.</td><td class="ref">client/src/client.ts, connection.ts, subscription.ts, frames.ts, react.ts (1.0)</td><td class="num">1,226</td></tr>
         <tr><td><span class="pkg">@streamotter/cli</span></td><td>The <code>streamotter</code> command: init, validate, generate, dev, start, plus the operator commands. Also exports <code>generateFiles()</code> for programmatic codegen.</td><td class="ref">cli/src/cli.ts, generate.ts, templates.ts, operator.ts</td><td class="num">1,372</td></tr>
         <tr><td><span class="pkg">@streamotter/workbench</span></td><td>A static single-page app (no runtime deps) that <code>streamotter dev</code> serves, or that you host yourself under the workbench host contract (WHC-1). Tabs: Connect, Define, Preview, Inspect, Failures, Export.</td><td class="ref">apps/workbench/src/main.ts, api.ts, host.ts, views/*.ts, build.mjs</td><td class="num">1,680</td></tr>
-        <tr><td><span class="pkg">streamotter</span></td><td>The all-in-one package. Six two-line shim files that re-export the others under <code>streamotter/client</code>, <code>/gateway</code>, <code>/gateway/management</code>, <code>/gateway/operator</code>, <code>/contracts</code>, <code>/cli</code>, plus the same <code>streamotter</code> bin.</td><td class="ref">streamotter/src/*.ts, streamotter/bin/streamotter.js</td><td class="num">12</td></tr>
+        <tr><td><span class="pkg">streamotter</span></td><td>The all-in-one package. Six two-line shim files that re-export the others under <code>streamotter/client</code>, <code>/gateway</code>, <code>/gateway/management</code>, <code>/gateway/operator</code>, <code>/contracts</code>, <code>/cli</code>, plus the same <code>streamotter</code> bin. 1.0 adds a seventh, <code>streamotter/react</code>.</td><td class="ref">streamotter/src/*.ts, streamotter/bin/streamotter.js</td><td class="num">12</td></tr>
       </tbody>
     </table>
   </div>
@@ -500,7 +501,7 @@ section[id], aside { scroll-margin-top: 84px; }
   <div class="section-head">
     <span class="eyebrow">Walkthrough</span>
     <h2>One record, topic to browser</h2>
-    <p>The live path for a record on a Kafka source with a browser already subscribed and live. Line numbers are at commit 1c75aaa.</p>
+    <p>The live path for a record on a Kafka source with a browser already subscribed and live.</p>
   </div>
   <ol class="journey">
     <li><div><span class="where">Kafka adapter</span><b>The consumer hands over one message.</b> KafkaJS runs with <code>autoCommit: false</code> and one partition at a time. For each message the adapter builds a <code>SourceInput</code> (key, raw bytes, headers, record timestamp, position <code>{topic, partition, offset}</code>), starts a 3-second heartbeat so a slow mapper doesn't get the member evicted, and awaits the gateway's <code>process()</code>.<span class="ref">gateway/src/sources/kafka.ts</span></div></li>
@@ -539,7 +540,7 @@ section[id], aside { scroll-margin-top: 84px; }
   </div>
   <div class="prose" style="display:grid;gap:10px">
     <p>Snapshots run under a gateway-wide semaphore (<code>maxConcurrentSnapshots</code> 32) with a 10-second timeout. A snapshot that fails the payload schema or the frame size, or a <code>snapshot</code> or <code>authorize</code> handler that throws or denies, fails the subscription outright. A timeout, an overflow, a regression below a revision the browser already saw, or (under V1.1 quarantine-resync) a missing or superseded <code>recoveryBoundaryId</code> makes the attempt go <code>stale</code> and retry after 1 s, then 2 s; after <code>maxSyncAttempts</code> (3) it reports <code>resync-required</code>. After the receipt, buffered updates at or below the snapshot revision are dropped and the rest drain in order.</p>
-    <p class="ref">gateway/src/runtime/subscription.ts (phases), 259-390 (#beginAttempt), 445-460 (#attemptFailed) · contracts/src/types.ts (SubscriptionState)</p>
+    <p class="ref">gateway/src/runtime/subscription.ts (phases, #beginAttempt, #attemptFailed) · contracts/src/types.ts (SubscriptionState)</p>
   </div>
 </section>
 
@@ -594,8 +595,9 @@ section[id], aside { scroll-margin-top: 84px; }
         <li>A refused handshake (<code>UNAUTHENTICATED</code>, <code>FORBIDDEN</code>, <code>INVALID_REQUEST</code>, <code>UNSUPPORTED_CAPABILITY</code>) or a non-retryable <code>UNAUTHENTICATED</code> such as a revocation suspends in <code>auth-required</code> until your app calls <code>reconnect()</code>. An expired session reconnects promptly.</li>
         <li>30 s before the token expires it opens a fresh connection with a new <code>getToken()</code> and swaps it in. If the identity key changes (account switch) every subscription is closed so one user's view never carries over.</li>
         <li>Control requests time out after 5 s and are never buffered while offline.</li>
+        <li>In React (new in 1.0), <code>useSubscription</code> holds one of these subscriptions for as long as a component is mounted. It reports the subscription's state unchanged and keeps the last data while <code>stale</code>.</li>
       </ul>
-      <span class="ref">client/src/client.ts · client/src/connection.ts · contracts/src/protocol.ts (timings)</span>
+      <span class="ref">client/src/client.ts · client/src/connection.ts · contracts/src/protocol.ts (timings) · client/src/react.ts (PR #73)</span>
     </article>
 
     <article class="comp">
@@ -682,14 +684,14 @@ section[id], aside { scroll-margin-top: 84px; }
     <div><b>One transport.</b> Socket.IO over WebSocket.</div>
     <div><b>No skip button.</b> No ignore or discard policy exists; moving past a record always needs quarantined evidence or an explicit operator action.</div>
   </div>
-  <p class="ref">contracts/src/config.ts (DEFERRED_FEATURES), 240-242, 288-297 · contracts/src/failures.ts</p>
+  <p class="ref">contracts/src/config.ts (DEFERRED_FEATURES) · contracts/src/failures.ts</p>
 </section>
 
 <section id="inferred">
   <div class="section-head">
     <span class="eyebrow">Confidence</span>
     <h2>What's inferred rather than read</h2>
-    <p>Everything above with a file reference was read in the code at 1c75aaa. These points are my interpretation.</p>
+    <p>Everything above with a file reference was read in the code at 1c75aaa, except the React hooks, which were read on PR #73 at e919cc0. These points are my interpretation.</p>
   </div>
   <div class="inferred">
     <ul>
