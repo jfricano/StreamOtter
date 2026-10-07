@@ -1,9 +1,10 @@
 import {
-  CAPABILITIES, canonicalizeParams, canonicalJson, isIdentifier, isPlainObject, isUuid, parseUtcTimestamp,
-  REQUEST_CACHE_ENTRIES, REQUEST_CACHE_TTL_MS, streamError, utf8ByteLength,
-  type DataFrame, type ErrorCode, type ErrorFrame, type Json, type Principal, type Result, type StreamError,
-  type SubscriptionFrame
+  CAPABILITIES, canonicalizeParams, canonicalJson, isIdentifier, streamError, type DataFrame, type ErrorCode,
+  type ErrorFrame, type Json, type Principal, type Result, type StreamError, type SubscriptionFrame
 } from "@streamotter/contracts";
+import {
+  isPlainObject, isUuid, parseUtcTimestamp, REQUEST_CACHE_ENTRIES, REQUEST_CACHE_TTL_MS, utf8ByteLength
+} from "@streamotter/contracts/internal";
 import { ByteBudget } from "./budget.ts";
 import type { ChannelRuntime, GatewayCore, SubscriptionHost } from "./core.ts";
 import { ServerSubscription } from "./subscription.ts";

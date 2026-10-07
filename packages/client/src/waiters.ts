@@ -1,4 +1,5 @@
-import { asStreamOtterError, DEFAULT_READY_TIMEOUT_MS, StreamOtterError, type StreamError, type WaitOptions } from "@streamotter/contracts";
+import { StreamOtterError, type StreamError, type WaitOptions } from "@streamotter/contracts";
+import { asStreamOtterError, DEFAULT_READY_TIMEOUT_MS } from "@streamotter/contracts/internal";
 
 /**
  * A set of independent waiters. Each waiter has its own timeout and signal;

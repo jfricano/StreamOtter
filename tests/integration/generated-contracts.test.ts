@@ -3,7 +3,8 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 import ts from "typescript";
-import { generateFiles, typeNames } from "@streamotter/cli";
+import { generateFiles } from "@streamotter/cli";
+import { typeNames } from "../../packages/cli/src/generate.ts";
 import { validateProjectConfig, validateValue, type ProjectConfig, type Schema } from "@streamotter/contracts";
 
 const ROOT = resolve(import.meta.dirname, "../..");

@@ -1,10 +1,10 @@
 import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import {
-  EVENTS, HELLO_TIMEOUT_MS,
-  type ClientToServerEvents, type DataFrame, type ErrorFrame, type Hello, type Principal, type ServerToClientEvents,
-  type StreamError, type SubscriptionFrame
+  EVENTS, type ClientToServerEvents, type DataFrame, type ErrorFrame, type Hello, type Principal,
+  type ServerToClientEvents, type StreamError, type SubscriptionFrame
 } from "@streamotter/contracts";
+import { HELLO_TIMEOUT_MS } from "@streamotter/contracts/internal";
 import type { ConnectionTransport } from "./types.ts";
 
 export interface HandshakeResult {

@@ -1,6 +1,6 @@
 # Public API trim before 1.0.0
 
-**Status:** proposed, waiting on jason's review of the lists below. No code has changed yet.
+**Status:** approved by jason on October 7, 2026, and implemented on PR #72.
 **Decision (jason, October 7, 2026):** make the plumbing private before 1.0 ("Audit and trim").
 **Evidence:** [PUBLIC_API_AUDIT.md](PUBLIC_API_AUDIT.md) classifies every export and lists where each one is imported, in both repositories.
 
@@ -41,7 +41,7 @@ Tagging names `@internal` alone isn't enough. They would vanish from the docs bu
 
 ### 2. Delete two unused exports
 
-`isJsonData` and `DEFAULT_GATEWAY_PORT` are referenced nowhere. The CLI templates write 7400 directly; `scaffoldFiles` will use an internal constant instead.
+`isJsonData` and `DEFAULT_GATEWAY_PORT` are referenced nowhere. The CLI templates write 7400 directly.
 
 ### 3. Trim three other entry points
 

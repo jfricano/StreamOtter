@@ -5,9 +5,10 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
-  MAX_CONFIG_DEPTH, canonicalJsonPretty, StreamOtterError, validateProjectConfig,
-  type ConfigIssue, type DevelopmentOptions, type HandlerRegistry, type Json, type ProjectConfig
+  canonicalJsonPretty, StreamOtterError, validateProjectConfig, type ConfigIssue, type DevelopmentOptions,
+  type HandlerRegistry, type Json, type ProjectConfig
 } from "@streamotter/contracts";
+import { MAX_CONFIG_DEPTH } from "@streamotter/contracts/internal";
 import { createGateway, type Gateway, type GatewayLogger } from "@streamotter/gateway";
 import { startManagementServer } from "@streamotter/gateway/management";
 import { getGatewayInternals, initJournal, rebaselineSource } from "@streamotter/gateway/internals";

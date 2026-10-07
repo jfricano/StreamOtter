@@ -1,7 +1,8 @@
 import {
-  compareRevisions, isJsonValue, isPlainObject, isRevision, streamError, validateValue, withoutUndefinedProperties,
-  type ErrorCode, type Params, type Revision, type StreamEvent, type SubscriptionState
+  compareRevisions, isRevision, streamError, validateValue, type ErrorCode, type Params, type Revision,
+  type StreamEvent, type SubscriptionState
 } from "@streamotter/contracts";
+import { isJsonValue, isPlainObject, withoutUndefinedProperties } from "@streamotter/contracts/internal";
 import { SubscriptionBudget } from "./budget.ts";
 import { routingKey, type ChannelRuntime, type GatewayCore, type SubscriptionHost } from "./core.ts";
 import { describeError, invokeHandler, newId, nowIso, sha256Hex } from "./util.ts";

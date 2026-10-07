@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { StreamOtterError, utf8ByteLength, type Page, type Trace } from "@streamotter/contracts";
+import { StreamOtterError, type Page, type Trace } from "@streamotter/contracts";
+import { utf8ByteLength } from "@streamotter/contracts/internal";
 import { nowIso } from "./util.ts";
 
 interface Entry { seq: number; trace: Trace; bytes: number }

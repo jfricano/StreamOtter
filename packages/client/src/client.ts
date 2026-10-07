@@ -1,9 +1,12 @@
 import {
-  asStreamOtterError, DEFAULT_READY_TIMEOUT_MS, DEFAULT_SOCKET_PATH, GET_TOKEN_TIMEOUT_MS, parseUtcTimestamp,
-  RECONNECT_BASE_MS, RECONNECT_CAP_MS, streamError, StreamOtterError, TOKEN_REFRESH_LEAD_MS,
-  type ChannelMap, type Client, type ClientOptions, type ConnectionState, type ErrorCode, type ErrorFrame, type Hello,
-  type Params, type StateChange, type StreamError, type Subscription, type Unlisten, type WaitOptions
+  DEFAULT_SOCKET_PATH, streamError, StreamOtterError, type ChannelMap, type Client, type ClientOptions,
+  type ConnectionState, type ErrorCode, type ErrorFrame, type Hello, type Params, type StateChange, type StreamError,
+  type Subscription, type Unlisten, type WaitOptions
 } from "@streamotter/contracts";
+import {
+  asStreamOtterError, DEFAULT_READY_TIMEOUT_MS, GET_TOKEN_TIMEOUT_MS, parseUtcTimestamp, RECONNECT_BASE_MS,
+  RECONNECT_CAP_MS, TOKEN_REFRESH_LEAD_MS
+} from "@streamotter/contracts/internal";
 import { Connection } from "./connection.ts";
 import { ClientSubscription, type ManagedSubscription, type SubscriptionOwner } from "./subscription.ts";
 

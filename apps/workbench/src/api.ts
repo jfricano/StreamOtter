@@ -1,10 +1,12 @@
 import {
-  isPlainObject, utf8ByteLength, WORKBENCH_REQUEST_HEADER,
-  type Capabilities, type ChannelSummary, type ConfigIssue, type DevelopmentPrincipalSummary, type DiagnosticStep, type EvaluateRequest,
-  type EvaluationResult, type IncidentDetail, type IncidentSummary, type Json, type ListFailuresRequest, type OperationResult, type OperatorStatus,
-  type Page, type ProjectConfig, type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle, type Result,
-  type RetryCurrentRequest, type SourceStatus, type StreamError, type Trace, type WorkbenchDiscovery, type WorkbenchOperation
+  WORKBENCH_REQUEST_HEADER, type Capabilities, type ChannelSummary, type ConfigIssue, type DevelopmentPrincipalSummary,
+  type DiagnosticStep, type EvaluateRequest, type EvaluationResult, type IncidentDetail, type IncidentSummary,
+  type Json, type ListFailuresRequest, type OperationResult, type OperatorStatus, type Page, type ProjectConfig,
+  type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle, type Result,
+  type RetryCurrentRequest, type SourceStatus, type StreamError, type Trace, type WorkbenchDiscovery,
+  type WorkbenchOperation
 } from "@streamotter/contracts";
+import { isPlainObject, utf8ByteLength } from "@streamotter/contracts/internal";
 
 export class ApiError extends Error {
   readonly status: number;

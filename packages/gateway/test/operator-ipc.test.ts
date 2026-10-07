@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import {
-  OPERATOR_IPC_MAX_REQUEST_BYTES, OPERATOR_OPERATIONS, StreamOtterError,
-  type GatewayLogger, type Json, type OperatorIpcResponse, type OperatorOperation, type OperatorRequests
+  OPERATOR_OPERATIONS, StreamOtterError, type GatewayLogger, type Json, type OperatorOperation, type OperatorRequests
 } from "@streamotter/contracts";
+import { OPERATOR_IPC_MAX_REQUEST_BYTES, type OperatorIpcResponse } from "@streamotter/contracts/internal";
 import { callOperator, connectOperator, startOperatorSocket, type OperatorSocketOptions } from "../src/operator/ipc.ts";
 import { BOUNDARY_ID, detail, FAILURE_ID, FakeOperator, HOSTILE_VALUE, raw, summary } from "./fake-operator.ts";
 

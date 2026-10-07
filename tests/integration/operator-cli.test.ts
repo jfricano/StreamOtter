@@ -7,10 +7,10 @@ import { join, resolve } from "node:path";
 import { after, before, beforeEach, describe, it, mock } from "node:test";
 import { runCli as runCliInProcess } from "@streamotter/cli";
 import {
-  StreamOtterError,
-  type EvaluationResult, type IncidentDetail, type IncidentSummary, type OperationResult, type OperatorStatus, type Page, type RawEvidenceView, type ReproductionBundle
+  StreamOtterError, type EvaluationResult, type IncidentDetail, type IncidentSummary, type OperationResult,
+  type OperatorStatus, type Page, type RawEvidenceView, type ReproductionBundle
 } from "@streamotter/contracts";
-import { startOperatorSocket, type OperatorSocket } from "@streamotter/gateway/operator";
+import { startOperatorSocket, type OperatorSocket } from "@streamotter/gateway/internals";
 import { BOUNDARY_ID, FAILURE_ID, FakeOperator, HOSTILE_KEY, HOSTILE_VALUE } from "../../packages/gateway/test/fake-operator.ts";
 import { orderConfig } from "./harness.ts";
 
