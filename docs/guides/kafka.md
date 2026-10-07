@@ -64,7 +64,7 @@ The gateway commits a record's offset only after it has fully processed it: vali
 
 ## When a record is bad
 
-Invalid JSON, a tombstone, a record over `limits.maxSourceRecordBytes` (1 MiB by default), a `map` handler that throws or returns invalid data, and a conflicting duplicate revision all **pause the source at that record**. Nothing at or after it is committed, and nothing is skipped. Every subscription on the source goes `stale`, and the gateway logs a diagnostic without the payload.
+Invalid JSON, a tombstone, a record over `limits.maxSourceRecordBytes` (1 MiB by default), a `map` handler that throws or returns invalid data, and a conflicting duplicate revision all **pause the source at that record**. Nothing at or after it is committed, and nothing is skipped. Every subscription on the source goes `stale`, and the gateway logs a diagnostic without the payload: the error code, failure class, source position and channel, and for a `map` error its type and code but never its message. To see the record, read it at the logged position with your Kafka tooling. If you want the error text in your own logs, catch and log it inside `map`, keeping record contents out of what you log.
 
 To recover, fix the cause (usually your `map` handler: correct it, or have it return `[]` for records it should ignore), then retry the same record:
 

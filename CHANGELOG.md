@@ -8,6 +8,10 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 - The package READMEs, and so the npm pages, show the flat brandmark lockup that the repository README uses, in place of the detailed logo.
 
+### Fixed
+
+- The gateway's "Source paused" log line no longer quotes record data. Its `reason` is now the same sanitized diagnosis an incident shows: a `map` error is named by its type and code, never its message (which used to be logged up to 200 characters, and can quote the record, as a `JSON.parse` error does), and an unexpected output field or a payload property the schema doesn't allow is no longer named. This applies with or without `failureHandling`, so logs are metadata only, as the V1.1 specification requires.
+
 ## [0.2.0-rc.1] — 2026-10-04
 
 Published to npm on `latest` with provenance, from the `v0.2.0-rc.1` tag ([GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1)). One release carrying three internal milestones:
