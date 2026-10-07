@@ -200,9 +200,9 @@ section[id], aside { scroll-margin-top: 84px; }
   <p class="lead">StreamOtter makes one central promise: <strong>a view is never silently wrong.</strong> A browser view is either <code>live</code>, meaning it caught up to the source with nothing missing, or it says so with <code>stale</code> or <code>resync-required</code>. Everything else follows from that promise. Revisions never go backwards. A bad record is never skipped quietly. A slow browser never stalls Kafka. Access is checked when a view starts, again before its snapshot is sent, and on every frame. This page lists what is promised, what is deliberately not promised, what happens in each failure, and every limit, with its source in the spec or code.</p>
   <div class="ideas">
     <div class="idea"><b>Honest state</b><span>A view is either <code>live</code> or visibly not. StreamOtter never keeps reporting <code>live</code> while it drops data.</span></div>
-    <div class="idea"><b>Never backwards</b><span>Revisions only increase in a browser's lifetime. Duplicates are harmless, and older states are thrown away.</span></div>
+    <div class="idea"><b>Never backwards</b><span>Revisions only increase for as long as a subscription exists. Duplicates are harmless, and older states are thrown away.</span></div>
     <div class="idea"><b>Nothing skipped</b><span>A bad record pauses its source, uncommitted. Moving past it takes evidence or a person.</span></div>
-    <div class="idea"><b>Bounded and isolated</b><span>Every queue has a byte limit, and every frame is checked against the user's tenant, expiry and revocations.</span></div>
+    <div class="idea"><b>Bounded and isolated</b><span>Every queue has a byte limit, and every frame is checked for an open connection and an unexpired token. Revocation ends matching subscriptions at once, and the tenant is fixed in the routing key.</span></div>
   </div>
   <nav class="toc" aria-label="Sections">
     <a href="#promises">What it promises</a>
@@ -227,15 +227,15 @@ section[id], aside { scroll-margin-top: 84px; }
       <thead><tr><th>Guarantee</th><th>What it means in practice</th><th>Source</th></tr></thead>
       <tbody>
         <tr><td><b>A view is <code>live</code> only when it's caught up</b></td><td>A view reaches <code>live</code> only after its snapshot and every update held during the snapshot have reached the browser. Anything that could make it wrong turns it <code>stale</code> first: a disconnect, a source outage, a rebalance, an overflow or a timeout. StreamOtter never keeps reporting <code>live</code> while it drops data.</td><td class="ref">V1_API.md §5 “Exact synchronization sequence”, §6</td></tr>
-        <tr><td><b>Revisions never go backwards</b></td><td>Within one browser's lifetime, a view never shows an older revision than it already showed. An older update is discarded. An identical repeat is ignored as a duplicate. A snapshot older than what was shown counts as a failed sync attempt.</td><td class="ref">V1_API.md §5 · §13 “Failure classes”</td></tr>
+        <tr><td><b>Revisions never go backwards</b></td><td>For as long as a subscription exists (across reconnects), it never shows an older revision than it already showed. An older update is discarded. An identical repeat is ignored as a duplicate. A snapshot older than what was shown counts as a failed sync attempt.</td><td class="ref">V1_API.md §5 · §13 “Failure classes”</td></tr>
         <tr><td><b>Updates arrive in order</b></td><td>Updates to one view arrive in revision order: one frame is in flight per subscription, and the next waits for the receipt. Ordering is per view. There's no global order across views.</td><td class="ref">V1_API.md §6 · runtime/subscription.ts</td></tr>
         <tr><td><b>No record is skipped silently</b></td><td>A record that can't be processed pauses its whole source without committing. The causes are invalid JSON, a tombstone, an oversize record, a <code>map</code> error or timeout, invalid output, or a revision conflict. V1.1 can move past a record only with quarantined evidence plus a recovery guard, or by an explicit operator action. No “ignore” policy exists.</td><td class="ref">V1_API.md §6 · contracts/src/failures.ts · ADR-15A</td></tr>
-        <tr><td><b>Every record is processed at least once</b></td><td>The offset is committed only after a record is fully handled. After a crash, the last records can be processed again. Revisions make that harmless, because the repeats are dropped as duplicates or as older states.</td><td class="ref">V1_API.md §6 · guides/kafka.md “What is verified”</td></tr>
-        <tr><td><b>A slow browser never holds up Kafka</b></td><td>Queuing never waits. If a subscription, connection or the whole gateway is over its byte budget, that one subscription is reset and re-snapshotted. A browser that stops sending receipts for 5 s is disconnected. Other browsers aren't affected.</td><td class="ref">V1_API.md §6 · runtime/budget.ts</td></tr>
+        <tr><td><b>Offsets commit only after a record is handled</b></td><td>The offset is committed only after a record is fully handled. After a crash, the last records can be processed again. Revisions make that harmless, because the repeats are dropped as duplicates or as older states. Exceptions: a Kafka retention reset (logged) and, in V1.1, a guarded advance past a quarantined record.</td><td class="ref">V1_API.md §6 · guides/kafka.md “What is verified”</td></tr>
+        <tr><td><b>A slow browser never holds up Kafka</b></td><td>Queuing never waits. When a byte budget is full, the subscription whose update doesn't fit is reset and re-snapshotted. If the gateway-wide budget fills, that can be any subscription. A browser that stops sending receipts for 5 s is disconnected, and a connection whose unsent output passes 4 MiB is closed.</td><td class="ref">V1_API.md §6 · runtime/budget.ts</td></tr>
         <tr><td><b>Memory for queued frames is bounded</b></td><td>Pending frames are capped at 100 frames or 1 MiB per subscription, 4 MiB per connection and 64 MiB for the gateway. Connections are capped at 1,000, and subscriptions at 50 per connection.</td><td class="ref">contracts/src/limits.ts</td></tr>
         <tr><td><b>Access is enforced on the server and fails closed</b></td><td><code>authorize</code> runs when a view subscribes, on every sync attempt, and again just before the snapshot is sent. Every frame is checked for token expiry and revocation. If a handler throws, access is denied.</td><td class="ref">V1_API.md §7</td></tr>
-        <tr><td><b>Tenants can't see each other's data</b></td><td>A subscription's routing key uses the tenant from the <em>authenticated</em> user (the principal), never from the browser's request. So a row mapped for tenant A can't reach a tenant B subscription, even with identical params.</td><td class="ref">runtime/subscription.ts:83 · runtime/core.ts:62-64</td></tr>
-        <tr><td><b>Failures are reported, not hidden</b></td><td>Every failure reaches the browser as a structured <code>StreamError</code> with a fixed code. Operators get a log line with redacted details and no payloads or credentials. With V1.1, a durable incident is recorded too.</td><td class="ref">V1_API.md §9 · DEPLOYMENT.md “Logs”</td></tr>
+        <tr><td><b>Tenants can't see each other's data</b></td><td>A subscription's routing key uses the tenant from the <em>authenticated</em> user (the principal), never from the browser's request. So a row mapped for tenant A can't reach a tenant B subscription, even with identical params.</td><td class="ref">runtime/subscription.ts · runtime/core.ts</td></tr>
+        <tr><td><b>Failures are reported, not hidden</b></td><td>Failures reach the browser as a state with a reason code, or as a structured <code>StreamError</code> for request and subscription failures. Source problems always show as <code>SOURCE_UNAVAILABLE</code>; the specific cause is for operators. Operators get a log line with redacted details and no payloads or credentials. With V1.1 failure handling configured, a bad record also opens a durable incident.</td><td class="ref">V1_API.md §9 · DEPLOYMENT.md “Logs”</td></tr>
       </tbody>
     </table>
   </div>
@@ -273,16 +273,17 @@ section[id], aside { scroll-margin-top: 84px; }
       <tbody>
         <tr><td>Browser loses its connection</td><td>The last data, marked <code>stale</code></td><td>Closes the session and drops its queues</td><td>Automatic. The client reconnects with backoff (up to 30 s), resubscribes and re-snapshots.</td></tr>
         <tr><td>Gateway restarts or crashes</td><td><code>stale</code>, then <code>live</code></td><td>Kafka redelivers anything that wasn't committed, and revisions drop the repeats</td><td>Automatic once the gateway rejoins its consumer group. After a crash, the first restart can take one more try.</td></tr>
-        <tr><td>Kafka is down or rebalancing</td><td><code>stale</code></td><td>Marks the source degraded after about 12 s without activity</td><td>Automatic when the source is healthy again. Snapshots aren't retried in a loop while it's down.</td></tr>
-        <tr><td>Bad record (poison)</td><td>Every view on that source turns <code>stale</code></td><td>Pauses all of the source's topics, seeks back to the record and doesn't commit. Logs it, and with V1.1 opens an incident.</td><td>Fix the cause, then resume (<code>resumeSource</code> or an operator command). V1.1 can quarantine the record and continue, with guards.</td></tr>
+        <tr><td>Kafka is down or rebalancing</td><td><code>stale</code></td><td>Marks the source degraded at once on a rebalance or consumer crash, or after about 12 s with no fetch or heartbeat</td><td>Automatic when the source is healthy again. Snapshots aren't retried in a loop while it's down.</td></tr>
+        <tr><td>Bad record (poison)</td><td>Every view on that source turns <code>stale</code></td><td>Pauses all of the source's topics, seeks back to the record and doesn't commit. Logs it, and with V1.1 failure handling configured, opens an incident.</td><td>Fix the cause, then resume (<code>resumeSource</code> or an operator command). With V1.1, invalid-JSON or payload-schema records can be quarantined and moved past, with guards.</td></tr>
         <tr><td>Browser too slow (budget full)</td><td><code>stale</code> briefly, then <code>live</code></td><td>Resets that one subscription. Kafka doesn't wait.</td><td>Automatic re-snapshot, up to 3 attempts (1 s, then 2 s apart).</td></tr>
         <tr><td>Browser stops sending receipts</td><td><code>stale</code>, then reconnects</td><td>Closes the connection after 5 s (<code>OVERLOADED</code>)</td><td>Automatic reconnect and re-snapshot.</td></tr>
-        <tr><td><code>snapshot</code> slow or failing</td><td><code>stale</code>, then <code>resync-required</code></td><td>Timeouts are retried. A thrown error fails the view with <code>HANDLER_FAILED</code>.</td><td>After 3 attempts the app must call <code>resync()</code>, for example from a retry button.</td></tr>
-        <tr><td><code>authorize</code> says no</td><td><code>failed</code> with <code>FORBIDDEN</code></td><td>Discards pending data and ends the subscription</td><td>None, by design. An unknown channel looks identical, so nothing is revealed.</td></tr>
-        <tr><td>Token expires</td><td><code>auth-required</code></td><td>Stops sending frames on that connection</td><td>The client refreshes the token before it expires. If it can't, the app signs the user in again and calls <code>reconnect()</code>.</td></tr>
-        <tr><td>Access revoked (<code>gateway.revoke</code>)</td><td>The affected views end</td><td>Ends matching subscriptions immediately and remembers the revocation, so a reconnect can't restore access</td><td>None. The app must update its own permissions first.</td></tr>
+        <tr><td><code>snapshot</code> throws or returns invalid data</td><td><code>failed</code> with <code>HANDLER_FAILED</code> or <code>INVALID_PAYLOAD</code></td><td>Ends the subscription</td><td>The app creates a new subscription.</td></tr>
+        <tr><td><code>snapshot</code> times out</td><td><code>stale</code>, then <code>resync-required</code></td><td>Retries after 1 s, then 2 s.</td><td>After 3 attempts the app must call <code>resync()</code>, for example from a retry button.</td></tr>
+        <tr><td><code>authorize</code> says no</td><td><code>failed</code> with <code>FORBIDDEN</code></td><td>Discards pending data and ends the subscription</td><td>None, by design. An unknown channel gets the same <code>FORBIDDEN</code> code.</td></tr>
+        <tr><td>Token expires</td><td>Briefly <code>stale</code>; <code>auth-required</code> only if a new token can't be had</td><td>Closes the connection with a retryable <code>UNAUTHENTICATED</code></td><td>The client refreshes 30 s before expiry, or reconnects with a new token. If <code>getToken</code> fails or the new token is rejected, the app signs the user in again and calls <code>reconnect()</code>.</td></tr>
+        <tr><td>Access revoked (<code>gateway.revoke</code>)</td><td>The affected views end</td><td>Ends matching subscriptions immediately and blocks handshakes, authorizations and snapshots already in flight. It does not stop a later reconnect.</td><td>None. The app must update its own session or permission data first, because that is what keeps a reconnect out.</td></tr>
         <tr><td>Same revision, different data</td><td><code>stale</code></td><td><code>REVISION_CONFLICT</code>: pauses the source</td><td>An operator checks which data is right, then resumes.</td></tr>
-        <tr><td>Too many control messages from one browser</td><td><code>OVERLOADED</code></td><td>Rate-limits control messages at 20/s (bursts of 40), then closes the connection</td><td>Automatic, with backoff.</td></tr>
+        <tr><td>Too many control messages from one browser</td><td><code>OVERLOADED</code></td><td>Refuses valid requests over 20/s (bursts of 40) with <code>OVERLOADED</code>. Malformed or unknown frames over the limit close the connection.</td><td>The SDK retries a refused subscribe after 1 s and 2 s, then reports <code>resync-required</code>.</td></tr>
       </tbody>
     </table>
   </div>
@@ -300,8 +301,8 @@ section[id], aside { scroll-margin-top: 84px; }
       <ul>
         <li>The token goes in the Socket.IO auth payload, never in the URL. It must be non-empty and at most 8 KiB. Your <code>authenticate</code> handler decides who the user is; the gateway never trusts the browser's claim.</li>
         <li>Allowed origins must match exactly, with no wildcards, and production rejects a missing origin. The origin check supplements authentication; it doesn't replace it.</li>
-        <li>Unknown channel, wrong version, denied access and (in production) bad params all return the same <code>FORBIDDEN</code>. A probing browser learns nothing about which channels exist.</li>
-        <li>Revocation works per session, per user or per single channel and params, and the gateway remembers it so a reconnect can't restore access.</li>
+        <li>Unknown channel, wrong version, denied access and (in production) bad params all end in the same public <code>FORBIDDEN</code> code. The SDK can't tell them apart, but a raw protocol client can: an unknown channel is refused at subscribe, while a denied one is accepted and then fails.</li>
+        <li>Revocation works per session, per user or per single channel and params. It ends matching subscriptions at once and stops work already in flight, but it isn't a revocation database: your app must update its own session or permission data first so a reconnect can't restore access.</li>
       </ul>
       <span class="ref">V1_API.md §7 · §13 V1.2.1 · guides/existing-app.md §7</span>
     </div>
@@ -368,7 +369,7 @@ section[id], aside { scroll-margin-top: 84px; }
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Fixed value</th><th class="num">Value</th><th>Where</th></tr></thead>
+      <thead><tr><th>Fixed value or V1.1 default</th><th class="num">Value</th><th>Where</th></tr></thead>
       <tbody>
         <tr><td>Token size</td><td class="num">8 KiB</td><td class="ref">V1_API.md §7</td></tr>
         <tr><td>Sync retry backoff</td><td class="num">1 s, then 2 s</td><td class="ref">V1_API.md §5</td></tr>
@@ -379,7 +380,7 @@ section[id], aside { scroll-margin-top: 84px; }
         <tr><td>Source marked degraded after</td><td class="num">≈12 s without fetch or heartbeat</td><td class="ref">V1_API.md §13</td></tr>
         <tr><td>Startup deadline · graceful stop</td><td class="num">30 s · 10 s</td><td class="ref">DEPLOYMENT.md “Start”</td></tr>
         <tr><td>Failure journal size (V1.1)</td><td class="num">256 MiB, then writes are refused and the source stays held</td><td class="ref">DEPLOYMENT.md “The state directory”</td></tr>
-        <tr><td>Circuit breaker (V1.1)</td><td class="num">5 distinct incidents advanced in 60 s</td><td class="ref">contracts/src/failures.ts</td></tr>
+                <tr><td>Circuit breaker (V1.1), configurable per source</td><td class="num">default 5 distinct incidents advanced in 60 s</td><td class="ref">packages/contracts/src/failures.ts</td></tr>
         <tr><td>Redrive plan lifetime (V1.1)</td><td class="num">5 min, single use</td><td class="ref">guides/troubleshooting.md</td></tr>
       </tbody>
     </table>
@@ -412,7 +413,7 @@ section[id], aside { scroll-margin-top: 84px; }
     <div class="comp">
       <h3>The one measured load</h3>
       <ul>
-        <li><b>Setup:</b> 200 clients, plus 10 deliberately stalled clients, receiving 600 records fanned out to 6,000 frames.</li>
+        <li><b>Setup:</b> 200 clients, plus 10 deliberately stalled clients, receiving 600 records fanned out to 6,000 frames (fixture source; default limits except <code>receiptTimeoutMs</code> 1 s and <code>controlRequestsPerSecond</code> 1,000).</li>
         <li><b>Results:</b>
           <ul>
             <li>All views were live in 99–148 ms.</li>

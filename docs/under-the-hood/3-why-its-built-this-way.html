@@ -229,7 +229,7 @@ section[id], aside { scroll-margin-top: 84px; }
     <a class="phase" href="https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md">V1_API.md · the contract</a><span class="arrow">→</span>
     <a class="phase live" href="https://github.com/jfricano/StreamOtter/tree/main/docs/releases/v1.1/adr">releases/*/adr · decision records</a>
   </div>
-  <p class="prose">The <a href="https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md#13-implementation-refinements-contract-revision-02">spec's section 13</a> records changes made during implementation, and each release folder keeps its own spec, review and evidence. The V1.1 decision records (<a href="https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/adr/ADR-15A-failure-journal-and-handoff.md">ADR-15A</a>, <a href="https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/adr/ADR-15B-recovery-barrier.md">15B</a> and <a href="https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/adr/ADR-15C-operator-authority-and-redrive.md">15C</a>) cover the failure journal, the recovery barrier and operator authority. Two of their choices were explicitly approved by you on September 29: the journal engine and the redrive simplification.</p>
+  <p class="prose">The <a href="https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md#13-implementation-refinements-contract-revision-02">spec's section 13</a> records changes made during implementation, and the release folders keep each increment's plans, reviews and evidence (V1.1 has the full set). The V1.1 decision records (<a href="https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/adr/ADR-15A-failure-journal-and-handoff.md">ADR-15A</a>, <a href="https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/adr/ADR-15B-recovery-barrier.md">15B</a> and <a href="https://github.com/jfricano/StreamOtter/blob/main/docs/releases/v1.1/adr/ADR-15C-operator-authority-and-redrive.md">15C</a>) cover the failure journal, the recovery barrier and operator authority. The project owner accepted three of their choices on September 29: the redrive simplification (ADR-15C §5), boundary retirement as a per-source choice (ADR-15B §4), and the journal-engine rule (ADR-15A §2), which was refined on October 4 to <code>node:sqlite</code> with a Node 24.15 floor.</p>
 </section>
 
 <section id="product">
@@ -270,7 +270,7 @@ section[id], aside { scroll-margin-top: 84px; }
       <ul>
         <li><b>Alternatives:</b> a cloud console, or a visual stream-processing canvas.</li>
         <li><b>Why:</b> choices should end up as ordinary, reviewable, versioned config and code. The gateway must run with the workbench closed.</li>
-        <li><b>Cost:</b> no production dashboard yet. A production workbench is on the V3 roadmap.</li>
+        <li><b>Cost:</b> no production dashboard yet. V3 extends the workbench to shared environment operations (dev, staging, production); a hosted workbench is beyond V3.</li>
       </ul>
       <span class="ref">FOUNDING.md §7 · RESEARCH.md §5</span>
     </div>
@@ -288,7 +288,7 @@ section[id], aside { scroll-margin-top: 84px; }
       <ul>
         <li><b>Alternatives:</b> send only the changed fields (patches), and merge them in the browser.</li>
         <li><b>Why:</b> if every frame replaces the last, dropping or resetting a queue is always safe, and any problem is fixed by one fresh snapshot. With deltas, one lost frame corrupts every later state.</li>
-        <li><b>Cost:</b> each update carries the whole state, so frames are capped at 64 KiB. Large or very chatty entities need a different shape.</li>
+        <li><b>Cost:</b> each update carries the whole state, so frames are capped at 64 KiB by default. Large or very chatty entities need a different shape.</li>
       </ul>
       <span class="ref">V1_API.md §1 · guides/existing-app.md §4</span>
     </div>
@@ -297,7 +297,7 @@ section[id], aside { scroll-margin-top: 84px; }
       <ul>
         <li><b>Alternatives:</b> keep the state inside the gateway, or rebuild it by replaying Kafka (for example from a compacted topic).</li>
         <li><b>Why:</b> “an ordinary fetch followed by a subscription can create a race.” A snapshot that carries a revision can be lined up exactly with the updates held while it loaded. The app is already the source of truth, so the gateway can store nothing.</li>
-        <li><b>Cost:</b> the app must write <code>snapshot</code>, keep revisions increasing and publish through an outbox. Snapshot load lands on your database (capped at 32 concurrent calls).</li>
+        <li><b>Cost:</b> the app must write <code>snapshot</code>, keep revisions increasing and publish every change consistently with the snapshot, for example through a transactional outbox. Snapshot load lands on your database (32 concurrent calls by default).</li>
       </ul>
       <span class="ref">RESEARCH.md §5 “Make the first recovery policy explicit” · V1_API.md §5</span>
     </div>
@@ -305,7 +305,7 @@ section[id], aside { scroll-margin-top: 84px; }
       <h3>Kafka progress is separate from browser progress</h3>
       <ul>
         <li><b>Alternatives:</b> commit the Kafka offset only after every browser acknowledges.</li>
-        <li><b>Why:</b> one consumer serves thousands of browsers, so one slow browser can't be allowed to stop the source for everyone. The offset commits once a record is queued, and browsers recover through snapshots.</li>
+        <li><b>Why:</b> one consumer serves every connected browser, so one slow browser can't be allowed to stop the source for everyone. The offset commits once a record is queued, and browsers recover through snapshots.</li>
         <li><b>Cost:</b> a commit is never proof of delivery, and there's no replay. Durable per-client replay needs a store, which is V2.</li>
       </ul>
       <span class="ref">RESEARCH.md §5 “Separate broker progress from client progress” · V1_API.md §6</span>
@@ -314,7 +314,7 @@ section[id], aside { scroll-margin-top: 84px; }
       <h3>A slow browser gets reset, not waited on</h3>
       <ul>
         <li><b>Alternatives:</b> slow the whole source down to match the slowest browser, or quietly drop frames.</li>
-        <li><b>Why:</b> the research found that recovery itself can exhaust memory, and the browser's WebSocket API has no built-in backpressure. So every queue has a byte limit, and overflow resets just that subscription, visibly.</li>
+        <li><b>Why:</b> the research found that recovery itself can exhaust memory, and the browser's WebSocket API has no built-in backpressure. So every queue has a byte limit. Subscription overflow sends just that subscription back through a snapshot, and a connection that stops reading is closed, so its subscriptions reconnect and resynchronize. Other clients continue.</li>
         <li><b>Cost:</b> a consistently slow client keeps getting re-snapshotted, which adds snapshot load.</li>
       </ul>
       <span class="ref">RESEARCH.md §2C, §3 · V1_API.md §6</span>
@@ -337,7 +337,7 @@ section[id], aside { scroll-margin-top: 84px; }
     <div class="comp">
       <h3>One gateway, one consumer per source</h3>
       <ul>
-        <li><b>Alternatives:</b> a cluster with cross-node routing from day one, or a consumer per browser (the mistake the research saw in reports).</li>
+        <li><b>Alternatives:</b> a cluster with cross-node routing from day one, or a consumer per browser, which the research and spec rule out.</li>
         <li><b>Why:</b> the research found that a second server exposes routing assumptions hidden by a one-server demo. Multi-node support only ships when it has been tested in that topology.</li>
         <li><b>Cost:</b> one machine sets the ceiling, and there's no failover: availability depends on a fast restart. Clustering is V2.</li>
       </ul>
@@ -355,12 +355,12 @@ section[id], aside { scroll-margin-top: 84px; }
     <div class="comp">
       <h3>Pause on a bad record; never skip it</h3>
       <ul>
-        <li><b>Alternatives:</b> the familiar Kafka error strategies of fail fast, ignore, or a dead-letter queue. These are the kafka-penguin options that inspired V1.1.</li>
+        <li><b>Alternatives:</b> the familiar Kafka error strategies of fail fast, ignore, or a dead-letter queue. These are the kafka-penguin options that inspired V1.1 (V1_1_SOURCE_FAILURE_SPEC.md, P7).</li>
         <li><b>Why:</b> for state views, silently skipping a record means a view can show a state that never existed, with no sign of it. Pausing is loud and safe.</li>
-        <li><b>How V1.1 softens it:</b> a record may be moved past only if it's quarantined with evidence <em>and</em> your recovery guard confirms snapshots already cover it. Snapshots then have to acknowledge that boundary. A circuit breaker stops automatic advancing after 5 incidents in 60 s.</li>
+        <li><b>How V1.1 softens it:</b> a record may be moved past only if it's quarantined with evidence <em>and</em> your recovery guard confirms snapshots already cover it. Snapshots then have to acknowledge that boundary. A circuit breaker stops automatic advancing, by default after 5 incidents in 60 s (configurable).</li>
         <li><b>Cost:</b> one bad record stops its whole source until it's handled. The decision records call the recovery barrier “the riskiest part of V1.1”.</li>
       </ul>
-      <span class="ref">V1_API.md §6 · ADR-15A · ADR-15B · contracts/src/failures.ts</span>
+      <span class="ref">V1_API.md §6 · ADR-15A · ADR-15B · packages/contracts/src/failures.ts</span>
     </div>
     <div class="comp">
       <h3>Pause first, decide later (V1.1)</h3>
@@ -375,7 +375,7 @@ section[id], aside { scroll-margin-top: 84px; }
       <h3>The same <code>FORBIDDEN</code> for everything</h3>
       <ul>
         <li><b>Alternatives:</b> helpful errors such as “channel not found” or “bad params”.</li>
-        <li><b>Why:</b> anything more specific tells an attacker which channels exist. In line with OWASP guidance, production gives one answer for all of them, and development gives the detail.</li>
+        <li><b>Why:</b> anything more specific tells an attacker which channels exist. In line with OWASP guidance, unknown channels, unknown versions and denied access all get the same <code>FORBIDDEN</code> in every mode. In production, parameters that fail the channel's schema also get <code>FORBIDDEN</code>; development answers <code>INVALID_PARAMS</code> with the failing path. Traces record the real reason.</li>
         <li><b>Cost:</b> harder debugging in production. Traces still record the real reason.</li>
       </ul>
       <span class="ref">V1_API.md §7 · §13 V1.2.1 · FOUNDING.md §6</span>
@@ -401,11 +401,11 @@ section[id], aside { scroll-margin-top: 84px; }
     <table>
       <thead><tr><th>Decision</th><th>Why</th><th>Cost</th><th>Source</th></tr></thead>
       <tbody>
-        <tr><td><b>kafkajs 2.2.4, behind an internal adapter</b></td><td>Its manual commit APIs fit the design, and it continues KafkaSocks. The adapter means the client library can be swapped without changing the public API.</td><td>The spec says this choice is “not a claim about current maintenance health”. The project carries a version-guarded fix for a kafkajs timer bug.</td><td class="ref">V1_API.md §1 · sources/kafkajs-patch.ts</td></tr>
+        <tr><td><b>kafkajs 2.2.4, behind an internal adapter</b></td><td>Its manual commit APIs fit the design, and it continues KafkaSocks. The adapter means the client library can be swapped without changing the public API.</td><td>The spec says this choice is “not a claim about current maintenance health”. The project carries a version-guarded fix for a kafkajs timer bug.</td><td class="ref">V1_API.md §1 · packages/gateway/src/sources/kafkajs-patch.ts</td></tr>
         <tr><td><b>Config is data, handlers are code</b></td><td>Config can be reviewed, diffed, turned into types and edited by the workbench. Code never travels in config.</td><td>Two places to keep in step: channel names must match handler names.</td><td class="ref">V1_API.md §2</td></tr>
         <tr><td><b>Revisions are decimal strings</b></td><td>They can exceed JavaScript's safe-integer limit (up to 39 digits) and still compare exactly.</td><td>A small learning curve: <code>"7"</code>, not <code>7</code>.</td><td class="ref">V1_API.md §5</td></tr>
-        <tr><td><b>JSON only</b></td><td>One format, done well.</td><td>No Avro, Protobuf or Schema Registry until V2.</td><td class="ref">V1_API.md §1</td></tr>
-        <tr><td><b>Built-in <code>node:sqlite</code> for the V1.1 journal</b></td><td>Turning on quarantine adds no npm dependency. It's behind an interface, so <code>better-sqlite3</code> remains the fallback.</td><td>It needs Node 24.15 or later.</td><td class="ref">ADR-15A §2 (owner-approved)</td></tr>
+        <tr><td><b>JSON only</b></td><td>One format, done well.</td><td>Schema Registry and Avro come in V2; Protobuf is beyond V3.</td><td class="ref">V1_API.md §1</td></tr>
+        <tr><td><b>Built-in <code>node:sqlite</code> for the V1.1 journal</b></td><td>Turning on quarantine adds no npm dependency. The journal sits behind a store interface, so another engine could be swapped in, but none ships.</td><td>It needs Node 24.15 or later.</td><td class="ref">V1_1_API.md §11 D1 (owner decision, October 4, refining ADR-15A §2)</td></tr>
         <tr><td><b>Few dependencies, homegrown helpers</b></td><td>Fewer upgrades to chase and a smaller attack surface. Each piece can be reviewed in place.</td><td>Validation, argument parsing and the UI are maintained here.</td><td class="ref">packages/*/package.json</td></tr>
         <tr><td><b>Compiled JavaScript handlers only</b></td><td>No hidden TypeScript compilation at runtime, so what you deploy is what runs.</td><td>A build step for your handlers.</td><td class="ref">V1_API.md §11</td></tr>
       </tbody>
@@ -423,9 +423,8 @@ section[id], aside { scroll-margin-top: 84px; }
     <div><b>Multi-gateway routing.</b> V2. It has to be tested in a real multi-node setup before it's claimed.</div>
     <div><b>Other transports.</b> Plain WebSocket and SSE adapters are a later option.</div>
     <div><b>Browser-to-Kafka commands.</b> V3. Until then, commands go through your app's existing API.</div>
-    <div><b>The V1 “Source paused” log line.</b> It can include 200 characters of mapper error, which conflicts with the metadata-only rule. It's an open question for you: amend the spec or trim the line.</div>
   </div>
-  <p class="ref">docs/releases/v2.0/STORE_DESIGN_OUTLINE.md · API_AND_FEATURE_ROADMAP.md §6–7 · project memory</p>
+  <p class="ref">docs/releases/v2.0/STORE_DESIGN_OUTLINE.md · API_AND_FEATURE_ROADMAP.md §6–7</p>
 </section>
 
 <section id="inferred">
@@ -436,7 +435,6 @@ section[id], aside { scroll-margin-top: 84px; }
   <div class="inferred">
     <ul>
       <li><b>The “Alternatives” lines</b> sometimes name options the docs only imply. Example: deltas aren't discussed as a rejected design; the docs simply require full state.</li>
-      <li><b>The kafka-penguin link</b> comes from what you've told this project, not from the repo.</li>
       <li><b>The costs</b> are my reading of each decision's consequences, except where a document states them.</li>
     </ul>
   </div>

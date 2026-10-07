@@ -227,8 +227,8 @@ section[id], aside { scroll-margin-top: 84px; }
   contracts/   types, validators, wire protocol, limits      (0 dependencies)
   gateway/     the server: runtime/ sources/ transport/ failures/ operator/ management/
   client/      browser SDK
-  cli/         streamotter dev | start | generate | check | operator …
-  streamotter/ all-in-one package that re-exports the five above
+  cli/         streamotter init | validate | generate | dev | start, plus operator commands (status, failures …, sources …)
+  streamotter/ all-in-one package that re-exports the four above
 apps/workbench/            the dev inspector UI (bundled by esbuild)
 examples/order-dashboard/  the reference app
 tests/  integration · kafka · kafka-replicated · browser · load · deploy · install
@@ -247,7 +247,7 @@ contracts/v1/              type-level checks of the public contract</pre>
       <h3>Strict TypeScript</h3>
       <ul>
         <li>The compiler runs in <code>strict</code> mode, plus <code>exactOptionalPropertyTypes</code>, <code>noUncheckedIndexedAccess</code> (an array or map lookup might be <code>undefined</code>), <code>noImplicitReturns</code> and <code>verbatimModuleSyntax</code>.</li>
-        <li>Publishing uses <code>tsc -b</code>, which emits <code>dist/</code> with <code>.d.ts</code> files. Only the workbench is bundled, with esbuild.</li>
+        <li>Publishing uses <code>tsc -b</code>, which emits <code>dist/</code> with <code>.d.ts</code> files. Of the published packages, only the workbench is bundled (esbuild); the example app's browser code is bundled with esbuild too.</li>
       </ul>
       <span class="ref">tsconfig.base.json · package.json "build"</span>
     </div>
@@ -259,7 +259,7 @@ contracts/v1/              type-level checks of the public contract</pre>
         <li>The CLI parses arguments with <code>node:util parseArgs</code>, and the failure journal uses the built-in <code>node:sqlite</code>.</li>
         <li>The workbench is plain DOM code with a tiny <code>h()</code> element builder that never parses HTML. It uses no framework.</li>
       </ul>
-      <span class="ref">packages/*/package.json · apps/workbench/src/dom.ts · cli/src/cli.ts:6</span>
+      <span class="ref">packages/*/package.json · apps/workbench/src/dom.ts · cli/src/cli.ts</span>
     </div>
     <div class="comp">
       <h3>Where the code is</h3>
@@ -278,7 +278,7 @@ contracts/v1/              type-level checks of the public contract</pre>
     <h2>Public surface: factories that return interfaces</h2>
     <p>No public API hands out a class. That lets the internals change without breaking anyone.</p>
   </div>
-  <pre class="code">// packages/gateway/src/runtime/gateway.ts:1455-1465 (abridged)
+  <pre class="code">// packages/gateway/src/runtime/gateway.ts (abridged)
 export function createGatewayRuntime(options, internal = {}) {
   const runtime = new GatewayRuntime(options, internal);
   const gateway: Gateway = Object.freeze({
@@ -295,10 +295,10 @@ export function createGatewayRuntime(options, internal = {}) {
       <h3>A frozen facade</h3>
       <ul>
         <li><code>createGateway()</code> returns a frozen object with four methods that delegate to a private <code>GatewayRuntime</code>. Users can't reach the runtime or monkey-patch it.</li>
-        <li>The CLI and tests need more access. They get it through <code>@streamotter/gateway/internals</code>, which looks the runtime up in a <code>WeakMap</code> keyed by that facade. So the extra access is opt-in and invisible to normal users.</li>
+        <li>The CLI and tests need more access. They get it through <code>@streamotter/gateway/internals</code>, which looks up the runtime's internals object in a <code>WeakMap</code> keyed by that facade. So the extra access is opt-in and invisible to normal users.</li>
         <li><code>createClient()</code> returns <code>StreamClient</code> typed as the <code>Client</code> interface.</li>
       </ul>
-      <span class="ref">gateway/src/index.ts:18 · runtime/gateway.ts:211-215 · client/src/client.ts:459</span>
+      <span class="ref">gateway/src/index.ts · runtime/gateway.ts · client/src/client.ts</span>
     </div>
     <div class="comp">
       <h3>Types flow end to end</h3>
@@ -307,7 +307,7 @@ export function createGatewayRuntime(options, internal = {}) {
         <li><code>streamotter generate</code> writes those TypeScript types from the project config's JSON schemas, so the browser and the handlers compile against the same contract.</li>
         <li>All shared shapes (frames, <code>Principal</code>, <code>StreamEvent</code>, error codes, limits) live in <code>@streamotter/contracts</code>, which has no runtime dependencies.</li>
       </ul>
-      <span class="ref">contracts/src/types.ts:22, 68 · cli/src/generate.ts:111, 150</span>
+      <span class="ref">contracts/src/types.ts · cli/src/generate.ts</span>
     </div>
   </div>
 </section>
@@ -390,21 +390,21 @@ export function createGatewayRuntime(options, internal = {}) {
         <text class="pt" x="705" y="402" text-anchor="middle">QuarantineWriter</text>
       </svg>
     </div>
-    <figcaption>Each pill names an interface defined on the core's side of the line: <code>sources/types.ts:54, 72</code> · <code>transport/types.ts:4</code> · <code>runtime/session.ts:17</code> · <code>failures/store.ts:178</code> · <code>failures/quarantine.ts:30</code> · <code>operator/service.ts:28</code>. <code>sources/types.ts</code> calls the source interface “internal”: it's a seam for testing and a future second broker, not a plugin API.</figcaption>
+    <figcaption>Each pill names an interface defined on the core's side of the line: <code>sources/types.ts</code> · <code>transport/types.ts</code> · <code>runtime/session.ts</code> · <code>failures/store.ts</code> · <code>failures/quarantine.ts</code> · <code>operator/service.ts</code> · <code>contracts/src/types.ts</code> · <code>contracts/src/operator.ts</code>. <code>sources/types.ts</code> calls the source interface “internal”: it's a seam for testing and a future second broker, not a plugin API.</figcaption>
   </figure>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Interface</th><th>Owned by</th><th>Implemented by</th><th>What it buys</th></tr></thead>
       <tbody>
-        <tr><td class="pkg">SourceAdapter</td><td>sources/types.ts:72</td><td>KafkaSourceAdapter, FixtureSourceAdapter</td><td>Lets the whole pipeline run in tests with no Kafka, and keeps broker code in one file. The adapter's methods are start, stop, resume, check and advancePast.</td></tr>
-        <tr><td class="pkg">SourceSink</td><td>sources/types.ts:54</td><td>GatewayRuntime's per-source object (SourceRuntimeImpl)</td><td>Gives the adapter the other direction: it calls <code>process(record)</code> and gets back <code>commit</code> or <code>pause</code>, so the adapter never needs to know about channels.</td></tr>
-        <tr><td class="pkg">ConnectionTransport</td><td>transport/types.ts:4</td><td>SocketIoConnection</td><td>The session sends frames and reads <code>bufferedBytes()</code> without importing Socket.IO.</td></tr>
-        <tr><td class="pkg">SubscriptionHost</td><td>runtime/core.ts:94</td><td>ClientSession</td><td>A subscription can send, check <code>canDeliver()</code> and report a receipt timeout without knowing about connections.</td></tr>
-        <tr><td class="pkg">GatewayCore</td><td>runtime/core.ts:12</td><td>an object built by GatewayRuntime</td><td>One small bundle of shared services (router, limits, semaphore, budget, logger, traces) handed to every subscription, instead of global state.</td></tr>
-        <tr><td class="pkg">IncidentStore</td><td>failures/store.ts:178</td><td>SqliteIncidentStore, MemoryIncidentStore</td><td>Uses a durable journal in production and a throwaway in-memory one in development and tests.</td></tr>
-        <tr><td class="pkg">QuarantineWriter</td><td>failures/quarantine.ts:30</td><td>KafkaQuarantineWriter</td><td>Lets failure handling be tested without a real quarantine topic.</td></tr>
-        <tr><td class="pkg">OperatorHost / OperatorApi</td><td>operator/service.ts:28 · contracts/operator.ts</td><td>GatewayRuntime / OperatorService</td><td>The same 10 operations serve the Unix-socket CLI, the dev workbench and tests.</td></tr>
-        <tr><td class="pkg">SubscriptionOwner</td><td>client/subscription.ts:22</td><td>StreamClient</td><td>On the browser side, a subscription asks its owner for the current connection instead of holding the socket itself, which keeps reconnects simple.</td></tr>
+        <tr><td class="pkg">SourceAdapter</td><td>sources/types.ts</td><td>KafkaSourceAdapter, FixtureSourceAdapter</td><td>Lets the whole pipeline run in tests with no Kafka, and keeps broker code in one file. The adapter's methods are start, stop, resume, check and advancePast.</td></tr>
+        <tr><td class="pkg">SourceSink</td><td>sources/types.ts</td><td>An object built per source by <code>GatewayRuntime.#sink()</code> (it wraps <code>SourceRuntimeImpl.exclusive</code>)</td><td>Gives the adapter the other direction: it calls <code>process(record)</code> and gets back <code>commit</code>, <code>pause</code>, <code>hold</code> or <code>abandon</code>, so the adapter never needs to know about channels.</td></tr>
+        <tr><td class="pkg">ConnectionTransport</td><td>transport/types.ts</td><td>SocketIoConnection</td><td>The session sends frames and reads <code>bufferedBytes()</code> without importing Socket.IO.</td></tr>
+        <tr><td class="pkg">SubscriptionHost</td><td>runtime/core.ts</td><td>ClientSession</td><td>A subscription can send, check <code>canDeliver()</code> and report a receipt timeout without knowing about connections.</td></tr>
+        <tr><td class="pkg">GatewayCore</td><td>runtime/core.ts</td><td>an object built by GatewayRuntime</td><td>One small bundle of shared services (router, limits, semaphore, budget, logger, traces) handed to every subscription, instead of global state.</td></tr>
+        <tr><td class="pkg">IncidentStore</td><td>failures/store.ts</td><td>SqliteIncidentStore, MemoryIncidentStore</td><td>Uses the durable SQLite journal when a state directory is set (required in production for quarantine policies), and an in-memory store otherwise, including in tests.</td></tr>
+        <tr><td class="pkg">QuarantineWriter</td><td>failures/quarantine.ts</td><td>KafkaQuarantineWriter</td><td>Lets failure handling be tested without a real quarantine topic.</td></tr>
+        <tr><td class="pkg">OperatorHost / OperatorApi</td><td>operator/service.ts · contracts/src/operator.ts</td><td>An object built by <code>GatewayRuntime.#operatorHost()</code> / OperatorService</td><td>The same OperatorApi serves the Unix-socket CLI (all 10 operations), the dev workbench (9; retiring a boundary is CLI-only) and tests.</td></tr>
+        <tr><td class="pkg">SubscriptionOwner</td><td>client/src/subscription.ts</td><td>StreamClient</td><td>On the browser side, a subscription asks its owner for the current connection instead of holding the socket itself, which keeps reconnects simple.</td></tr>
       </tbody>
     </table>
   </div>
@@ -428,7 +428,7 @@ export function createGatewayRuntime(options, internal = {}) {
 <text x="30" y="109" class="cf">sessions: ClientSession[]</text>
 <line x1="20" x2="290" y1="116" y2="116" stroke="var(--line)" stroke-width=".8"/>
 <text x="30" y="132" class="cm">start() / stop()</text>
-<text x="30" y="149" class="cm">openSession(handshake, socket)</text>
+<text x="30" y="149" class="cm">openSession(handshake, transport)</text>
 <text x="30" y="166" class="cm">resumeSource(id)</text>
 <text x="30" y="183" class="cm">revoke(request)</text>
 <text x="30" y="200" class="cm">#process(source, record)</text>
@@ -534,8 +534,8 @@ export function createGatewayRuntime(options, internal = {}) {
 <text x="634" y="345" text-anchor="end" class="cl2">Socket.IO / WebSocket (the network)</text>
 <path d="M910 50 C 925 50, 925 430, 910 430" fill="none" stroke="var(--otter)" stroke-width="1.4" marker-end="url(#ca)"/>
 <text x="938" y="270.0" class="cl" transform="rotate(90 938 270.0)">0..n, one per subscribe()</text>
-<text x="20" y="790" class="cs">Gateway package (left, middle) · Client package (right) · dashed blue = the network · names from packages/*/src at 1c75aaa</text>
-<text x="640" y="600" class="cs">Shared types (Principal, frames,</text><text x="640" y="616" class="cs">StreamEvent, Revision) live in</text><text x="640" y="632" class="cs">@streamotter/contracts: no classes,</text><text x="640" y="648" class="cs">just TypeScript interfaces.</text>
+<text x="20" y="790" class="cs">Gateway package (left, middle) · Client package (right) · dashed blue = the network · gateway/x.ts means packages/gateway/src/x.ts</text>
+<text x="640" y="600" class="cs">Shared types (Principal, frames,</text><text x="640" y="616" class="cs">StreamEvent, Revision) live in</text><text x="640" y="632" class="cs">@streamotter/contracts as plain</text><text x="640" y="648" class="cs">types, plus validators and errors.</text>
 </svg>
     </div>
     <figcaption>Ownership runs top to bottom. The runtime creates one <code>ClientSession</code> per browser connection, and each session holds its <code>ServerSubscription</code>s. The <code>Router</code> indexes those same subscriptions by key, so a mapped Kafka row reaches exactly the right ones.</figcaption>
@@ -544,18 +544,18 @@ export function createGatewayRuntime(options, internal = {}) {
     <div class="comp">
       <h3>The supporting cast</h3>
       <ul>
-        <li><b>Semaphore</b> (<code>runtime/util.ts:95</code>) caps concurrent <code>snapshot()</code> calls at 32.</li>
-        <li><b>TokenBucket</b> (<code>util.ts:137</code>) rate-limits each browser's control messages to 20 per second, with bursts up to 40. The operator socket has its own copy (<code>operator/ipc.ts:218</code>).</li>
-        <li><b>RevocationLog</b> (<code>runtime/identity.ts:64</code>) remembers revoked sessions and subjects, so a revoked user can't sneak back in on reconnect.</li>
-        <li><b>TraceBuffer</b> (<code>runtime/traces.ts:14</code>) is a ring buffer of recent pipeline events that the workbench reads.</li>
-        <li><b>TrackedSockets</b> (<code>sources/kafka.ts:62</code>) tracks kafkajs's sockets so shutdown can be forced.</li>
-        <li><b>WaiterSet</b> (client) backs <code>ready()</code> and <code>reconnect()</code> promises, with timeouts and abort support.</li>
+        <li><b>Semaphore</b> (<code>runtime/util.ts</code>) caps concurrent <code>snapshot()</code> calls (32 by default).</li>
+        <li><b>TokenBucket</b> (<code>util.ts</code>) rate-limits each browser's control messages to 20 per second by default, with bursts up to twice that. The operator socket has its own copy (<code>operator/ipc.ts</code>).</li>
+        <li><b>RevocationLog</b> (<code>runtime/identity.ts</code>) briefly remembers recent revocations (session, subject or channel), so a handshake, <code>authorize</code> or <code>snapshot</code> already in flight when a revocation arrives can't complete with stale access. Keeping a revoked user out on a later reconnect is your <code>authenticate()</code>'s job.</li>
+        <li><b>TraceBuffer</b> (<code>runtime/traces.ts</code>) is a ring buffer of recent pipeline events that the workbench reads.</li>
+        <li><b>TrackedSockets</b> (<code>sources/kafka.ts</code>) tracks kafkajs's sockets so shutdown can be forced.</li>
+        <li><b>WaiterSet</b> (<code>client/src/waiters.ts</code>) backs a subscription's <code>ready()</code> and <code>resync()</code> promises, with per-waiter timeouts and abort support.</li>
       </ul>
     </div>
     <div class="comp">
       <h3>Inheritance, almost none</h3>
       <ul>
-        <li>The only real <code>extends</code> are errors: <code>StreamOtterError extends Error</code> (<code>contracts/src/errors.ts:65</code>), plus a few local error types.</li>
+        <li>The only real <code>extends</code> are errors: <code>StreamOtterError extends Error</code> (<code>contracts/src/errors.ts</code>), plus a few local error types.</li>
         <li>Shared behavior comes from small objects passed in (a <code>GatewayCore</code>, a host, an owner), not from base classes.</li>
         <li>So each class can be read on its own: everything it can do is visible in its constructor arguments.</li>
       </ul>
@@ -576,13 +576,13 @@ export function createGatewayRuntime(options, internal = {}) {
     </div>
     <div class="comp">
       <h3>Tagged unions instead of flags</h3>
-      <p>Outcomes and options are unions with a <code>kind</code> or <code>ok</code> tag, so the compiler forces every case to be handled. Examples: <code>ProcessOutcome = {kind:"commit"} | {kind:"pause", code, failureClass…}</code>, <code>Source</code> is <code>kafka | fixture</code>, and <code>Result&lt;T&gt;</code> is <code>{ok:true, data} | {ok:false, error}</code>.</p>
-      <span class="ref">sources/types.ts:48-50 · contracts/src/types.ts:289</span>
+      <p>Outcomes and options are unions with a <code>kind</code> or <code>ok</code> tag, so the compiler forces every case to be handled. Examples: <code>ProcessOutcome = {kind:"commit"} | {kind:"pause", …} | {kind:"hold", …} | {kind:"abandon"}</code>, <code>Source</code> is <code>kafka | fixture</code>, and <code>Result&lt;T&gt;</code> is <code>{ok:true, data} | {ok:false, error}</code>.</p>
+      <span class="ref">sources/types.ts · contracts/src/types.ts</span>
     </div>
     <div class="comp">
       <h3>Errors are values on the wire</h3>
       <p>Nothing throws across the network. Every reply is a <code>Result</code>, and every error carries a fixed <code>ErrorCode</code>, a <code>retryable</code> flag and a <code>requestId</code>. In-process, errors are <code>StreamOtterError</code> instances with that same shape.</p>
-      <span class="ref">contracts/src/errors.ts:65-71</span>
+      <span class="ref">contracts/src/errors.ts</span>
     </div>
     <div class="comp">
       <h3>Validate at every boundary</h3>
@@ -592,12 +592,12 @@ export function createGatewayRuntime(options, internal = {}) {
     <div class="comp">
       <h3>Canonical forms</h3>
       <p>Params are serialized with sorted keys (<code>canonicalJson</code>), so <code>{a,b}</code> and <code>{b,a}</code> become the same routing key. Revisions are decimal strings compared by length and then character by character, so they can exceed JavaScript's safe integer range without losing precision.</p>
-      <span class="ref">contracts/src/primitives.ts:28, 109</span>
+      <span class="ref">contracts/src/primitives.ts</span>
     </div>
     <div class="comp">
       <h3>Design decisions are numbered</h3>
       <p>Comments cite decision records, such as “ADR-15A §1” or “WHC-1”, in the docs, so the reason for a tricky line is one lookup away.</p>
-      <span class="ref">e.g. sources/types.ts:82 · runtime/core.ts:23</span>
+      <span class="ref">e.g. sources/types.ts · runtime/core.ts</span>
     </div>
   </div>
 </section>
@@ -612,9 +612,9 @@ export function createGatewayRuntime(options, internal = {}) {
     <div class="comp">
       <h3>Ordering</h3>
       <ul>
-        <li><b>A per-source lock made from a promise chain.</b> <code>exclusive(work)</code> chains each record onto the previous one (<code>runtime/gateway.ts:53-67</code>), so a source handles exactly one record at a time, in order, even though everything is async.</li>
+        <li><b>A per-source lock made from a promise chain.</b> <code>exclusive(work)</code> chains each record onto the previous one (<code>runtime/gateway.ts</code>), so a source handles exactly one record at a time, in order, even though everything is async.</li>
         <li><b>One frame in flight per subscription.</b> The next frame waits for the browser's receipt, which keeps each subscription's order intact.</li>
-        <li><b>Epochs.</b> Every reset bumps the epoch, so late callbacks from an abandoned attempt recognize they're stale and do nothing.</li>
+        <li><b>Generations and epochs.</b> Every reset increments a generation counter, so late callbacks from an abandoned attempt see they're stale and do nothing. Each sync attempt also gets a new epoch ID, so late receipts are ignored.</li>
       </ul>
     </div>
     <div class="comp">
@@ -622,7 +622,7 @@ export function createGatewayRuntime(options, internal = {}) {
       <ul>
         <li><b>Budgets reserve or refuse.</b> <code>ByteBudget.tryReserve()</code> returns false instead of waiting, and the subscription resets. Kafka is never held up by a browser.</li>
         <li><b>The semaphore</b> only gates snapshot calls, which are your code's I/O, never the Kafka path.</li>
-        <li><b>Timers</b> bound everything external: a 5 s receipt timeout and a 10 s snapshot timeout, with retries backing off 1 s then 2 s.</li>
+        <li><b>Timers</b> bound everything external: a 5 s receipt timeout and a 10 s snapshot timeout by default (configurable under <code>limits</code>), with retries backing off 1 s then 2 s.</li>
         <li><b>AbortSignal</b> is threaded through so <code>stop()</code> can cancel in-flight work cleanly.</li>
       </ul>
     </div>
@@ -675,7 +675,7 @@ export function createGatewayRuntime(options, internal = {}) {
   <div class="inferred">
     <ul>
       <li><b>“Ports and adapters” and “facade”</b> are my labels for patterns the code follows; the repo doesn't use those names.</li>
-      <li><b>“About 35 classes”</b> counts class declarations in <code>packages/*/src</code> (38 matches, including small local helpers).</li>
+      <li><b>“About 35 classes”</b> counts class declarations in <code>packages/*/src</code> (35 class declarations, including small local helpers and error types).</li>
       <li><b>“Half the gateway is V1.1”</b> is approximate, from line counts of <code>failures/</code> and <code>operator/</code>.</li>
       <li><b>The reasons</b> given for the few-dependencies choice and for the facade (stability, safety) are inferred from the code's shape and comments, not from a stated policy.</li>
     </ul>

@@ -21,6 +21,7 @@
   --splash: #04BDFD;
   --otter: #7F5447;
   --warn: #A3540B;
+  --infra: #EFF0F2; --infra-line: #8F96A3;
   --display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
   --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -29,13 +30,13 @@
   :root:not([data-theme="light"]) {
     --bg: #06122B; --surface: #0C1D41; --surface-2: #132A57; --region: #0A1938;
     --fg: #E9F2FC; --muted: #A9BAD5; --line: #2B4170; --accent: #5AB8FF; --splash: #04BDFD;
-    --otter: #D9A994; --warn: #F0A55B; color-scheme: dark;
+    --otter: #D9A994; --warn: #F0A55B; --infra: #1B2029; --infra-line: #6E7685; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #06122B; --surface: #0C1D41; --surface-2: #132A57; --region: #0A1938;
   --fg: #E9F2FC; --muted: #A9BAD5; --line: #2B4170; --accent: #5AB8FF; --splash: #04BDFD;
-  --otter: #D9A994; --warn: #F0A55B; color-scheme: dark;
+  --otter: #D9A994; --warn: #F0A55B; --infra: #1B2029; --infra-line: #6E7685; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
@@ -85,6 +86,7 @@ svg .la { font-size: 11px; fill: var(--accent); font-weight: 600; }
 svg .n { font-family: var(--mono); font-size: 11px; fill: var(--accent); font-weight: 500; }
 svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
 svg .box-strong { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; }
+svg .box-infra { fill: var(--infra); stroke: var(--infra-line); stroke-width: 1.3; stroke-dasharray: 5 4; }
 svg .box-ext { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.2; }
 svg .box-you { fill: var(--surface); stroke: var(--otter); stroke-width: 1.4; stroke-dasharray: 5 4; }
 svg .region { fill: var(--region); stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 6 5; }
@@ -197,7 +199,7 @@ section[id], aside { scroll-margin-top: 84px; }
 <header class="top">
   <span class="eyebrow">StreamOtter · main @ 1c75aaa · packages at 0.2.0-rc.1 · Under the Hood, part 5 of 5</span>
   <h1>Using and running it</h1>
-  <p class="lead">This page is StreamOtter from the outside, through two people's eyes. <strong>The developer</strong> writes one config file and four handlers, then calls <code>client.subscribe()</code> in the page. The fixture source and the local workbench let them do all of that before Kafka is involved. <strong>The operator</strong> runs exactly one <code>streamotter start</code> process under a supervisor, behind the app's reverse proxy, and watches its health endpoint, its logs and, with V1.1, its failure incidents. It summarizes the repo's guides; follow the references for full detail.</p>
+  <p class="lead">This page is StreamOtter from the outside, through two people's eyes. <strong>The developer</strong> writes one config file and four handlers, then calls <code>client.subscribe()</code> in the page. The fixture source and the local workbench let them do all of that before Kafka is involved. <strong>The operator</strong> runs exactly one <code>streamotter start</code> process under a supervisor, behind the app's reverse proxy, and watches its logs and, with V1.1 (0.2.0-rc.1), an opt-in health endpoint and its failure incidents. It summarizes the repo's guides; follow the references for full detail.</p>
   <div class="ideas">
     <div class="idea"><b>Fixture first</b><span>A working live page in about ten minutes, with no Kafka.</span></div>
     <div class="idea"><b>One file, four functions, one call</b><span>The config file, then <code>authenticate</code>, <code>authorize</code>, <code>map</code> and <code>snapshot</code>, then <code>subscribe()</code>.</span></div>
@@ -223,14 +225,14 @@ section[id], aside { scroll-margin-top: 84px; }
     <p>This follows <code>docs/guides/getting-started.md</code>. You need Node 24 or later and a browser. No Kafka is required.</p>
   </div>
   <ol class="journey">
-    <li><div><b>Install.</b> <code>npm install streamotter</code> provides the CLI, the gateway, the workbench and the browser SDK.</div></li>
+    <li><div><b>Install.</b> <code>npm install streamotter</code> provides the CLI, the gateway, the workbench and the browser SDK. The guide also adds a dev server: <code>npm install --save-dev vite</code>.</div></li>
     <li><div><b>Scaffold.</b> <code>npx streamotter init .</code> writes <code>streamotter.json</code> (a fixture source, two schemas and one channel), <code>server/handlers.mjs</code> (the four handlers plus sample data) and <code>web/example.ts</code>.</div></li>
     <li><div><b>Run in development.</b> <code>npx streamotter dev --config streamotter.json --handlers server/handlers.mjs</code> starts the gateway on <code>:7400</code> and the workbench on <code>:7401</code>, and prints a one-time token.</div></li>
     <li><div><b>Try it in the workbench.</b> Preview a subscription as a sample user, step the fixture forward one record at a time, and follow each record through <code>source → validate → map → queue → commit</code>, then <code>send → receipt</code>.</div></li>
     <li><div><b>Generate types.</b> <code>npx streamotter generate --config streamotter.json --out generated</code> writes the channel types and the <code>channelVersions</code> constant.</div></li>
     <li><div><b>Let the page sign in.</b> Make <code>authenticate</code> accept one fixed local token for now. Restart <code>dev</code>, because handlers load at startup.</div></li>
-    <li><div><b>Build the page.</b> Create the client, subscribe, render <code>data</code>, and show the <code>state</code>. The page's origin must be listed in <code>allowedOrigins</code>.</div></li>
-    <li><div><b>Break it on purpose.</b> Step the fixture forward and the page updates. Stop <code>dev</code> and the page turns <code>stale</code>, keeping its last data. Start <code>dev</code> again and it re-snapshots and goes <code>live</code>.</div></li>
+    <li><div><b>Build the page.</b> Create the client, subscribe, render <code>data</code>, and show the <code>state</code>. Serve <code>index.html</code> and <code>web/main.ts</code> with <code>npx vite</code> at http://localhost:5173, which the scaffold already lists in <code>allowedOrigins</code>.</div></li>
+    <li><div><b>Break it on purpose.</b> Step the fixture forward and the page updates. Stop <code>dev</code> and the page turns <code>stale</code>, keeping its last data. Start <code>dev</code> again and the page reconnects, but the fixture restarts at revision 1, so an open page ends in <code>resync-required</code>. Reload it to start fresh. Real data, whose revisions keep increasing, doesn't have this problem.</div></li>
   </ol>
   <aside class="next-step" aria-label="Back to the reading order">
     <span class="eyebrow">Came here from part 1?</span>
@@ -255,7 +257,7 @@ section[id], aside { scroll-margin-top: 84px; }
   "handlersRef": "orderStatus",
   "delivery": { "kind": "state", "overflow": "resync" } } }</pre>
       <ul>
-        <li>The schemas use a small subset of JSON Schema. Check them with <code>streamotter validate</code>.</li>
+        <li>The schemas use a small subset of JSON Schema. Check them with <code>npx streamotter validate --config streamotter.json</code>.</li>
         <li>Kafka credentials are referenced through environment variables (<code>{"env": "KAFKA_PASSWORD"}</code>), never written into the file.</li>
       </ul>
     </div>
@@ -331,11 +333,11 @@ order.on("error", err =&gt; showError(err));</pre>
     <table>
       <thead><tr><th>Command</th><th>Who uses it</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td class="pkg">init &lt;dir&gt;</td><td>developer</td><td>Scaffolds the config, handlers and example. Never overwrites files, and cleans up after itself if a write fails. <code>--failures</code> creates the V1.1 journal.</td></tr>
+        <tr><td class="pkg">init &lt;dir&gt;</td><td>developer</td><td>Scaffolds the config, handlers and example. Never overwrites files, and cleans up after itself if a write fails. Separately, <code>init --failures --config &lt;path&gt; --state-dir &lt;dir&gt;</code> (no directory argument) creates the V1.1 journal.</td></tr>
         <tr><td class="pkg">validate</td><td>developer, CI</td><td>Checks the config with no network and no handlers.</td></tr>
         <tr><td class="pkg">generate</td><td>developer, CI</td><td>Writes the channel types and examples. Only overwrites files it created.</td></tr>
-        <tr><td class="pkg">dev</td><td>developer</td><td>Runs the gateway, workbench, management API and fixtures on loopback, behind a per-run token.</td></tr>
-        <tr><td class="pkg">start</td><td>operator</td><td>Runs the production gateway only. Optional <code>--health</code>, <code>--state-dir</code> and <code>--operator-socket</code>.</td></tr>
+        <tr><td class="pkg">dev</td><td>developer</td><td>Runs the gateway (on <code>gateway.host</code>, 127.0.0.1 in the scaffold), plus the workbench, management API and fixtures on loopback behind a per-run token.</td></tr>
+        <tr><td class="pkg">start</td><td>operator</td><td>Runs the production gateway only. Requires <code>--config</code> and <code>--handlers</code>. Optional <code>--health</code>, <code>--state-dir</code>, <code>--handler-build-id</code> and <code>--operator-socket</code> (which needs <code>--state-dir</code> and <code>failureHandling</code>).</td></tr>
         <tr><td class="pkg">status · failures … · sources …</td><td>operator (V1.1)</td><td>Talks to a running gateway over its local socket: list, show, export, evaluate, redrive, retry-current, reassess, reopen-circuit, retire-boundary. <code>rebaseline</code> runs with the gateway stopped.</td></tr>
       </tbody>
     </table>
@@ -353,7 +355,7 @@ order.on("error", err =&gt; showError(err));</pre>
     <div class="diagram">
       <svg viewBox="0 0 1000 400" role="img" aria-labelledby="dt dd">
         <title id="dt">Production deployment</title>
-        <desc id="dd">Browsers connect over HTTPS to a reverse proxy, which routes /streamotter to one gateway process and everything else to the app. The gateway reads Kafka over TLS, keeps an optional journal on disk, and exposes loopback-only health and operator endpoints.</desc>
+        <desc id="dd">Browsers connect over HTTPS to a reverse proxy, which routes /streamotter to one gateway process and everything else to the app. The gateway reads Kafka over TLS, keeps an optional journal on disk, and exposes a health listener you bind privately and a local operator Unix socket.</desc>
         <defs><marker id="dm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="m-data" d="M0,0 L10,5 L0,10 z"/></marker></defs>
         <rect class="box-ext" x="10" y="150" width="185" height="90" rx="6"/>
         <text class="t" x="24" y="176">Browsers</text>
@@ -378,12 +380,12 @@ order.on("error", err =&gt; showError(err));</pre>
         <text x="494" y="168">no management, no workbench</text>
         <text class="l" x="494" y="196">supervisor: SIGTERM, &gt;10 s grace,</text>
         <text class="l" x="494" y="210">restart after a short delay</text>
-        <rect class="box-ext" x="480" y="270" width="270" height="70" rx="6"/>
+        <rect class="box-infra" x="480" y="270" width="270" height="70" rx="6"/>
         <text class="t" x="494" y="296">Your app :3000</text>
         <text class="f" x="494" y="314">session store + database</text>
         <path class="a-call" d="M600,220 L600,270" marker-end="url(#dm)"/>
         <text class="lo" x="608" y="250">handlers read sessions and data</text>
-        <rect class="box-ext" x="805" y="60" width="185" height="90" rx="6"/>
+        <rect class="box-infra" x="805" y="60" width="185" height="90" rx="6"/>
         <text class="t" x="819" y="86">Kafka</text>
         <text class="f" x="819" y="104">TLS + SASL</text>
         <text class="l" x="819" y="128">+ quarantine topic (V1.1)</text>
@@ -394,8 +396,8 @@ order.on("error", err =&gt; showError(err));</pre>
         <text class="f" x="819" y="238">/health/ready</text>
         <path class="a-ctl" d="M750,200 L805,212"/>
         <rect class="box" x="805" y="280" width="185" height="100" rx="6"/>
-        <text class="t" x="819" y="304">State dir (V1.1)</text>
-        <text class="f" x="819" y="322">journal.sqlite · 0700</text>
+        <text class="t" x="819" y="304">State dir · 0700 (V1.1)</text>
+        <text class="f" x="819" y="322">journal.sqlite · 0600</text>
         <text class="f" x="819" y="338">run/operator.sock</text>
         <text class="l" x="819" y="362">← operator CLI commands</text>
         <path class="a-ctl" d="M750,190 L805,300"/>
@@ -424,7 +426,7 @@ order.on("error", err =&gt; showError(err));</pre>
     <div class="comp">
       <h3>Health and logs</h3>
       <ul>
-        <li><code>--health</code> adds a loopback-only listener. Use <code>/health/live</code> to decide restarts and <code>/health/ready</code> for alerts.</li>
+        <li><span class="tag v11">V1.1</span> <code>--health &lt;host:port&gt;</code> adds an opt-in, read-only health listener (a bare port binds 127.0.0.1). Bind it to loopback or a private interface. Without it, production has no health endpoint. Use <code>/health/live</code> to decide restarts and <code>/health/ready</code> for alerts.</li>
         <li>Readiness reasons are <code>starting</code>, <code>source-held</code>, <code>source-unavailable</code>, <code>journal</code> and <code>quarantine</code>. Liveness stays true through a Kafka outage, so the supervisor won't restart-loop the gateway.</li>
         <li>Logs are single lines on stdout and stderr, with source IDs and redacted positions, and never payloads or credentials. Pass a <code>logger</code> to <code>createGateway</code> to route them elsewhere.</li>
       </ul>
@@ -449,7 +451,7 @@ order.on("error", err =&gt; showError(err));</pre>
       <h3>Unsticking a paused source</h3>
       <ul>
         <li><b>Without V1.1:</b> fix the cause (data or handler code), then call <code>gateway.resumeSource(id)</code> from code, or restart. A restart is safe because the bad record is still uncommitted.</li>
-        <li><b>With V1.1:</b> <code>streamotter failures list</code>, then <code>show</code>, then repair. Then <code>sources retry-current</code>, or let quarantine continue if the policy allows.</li>
+        <li><b>With V1.1:</b> <code>streamotter failures list --state-dir &lt;dir&gt;</code> (against a gateway started with <code>--operator-socket</code>), then <code>show</code>, then repair. Then <code>sources retry-current</code>, or let quarantine continue if the policy allows.</li>
       </ul>
       <span class="ref">guides/kafka.md “When a record is bad” · guides/source-failures.md</span>
     </div>
@@ -463,8 +465,8 @@ order.on("error", err =&gt; showError(err));</pre>
     <p>This is optional. Without a <code>failureHandling</code> section, the gateway behaves exactly like V1.</p>
   </div>
   <ol class="journey">
-    <li><div><b>Choose a policy for each source.</b> <code>pause</code> is the V1 behavior. <code>quarantine-hold</code> copies the record as evidence and stays held. <code>quarantine-resync</code> copies it and continues, but only for <code>invalid-json</code> and <code>payload-schema</code> failures, and only with a recovery guard in your handlers.</div></li>
-    <li><div><b>Create the journal once.</b> <code>sudo -u streamotter npx streamotter init --failures --config streamotter.json --state-dir /var/lib/streamotter/shop</code>. The directory must be owned by the gateway's user and not writable by anyone else, on a persistent volume. It needs Node 24.15 or later.</div></li>
+    <li><div><b>Choose a policy for each source.</b> Per source, set a policy for each of two failure classes, <code>invalidJson</code> and <code>invalidPublicPayload</code>: <code>pause</code> (the V1 behavior and the default), <code>quarantine-hold</code> (copy the record as evidence and stay held) or <code>quarantine-resync</code> (copy it and move past it, only when your recovery guard approves and within the circuit-breaker limit). Every other failure always pauses.</div></li>
+    <li><div><b>Create the journal once.</b> First <code>sudo install -d -o streamotter -g streamotter -m 0700 /var/lib/streamotter</code>, then <code>sudo -u streamotter npx streamotter init --failures --config streamotter.json --state-dir /var/lib/streamotter/shop</code>. The config must already contain <code>failureHandling</code>. The directory must be owned by the gateway's user and not writable by anyone else, on a persistent volume. It needs Node 24.15 or later.</div></li>
     <li><div><b>Provision the quarantine topic yourself.</b> Set <code>max.message.bytes</code> to at least <code>maxSourceRecordBytes</code> plus 80 KiB, and grant the gateway's Kafka user the extra permissions it needs.</div></li>
     <li><div><b>Start with the extras.</b> <code>streamotter start … --state-dir … --operator-socket --health 127.0.0.1:7402</code>.</div></li>
     <li><div><b>Acknowledge the boundary in snapshots.</b> After continuing past a record, every <code>snapshot</code> on that source must return the boundary's ID until it's retired.</div></li>
@@ -485,10 +487,10 @@ order.on("error", err =&gt; showError(err));</pre>
       <tbody>
         <tr><td><code>FORBIDDEN</code> “This origin is not allowed.”</td><td>The page's origin isn't in <code>allowedOrigins</code></td><td>Add the exact scheme, host and port, then restart. Wildcards aren't allowed.</td></tr>
         <tr><td><code>auth-required</code> / <code>UNAUTHENTICATED</code></td><td><code>authenticate</code> returned null, the token expired, or <code>getToken</code> failed</td><td>Fix the session check. After the user signs in again, call <code>client.reconnect()</code>.</td></tr>
-        <tr><td><code>FORBIDDEN</code> after connecting</td><td><code>authorize</code> said no, or the channel, version or params are wrong</td><td>Use the generated <code>channelVersions</code>. In development, the Inspect tab shows which check failed.</td></tr>
-        <tr><td>Stuck <code>stale</code></td><td>The source is paused, Kafka is down or rebalancing, or a snapshot is missing the recovery boundary</td><td>Check the log and the readiness reasons. With V1.1, run <code>failures list</code>.</td></tr>
+        <tr><td><code>FORBIDDEN</code> after connecting</td><td><code>authorize</code> said no, or the channel or version is wrong (or, in production, the params don't match)</td><td>Use the generated <code>channelVersions</code>. In development, the Inspect tab shows a rejected <code>authorize</code> step.</td></tr>
+        <tr><td>Stuck <code>stale</code></td><td>The source is paused, Kafka is down or rebalancing, or a snapshot is missing the recovery boundary</td><td>Check the log and the readiness reasons. With V1.1, run <code>streamotter failures list --state-dir &lt;dir&gt;</code>.</td></tr>
         <tr><td><code>resync-required</code></td><td>Three automatic attempts failed, often from snapshot timeouts</td><td>Call <code>subscription.resync()</code>, for example from a retry button. Look into how slow <code>snapshot</code> is.</td></tr>
-        <tr><td><code>OVERLOADED</code></td><td>A subscription, connection or rate limit was reached</td><td>Check the limit named in the message (Guarantees page).</td></tr>
+        <tr><td><code>OVERLOADED</code></td><td>A subscription, connection or rate limit was reached</td><td>Match the message to its limit in the troubleshooting guide (<code>maxSubscriptionsPerConnection</code>, <code>controlRequestsPerSecond</code>, <code>maxConnections</code>). It also appears while the gateway is starting or stopping.</td></tr>
         <tr><td>Exit 1, “Sources did not become ready”</td><td>A broker, credentials or topic problem, or a restart right after a crash</td><td>Read the staged diagnostics printed below the error. Right after a crash, try again.</td></tr>
         <tr><td>Exit 2 at startup</td><td>Invalid config, a fixture or plaintext Kafka in production, or a missing environment variable</td><td>The message names the path and the fix.</td></tr>
       </tbody>

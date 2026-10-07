@@ -293,14 +293,15 @@ section[id], aside { scroll-margin-top: 84px; }
         <!-- E: session -->
         <rect class="box" x="930" y="130" width="140" height="210" rx="6"/>
         <text class="t" x="944" y="152">Client session</text>
-        <text class="f" x="944" y="169">runtime/session.ts</text>
-        <text x="944" y="194">Socket.IO server</text>
-        <text x="944" y="211">WebSocket only</text>
-        <text x="944" y="228">origin + token</text>
-        <text x="944" y="245">rate, size limits</text>
-        <text x="944" y="262">token expiry timer</text>
-        <text x="944" y="279">drops stalled</text>
-        <text x="944" y="296">readers</text>
+        <text class="f" x="944" y="169" style="font-size:9.5px">runtime/session.ts</text>
+        <text class="f" x="944" y="182" style="font-size:9.5px">transport/socketio.ts</text>
+        <text x="944" y="206">Socket.IO server</text>
+        <text x="944" y="223">WebSocket only</text>
+        <text x="944" y="240">origin + token</text>
+        <text x="944" y="257">rate, size limits</text>
+        <text x="944" y="274">token expiry timer</text>
+        <text x="944" y="291">drops stalled</text>
+        <text x="944" y="308">readers</text>
 
         <!-- F: browser -->
         <rect class="box-ext" x="1130" y="130" width="110" height="210" rx="6"/>
@@ -420,7 +421,7 @@ section[id], aside { scroll-margin-top: 84px; }
   <div class="section-head">
     <span class="eyebrow">Figure 2</span>
     <h2>The six packages</h2>
-    <p>A pnpm workspace (<code>package.json</code>, Node ≥ 24, TypeScript 5.9). Five packages build with <code>tsc -b</code>; the workbench builds with esbuild. All six publish at <code>0.2.0-rc.1</code>. Each package's <code>exports</code> carries a <code>streamotter-source</code> condition so tests and the CLI run straight from <code>.ts</code> sources.</p>
+    <p>A pnpm workspace (<code>package.json</code>, Node ≥ 24, TypeScript 5.9). Five packages build with <code>tsc -b</code>; the workbench builds with esbuild. All six publish at <code>0.2.0-rc.1</code>. Each of the five TypeScript packages' <code>exports</code> carries a <code>streamotter-source</code> condition so tests and the CLI run straight from <code>.ts</code> sources.</p>
   </div>
   <figure>
     <div class="diagram small">
@@ -490,21 +491,21 @@ section[id], aside { scroll-margin-top: 84px; }
     <p>The live path for a record on a Kafka source with a browser already subscribed and live. Line numbers are at commit 1c75aaa.</p>
   </div>
   <ol class="journey">
-    <li><div><span class="where">Kafka adapter</span><b>The consumer hands over one message.</b> KafkaJS runs with <code>autoCommit: false</code> and one partition at a time. For each message the adapter builds a <code>SourceInput</code> (key, raw bytes, headers, broker timestamp, position <code>{topic, partition, offset}</code>), starts a 3-second heartbeat so a slow mapper doesn't get the member evicted, and awaits the gateway's <code>process()</code>.<span class="ref">gateway/src/sources/kafka.ts:259-296</span></div></li>
-    <li><div><span class="where">Pipeline</span><b>Records on one source are processed strictly one after another.</b> <code>SourceRuntimeImpl.exclusive()</code> chains every <code>process()</code> and any operator redrive onto one promise lock. With failure handling on, the pipeline first checks that the source hasn't moved past a held record without a recorded advance.<span class="ref">gateway/src/runtime/gateway.ts:65-69, 632-640, 664-685</span></div></li>
-    <li><div><span class="where">Pipeline</span><b>Decode and size-check.</b> Bytes over <code>maxSourceRecordBytes</code> (1 MiB default), invalid UTF-8, invalid JSON, nesting deeper than 16, and tombstones (null values) are all caught before your code sees them. None is thrown away: the record pauses its source, uncommitted, and is reported (see Failure handling below).<span class="ref">gateway/src/runtime/gateway.ts:720-739 · contracts/src/limits.ts:12-33</span></div></li>
-    <li><div><span class="where">Pipeline</span><b>Freeze a <code>SourceRecord</code>.</b> Its ID is a SHA-256 of project, source, the source's <code>generation</code> and the Kafka position, so the same record always gets the same ID.<span class="ref">gateway/src/runtime/gateway.ts:741-748 · runtime/identity.ts:49-51</span></div></li>
-    <li><div><span class="where">Your code</span><b>Run <code>map()</code> for every channel on that source.</b> Each call gets an <code>AbortSignal</code> and a 2-second <code>handlerTimeoutMs</code>. It returns an array (max 100) of <code>MappedState</code>: <code>{ tenantId, params, revision, data }</code>. A <code>TransientMappingError</code> re-runs the whole mapping after 250 ms and 1 s, only if the V1.1 policy allows retries.<span class="ref">gateway/src/runtime/gateway.ts:760-801 · runtime/util.ts:14-42 · contracts/src/types.ts (ChannelHandlers)</span></div></li>
-    <li><div><span class="where">Pipeline</span><b>Turn each row into a routed frame.</b> Only those four fields are allowed. Params are canonicalized against the channel's <code>paramsSchema</code>, the revision must be a canonical unsigned decimal string, the frame must fit <code>maxDataFrameBytes</code> (64 KiB), and <code>data</code> must pass <code>payloadSchema</code>. The routing key is <code>[channel, version, tenantId, canonicalParams]</code>.<span class="ref">gateway/src/runtime/gateway.ts:880-918 · runtime/core.ts:62-64</span></div></li>
-    <li><div><span class="where">Pipeline</span><b>Refuse a revision conflict.</b> If the same key gets the same revision with different data (within this record, or against what a subscriber already holds), the source pauses with <code>REVISION_CONFLICT</code>. Nothing from the record is admitted.<span class="ref">gateway/src/runtime/gateway.ts:805-818</span></div></li>
-    <li><div><span class="where">Subscriptions</span><b>Admit to every subscriber of that key.</b> Each <code>ServerSubscription</code> drops anything at or below its latest revision, reserves room in its byte budget, queues the frame and pumps. Admission never waits: if the budget is full, that subscription is reset and re-snapshotted instead.<span class="ref">gateway/src/runtime/gateway.ts:822-833 · runtime/subscription.ts:188-208</span></div></li>
-    <li><div><span class="where">Kafka adapter</span><b>Commit the offset.</b> <code>process()</code> returns <code>{kind: "commit"}</code>; the adapter resolves the offset and commits <code>offset + 1</code> through a serialized commit chain. A failed commit is retried in the background and the record may be redelivered, which the revision filter absorbs.<span class="ref">gateway/src/runtime/gateway.ts:706-708 · sources/kafka.ts:312-331</span></div></li>
-    <li><div><span class="where">Subscriptions</span><b>Send one frame.</b> Only one frame per subscription is in flight. It goes out as <code>so:data {subscriptionId, epoch, sequence, event}</code> and starts a 5-second receipt timer.<span class="ref">gateway/src/runtime/subscription.ts:486-512</span></div></li>
-    <li><div><span class="where">Transport</span><b>Socket.IO writes it to the WebSocket.</b> WebSocket only, no long-polling, Socket.IO's own connection-state recovery off, inbound frames capped at <code>maxControlFrameBytes</code>.<span class="ref">gateway/src/transport/socketio.ts:84-104, 142-160</span></div></li>
-    <li><div><span class="where">Browser</span><b>The SDK checks the frame and hands it to your listener.</b> <code>ClientSubscription</code> accepts a frame only for its current epoch, with exactly the next sequence number, where frame 1 is a snapshot and later frames have strictly higher revisions. It calls your <code>on("data")</code> listeners synchronously, then sends <code>so:receipt</code>.<span class="ref">client/src/subscription.ts:235-273 · client/src/frames.ts</span></div></li>
-    <li><div><span class="where">Subscriptions</span><b>The receipt releases the next frame.</b> <code>onReceipt</code> frees the budget and pumps. A missing receipt closes the whole connection with <code>OVERLOADED</code>; the SDK reconnects and every subscription starts over from a snapshot.<span class="ref">gateway/src/runtime/subscription.ts:210-257 · runtime/session.ts:109-114</span></div></li>
+    <li><div><span class="where">Kafka adapter</span><b>The consumer hands over one message.</b> KafkaJS runs with <code>autoCommit: false</code> and one partition at a time. For each message the adapter builds a <code>SourceInput</code> (key, raw bytes, headers, record timestamp, position <code>{topic, partition, offset}</code>), starts a 3-second heartbeat so a slow mapper doesn't get the member evicted, and awaits the gateway's <code>process()</code>.<span class="ref">gateway/src/sources/kafka.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Records on one source are processed strictly one after another.</b> <code>SourceRuntimeImpl.exclusive()</code> chains every <code>process()</code> and any operator redrive onto one promise lock. With failure handling on, the pipeline first checks that the source hasn't moved past a held record without a recorded advance.<span class="ref">gateway/src/runtime/gateway.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Decode and size-check.</b> Bytes over <code>maxSourceRecordBytes</code> (1 MiB default), invalid UTF-8, invalid JSON, nesting deeper than 16, and tombstones (null values) are all caught before your code sees them. None is thrown away: the record pauses its source, uncommitted, and is reported (see Failure handling below).<span class="ref">gateway/src/runtime/gateway.ts · contracts/src/limits.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Freeze a <code>SourceRecord</code>.</b> Its ID is a SHA-256 of project, source, the source's <code>generation</code> and the Kafka position, so the same record always gets the same ID.<span class="ref">gateway/src/runtime/gateway.ts · runtime/identity.ts</span></div></li>
+    <li><div><span class="where">Your code</span><b>Run <code>map()</code> for every channel on that source.</b> Each call gets an <code>AbortSignal</code> and a 2-second <code>handlerTimeoutMs</code>. It returns an array (max 100) of <code>MappedState</code>: <code>{ tenantId, params, revision, data }</code>. A <code>TransientMappingError</code> re-runs the whole mapping after 250 ms and 1 s, only if the V1.1 policy allows retries.<span class="ref">gateway/src/runtime/gateway.ts · runtime/util.ts · contracts/src/types.ts (ChannelHandlers)</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Turn each row into a routed frame.</b> Only those four fields are allowed. Params are canonicalized against the channel's <code>paramsSchema</code>, the revision must be a canonical unsigned decimal string, the frame must fit <code>maxDataFrameBytes</code> (64 KiB), and <code>data</code> must pass <code>payloadSchema</code>. The routing key is <code>[channel, version, tenantId, canonicalParams]</code>.<span class="ref">gateway/src/runtime/gateway.ts · runtime/core.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Refuse a revision conflict.</b> If the same key gets the same revision with different data (within this record, or against what a subscriber already holds), the source pauses with <code>REVISION_CONFLICT</code>. Nothing from the record is admitted.<span class="ref">gateway/src/runtime/gateway.ts</span></div></li>
+    <li><div><span class="where">Subscriptions</span><b>Admit to every subscriber of that key.</b> Each <code>ServerSubscription</code> drops anything at or below its latest revision, reserves room in its byte budget, queues the frame and pumps. Admission never waits: if the budget is full, that subscription is reset and re-snapshotted instead.<span class="ref">gateway/src/runtime/gateway.ts · runtime/subscription.ts</span></div></li>
+    <li><div><span class="where">Kafka adapter</span><b>Commit the offset.</b> <code>process()</code> returns <code>{kind: "commit"}</code>; the adapter resolves the offset and commits <code>offset + 1</code> through a serialized commit chain. A failed commit is retried in the background and the record may be redelivered, which the revision filter absorbs.<span class="ref">gateway/src/runtime/gateway.ts · sources/kafka.ts</span></div></li>
+    <li><div><span class="where">Subscriptions</span><b>Send one frame.</b> Only one frame per subscription is in flight. It goes out as <code>so:data {subscriptionId, epoch, sequence, event}</code> and starts a 5-second receipt timer.<span class="ref">gateway/src/runtime/subscription.ts</span></div></li>
+    <li><div><span class="where">Transport</span><b>Socket.IO writes it to the WebSocket.</b> WebSocket only, no long-polling, Socket.IO's own connection-state recovery off, inbound frames capped at <code>maxControlFrameBytes</code>.<span class="ref">gateway/src/transport/socketio.ts</span></div></li>
+    <li><div><span class="where">Browser</span><b>The SDK checks the frame and hands it to your listener.</b> <code>ClientSubscription</code> accepts a frame only for its current epoch, with exactly the next sequence number, where frame 1 is a snapshot and later frames have strictly higher revisions. It calls your <code>on("data")</code> listeners synchronously, then sends <code>so:receipt</code>.<span class="ref">client/src/subscription.ts · client/src/frames.ts</span></div></li>
+    <li><div><span class="where">Subscriptions</span><b>The receipt releases the next frame.</b> <code>onReceipt</code> frees the budget and pumps. A missing receipt closes the whole connection with <code>OVERLOADED</code>; the SDK reconnects and every subscription starts over from a snapshot.<span class="ref">gateway/src/runtime/subscription.ts · runtime/session.ts</span></div></li>
   </ol>
-  <p class="callout"><b>The commit point.</b> Step 9 happens right after step 8, before steps 10 to 13. A Kafka offset means "the gateway processed and queued this record", not "a browser has it". That is deliberate for state delivery: a browser that misses a frame gets a fresh snapshot from your app (inferred rationale; the code shows the order, not the reason).</p>
+  <p class="callout"><b>The commit point.</b> The commit (step 9) never waits for the browser. When a subscription is live and has no frame in flight, admission in step 8 already sends <code>so:data</code> (steps 10 and 11) before <code>process()</code> returns "commit", and receipts (steps 12 and 13) arrive independently of the commit. A Kafka offset means "the gateway processed and queued this record, and may already have sent it", not "a browser has it". That is deliberate for state delivery: a browser that misses a frame gets a fresh snapshot from your app (inferred rationale; the code shows the order, not the reason).</p>
 </section>
 
 <section id="sync">
@@ -525,8 +526,8 @@ section[id], aside { scroll-margin-top: 84px; }
     <span class="phase live">live</span>
   </div>
   <div class="prose" style="display:grid;gap:10px">
-    <p>Snapshots run under a gateway-wide semaphore (<code>maxConcurrentSnapshots</code> 32) with a 10-second timeout. A snapshot is rejected if it fails the payload schema, regresses below a revision the browser already saw, or, under V1.1 quarantine-resync, doesn't echo the source's current <code>recoveryBoundaryId</code>. After the receipt, buffered updates at or below the snapshot revision are dropped and the rest drain in order. A failed attempt goes <code>stale</code> and retries after 1 s, then 2 s; after <code>maxSyncAttempts</code> (3) it reports <code>resync-required</code>.</p>
-    <p class="ref">gateway/src/runtime/subscription.ts:30-44 (phases), 259-390 (#beginAttempt), 445-460 (#attemptFailed) · contracts/src/types.ts (SubscriptionState)</p>
+    <p>Snapshots run under a gateway-wide semaphore (<code>maxConcurrentSnapshots</code> 32) with a 10-second timeout. A snapshot that fails the payload schema or the frame size, or a <code>snapshot</code> or <code>authorize</code> handler that throws or denies, fails the subscription outright. A timeout, an overflow, a regression below a revision the browser already saw, or (under V1.1 quarantine-resync) a missing or superseded <code>recoveryBoundaryId</code> makes the attempt go <code>stale</code> and retry after 1 s, then 2 s; after <code>maxSyncAttempts</code> (3) it reports <code>resync-required</code>. After the receipt, buffered updates at or below the snapshot revision are dropped and the rest drain in order.</p>
+    <p class="ref">gateway/src/runtime/subscription.ts (phases), 259-390 (#beginAttempt), 445-460 (#attemptFailed) · contracts/src/types.ts (SubscriptionState)</p>
   </div>
 </section>
 
@@ -546,7 +547,7 @@ section[id], aside { scroll-margin-top: 84px; }
         <li>A watchdog marks the source <code>degraded</code> after 12 s without broker activity; status changes push every subscription on that source to <code>stale</code> and back.</li>
         <li>Sockets are tracked so <code>stop()</code> always releases them; a small KafkaJS 2.2.4 patch fixes an idle timer spin.</li>
       </ul>
-      <span class="ref">gateway/src/sources/kafka.ts:166-340, 520-680 · sources/kafkajs-patch.ts · sources/fixture.ts (deterministic dev source) · runtime/gateway.ts:642-658</span>
+      <span class="ref">gateway/src/sources/kafka.ts · sources/kafkajs-patch.ts · sources/fixture.ts (deterministic dev source) · runtime/gateway.ts</span>
     </article>
 
     <article class="comp">
@@ -558,19 +559,19 @@ section[id], aside { scroll-margin-top: 84px; }
         <li>Revisions are decimal strings compared by length, then lexically, so they never lose precision.</li>
         <li>Validation is structural only. It never resolves secrets or connects to brokers, and keys for future features (history, replay, schemaRegistry…) get an explicit "not in V1" message.</li>
       </ul>
-      <span class="ref">contracts/src/types.ts · config.ts:84-302 · schema.ts · primitives.ts:28-32 · gateway/src/index.ts (defineProject, createGateway)</span>
+      <span class="ref">contracts/src/types.ts · config.ts · schema.ts · primitives.ts · gateway/src/index.ts (defineProject, createGateway)</span>
     </article>
 
     <article class="comp">
       <h3>Access control</h3>
       <ul>
-        <li>The handshake checks the exact <code>Origin</code> against <code>allowedOrigins</code> (required in production), takes only <code>{token, protocolVersion}</code>, caps the token at 8 KiB and connections at <code>maxConnections</code>.</li>
+        <li>The handshake checks the exact <code>Origin</code> against <code>allowedOrigins</code> (in production a missing <code>Origin</code> header is refused; development allows it), takes only <code>{token, protocolVersion}</code>, caps the token at 8 KiB and connections at <code>maxConnections</code>.</li>
         <li>Your <code>authenticate</code> returns a <code>Principal</code> <code>{subject, tenantId, sessionId, expiresAt, claims}</code> or null. The session closes itself at <code>expiresAt</code>.</li>
         <li>Your <code>authorize</code> runs per subscription, and again just before the snapshot is sent.</li>
         <li>The tenant in the routing key is the verified one, so a row mapped for tenant A can only reach tenant A's subscriptions.</li>
         <li><code>gateway.revoke()</code> closes by session, subject or channel. A sequence-numbered <code>RevocationLog</code> also catches revocations that land mid-handshake or mid-snapshot.</li>
       </ul>
-      <span class="ref">gateway/src/runtime/gateway.ts:429-458, 490-575, 612-628 · runtime/identity.ts · runtime/session.ts:76-84 · runtime/subscription.ts:392-430</span>
+      <span class="ref">gateway/src/runtime/gateway.ts · runtime/identity.ts · runtime/session.ts · runtime/subscription.ts</span>
     </article>
 
     <article class="comp">
@@ -578,11 +579,11 @@ section[id], aside { scroll-margin-top: 84px; }
       <ul>
         <li>The SDK owns one connection at a time and turns off Socket.IO's own reconnection; it subscribes again only after an authenticated <code>so:hello</code>.</li>
         <li>Reconnect delay is full jitter: a random wait up to <code>min(30 s, 500 ms × 2ⁿ)</code>, and only while subscriptions exist.</li>
-        <li><code>UNAUTHENTICATED</code>, <code>FORBIDDEN</code> and protocol mismatches suspend in <code>auth-required</code> until your app calls <code>reconnect()</code>.</li>
+        <li>A refused handshake (<code>UNAUTHENTICATED</code>, <code>FORBIDDEN</code>, <code>INVALID_REQUEST</code>, <code>UNSUPPORTED_CAPABILITY</code>) or a non-retryable <code>UNAUTHENTICATED</code> such as a revocation suspends in <code>auth-required</code> until your app calls <code>reconnect()</code>. An expired session reconnects promptly.</li>
         <li>30 s before the token expires it opens a fresh connection with a new <code>getToken()</code> and swaps it in. If the identity key changes (account switch) every subscription is closed so one user's view never carries over.</li>
         <li>Control requests time out after 5 s and are never buffered while offline.</li>
       </ul>
-      <span class="ref">client/src/client.ts:184-365 · client/src/connection.ts:24-138 · contracts/src/protocol.ts (timings)</span>
+      <span class="ref">client/src/client.ts · client/src/connection.ts · contracts/src/protocol.ts (timings)</span>
     </article>
 
     <article class="comp">
@@ -594,7 +595,7 @@ section[id], aside { scroll-margin-top: 84px; }
         <li>A socket whose unread output passes the connection budget is force-closed. Control messages are rate-limited (20/s token bucket) and size-capped.</li>
         <li>What does slow Kafka: your <code>map()</code> and records on one source run in series (inferred consequence of the one-at-a-time design).</li>
       </ul>
-      <span class="ref">gateway/src/runtime/budget.ts · runtime/subscription.ts:188-208 · runtime/session.ts:268-282 · contracts/src/limits.ts</span>
+      <span class="ref">gateway/src/runtime/budget.ts · runtime/subscription.ts · runtime/session.ts · contracts/src/limits.ts</span>
     </article>
 
     <article class="comp">
@@ -605,9 +606,9 @@ section[id], aside { scroll-margin-top: 84px; }
         <li>Policies per source: <code>pause</code>, <code>quarantine-hold</code> (keep a verified copy, stay paused), <code>quarantine-resync</code> (copy, then try to continue).</li>
         <li>Continuing requires an acknowledged quarantine write, a closed circuit breaker (it trips after five distinct incidents are advanced automatically within 60 s by default: <code>automaticAdvanceLimit: { incidents: 5, windowMs: 60000 }</code>), and your recovery guard saying "recoverable". The journal records a recovery boundary first; from then on every snapshot must acknowledge it. Then <code>advancePast()</code> commits <code>offset + 1</code>, reads it back and resumes. Any doubt leaves the record held.</li>
         <li>The journal is one SQLite file under <code>stateDirectory</code>: WAL with full sync, one transaction per change, an exclusive OS lock. When full it refuses writes; it never evicts.</li>
-        <li><code>/health/live</code> and <code>/health/ready</code> report reason categories (source-held, journal, quarantine…), never topic names.</li>
+        <li><code>/health/live</code> answers ok while the process serves; <code>/health/ready</code> answers 503 with reason categories (starting, source-held, source-unavailable, journal, quarantine), never topic names.</li>
       </ul>
-      <span class="ref">contracts/src/failures.ts · gateway/src/failures/service.ts:360-622 · failures/journal.ts · failures/quarantine.ts:97-240 · failures/rebaseline.ts · sources/kafka.ts:393-470 · runtime/health.ts</span>
+      <span class="ref">contracts/src/failures.ts · gateway/src/failures/service.ts · failures/journal.ts · failures/quarantine.ts · failures/rebaseline.ts · sources/kafka.ts · runtime/health.ts</span>
     </article>
 
     <article class="comp">
@@ -618,7 +619,7 @@ section[id], aside { scroll-margin-top: 84px; }
         <li>Reached in-process (<code>getGatewayOperator</code>) or over a Unix socket at <code>&lt;stateDir&gt;/run/operator.sock</code>: a token file, one JSON line per connection, rate-limited.</li>
         <li>The management HTTP API (<code>/management/v1</code>, default port 7401) is development-only: loopback, per-run bearer token, no CORS. <code>createManagementHandler</code> lets a host mount it behind its own session.</li>
       </ul>
-      <span class="ref">contracts/src/operator.ts:174-199 · gateway/src/operator/service.ts · operator/ipc.ts · runtime/gateway.ts:839-878 · management/index.ts · management/router.ts</span>
+      <span class="ref">contracts/src/operator.ts · gateway/src/operator/service.ts · operator/ipc.ts · runtime/gateway.ts · management/index.ts · management/router.ts</span>
     </article>
 
     <article class="comp">
@@ -629,7 +630,7 @@ section[id], aside { scroll-margin-top: 84px; }
         <li><code>dev</code> imports your handlers module, starts a development gateway, the management server and the workbench. <code>start</code> runs production, which refuses fixture sources and plaintext Kafka.</li>
         <li>Operator commands talk to <code>run/operator.sock</code>, with exit codes 0 ok, 1 failed, 2 invalid, 3 refused, 4 unknown outcome.</li>
       </ul>
-      <span class="ref">cli/src/cli.ts:36-46, 490-505 · cli/src/generate.ts:150-233 · cli/src/templates.ts · cli/src/operator.ts:33-45 · gateway/src/runtime/gateway.ts:286-298</span>
+      <span class="ref">cli/src/cli.ts · cli/src/generate.ts · cli/src/templates.ts · cli/src/operator.ts · gateway/src/runtime/gateway.ts</span>
     </article>
 
     <article class="comp">
@@ -637,10 +638,10 @@ section[id], aside { scroll-margin-top: 84px; }
       <ul>
         <li>A vanilla TypeScript SPA, bundled by esbuild into one ES module with a strict CSP, no inline script and no <code>eval</code>.</li>
         <li>Tabs: Connect (source diagnostics), Define (edit and validate candidate config), Preview (a real <code>@streamotter/client</code> subscription as a development principal, using a 5-minute preview token), Inspect (payload-free traces), Failures (V1.1 incidents and actions), Export (canonical <code>streamotter.json</code>).</li>
-        <li>It discovers what the host offers via <code>GET …/workbench</code> and greys out the rest, so the same assets run under <code>streamotter dev</code> or on your own site (WHC-1, used by Lontra Creek's sandbox).</li>
+        <li>It discovers what the host offers via <code>GET …/workbench</code> and greys out the rest, so the same assets run under <code>streamotter dev</code> or on your own site (WHC-1, the contract Lontra Creek's planned hosted sandbox is built against).</li>
         <li>Retiring a recovery boundary is deliberately CLI-only.</li>
       </ul>
-      <span class="ref">apps/workbench/src/main.ts:16-30 · views/preview.ts · views/failures.ts · host.ts · build.mjs · docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md</span>
+      <span class="ref">apps/workbench/src/main.ts · views/preview.ts · views/failures.ts · host.ts · build.mjs · docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md</span>
     </article>
 
     <article class="comp">
@@ -669,7 +670,7 @@ section[id], aside { scroll-margin-top: 84px; }
     <div><b>One transport.</b> Socket.IO over WebSocket.</div>
     <div><b>No skip button.</b> No ignore or discard policy exists; moving past a record always needs quarantined evidence or an explicit operator action.</div>
   </div>
-  <p class="ref">contracts/src/config.ts:11-27 (DEFERRED_FEATURES), 240-242, 288-297 · contracts/src/failures.ts:10</p>
+  <p class="ref">contracts/src/config.ts (DEFERRED_FEATURES), 240-242, 288-297 · contracts/src/failures.ts</p>
 </section>
 
 <section id="inferred">
@@ -681,7 +682,7 @@ section[id], aside { scroll-margin-top: 84px; }
   <div class="inferred">
     <ul>
       <li><b>No durable channel state in the gateway.</b> I found no store of channel data in <code>runtime/</code>: only per-subscription queues, the trace ring buffer and the V1.1 failure journal. Snapshots always come from your handler.</li>
-      <li><b>Why the offset commits before browser delivery.</b> The order is in the code; the reason (full-state frames plus re-snapshot make browser loss harmless) is my reading of the design.</li>
+      <li><b>Why the offset commit doesn't wait for browser delivery.</b> The order is in the code; the reason (full-state frames plus re-snapshot make browser loss harmless) is my reading of the design.</li>
       <li><b>Throughput shape.</b> One record at a time per source, awaited through every <code>map()</code>, means the slowest mapper sets a source's pace. That follows from the code but I didn't measure it.</li>
       <li><b>Line counts</b> are <code>wc -l</code> over each package's <code>src/*.ts</code>, comments included.</li>
     </ul>
@@ -690,7 +691,7 @@ section[id], aside { scroll-margin-top: 84px; }
 
 <aside class="next-step" aria-label="Before you continue">
   <span class="eyebrow">Before part 2</span>
-  <p><b>See it run first.</b> Before reading the code, spend ten minutes on the <a href="5-using-and-running-it.html#first">first run in part 5</a>. You'll scaffold a project, open the workbench, watch a fixture record travel to a browser page, and stop the gateway to see the page turn <code>stale</code> and recover. Then continue with <a href="2-how-its-built.html">part 2, How it's built</a>.</p>
+  <p><b>See it run first.</b> Before reading the code, spend ten minutes on the <a href="5-using-and-running-it.html#first">first run in part 5</a>. You'll scaffold a project, open the workbench, watch a fixture record travel to a browser page, and stop the gateway to see the page turn <code>stale</code>, then reload it after a restart. Then continue with <a href="2-how-its-built.html">part 2, How it's built</a>.</p>
 </aside>
 
 <nav class="pager" aria-label="Next page"><a href="2-how-its-built.html"><span class="eyebrow">Next</span><b>2 How it's built →</b></a></nav>

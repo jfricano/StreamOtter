@@ -1,6 +1,6 @@
 # Under the Hood
 
-October 7, 2026 · Written from `main` at 1c75aaa (packages at `0.2.0-rc.1`) · Internal draft
+October 7, 2026 · Written from `main` at 1c75aaa (packages at `0.2.0-rc.1`) · Reviewed for publication
 
 Five guides that explain StreamOtter without reading every line of code, for engineers deciding whether to adopt it, would-be contributors, and curious readers. Start with the [introduction](./index.html), which says what each part covers and suggests a reading order for each kind of reader. Each page is a self-contained HTML file: open it in a browser. The pages link to each other.
 
@@ -14,4 +14,4 @@ Five guides that explain StreamOtter without reading every line of code, for eng
 
 **Reading order for contributors:** 1, then the first-run section of 5, then 2, 3, 4, and the rest of 5 as reference. Then [CONTRIBUTING](../../CONTRIBUTING.md).
 
-**Status.** These are drafts, checked against the code and docs at 1c75aaa but not yet independently reviewed. They cite files with line numbers, which go stale as the code changes. Each page ends with a list of the points that are interpretation rather than something read in the code. The [specification](../V1_API.md), the [guides](../guides/) and the code win wherever they disagree with these pages. Turning them into public docs (trimmed, reviewed, and published on streamotter.dev as an "Under the Hood" section) is a planned follow-up. The name is a working title.
+**Status.** Written from the code and docs at 1c75aaa, then checked claim by claim against `main` by independent reviewers, and corrected. File references name files, not line numbers, so they stay valid as the code moves; re-check the pages when the packages change behavior. Each part ends with the points that are interpretation rather than something read in the code. The [specification](../V1_API.md), the [guides](../guides/) and the code win wherever they disagree with these pages. They are meant to be linked from the streamotter.dev Docs page. "Under the Hood" is a working title.
