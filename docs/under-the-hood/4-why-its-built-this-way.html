@@ -6,36 +6,36 @@
 <title>StreamOtter Design Decisions</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: one reading column (68ch) with full-width figures; a field guide that follows a record left to right. */
 :root {
-  --bg: #F3F7FB;
+  --bg: #F5F8FC;
   --surface: #FFFFFF;
   --surface-2: #E8EFF8;
   --region: #EDF3FB;
-  --fg: #05122F;
+  --fg: #04183F;
   --muted: #475978;
-  --line: #D0DCE8;
-  --accent: #0068C2;
-  --splash: #00ACFD;
-  --otter: #6E3F33;
-  --warn: #9C4300;
-  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --body: "Figtree", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --line: #C6D2E4;
+  --accent: #0369C9;
+  --splash: #04BDFD;
+  --otter: #7F5447;
+  --warn: #A3540B;
+  --display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #030B1F; --surface: #081631; --surface-2: #132A57; --region: #0A1938;
-    --fg: #E9F2FC; --muted: #A9BAD5; --line: #1B2F5A; --accent: #52B8FF; --splash: #00ACFD;
-    --otter: #E3A98C; --warn: #FF9C52; color-scheme: dark;
+    --bg: #06122B; --surface: #0C1D41; --surface-2: #132A57; --region: #0A1938;
+    --fg: #E9F2FC; --muted: #A9BAD5; --line: #2B4170; --accent: #5AB8FF; --splash: #04BDFD;
+    --otter: #D9A994; --warn: #F0A55B; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #030B1F; --surface: #081631; --surface-2: #132A57; --region: #0A1938;
-  --fg: #E9F2FC; --muted: #A9BAD5; --line: #1B2F5A; --accent: #52B8FF; --splash: #00ACFD;
-  --otter: #E3A98C; --warn: #FF9C52; color-scheme: dark;
+  --bg: #06122B; --surface: #0C1D41; --surface-2: #132A57; --region: #0A1938;
+  --fg: #E9F2FC; --muted: #A9BAD5; --line: #2B4170; --accent: #5AB8FF; --splash: #04BDFD;
+  --otter: #D9A994; --warn: #F0A55B; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
@@ -177,6 +177,10 @@ section[id], aside { scroll-margin-top: 84px; }
 .volnav [aria-current] { color: var(--fg); font-weight: 600; }
 .next-step { border-left: 3px solid var(--accent); background: var(--surface); padding: 14px 18px; border-radius: 0 8px 8px 0; max-width: 84ch; display: grid; gap: 6px; }
 @media (max-width: 720px) { .letterhead img { height: 28px; } .letterhead nav { width: 100%; overflow-x: auto; } .volnav { flex-wrap: nowrap; white-space: nowrap; padding-bottom: 2px; } section[id], aside { scroll-margin-top: 100px; } }
+.pager { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 16px; }
+.pager a { display: grid; gap: 2px; text-align: right; text-decoration: none; color: var(--accent); }
+.pager a b { font-family: var(--display); font-size: 1.15rem; font-weight: 700; }
+.pager a:hover b { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -434,6 +438,8 @@ section[id], aside { scroll-margin-top: 84px; }
     </ul>
   </div>
 </section>
+
+<nav class="pager" aria-label="Next page"><a href="5-using-and-running-it.html"><span class="eyebrow">Next</span><b>5 Using and running it →</b></a></nav>
 
 <footer>Read from jfricano/StreamOtter at main, commit 1c75aaa. Part 4 of Under the Hood: Introduction · 1 How it works · 2 How it's built · 3 Guarantees and limits · 4 Why it's built this way · 5 Using and running it. Read-only; nothing in the repo was changed.</footer>
 
