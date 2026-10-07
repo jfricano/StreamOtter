@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/slides/slide-title.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<link rel="stylesheet" href="slide-common.css">
+<style>
+  .lock { position: absolute; left: 120px; top: 100px; }
+  .copy { position: absolute; left: 120px; top: 290px; width: 1400px; }
+  h1 { font-size: 116px; font-weight: 800; letter-spacing: -.03em; line-height: .98; margin-top: 26px; }
+  .st { font-family: var(--mono); font-size: .9em; font-weight: 600; }
+  .st.live { color: var(--live); } .st.stale { color: var(--stale); }
+  .sub { font-size: 34px; font-weight: 400; line-height: 1.4; color: var(--whisker); margin-top: 34px; max-width: 1320px; }
+</style></head>
+<body class="dark">
+<div class="lock"><img src="../../streamotter-lockup-horizontal-dark.svg" style="width:400px;display:block"></div>
+<div class="copy">
+  <div class="slide-eyebrow">Open source · MIT licensed</div>
+  <h1>Live state from Kafka<br>to the browser.</h1>
+  <div class="sub">Every view is either verifiably <span class="st live">live</span> or visibly <span class="st stale">stale</span>, never silently wrong.</div>
+</div>
+<div class="flair" id="flair" style="top:700px"></div>
+<script src="slide-common.js"></script>
+<script>flair(document.getElementById("flair"), { h: 380, tone: "dark", ticks: ["r41", "r42", "r43"], tickX0: 1420, tickGap: 120, seed: 11 });</script>
+</body></html>

@@ -1,0 +1,20 @@
+/* Shared layout for the press kit and slide templates (press-*.html, slide-*.html). */
+:root {
+  /* Extended tints (illustration and marketing only; see press/palette.png) */
+  --azure-wash: #E6F4FF;   /* azure 10% on white */
+  --splash-wash: #D9F5FF;  /* splash 15% on white */
+  --cream-wash: #F5F2EF;   /* cream 50% on white */
+  --ink-raised: #042656;   /* ink + 12% azure: cards and code blocks on ink */
+  --ink-line: #2D4064;     /* ink + 25% whisker: hairlines on ink */
+  --ink-gutter: #46597B;   /* ink + 40% whisker: code line numbers on ink */
+  --page: #FFFFFF;
+}
+body { background: var(--page); color: var(--ink); }
+.eyebrow { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--azure-text); }
+.dark .eyebrow, .eyebrow.on-dark { color: var(--splash); }
+.mono { font-family: var(--mono); }
+.press-head { position: absolute; left: 64px; right: 64px; top: 44px; display: flex; align-items: flex-end; justify-content: space-between; }
+.press-head h1 { font-size: 52px; font-weight: 800; letter-spacing: -.02em; line-height: 1; margin-top: 10px; }
+.press-head .note { max-width: 920px; font-size: 17px; line-height: 1.45; color: #2B3F66; text-align: right; }
+.press-foot { position: absolute; left: 64px; right: 64px; bottom: 26px; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 13px; color: #5D6F91; letter-spacing: .02em; }
+.dark .press-foot { color: var(--whisker); }

@@ -1,0 +1,117 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/palette.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<style>
+  .sec { position: absolute; left: 64px; right: 64px; }
+  .stitle { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--azure-text); margin-bottom: 12px; display: flex; gap: 14px; align-items: baseline; }
+  .stitle em { font-style: normal; text-transform: none; letter-spacing: .02em; font-weight: 400; color: #5D6F91; }
+  .core { display: grid; grid-template-columns: repeat(8, 1fr); gap: 14px; }
+  .sw { border-radius: 14px; overflow: hidden; border: 1.5px solid #DCE3EE; background: #fff; }
+  .chip { height: 150px; position: relative; }
+  .chip .hex { position: absolute; left: 14px; bottom: 10px; font-family: var(--mono); font-size: 14px; font-weight: 600; }
+  .info { padding: 12px 14px 12px; }
+  .info h3 { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+  .info .rgb { font-family: var(--mono); font-size: 12px; color: #5D6F91; margin-top: 2px; }
+  .info .use { font-size: 14px; line-height: 1.35; color: #2B3F66; margin-top: 8px; height: 57px; }
+  .cr { margin-top: 8px; display: grid; gap: 4px; }
+  .cr div { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  .cr .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px; border-radius: 99px; }
+  .tag.t { background: var(--azure-wash); color: var(--azure-text); }
+  .tag.l { background: var(--cream-wash); color: #7F4F00; }
+  .tag.f { background: #F1F3F6; color: #5D6F91; }
+  .mid { top: 574px; display: grid; grid-template-columns: 1.55fr 1fr; gap: 32px; }
+  .states { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .st { border-radius: 14px; overflow: hidden; border: 1.5px solid #DCE3EE; }
+  .st > div { padding: 12px 14px; display: flex; flex-direction: column; gap: 5px; }
+  .st .d { background: var(--ink); }
+  .st .l { background: #fff; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 17px; font-weight: 700; }
+  .pill i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .meta { font-family: var(--mono); font-size: 11.5px; display: flex; justify-content: space-between; }
+  .st .d .meta { color: var(--whisker); } .st .l .meta { color: #5D6F91; }
+  .ext { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .ex { border-radius: 12px; overflow: hidden; border: 1.5px dashed #B9C6DA; background: #fff; }
+  .ex .c { height: 70px; }
+  .ex .t { padding: 8px 10px 10px; font-family: var(--mono); font-size: 11px; line-height: 1.45; color: #2B3F66; }
+  .ex .t b { display: block; font-family: var(--display); font-size: 14px; font-weight: 800; color: var(--ink); }
+  .notes { top: 806px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .cnote { border-radius: 14px; background: var(--azure-wash); padding: 14px 16px; font-size: 15px; line-height: 1.4; color: #1D3358; height: 136px; }
+  .cnote b { color: var(--ink); }
+  .cnote .sample { display: flex; gap: 8px; margin-bottom: 8px; }
+  .cnote .sample span { font-family: var(--mono); font-size: 12.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px; }
+</style></head>
+<body>
+<div class="press-head">
+  <div><div class="eyebrow">StreamOtter press kit · 02</div><h1>Palette</h1></div>
+  <div class="note">Core colors are sampled from the brandmark, except azure text (#0369C9), derived from azure for text contrast. Contrast ratios are WCAG 2 values computed from these hex codes: 4.5:1 for body text, 3:1 for large text and UI marks.</div>
+</div>
+
+<div class="sec" style="top:160px">
+  <div class="stitle">Core <em>from the brandmark, plus azure text (docs/assets/README.md)</em></div>
+  <div class="core" id="core"></div>
+</div>
+
+<div class="sec mid">
+  <div>
+    <div class="stitle">View states <em>fixed to streamotter.dev · bright on ink, deep on light</em></div>
+    <div class="states" id="states"></div>
+  </div>
+  <div>
+    <div class="stitle">Extended <em>illustration &amp; marketing tints only · never in the logo</em></div>
+    <div class="ext" id="ext"></div>
+  </div>
+</div>
+
+<div class="sec notes" id="notes"></div>
+
+<div class="press-foot"><span>Tokens: docs/assets/source/brand.css · tints: source/templates/press-common.css</span><span>Status colors appear only where they mean a view state.</span></div>
+
+<script>
+  const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const cr = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const f = (v) => v.toFixed(2) + ":1";
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ");
+  const tag = (v) => (v >= 4.5 ? '<span class="tag t">TEXT</span>' : v >= 3 ? '<span class="tag l">LARGE / UI</span>' : '<span class="tag f">FILL ONLY</span>');
+  const W = "#FFFFFF", INK = "#04183F";
+  const core = [
+    ["Ink", "#04183F", "“Stream” and the S body. Primary text; dark backgrounds."],
+    ["Azure", "#048DFC", "“Otter” and the top of the S. Fills, buttons; text on ink."],
+    ["Splash", "#04BDFD", "Lower waves and droplets. Highlights; text on ink."],
+    ["Otter brown", "#7F5447", "The head. Illustration accents; text on light only."],
+    ["Cream", "#EBE6DF", "The muzzle. Warm surfaces, illustration."],
+    ["Light ink", "#E9F2FC", "Ink’s stand-in on dark. Text on ink; pale panels."],
+    ["Whisker", "#A9BAD5", "Whiskers on dark. Secondary text and rules on ink."],
+    ["Azure text", "#0369C9", "Derived from azure for text contrast: blue text and links on light."],
+  ];
+  document.getElementById("core").innerHTML = core.map(([n, h, u]) => {
+    const cw = cr(h, W), ci = cr(h, INK);
+    const fg = cr(h, W) > cr(h, INK) ? "#FFFFFF" : INK;
+    return `<div class="sw"><div class="chip" style="background:${h};${h === "#E9F2FC" || h === "#EBE6DF" ? "border-bottom:1.5px solid #DCE3EE" : ""}"><span class="hex" style="color:${fg}">${h}</span></div>
+      <div class="info"><h3>${n}</h3><div class="rgb">rgb(${rgb(h)})</div><div class="use">${u}</div>
+      <div class="cr"><div>on white ${f(cw)} ${h === "#048DFC" ? '<span class="tag f">FILL ONLY</span>' : tag(cw)}</div><div>on ink&nbsp;&nbsp; ${h === INK ? "—" : f(ci)} ${h === INK ? "" : tag(ci)}</div></div></div></div>`;
+  }).join("");
+  const states = [["live", "#01E1FC", "#00728A"], ["stale", "#F2B84B", "#7F4F00"], ["resync-required", "#FF9C52", "#9C4300"], ["failed", "#FF6F76", "#AE1F2C"]];
+  document.getElementById("states").innerHTML = states.map(([n, d, l]) => `<div class="st">
+    <div class="d"><span class="pill" style="color:${d}"><i style="background:${d}"></i>${n}</span><div class="meta"><span>${d}</span><span>${f(cr(d, INK))} on ink</span></div></div>
+    <div class="l"><span class="pill" style="color:${l}"><i style="background:${l}"></i>${n}</span><div class="meta"><span>${l}</span><span>${f(cr(l, W))} on white</span></div></div></div>`).join("");
+  const ext = [
+    ["Azure wash", "#E6F4FF", "azure 10% on white"],
+    ["Splash wash", "#D9F5FF", "splash 15% on white"],
+    ["Cream wash", "#F5F2EF", "cream 50% on white"],
+    ["Ink raised", "#042656", "ink + 12% azure"],
+    ["Ink line", "#2D4064", "ink + 25% whisker"],
+    ["Creek", "radial-gradient(120% 90% at 20% 0%, #0a3d86 0%, #04173a 55%, #020a1c 100%)", "#0A3D86 → #04173A → #020A1C"],
+  ];
+  document.getElementById("ext").innerHTML = ext.map(([n, h, r]) => `<div class="ex"><div class="c" style="background:${h}"></div><div class="t"><b>${n}</b>${h.startsWith("#") ? h + "<br>" : ""}${r}</div></div>`).join("");
+  const notes = [
+    [`<span style="background:#fff;color:#048DFC;border:1px solid #DCE3EE">Aa ${f(cr("#048DFC", W))}</span><span style="background:#fff;color:#0369C9;border:1px solid #DCE3EE">Aa ${f(cr("#0369C9", W))}</span>`, `<b>Blue text on light:</b> azure on white is ${f(cr("#048DFC", W))}, short of 4.5:1. Use <b>#0369C9</b> (${f(cr("#0369C9", W))} on white, ${f(cr("#0369C9", "#E9F2FC"))} on light ink).`],
+    [`<span style="background:#04183F;color:#048DFC">Aa ${f(cr("#048DFC", INK))}</span><span style="background:#04183F;color:#04BDFD">Aa ${f(cr("#04BDFD", INK))}</span>`, `<b>Blue text on ink:</b> azure (${f(cr("#048DFC", INK))}) and splash (${f(cr("#04BDFD", INK))}) both pass. #0369C9 on ink is only ${f(cr("#0369C9", INK))}: keep it for light backgrounds.`],
+    [`<span style="background:#fff;color:#7F5447;border:1px solid #DCE3EE">Aa ${f(cr("#7F5447", W))}</span><span style="background:#04183F;color:#7F5447">Aa ${f(cr("#7F5447", INK))}</span>`, `<b>Otter brown</b> reads on white (${f(cr("#7F5447", W))}) and cream (${f(cr("#7F5447", "#EBE6DF"))}), not on ink (${f(cr("#7F5447", INK))}). On dark it is an illustration color only.`],
+    [`<span style="background:#04183F;color:#A9BAD5">Aa ${f(cr("#A9BAD5", INK))}</span><span style="background:#fff;color:#A9BAD5;border:1px solid #DCE3EE">Aa ${f(cr("#A9BAD5", W))}</span>`, `<b>Whisker</b> is secondary text on ink (${f(cr("#A9BAD5", INK))}) but fails on white (${f(cr("#A9BAD5", W))}). View-state colors swap to their deep variant on light backgrounds.`],
+  ];
+  document.getElementById("notes").innerHTML = notes.map(([s, t]) => `<div class="cnote"><div class="sample">${s}</div>${t}</div>`).join("");
+</script>
+</body></html>

@@ -1,0 +1,66 @@
+/* Shared styles for lineage-*.html (see lineage-common.js). */
+body.light { background: linear-gradient(180deg, #FFFFFF 0%, #F5F9FE 100%); color: var(--ink); }
+body.dark { background: var(--creek); color: var(--light-ink); }
+#stage { position: absolute; inset: 0; }
+#stage svg { position: absolute; inset: 0; }
+.mark { position: absolute; }
+.eyebrow { position: absolute; font: 600 20px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--azure-text); }
+.dark .eyebrow { color: var(--splash); }
+.station { position: absolute; display: flex; flex-direction: column; }
+.station.center { align-items: center; text-align: center; }
+.station.left { align-items: flex-start; }
+.tag { font: 600 18px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--azure-text); margin-bottom: 30px; }
+.dark .tag { color: var(--splash); }
+.name { font: 700 36px/1.1 var(--mono); color: var(--ink); letter-spacing: -0.01em; height: 42px; display: flex; align-items: center; }
+.dark .name { color: var(--light-ink); }
+.wordmark { height: 37px; margin: 2px 0 3px; display: block; }
+.desc { font: 500 24px/1.25 var(--display); color: #33476B; margin-top: 30px; white-space: nowrap; }
+.dark .desc { color: var(--whisker); }
+.chips { display: flex; gap: 8px; margin-top: 16px; flex-wrap: nowrap; }
+.chip { font: 500 16px/1 var(--mono); padding: 8px 12px; border-radius: 999px; border: 1.5px solid #C9DCF2; color: #33476B; background: #FFFFFF; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.dark .chip { border-color: rgba(233,242,252,0.24); color: var(--light-ink); background: rgba(233,242,252,0.05); }
+.chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.pill.live { color: var(--live-on-light); border-color: var(--live-on-light); font-weight: 700; }
+.pill.live i { background: var(--live-on-light); }
+.pill.stale { color: var(--stale-on-light); border-color: #d9a640; font-weight: 700; }
+.pill.stale i { background: var(--stale); box-shadow: inset 0 0 0 2px var(--stale-on-light); }
+.dark .pill.live { color: var(--live); border-color: var(--live); }
+.dark .pill.live i { background: var(--live); }
+.dark .pill.stale { color: var(--stale); border-color: var(--stale); }
+.dark .pill.stale i { background: var(--stale); box-shadow: none; }
+.browser { position: absolute; display: flex; flex-direction: column; gap: 14px; }
+.btag { font: 600 13px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: #5B6E90; }
+.dark .btag { color: var(--whisker); }
+.vrow { display: flex; align-items: center; gap: 10px; }
+.vbar { flex: 1; height: 10px; border-radius: 6px; background: #E3F0FD; }
+.dark .vbar { background: rgba(233,242,252,0.12); }
+.rev { font: 700 17px var(--mono); fill: var(--azure-text); }
+.dark .rev { fill: var(--splash); }
+.pool { font: 600 15px var(--mono); fill: var(--azure-text); letter-spacing: 0.06em; }
+.dark .pool { fill: var(--splash); }
+.headline { font: 800 52px/1.05 var(--display); letter-spacing: -0.02em; color: var(--ink); }
+.dark .headline { color: var(--light-ink); }
+.foot { position: absolute; font: 600 18px/1 var(--mono); letter-spacing: 0.08em; color: var(--whisker); }
+/* square: larger type for social */
+.lay-v .name { font-size: 40px; height: 46px; }
+.lay-v .desc { font-size: 26px; }
+.lay-v .chip { font-size: 17px; }
+.chips:empty { display: none; }
+/* wide strips: secondary text ~1.4-1.5x so it survives a 700px article column */
+.lay-h .eyebrow { font-size: 26px; letter-spacing: 0.12em; }
+.lay-h .tag { font-size: 25px; letter-spacing: 0.1em; }
+.lay-h .name { font-size: 37px; }
+.lay-h .desc { font-size: 34px; line-height: 1.2; white-space: normal; text-wrap: balance; margin-top: 28px; }
+.lay-h .chips { flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+.lay-h .chip { font-size: 22px; padding: 10px 16px; border-width: 2px; }
+.lay-h .browser { gap: 16px; }
+.lay-h .btag { font-size: 20px; letter-spacing: 0.1em; }
+.lay-h .browser .chip { font-size: 22px; padding: 8px 14px; }
+.lay-h .chip i { width: 12px; height: 12px; }
+.lay-h .rev { font-size: 21px; }
+.lay-h .pool { font-size: 22px; }
+.nw { white-space: nowrap; }
+.lay-v .wordmark { margin: 4px 0 5px; }
+/* square: tighter rhythm for named stations; the wordmark keeps its full clear space (its "O" height) */
+.lay-v .station:not(.has-wordmark) .tag { margin-bottom: 16px; }
+.lay-v .station:not(.has-wordmark) .desc { margin-top: 14px; }

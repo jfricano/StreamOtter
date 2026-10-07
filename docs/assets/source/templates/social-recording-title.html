@@ -1,0 +1,47 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/recording-title.png">
+<meta name="size" content="1920x1080">
+<!-- Title card for the silent Failure Lab screen recording.
+     Before publishing, set DATE, VERSION and (if needed) WHERE below and re-render: node render.mjs social-recording -->
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<script src="social-motifs.js"></script>
+<style>
+  .lockup { left: 128px; top: 104px; width: 440px; }
+  .copy { left: 128px; top: 300px; width: 1100px; }
+  .eyebrow { --eb: 26px; }
+  .head { font-size: 168px; font-weight: 900; margin-top: 22px; line-height: 0.95; }
+  .sub { margin-top: 34px; font-size: 38px; font-weight: 500; color: var(--light-ink); max-width: 1100px; }
+  .sub em { font-style: normal; font-family: var(--mono); font-size: 0.86em; font-weight: 600; padding: 0.05em 0.35em; border-radius: 0.45em; }
+  .sub .l { color: var(--live); background: var(--live-bg); }
+  .sub .s { color: var(--stale); background: var(--stale-bg); }
+  .slate { left: 128px; right: 128px; top: 826px; padding-top: 22px; border-top: 2px solid var(--panel-line);
+    font: 500 26px/1.2 var(--mono); color: var(--whisker); white-space: nowrap; }
+  .slate b { color: var(--light-ink); font-weight: 600; }
+</style></head>
+<body><div class="stage dark">
+  <svg class="art" id="art"></svg>
+  <img class="layer lockup logo" src="../../streamotter-lockup-horizontal-dark.svg" alt="StreamOtter">
+  <div class="layer copy">
+    <div class="eyebrow">Screen recording</div>
+    <div class="head">Failure Lab</div>
+    <div class="sub">Break the pipeline on purpose and watch the views.<br>Every view either stays <em class="l">live</em> or says it isn’t.</div>
+  </div>
+  <div class="layer slate" id="slate"></div>
+</div>
+<script>
+  const DATE = "2026-10-XX";
+  const VERSION = "X.Y.Z";
+  const WHERE = ""; // e.g. "local stack" when the recording isn't the hosted demo
+  document.getElementById("slate").innerHTML =
+    `Recording · <b>${DATE}</b> · <b>streamotter@${VERSION}</b>${WHERE ? ` · <b>${WHERE}</b>` : ""} · Lontra Creek is fictional; the Kafka pipeline is real.`;
+  const W = 1920, H = 1080;
+  const c = SO.creek(W, H, { top: 1000, rise: 40, seed: 25, scale: 1.2, streams: 1, phase: 1.7, drops: false });
+  let o = SO.texture(W, H, { rows: 9, y0: 30, y1: 800, opacity: 0.04, width: 7 });
+  o += SO.viewCard(1300, 206, 492, 176, { title: "gauge-station-3", state: "live", rev: "r43", size: 23, seed: 41, rows: 2 });
+  o += SO.viewCard(1250, 404, 492, 176, { title: "tagged-otters", state: "live", rev: "r118", size: 23, seed: 43, rows: 2 });
+  o += SO.viewCard(1300, 602, 492, 176, { title: "camera-traps", state: "stale", rev: "r41", size: 23, seed: 47, rows: 2 });
+  SO.paint(document.getElementById("art"), o + c.svg);
+</script>
+</body></html>
