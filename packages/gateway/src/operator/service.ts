@@ -15,7 +15,29 @@ import { getGatewayInternals, type OperatorPrepared, type RedriveOutcome } from 
 import type { TraceQuery } from "../runtime/traces.ts";
 import { nowIso, sha256Hex } from "../runtime/util.ts";
 
-/** The operator service of a running gateway with failure handling (ADR-15C §1). */
+/**
+ * Returns the in-process operator service of a gateway configured with `failureHandling`
+ * (ADR-15C §1).
+ *
+ * The service exists once {@link Gateway.start} has opened the failure journal. Its methods
+ * resolve to their results; a refused operation is a result with `result: "refused"`, not an
+ * exception. Raw evidence is available here and over the local socket, never through the
+ * management API.
+ *
+ * @param gateway - A gateway returned by `createGateway`.
+ * @returns The gateway's {@link OperatorApi}.
+ * @throws A StreamOtterError with code UNSUPPORTED_CAPABILITY when the project has no
+ * `failureHandling` or the gateway has not started, or INVALID_REQUEST when `gateway` was not
+ * created by `createGateway`.
+ *
+ * @example
+ * ```ts
+ * import { getGatewayOperator } from "@streamotter/gateway/operator";
+ *
+ * const operator = getGatewayOperator(gateway);
+ * const { sources } = await operator.status();
+ * ```
+ */
 export function getGatewayOperator(gateway: Gateway): OperatorApi {
   const operator = getGatewayInternals(gateway).operator();
   if (operator === null) {

@@ -171,7 +171,13 @@ export function validateParamsSchema(schema: Schema, path: string, issues: Confi
   return issues.length === before;
 }
 
-export interface ValueIssue { path: string; message: string }
+/** A problem {@link validateValue} found in a value. */
+export interface ValueIssue {
+  /** Where the problem is: `$` for the value itself, followed by `.key` and `[index]` segments. */
+  path: string;
+  /** What is wrong, in plain English. */
+  message: string
+}
 
 /** Validates a value against a schema. Returns the first issue, or null when valid. */
 export function validateValue(schema: Schema, value: unknown, path = "$", depth = 1): ValueIssue | null {
@@ -226,6 +232,10 @@ export function validateValue(schema: Schema, value: unknown, path = "$", depth 
   }
 }
 
+/**
+ * Result of {@link canonicalizeParams}: the normalized parameters with their canonical JSON
+ * encoding, or the first validation issue.
+ */
 export type CanonicalParamsResult =
   | { ok: true; params: Params; canonical: string }
   | { ok: false; issue: ValueIssue };
@@ -249,6 +259,11 @@ export function canonicalizeParams(schema: Schema, params: unknown): CanonicalPa
   return { ok: true, params: normalized, canonical: canonicalJson(normalized) };
 }
 
+/**
+ * Returns true when {@link canonicalJson} accepts `value`: finite numbers, strings, booleans, null,
+ * arrays and plain objects within {@link MAX_NESTING_DEPTH}. Unlike {@link isJsonValue}, object
+ * properties set to `undefined` are accepted, since they are dropped.
+ */
 export function isJsonData(value: unknown): value is Json {
   try {
     canonicalJson(value);

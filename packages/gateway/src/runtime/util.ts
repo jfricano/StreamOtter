@@ -59,7 +59,16 @@ export function describeError(error: unknown): Json {
   return { name: typeof error };
 }
 
-/** Structured console logger; the default operator diagnostics sink. */
+/**
+ * Creates a structured console logger, the gateway's default operator diagnostics sink.
+ *
+ * Each message is written as one JSON line, `{ at, level, message, ...fields }`, with
+ * `at` an ISO 8601 UTC timestamp. Info lines go to standard output through
+ * `console.log`; warnings and errors go to standard error through `console.error`.
+ *
+ * @param minimum - The lowest level written. Default `"info"`.
+ * @returns A {@link GatewayLogger} for the `logger` option of {@link createGateway}.
+ */
 export function consoleLogger(minimum: "info" | "warn" | "error" = "info"): GatewayLogger {
   const order = { info: 0, warn: 1, error: 2 } as const;
   const write = (level: keyof typeof order, message: string, fields?: Readonly<Record<string, Json>>) => {
@@ -74,6 +83,7 @@ export function consoleLogger(minimum: "info" | "warn" | "error" = "info"): Gate
   };
 }
 
+/** A {@link GatewayLogger} that discards every message; pass it as `logger` when gateway output is unwanted, for example in tests. */
 export const silentLogger: GatewayLogger = { info() {}, warn() {}, error() {} };
 
 /** setTimeout that tolerates delays beyond the 32-bit timer limit. */

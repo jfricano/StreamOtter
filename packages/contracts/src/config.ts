@@ -5,7 +5,13 @@ import { IDENTIFIER_PATTERN, isPlainObject } from "./primitives.ts";
 import { pointer, validateParamsSchema, validateSchemaDefinition } from "./schema.ts";
 import type { ConfigIssue, ProjectConfig, Schema } from "./types.ts";
 
-export interface ConfigValidation { valid: boolean; issues: ConfigIssue[] }
+/** Result of {@link validateProjectConfig}. */
+export interface ConfigValidation {
+  /** True when `issues` is empty. */
+  valid: boolean;
+  /** Every problem found, each with a JSON Pointer path (`""` for the root), a code and a message. */
+  issues: ConfigIssue[]
+}
 
 /** Keys that belong to deferred V2/V3 features; reported with a clear message. */
 const DEFERRED_FEATURES: Readonly<Record<string, string>> = {
@@ -304,7 +310,10 @@ export function validateProjectConfig(input: unknown): ConfigValidation {
   return { valid: c.issues.length === 0, issues: c.issues };
 }
 
-/** Throws CONFIG_INVALID with the issues attached when the configuration is invalid. */
+/**
+ * Validates like {@link validateProjectConfig} and throws when the configuration is invalid.
+ * @throws {@link StreamOtterError} `CONFIG_INVALID`, with every issue in `details.issues` and the first three in the message.
+ */
 export function assertValidProjectConfig(input: unknown): asserts input is ProjectConfig {
   const { valid, issues } = validateProjectConfig(input);
   if (valid) return;

@@ -175,7 +175,11 @@ export interface InternalGatewayOptions {
   operatorHooks?: OperatorHooks;
 }
 
-/** Development and management access to a running gateway; never exposed to browsers. */
+/**
+ * Internal gateway access used by StreamOtter's own management server and CLI; not part of the supported API.
+ *
+ * @internal
+ */
 export interface GatewayInternals {
   readonly mode: "development" | "production";
   readonly config: ProjectConfig;

@@ -8,7 +8,10 @@ const MAX_TIMER_MS = 2_147_483_647;
 /** Room for the Socket.IO CONNECT frame around a token at MAX_TOKEN_BYTES (packet type, JSON keys, protocolVersion). */
 const MIN_CONTROL_FRAME_BYTES = MAX_TOKEN_BYTES + 1_024;
 
-/** Starting bounds from the specification; not published capacity claims. */
+/**
+ * Default value of every gateway limit, used where the project configuration's `limits` does not
+ * override it. These are starting bounds from the specification, not published capacity claims.
+ */
 export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
   maxConnections: 1_000,
   maxSubscriptionsPerConnection: 50,
@@ -31,8 +34,14 @@ export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
   controlRequestsPerSecond: 20
 });
 
+/** Name of every {@link Limits} setting, in the order of {@link DEFAULT_LIMITS}. */
 export const LIMIT_KEYS = Object.keys(DEFAULT_LIMITS) as readonly (keyof Limits)[];
 
+/**
+ * Returns {@link DEFAULT_LIMITS} with the given overrides applied. It does not validate them;
+ * {@link validateProjectConfig} checks the `limits` of a configuration.
+ * @param overrides - The configuration's `limits`, or undefined for the defaults.
+ */
 export function resolveLimits(overrides: Partial<Limits> | undefined): Limits {
   return { ...DEFAULT_LIMITS, ...(overrides ?? {}) };
 }

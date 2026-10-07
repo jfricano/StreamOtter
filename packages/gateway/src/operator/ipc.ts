@@ -43,38 +43,46 @@ const PROBE_TIMEOUT_MS = 1_000;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 const REQUEST_FIELDS = ["v", "id", "token", "op", "args"];
 
+/** Options for {@link startOperatorSocket}. */
 export interface OperatorSocketOptions {
+  /** The gateway's state directory. It and its `run/` directory must already exist, as `streamotter init --failures` creates them. */
   stateDirectory: string;
+  /** The operator service whose methods the socket serves. */
   operator: OperatorApi;
+  /** Receives the socket's diagnostics. Lines carry operation names and outcomes, never the token or request data. */
   logger: GatewayLogger;
   /** Requests per second per server (token bucket refill). Default 10. */
   ratePerSecond?: number;
   /** Token bucket size. Default 20. */
   burst?: number;
-  /** A connection that has not sent a complete line by then is closed. Default 5000. */
+  /** Milliseconds after which a connection that has not sent a complete line is closed. Default 5000. */
   idleMs?: number;
   /** Concurrent connections; more are answered OVERLOADED. Default 16. */
   maxConnections?: number;
-  /** How long close() waits for answers already in progress to be written. Default 5000. */
+  /** Milliseconds close() waits for answers already in progress to be written. Default 5000. */
   drainMs?: number;
 }
 
+/** A listening operator socket, returned by {@link startOperatorSocket}. */
 export interface OperatorSocket {
+  /** The socket's path, `<stateDirectory>/run/operator.sock`. */
   path: string;
   /**
    * Stops accepting connections at once and answers a request not yet handed to
-   * the operator with "closing"; a request already handed over is answered when
-   * it finishes, for at most `drainMs`. Then removes the socket and the token
-   * file. Idempotent.
+   * the operator with UNSUPPORTED_CAPABILITY ("closing; the request was not run");
+   * a request already handed over is answered when it finishes, for at most
+   * `drainMs`. Then removes the socket and the token file. Idempotent.
    */
   close(): Promise<void>;
 }
 
+/** Options for {@link callOperator} and {@link connectOperator}. */
 export interface OperatorClientOptions {
-  /** How long to wait for the answer. Default 30000: evaluate and redrive can take time. */
+  /** Milliseconds to wait for the answer before failing with TIMEOUT. Default 30000: evaluate and redrive can take time. */
   timeoutMs?: number;
 }
 
+/** What operator method `O` resolves to, for example `OperatorStatus` for `"status"`. */
 export type OperatorResult<O extends OperatorOperation> = Awaited<ReturnType<OperatorApi[O]>>;
 
 // --- filesystem checks ---------------------------------------------------------------
@@ -266,10 +274,23 @@ function outcomeOf(data: unknown): string {
 }
 
 /**
- * Serves the operator API on `<stateDirectory>/run/operator.sock`. Refuses to
- * start (CONFIG_INVALID with `details.reason`) when the state or run directory
- * is missing or could be tampered with, when another gateway answers on the
- * socket, or when something other than a socket occupies its path.
+ * Serves an operator API on the local Unix-domain socket `<stateDirectory>/run/operator.sock`.
+ *
+ * A gateway created with `operatorSocket: true` starts and closes its own socket, so most
+ * applications never call this. The socket is created with mode 0600, and a fresh token is
+ * written to `<stateDirectory>/run/operator.token` (mode 0600) on every start; each request
+ * must carry it. One JSON request line is answered per connection. A stale socket that nothing
+ * answers on is replaced.
+ *
+ * @param options - The state directory, the operator service, the logger and optional limits.
+ * @returns The listening socket.
+ * @throws A StreamOtterError with code CONFIG_INVALID and a `details.reason` when the state or
+ * run directory is missing (`state-dir-missing`, `run-dir-missing`) or could be tampered with
+ * (`state-dir-insecure`, `run-dir-insecure`), when the socket path is longer than 103 bytes
+ * (`socket-path-too-long`), when another gateway answers on the socket (`socket-in-use`), when
+ * something other than a socket occupies its path (`socket-path-occupied`), when an existing
+ * socket cannot be checked (`socket-unusable`), or when it cannot listen (`socket-listen`). Also CONFIG_INVALID when a numeric option is not a positive number,
+ * and UNSUPPORTED_CAPABILITY on Windows.
  */
 export async function startOperatorSocket(options: OperatorSocketOptions): Promise<OperatorSocket> {
   requirePosix();
@@ -551,9 +572,25 @@ function responseError(value: unknown): StreamOtterError {
 }
 
 /**
- * Sends one request over the local socket and resolves to its data, or rejects
- * with the StreamOtterError the gateway returned. Arguments are validated before
- * anything is sent.
+ * Sends one operator request to the gateway serving `<stateDirectory>/run/operator.sock` and
+ * resolves to its result.
+ *
+ * Arguments are validated before connecting. The token is read from
+ * `<stateDirectory>/run/operator.token`, which must be a regular file owned by the current user
+ * with no group or other access. Responses larger than 64 MiB are refused.
+ *
+ * @param stateDirectory - The state directory the gateway was started with.
+ * @param op - The {@link OperatorApi} method to call, such as `"status"` or `"listFailures"`.
+ * @param args - That method's request object; `{}` for `"status"`.
+ * @param options - The answer timeout. Default 30,000 ms.
+ * @returns The method's result, as {@link OperatorApi} describes it.
+ * @throws The StreamOtterError the gateway returned, unchanged. Locally: INVALID_REQUEST for an
+ * unknown operation, invalid arguments, or a request longer than 64 KiB; UNSUPPORTED_CAPABILITY
+ * with `details.reason` `"operator-not-running"` when no gateway serves the directory;
+ * CONFIG_INVALID when the token file or its directories are insecure, the token is malformed, or
+ * `timeoutMs` is not a positive number; TIMEOUT when no answer arrives in time; INTERNAL when the
+ * socket cannot be reached or answers unexpectedly; UNSUPPORTED_CAPABILITY on Windows. An error raised after the request was sent but before a
+ * usable answer arrived carries `details.reason` `"no-answer"`: the gateway may have run the request.
  */
 export async function callOperator<O extends OperatorOperation>(
   stateDirectory: string, op: O, args: OperatorRequests[O], options: OperatorClientOptions = {}
@@ -631,7 +668,17 @@ export async function callOperator<O extends OperatorOperation>(
   });
 }
 
-/** The operator API of the gateway serving `<stateDirectory>/run/operator.sock`. */
+/**
+ * Returns an {@link OperatorApi} whose methods call the gateway serving
+ * `<stateDirectory>/run/operator.sock`, from another process on the same host.
+ *
+ * Nothing is opened until a method is called; each call is one {@link callOperator} request
+ * and fails the same way.
+ *
+ * @param stateDirectory - The state directory the gateway was started with.
+ * @param options - Applied to every call. The answer timeout defaults to 30,000 ms.
+ * @returns The operator API, reached over the local socket.
+ */
 export function connectOperator(stateDirectory: string, options: OperatorClientOptions = {}): OperatorApi {
   return {
     status: () => callOperator(stateDirectory, "status", {}, options),

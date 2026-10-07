@@ -1,6 +1,18 @@
 import { streamotterModules, type PackageStyle } from "./generate.ts";
 
-/** Files created by `streamotter init`. The scaffold is fixture-only and has no production credentials. */
+/**
+ * Returns the files `streamotter init` creates for a new project. Nothing is written to disk.
+ *
+ * The scaffold is fixture-only and has no production credentials: `streamotter.json` with one
+ * fixture source and a `jobProgress` channel, `server/handlers.mjs` with trusted handlers and
+ * development fixtures, `web/example.ts` with a browser subscription, and `README.md`.
+ *
+ * @param projectId - The project ID written into `streamotter.json`. It is not validated here; it
+ * must match `[A-Za-z][A-Za-z0-9_-]{0,63}` for the configuration to be valid.
+ * @param options - `packages` selects the import specifiers: `"scoped"` (default) imports from
+ * `@streamotter/*`, `"streamotter"` from the all-in-one `streamotter` package.
+ * @returns The files, with paths relative to the project directory.
+ */
 export function scaffoldFiles(projectId: string, options: { packages?: PackageStyle } = {}): { path: string; content: string }[] {
   const modules = streamotterModules(options.packages);
   const config = {

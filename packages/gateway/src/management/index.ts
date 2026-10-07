@@ -10,20 +10,30 @@ import { getGatewayInternals, type GatewayInternals } from "../runtime/gateway.t
 import { newId, TokenBucket } from "../runtime/util.ts";
 import { createRouter, HttpError, IMPLEMENTED_OPERATIONS, MAX_MANAGEMENT_BODY_BYTES, sendError, sendResult } from "./router.ts";
 
+/** Options for {@link startManagementServer}. */
 export interface ManagementServerOptions {
+  /** The gateway to manage, as returned by `createGateway`. It must be in development mode. */
   gateway: Gateway;
-  /** Loopback by default. */
+  /** Interface to bind. Default `"127.0.0.1"` (loopback). */
   host?: string;
+  /** TCP port to listen on. Default 7401; 0 picks a free port. */
   port?: number;
-  /** Per-run bearer token; generated when omitted. */
+  /** Bearer token every management request must carry. Default: a random token (24 bytes, base64url) generated for this run. */
   token?: string;
-  /** Built workbench assets to serve from the same origin; null disables the UI. */
+  /**
+   * Directory of built workbench assets to serve from the same origin. Omitted, `null`, or a path that
+   * cannot be resolved disables the UI; the API is served either way.
+   */
   workbenchDir?: string | null;
 }
 
+/** A running management server, returned by {@link startManagementServer}. */
 export interface ManagementServer {
+  /** The origin the server listens on, with the bound port, such as `http://127.0.0.1:7401`. The API is under `/management/v1`. */
   readonly origin: string;
+  /** The bearer token: send it as `Authorization: Bearer <token>` on every `/management/v1` request. */
   readonly token: string;
+  /** Stops listening and closes open connections. Idempotent; the gateway also calls it when it stops. */
   close(): Promise<void>;
 }
 
@@ -47,10 +57,24 @@ function tokensEqual(expected: string, provided: string): boolean {
 }
 
 /**
- * Local development management API and workbench host. Every /management/v1
- * operation requires the per-run bearer token. Browser requests must carry the
- * exact workbench Origin (or, for same-origin GETs, a same-origin Referer). No
- * CORS is ever granted. Refuses to start for production gateways.
+ * Starts the local development management API and, when `workbenchDir` is set, serves the
+ * workbench from the same origin. This is what `streamotter dev` runs.
+ *
+ * Every `/management/v1` request requires the bearer token. A request with an `Origin` header
+ * must carry exactly this server's origin; a request with only a `Referer` must be a GET from
+ * this origin. No CORS access is ever granted. Requests are limited to 100 per second with a
+ * burst of 200 (429 `OVERLOADED` beyond that), and bodies to 1 MiB (64 KiB on the V1.1 operator
+ * routes). Responses use the `Result` envelope with `Cache-Control: no-store` and
+ * `X-Request-Id`.
+ *
+ * The server's origin is added to the gateway's allowed browser origins so the workbench can
+ * connect to the gateway, and the server closes when the gateway stops.
+ *
+ * @param options - The gateway and listener settings.
+ * @returns The running server, once it is listening.
+ * @throws A StreamOtterError with code FORBIDDEN when the gateway is in production mode, or
+ * INVALID_REQUEST when `gateway` was not created by `createGateway`. Rejects with the
+ * Node.js listen error when the address cannot be bound.
  */
 export async function startManagementServer(options: ManagementServerOptions): Promise<ManagementServer> {
   const internals = getGatewayInternals(options.gateway);
@@ -184,8 +208,9 @@ export async function startManagementServer(options: ManagementServerOptions): P
   return { origin, token, close };
 }
 
+/** Options for {@link createManagementHandler}. */
 export interface ManagementHandlerOptions {
-  /** Must be a development-mode gateway. */
+  /** The gateway to manage, as returned by `createGateway`. It must be in development mode. */
   gateway: Gateway;
   /** The operations this host offers (WHC-1 §5). Everything else is refused with 403. Discovery (`workbench`) is always answered. */
   operations: readonly WorkbenchOperation[];
@@ -206,16 +231,27 @@ export interface ManagementHandlerOptions {
  */
 export type ManagementHandler = (request: IncomingMessage, response: ServerResponse, pathWithinApi: string) => Promise<void>;
 
-/** Default `maxBodyBytes` for createManagementHandler. */
+/** Default `maxBodyBytes` for {@link createManagementHandler}: 65,536 bytes (64 KiB). */
 export const DEFAULT_HANDLER_MAX_BODY_BYTES = 65_536;
 
 /**
- * A mountable management request handler for a host that runs the published workbench under its
- * own route (WHC-1 §6). It serves API routes only, never static files; it refuses production
- * gateways; it answers only the listed operations (403 otherwise); and it requires
- * `X-StreamOtter-Workbench: 1` on every POST so a cross-site form cannot reach a mutation. The
- * host's `authorize` callback is the only credential check, so no native management token is
- * involved. Rate limits, sessions, and leases are the host's.
+ * Creates a mountable management request handler for a host that runs the published workbench
+ * under its own route (WHC-1 §6).
+ *
+ * The handler serves API routes only, never static files. It calls `authorize` first for every
+ * request and answers 401 unless it returns `true`; `Authorization` headers are ignored, so no
+ * native management token is involved. It answers only the listed operations (403 otherwise),
+ * always answers capability discovery (`GET /workbench`), and requires
+ * `X-StreamOtter-Workbench: 1` on every POST (403 without it) so a cross-site form cannot reach
+ * a mutation. It adds no CORS headers. Responses use the `Result` envelope with
+ * `Cache-Control: no-store` and `X-Request-Id`. Rate limits, sessions and leases are the host's.
+ *
+ * @param options - The gateway, the operation allowlist, the host's credential check and the body limit.
+ * @returns A {@link ManagementHandler} to call from the host's route for its `apiBase`.
+ * @throws A StreamOtterError with code FORBIDDEN when the gateway is in production mode, or
+ * INVALID_REQUEST when `gateway` was not created by `createGateway`, `operations` is not an
+ * array of WHC-1 operation names, `authorize` is not a function, or `maxBodyBytes` is not an
+ * integer from 1 to 1,048,576.
  */
 export function createManagementHandler(options: ManagementHandlerOptions): ManagementHandler {
   const internals = getGatewayInternals(options.gateway);

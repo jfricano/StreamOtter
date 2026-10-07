@@ -1,6 +1,6 @@
 import type { ErrorCode, Json, StreamError } from "./types.ts";
 
-/** Public, action-oriented messages. Never include topics, secrets, or payloads. */
+/** Default public message for each error code. Messages are action-oriented and never include topics, secrets, or payloads. */
 export const PUBLIC_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   UNAUTHENTICATED: "Authentication is required or has expired.",
   FORBIDDEN: "This subscription is not permitted.",
@@ -45,16 +45,27 @@ const DEFAULT_RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   INTERNAL: true
 };
 
+/** Every public {@link ErrorCode}. */
 export const ERROR_CODES = Object.keys(DEFAULT_RETRYABLE) as readonly ErrorCode[];
 
+/** Returns true when `value` is one of the {@link ERROR_CODES}. */
 export function isErrorCode(value: unknown): value is ErrorCode {
   return typeof value === "string" && Object.hasOwn(DEFAULT_RETRYABLE, value);
 }
 
+/** Optional fields for {@link StreamOtterError} and {@link streamError}; each omitted field takes the code's default. */
 export interface StreamErrorOptions {
+  /** Public message. Defaults to the code's entry in {@link PUBLIC_MESSAGES}. Never include topics, secrets, or payloads. */
   message?: string;
+  /**
+   * Whether another attempt under changed conditions can succeed. Defaults to true for
+   * `UNAUTHENTICATED`, `SOURCE_UNAVAILABLE`, `OVERLOADED`, `RESYNC_REQUIRED`, `TIMEOUT`,
+   * `HANDLER_FAILED` and `INTERNAL`, and false for every other code.
+   */
   retryable?: boolean;
+  /** ID of the request that failed, for correlation with gateway traces. Defaults to `""`. */
   requestId?: string;
+  /** Structured, code-specific details. Omitted from the error when not set. */
   details?: Readonly<Record<string, Json>>;
 }
 
@@ -63,11 +74,26 @@ export interface StreamErrorOptions {
  * it; its enumerable fields serialize to exactly the public StreamError object.
  */
 export class StreamOtterError extends Error implements StreamError {
+  /** The error code. */
   code: ErrorCode;
+  /**
+   * Whether another attempt under changed conditions can succeed. It is not permission to retry
+   * in a loop; never retry `FORBIDDEN`, invalid parameters, unsupported capabilities or
+   * configuration errors automatically.
+   */
   retryable: boolean;
+  /** ID of the request that failed, for correlation with gateway traces; `""` when none applies. */
   requestId: string;
+  /** Structured, code-specific details, such as the configuration issues of `CONFIG_INVALID`. */
   details?: Readonly<Record<string, Json>>;
 
+  /**
+   * Creates an error with the given code. Omitted options take the code's defaults; see
+   * {@link StreamErrorOptions}. `message` is an enumerable own property, so the error
+   * serializes like a plain {@link StreamError}.
+   * @param code - The error code.
+   * @param options - Overrides for the message, `retryable`, `requestId` and `details`.
+   */
   constructor(code: ErrorCode, options: StreamErrorOptions = {}) {
     super(options.message ?? PUBLIC_MESSAGES[code]);
     Object.defineProperty(this, "message", { enumerable: true, writable: true, configurable: true, value: this.message });
@@ -78,11 +104,21 @@ export class StreamOtterError extends Error implements StreamError {
     if (options.details !== undefined) this.details = options.details;
   }
 
+  /**
+   * Returns a plain {@link StreamError} with only the public fields: `code`, `message`,
+   * `retryable`, `requestId`, and `details` when set. `JSON.stringify` calls it.
+   */
   toJSON(): StreamError {
     return toStreamError(this);
   }
 }
 
+/**
+ * Creates a plain {@link StreamError} object. Omitted options take the code's defaults; see
+ * {@link StreamErrorOptions}. Use {@link StreamOtterError} where an `Error` instance is needed.
+ * @param code - The error code.
+ * @param options - Overrides for the message, `retryable`, `requestId` and `details`.
+ */
 export function streamError(code: ErrorCode, options: StreamErrorOptions = {}): StreamError {
   const error: StreamError = {
     code,
@@ -101,6 +137,10 @@ export function toStreamError(error: StreamError): StreamError {
   return copy;
 }
 
+/**
+ * Returns true when `value` has the {@link StreamError} shape: a known `code`, string `message`
+ * and `requestId`, and boolean `retryable`. `details` is not checked.
+ */
 export function isStreamError(value: unknown): value is StreamError {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -110,6 +150,10 @@ export function isStreamError(value: unknown): value is StreamError {
     && typeof candidate["requestId"] === "string";
 }
 
+/**
+ * Returns `error` itself when it is already a {@link StreamOtterError}; otherwise a new
+ * StreamOtterError with the same code, message, `retryable`, `requestId` and `details`.
+ */
 export function asStreamOtterError(error: StreamError): StreamOtterError {
   if (error instanceof StreamOtterError) return error;
   const options: StreamErrorOptions = { message: error.message, retryable: error.retryable, requestId: error.requestId };

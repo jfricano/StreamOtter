@@ -455,7 +455,45 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
   }
 }
 
-/** Creates an idle client; it connects when the first subscription starts. */
+/**
+ * Creates an idle browser client for one gateway; it connects when the first subscription starts.
+ *
+ * The client keeps one Socket.IO connection at a time. While subscriptions are active it
+ * reconnects after network failures with full-jitter backoff, starting at 500 ms and capped at
+ * 30 seconds, and replaces the connection with a freshly authenticated one 30 seconds before its
+ * authentication expires. When the gateway refuses the connection, for example because the token
+ * is rejected, it stops retrying until {@link Client.reconnect} is called. Close the client with
+ * {@link Client.close} when its owning application scope ends. The page's own origin must be
+ * listed in the gateway's `gateway.allowedOrigins`.
+ *
+ * @typeParam C - The application's channel map, usually the generated `AppChannels`.
+ * @param options - `getToken` returns the application's session token for the gateway and is
+ * given 10 seconds. `origin` is the gateway's absolute http(s) origin; it defaults to the page's
+ * origin. `path` is the Socket.IO path; it defaults to `/streamotter/socket.io`.
+ * @returns The client, in the `idle` state.
+ * @throws A StreamOtterError with code INVALID_REQUEST when `getToken` is not a function, when
+ * `origin` is omitted outside a browser page or is not an http(s) origin without a path, or when
+ * `path` does not start with `/`.
+ *
+ * @example
+ * ```ts
+ * import { createClient } from "@streamotter/client";
+ * import { channelVersions, type AppChannels } from "./generated/streamotter.generated.js";
+ *
+ * const client = createClient<AppChannels>({
+ *   origin: "http://localhost:7400",
+ *   getToken: ({ signal }) => session.getAccessToken(signal) // your application's session
+ * });
+ * const order = client.subscribe("orderStatus", {
+ *   channelVersion: channelVersions.orderStatus,
+ *   params: { orderId: "ord_123" }
+ * });
+ * order.on("data", ({ data, revision }) => renderOrder(data, revision));
+ * order.on("state", ({ state }) => showDeliveryState(state));
+ * order.on("error", error => showStreamError(error));
+ * await order.ready({ timeoutMs: 30_000 });
+ * ```
+ */
 export function createClient<C extends ChannelMap>(options: ClientOptions): Client<C> {
   return new StreamClient<C>(options);
 }

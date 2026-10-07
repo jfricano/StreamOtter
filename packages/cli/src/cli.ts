@@ -15,10 +15,18 @@ import { detectPackageStyle, fingerprint, generateFiles, GENERATED_MARKER } from
 import { fail, isOperatorCommand, OPERATOR_USAGE, renderOperation, runOperatorCommand } from "./operator.ts";
 import { scaffoldFiles } from "./templates.ts";
 
+/**
+ * The CLI's base exit codes: `ok` 0 for success, `runtime` 1 for a startup or runtime failure,
+ * `invalid` 2 for invalid input or configuration. Operator commands also exit 3 (refused) and
+ * 4 (unknown outcome).
+ */
 export const EXIT = { ok: 0, runtime: 1, invalid: 2 } as const;
 
+/** The input and output {@link runCli} uses in place of the process's stdio and signals. */
 export interface CliIO {
+  /** Writes one line of normal output, without a trailing newline. Usage text, results and gateway info logs go here. */
   out(line: string): void;
+  /** Writes one line of diagnostics, without a trailing newline. Errors and gateway warnings go here. */
   err(line: string): void;
   /** Resolves when the process should shut down (SIGINT/SIGTERM). */
   shutdownSignal: Promise<string>;
@@ -399,8 +407,16 @@ async function commandStart(values: Record<string, unknown>, io: CliIO): Promise
 }
 
 /**
- * Runs the CLI as this process: stdio, SIGINT/SIGTERM as the shutdown signal, and the exit code.
- * The `streamotter` bins of @streamotter/cli and of the all-in-one streamotter package both call it.
+ * Runs the CLI as the current process and exits it with the command's exit code.
+ *
+ * Output goes to standard output and standard error, the first SIGINT or SIGTERM is the shutdown
+ * signal, and the process exits once output is flushed, even if a dependency left a handle open.
+ * The `streamotter` bins of `@streamotter/cli` and of the all-in-one `streamotter` package both
+ * call it.
+ *
+ * @param argv - The command and its arguments, without the Node.js executable and script path.
+ * Default `process.argv.slice(2)`.
+ * @returns Never resolves; the process exits.
  */
 export async function runProcess(argv: readonly string[] = process.argv.slice(2)): Promise<never> {
   const shutdownSignal = new Promise<string>(resolveSignal => {
@@ -419,8 +435,18 @@ export async function runProcess(argv: readonly string[] = process.argv.slice(2)
 }
 
 /**
- * Runs the CLI and returns its exit code: 0 success, 2 invalid input/configuration, 1 startup/runtime failure;
- * operator commands add 3 (refused) and 4 (unknown outcome).
+ * Runs one CLI command with the given input and output and returns its exit code, without
+ * exiting the process.
+ *
+ * Commands: `init`, `validate`, `generate`, `dev` and `start`, plus the operator commands
+ * (`status`, `failures`, `sources`). `dev` and `start` keep running until `io.shutdownSignal`
+ * resolves, then stop the gateway gracefully with a 10-second deadline. With no command, usage is
+ * written to `io.out` and the result is 2; with `help`, `--help` or `-h` it is 0.
+ *
+ * @param argv - The command and its arguments, such as `["validate", "--config", "streamotter.json"]`.
+ * @param io - Where output goes and when to shut down.
+ * @returns The exit code: 0 success, 1 startup or runtime failure, 2 invalid input or
+ * configuration; operator commands add 3 (refused) and 4 (unknown outcome). See {@link EXIT}.
  */
 export async function runCli(argv: readonly string[], io: CliIO): Promise<number> {
   const [command, ...rest] = argv;
