@@ -1,9 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-  MAX_CONFIG_DEPTH, canonicalJsonPretty, CAPABILITIES, isPlainObject, streamError, StreamOtterError, validateOperatorRequest, validateProjectConfig,
-  WORKBENCH_HOST_CONTRACT, WORKBENCH_OPERATIONS, WORKBENCH_REQUEST_HEADER, type ErrorCode, type Json, type OperatorApi,
-  type ReproductionBundle, type Result, type StreamError, type Trace, type WorkbenchDiscovery, type WorkbenchOperation
+  canonicalJsonPretty, CAPABILITIES, streamError, StreamOtterError, validateProjectConfig, WORKBENCH_HOST_CONTRACT,
+  WORKBENCH_OPERATIONS, WORKBENCH_REQUEST_HEADER, type ErrorCode, type Json, type OperatorApi, type ReproductionBundle,
+  type Result, type StreamError, type Trace, type WorkbenchDiscovery, type WorkbenchOperation
 } from "@streamotter/contracts";
+import { MAX_CONFIG_DEPTH, isPlainObject, validateOperatorRequest } from "@streamotter/contracts/internal";
 import type { GatewayInternals } from "../runtime/gateway.ts";
 import { sha256Hex } from "../runtime/util.ts";
 

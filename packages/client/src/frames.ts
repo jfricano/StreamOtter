@@ -1,7 +1,8 @@
 import {
-  isErrorCode, isPlainObject, isRevision, isStreamError,
-  type DataFrame, type ErrorFrame, type Hello, type Result, type StreamEvent, type SubscriptionFrame, type SubscriptionState
+  isErrorCode, isRevision, isStreamError, type DataFrame, type ErrorFrame, type Hello, type Result, type StreamEvent,
+  type SubscriptionFrame, type SubscriptionState
 } from "@streamotter/contracts";
+import { isPlainObject } from "@streamotter/contracts/internal";
 
 const SUBSCRIPTION_STATES: ReadonlySet<string> = new Set<SubscriptionState>([
   "idle", "authorizing", "synchronizing", "live", "stale", "resync-required", "failed", "closed"

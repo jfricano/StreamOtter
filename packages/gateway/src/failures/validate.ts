@@ -1,7 +1,7 @@
 import {
-  isPlainObject, resolveSourcePolicy, StreamOtterError,
-  type ChannelMap, type FailurePolicy, type HandlerRegistry, type ProjectConfig
+  resolveSourcePolicy, StreamOtterError, type ChannelMap, type FailurePolicy, type HandlerRegistry, type ProjectConfig
 } from "@streamotter/contracts";
+import { isPlainObject } from "@streamotter/contracts/internal";
 import { NODE_SQLITE_FLOOR, nodeSqliteSupported } from "./journal.ts";
 
 /** The source-failure features this build of the gateway implements. */

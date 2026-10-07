@@ -1,7 +1,8 @@
 import {
-  canonicalJson, MAX_RECOVERY_CONTEXT_BYTES, StreamOtterError,
-  type ErrorCode, type FailureClass, type FailurePolicy, type Json, type Page, type SourceRecord
+  canonicalJson, StreamOtterError, type ErrorCode, type FailureClass, type FailurePolicy, type Json, type Page,
+  type SourceRecord
 } from "@streamotter/contracts";
+import { MAX_RECOVERY_CONTEXT_BYTES } from "@streamotter/contracts/internal";
 
 /**
  * The incident store: decision state for source failures (ADR-15A §2). Two

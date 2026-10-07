@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  isSameOriginApiPath, isWorkbenchApiOrigin, isWorkbenchOperation, PRE_WHC1_NATIVE_OPERATIONS, validateWorkbenchHostConfig, WORKBENCH_OPERATIONS
+  isWorkbenchApiOrigin, isWorkbenchOperation, validateWorkbenchHostConfig, WORKBENCH_OPERATIONS
 } from "@streamotter/contracts";
+import { isSameOriginApiPath, PRE_WHC1_NATIVE_OPERATIONS } from "@streamotter/contracts/internal";
 
 const paths = (input: unknown): string[] => {
   const result = validateWorkbenchHostConfig(input);

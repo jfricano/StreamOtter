@@ -1,0 +1,52 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/slides/slide-code.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<link rel="stylesheet" href="slide-common.css">
+<style>
+  .head { position: absolute; left: 120px; top: 100px; }
+  h1 { font-size: 68px; font-weight: 800; letter-spacing: -.025em; line-height: 1.05; margin-top: 16px; }
+  .code { position: absolute; left: 120px; top: 300px; width: 1300px; border-radius: 22px; background: var(--ink); border: 2px solid var(--ink-line); overflow: hidden; }
+  .bar { height: 58px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 2px solid var(--ink-line); font-family: var(--mono); font-size: 19px; color: var(--whisker); }
+  .bar .dots { display: flex; gap: 10px; } .bar .dots i { width: 13px; height: 13px; border-radius: 50%; background: var(--ink-line); display: block; }
+  pre { font-family: var(--mono); font-size: 21px; line-height: 1.72; color: var(--light-ink); padding: 26px 30px 30px 22px; font-variant-ligatures: none; }
+  .k { color: var(--azure); } .f { color: #FFFFFF; font-weight: 700; } .s { color: var(--splash); } .c { color: var(--whisker); } .lv { color: var(--live); }
+  .ln { display: inline-block; width: 36px; margin-right: 22px; text-align: right; color: var(--ink-gutter); user-select: none; }
+  .side { position: absolute; left: 1470px; top: 300px; width: 330px; display: flex; flex-direction: column; gap: 22px; }
+  .side h3 { font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--splash); }
+  .side p { font-size: 24px; line-height: 1.45; color: var(--whisker); }
+  .side p b { color: var(--light-ink); font-weight: 600; }
+  .side code { font-family: var(--mono); font-size: .9em; color: var(--light-ink); }
+  .corner { position: absolute; right: 120px; bottom: 70px; }
+  .pg { position: absolute; left: 120px; bottom: 82px; font-family: var(--mono); font-size: 18px; color: var(--whisker); }
+</style></head>
+<body class="dark">
+<div class="head">
+  <div class="slide-eyebrow">Browser SDK</div>
+  <h1>Subscribe to a state channel.</h1>
+</div>
+<div class="code">
+  <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span>app.ts</span></div>
+<pre><span class="ln">1</span><span class="k">import</span> { createClient } <span class="k">from</span> <span class="s">"streamotter/client"</span>;
+<span class="ln">2</span><span class="k">import</span> { channelVersions, <span class="k">type</span> AppChannels } <span class="k">from</span> <span class="s">"./generated/streamotter.generated.js"</span>;
+<span class="ln">3</span>
+<span class="ln">4</span><span class="k">const</span> client = <span class="f">createClient</span>&lt;AppChannels&gt;({ getToken });
+<span class="ln">5</span><span class="k">const</span> job = client.<span class="f">subscribe</span>(<span class="s">"jobProgress"</span>, {
+<span class="ln">6</span>  channelVersion: channelVersions.jobProgress,
+<span class="ln">7</span>  params: { jobId: <span class="s">"job_1"</span> }
+<span class="ln">8</span>});
+<span class="ln">9</span>job.<span class="f">on</span>(<span class="s">"data"</span>, event =&gt; <span class="f">render</span>(event.data));  <span class="c">// full state</span>
+<span class="ln">10</span>job.<span class="f">on</span>(<span class="s">"state"</span>, ({ state }) =&gt; <span class="f">showDeliveryState</span>(state));
+<span class="ln">11</span><span class="k">await</span> job.<span class="f">ready</span>({ timeoutMs: <span class="s">30_000</span> });  <span class="c">// at the next <span class="lv">live</span></span></pre>
+</div>
+<div class="side">
+  <h3>What you get</h3>
+  <p><b>A snapshot, then updates</b> in revision order. Replace the state; don’t merge it.</p>
+  <p><b>A delivery state</b> to render, so a <code>stale</code> view never passes as <code>live</code>.</p>
+  <p>Generate <code>AppChannels</code> with <code>streamotter generate</code>.</p>
+</div>
+<div class="pg">04 · streamotter.dev</div>
+<div class="corner"><img src="../../streamotter-lockup-horizontal-dark.svg" style="width:220px;display:block"></div>
+</body></html>

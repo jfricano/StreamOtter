@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How StreamOtter Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (68ch) with full-width figures; a field guide that follows a record left to right. */
+:root {
+  --bg: #F3F7FB;
+  --surface: #FFFFFF;
+  --surface-2: #E8F0F8;
+  --region: #EDF3FA;
+  --fg: #04183F;
+  --muted: #41506B;
+  --line: #D0DCE8;
+  --figure-line: #C6D2E4;
+  --accent: #0068C2;
+  --azure: #048DFC;
+  --splash: #04BDFD;
+  --otter: #6E3F33;
+  --warn: #9C4300;
+  --live: #00728A; --live-bg: #D6F5FB;
+  --code-bg: #07142E; --code-ink: #D6E5F8; --code-edge: #07142E;
+  --infra: #EFF0F2; --infra-line: #8F96A3;
+  --radius: 14px;
+  --display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #030B1F; --surface: #081631; --surface-2: #0D1F42; --region: #061128;
+    --fg: #E9F2FC; --muted: #A9BAD5; --line: #1B2F5A; --figure-line: #2B4170; --accent: #52B8FF; --azure: #048DFC; --splash: #04BDFD;
+    --otter: #E3A98C; --warn: #FF9C52; --live: #01E1FC; --live-bg: #062F3D;
+    --code-bg: #0A1A3A; --code-ink: #D6E5F8; --code-edge: #1B2F5A; --infra: #1B2029; --infra-line: #6E7685; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #030B1F; --surface: #081631; --surface-2: #0D1F42; --region: #061128;
+  --fg: #E9F2FC; --muted: #A9BAD5; --line: #1B2F5A; --figure-line: #2B4170; --accent: #52B8FF; --azure: #048DFC; --splash: #04BDFD;
+  --otter: #E3A98C; --warn: #FF9C52; --live: #01E1FC; --live-bg: #062F3D;
+  --code-bg: #0A1A3A; --code-ink: #D6E5F8; --code-edge: #1B2F5A; --infra: #1B2029; --infra-line: #6E7685; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--body); font-size: 17px; line-height: 1.6;
+  padding-inline: clamp(16px, 4vw, 40px); padding-block: 40px 80px;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 56px; }
+.prose { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2.5rem, 5vw, 4rem); font-weight: 800; letter-spacing: -0.025em; line-height: 1.02; }
+h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+h3 { font-size: 1.12rem; font-weight: 700; }
+p { margin: 0; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+code, .mono { font-family: var(--mono); font-size: 0.84em; }
+code { background: var(--surface-2); padding: 0.08em 0.36em; border-radius: 5px; overflow-wrap: anywhere; }
+.eyebrow { font-family: var(--mono); font-size: 0.75rem; font-weight: 600; line-height: 1.5; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+section { display: grid; gap: 20px; }
+.section-head { display: grid; gap: 8px; }
+.section-head p { color: var(--muted); max-width: 68ch; }
+
+header.top { display: grid; gap: 18px; }
+.lead { font-size: 1.22rem; line-height: 1.55; max-width: 64ch; }
+.lead strong { font-weight: 600; }
+.ideas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.idea { border-top: 3px solid var(--azure); padding-top: 10px; display: grid; gap: 4px; min-width: 0; }
+.idea b { font-family: var(--display); font-size: 1.02rem; }
+.idea span { color: var(--muted); font-size: 0.95rem; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.95rem; }
+nav.toc a { text-decoration: none; border-bottom: 1px solid var(--line); }
+
+figure { margin: 0; display: grid; gap: 10px; }
+.diagram { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+.diagram svg { display: block; width: 100%; height: auto; min-width: 920px; }
+.diagram.small svg { min-width: 620px; max-width: 820px; margin: 0 auto; }
+figcaption { color: var(--muted); font-size: 0.95rem; max-width: 80ch; }
+
+/* SVG styling through tokens */
+svg text { fill: var(--fg); font-family: var(--body); font-size: 12px; }
+svg .t { font-family: var(--display); font-weight: 700; font-size: 13.5px; }
+svg .f { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); }
+svg .l { font-size: 11px; fill: var(--muted); }
+svg .lo { font-size: 11px; fill: var(--otter); }
+svg .la { font-size: 11px; fill: var(--accent); font-weight: 600; }
+svg .n { font-family: var(--mono); font-size: 11px; fill: var(--accent); font-weight: 500; }
+svg .box { fill: var(--surface); stroke: var(--figure-line); stroke-width: 1.2; }
+svg .box-strong { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; }
+svg .box-infra { fill: var(--infra); stroke: var(--infra-line); stroke-width: 1.3; stroke-dasharray: 5 4; }
+svg .box-ext { fill: var(--surface-2); stroke: var(--figure-line); stroke-width: 1.2; }
+svg .box-you { fill: var(--surface); stroke: var(--otter); stroke-width: 1.4; stroke-dasharray: 5 4; }
+svg .region { fill: var(--region); stroke: var(--figure-line); stroke-width: 1.2; stroke-dasharray: 6 5; }
+svg .strip { fill: var(--surface); stroke: var(--figure-line); }
+svg .cell { stroke: var(--figure-line); stroke-width: 1; }
+svg .cell-on { fill: var(--splash); opacity: 0.55; }
+svg .a-data { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+svg .a-back { stroke: var(--muted); stroke-width: 1.3; fill: none; stroke-dasharray: 4 3; }
+svg .a-call { stroke: var(--otter); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+svg .a-fail { stroke: var(--warn); stroke-width: 1.6; fill: none; }
+svg .a-ctl { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+svg .m-data { fill: var(--accent); }
+svg .m-back { fill: var(--muted); }
+svg .m-call { fill: var(--otter); }
+svg .m-fail { fill: var(--warn); }
+svg .lw { fill: var(--warn); font-size: 11px; }
+
+/* package table */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 0.95rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+th { font-family: var(--display); font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--surface-2); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+td .pkg { font-family: var(--mono); font-size: 0.86rem; font-weight: 500; white-space: nowrap; }
+
+/* journey */
+ol.journey { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: step; max-width: 84ch; }
+ol.journey li { counter-increment: step; display: grid; grid-template-columns: 2.6rem 1fr; gap: 0 14px; padding-block: 12px; border-top: 1px solid var(--line); }
+ol.journey li::before { content: counter(step, decimal-leading-zero); font-family: var(--mono); font-size: 0.85rem; color: var(--accent); padding-top: 3px; }
+ol.journey li > div { min-width: 0; }
+ol.journey li > div > b:first-child, ol.journey .where, ol.journey .ref { display: block; }
+ol.journey li > div > b:first-child, ol.journey .where { margin-bottom: 3px; }
+ol.journey .ref { margin-top: 4px; }
+ol.journey b { font-weight: 600; }
+.ref { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); overflow-wrap: anywhere; }
+.where { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--otter); }
+.callout { border-left: 4px solid var(--warn); background: var(--surface-2); padding: 12px 16px; border-radius: 0 8px 8px 0; max-width: 84ch; }
+
+/* sync phases */
+.phases { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.92rem; }
+.phase { border: 1px solid var(--line); background: var(--surface); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.phase.live { border-color: var(--live); color: var(--live); background: var(--live-bg); font-weight: 600; }
+.phases .arrow { color: var(--muted); }
+
+/* components */
+.components { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 18px; }
+.comp { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.comp ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; font-size: 0.97rem; }
+.comp .ref { display: block; }
+.tag { display: inline-block; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); vertical-align: middle; }
+.tag.v11 { border-color: var(--warn); color: var(--warn); }
+
+.notdo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 8px 24px; font-size: 0.97rem; max-width: 980px; }
+.notdo div { border-top: 1px solid var(--line); padding-top: 8px; min-width: 0; }
+.notdo b { font-weight: 600; }
+.inferred { display: grid; gap: 8px; max-width: 84ch; }
+.inferred li { color: var(--fg); }
+.inferred ul { margin: 0; padding-left: 1.1em; display: grid; gap: 8px; }
+footer { color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (max-width: 520px) {
+  body { font-size: 16px; padding-inline: 16px; }
+  ol.journey li { grid-template-columns: 2rem 1fr; }
+}
+/* letterhead */
+.letterhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 28px; padding-block: 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; min-height: 64px; background: color-mix(in srgb, var(--bg) 85%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px); margin-top: -40px; min-width: 0; }
+.letterhead nav { min-width: 0; max-width: 100%; }
+section[id], aside { scroll-margin-top: 84px; }
+.letterhead img { height: 32px; width: auto; display: block; }
+.letterhead .logo-dark { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .letterhead .logo-light { display: none; } :root:not([data-theme="light"]) .letterhead .logo-dark { display: block; } }
+:root[data-theme="dark"] .letterhead .logo-light { display: none; }
+:root[data-theme="dark"] .letterhead .logo-dark { display: block; }
+.volnav { display: flex; flex-wrap: wrap; gap: 2px 6px; font-size: 0.92rem; list-style: none; margin: 0; padding: 0; }
+.volnav span.n { font-family: var(--mono); color: var(--muted); margin-right: 4px; }
+.volnav a, .volnav [aria-current] { padding: 6px 6px; border-radius: 8px; }
+.volnav a { color: var(--muted); text-decoration: none; }
+.volnav a:hover { color: var(--fg); background: var(--surface-2); }
+.volnav [aria-current] { color: var(--fg); font-weight: 600; box-shadow: inset 0 -2px var(--azure); border-radius: 8px 8px 0 0; }
+.next-step { border-left: 4px solid var(--accent); background: var(--surface-2); padding: 14px 18px; border-radius: 0 8px 8px 0; max-width: 84ch; display: grid; gap: 6px; }
+@media (max-width: 720px) { .letterhead img { height: 28px; } .letterhead nav { width: 100%; overflow-x: auto; } .volnav { flex-wrap: nowrap; white-space: nowrap; padding-bottom: 2px; } section[id], aside { scroll-margin-top: 100px; } }
+.pager { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 16px; }
+.pager a { display: grid; gap: 2px; text-align: right; text-decoration: none; color: var(--accent); }
+.pager a b { font-family: var(--display); font-size: 1.15rem; font-weight: 700; }
+.pager a:hover b { text-decoration: underline; }
+.pagelist { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; margin: 0; padding: 0; }
+.pagelist a { color: var(--muted); }
+.pagelist [aria-current] { color: var(--fg); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<div class="letterhead">
+  <img class="logo-light" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjQ2Mi42NSA4OC4yNyAxNzY1LjA5IDMxNy44NiIgd2lkdGg9IjE3NjUiIGhlaWdodD0iMzE4IiByb2xlPSJpbWciPjx0aXRsZT5TdHJlYW1PdHRlcjwvdGl0bGU+PHBhdGggZmlsbD0iIzA0MTgzZiIgc3Ryb2tlPSIjMDQxODNmIiBzdHJva2Utd2lkdGg9IjAuMjUiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTc4OC43MyAxNTYuMjNDNzgzLjk3IDE1NS4zMyA3NzkuMzUgMTUzLjc2IDc3NC40OSAxNTMuMjFDNzcwLjM2IDE1Mi43NCA3NjYuMjIgMTUzLjAzIDc2Mi4wOSAxNTIuODZDNzYwLjkxIDE0OS40MiA3NTkuNjYgMTQ2LjI3IDc1OS45OCAxNDIuNUM3NjAuODIgMTMyLjc3IDc3MC4yMSAxMjcuMDQgNzc5LjMzIDEyOC4zNkM3OTAuOTEgMTMwLjA0IDgwMC45MSAxNDguODggNzg4LjczIDE1Ni4yM1pNNzc1Ljc1IDEzNS4yN0M3NjkuOSAxMzcuNzMgNzc0LjM1IDE0Ny4xMSA3ODAuOTcgMTQzLjQ2Qzc4Ni41OSAxNDAuMzcgNzgxLjE5IDEzMi45OSA3NzUuNzUgMTM1LjI3Wk03MTUuNjkgMTQ2LjVDNzA0LjI2IDE1MS4yNyA3MDAuNjMgMTU1LjI2IDY5OC41IDE2Ny41M0M2OTUuOTQgMTY2Ljc5IDY5My43NSAxNjUuNTggNjkxLjcgMTYzLjgyQzY5MCAxNjIuMzYgNjg4LjczIDE2MC42IDY4Ny45IDE1OC41MkM2ODAuNDQgMTM5Ljk2IDcwOC40OSAxMzAuOTkgNzE1LjY5IDE0Ni41Wk04NDAuMDUgMTQyLjg1Qzg1MC4wMiAxNDEuOTggODY5LjQ3IDE0MC45MSA4NjkuNDkgMTU1LjVDODY5LjUgMTU5LjU5IDg2Ny4xOSAxNjIuNCA4NjYuMjggMTY2LjEyQzg1OC4zMiAxNzEuMzcgODUzLjY4IDE3OC40MyA4NTMuOTkgMTg4LjE3Qzg1MS4yNCAxODkuNzQgODQ5LjIzIDE5MC4yMSA4NDYgMTkwLjIyQzg0MC45MiAxOTAuNjggODM1Ljg5IDE5My41NSA4MzAuNjcgMTk0LjM3QzgyMC42OCAxOTUuOTUgODA3LjExIDE5Mi41MyA4MDAuNDQgMTg0LjVDNzk4Ljg0IDE4Mi41OCA4MDQuNTQgMTc5LjggODA2LjUgMTgxLjM1QzgyMC4wNCAxOTIuMSA4NDUuODUgMTkxLjIyIDg1MC4wNCAxNzEuNUM4NDQuMDIgMTY2LjA5IDgyNy45NyAxNTguNjQgODM0LjQ1IDE0Ny45QzgzNS43OCAxNDUuNjggODM4LjM2IDE0NC41MyA4NDAuMDUgMTQyLjg1Wk04MDEuODMgMTcwLjAyQzc5OC41OSAxNzAuNjQgNzk1LjM2IDE3MS4yNyA3OTIuMTIgMTcxLjlDNzkxLjU4IDE2OS40NSA3OTEuNjEgMTY4LjEyIDc5Mi43OSAxNjUuODlDNzk2LjYzIDE2NS4yNSA4MDAuMTYgMTY0LjcyIDgwMy43NiAxNjYuNUM4MDMuMiAxNjcuNyA4MDIuMDQgMTY4LjggODAxLjgzIDE3MC4wMlpNODkzLjU4IDE5MS41Qzg5MC42OSAxOTAuNjEgODg4LjgzIDE4OC4xMSA4ODYuNDcgMTg2LjAzQzg4My4xMSAxODMuMDcgODc5LjAxIDE4MC42NyA4NzUuMTggMTc4LjM2Qzg3My45NSAxNzcuNjIgODcwLjcxIDE3Ni42MSA4NzAuMTEgMTc1LjI0Qzg2OS41OSAxNzQuMDMgODcwLjE0IDE3My42OCA4NzAuMTYgMTcyLjVDODc5Ljk3IDE3My4xNCA4ODkuMTggMTgzLjQ3IDg5My41OCAxOTEuNVpNNzk1Ljg4IDE3NS4wM0M3OTguMDkgMTc0LjQ2IDgwMC4yOSAxNzQuMDkgODAyLjUgMTczLjk1QzgwMi44IDE3NS4zNSA4MDMuMjUgMTc3LjEgODAzLjY0IDE3OC41QzgwMS4yNiAxNzkuMzkgNzk4Ljg4IDE4MC4yOCA3OTYuNSAxODEuMTZDNzk1LjIgMTc5LjkgNzkzLjQgMTc3LjYgNzkzLjkgMTc2LjRDNzk0LjMgMTc1LjcgNzk1LjEgMTc1LjMgNzk1Ljg4IDE3NS4wM1pNODg1LjUgMjEzLjc2Qzg4Mi4zOSAyMDcuNzIgODc4Ljc4IDIwMS4zNCA4NzQuMzUgMTk2LjE1Qzg3MS42NCAxOTIuOTggODY3LjA4IDE5MC4xNCA4NjYuNSAxODUuODlDODY5LjQ1IDE4NS4zNSA4NzIuNjIgMTg4LjY3IDg3NC42NCAxOTAuODNDODc5LjgxIDE5Ni4zNiA4ODcuMTIgMjA1LjkxIDg4NS41IDIxMy43NlpNODU3LjUgMTk0LjA4Qzg2NS41NCAxOTcuNTIgODY5LjI4IDIxNC41NCA4NjkuODMgMjIyLjVDODcwLjA2IDIyNS44MiA4NzAuMjQgMjI5LjA0IDg2OC41IDIzMS45MkM4NjcuMDggMjIzLjE4IDg2NSAyMTQuOTggODYxLjcgMjA2Ljc2Qzg2MC4xMSAyMDIuOCA4NTYuNjYgMTk4LjEyIDg1Ny41IDE5NC4wOFpNNTk1LjE0IDI1NC43M0M2MDIuNzYgMjU2LjI3IDYxMC4zOCAyNTcuOCA2MTggMjU5LjM0QzY1Ny4wOCAyNjcuMTQgNjk3LjgxIDI2Ni44NiA3MzQuNzEgMjgzLjc4Qzc1NS41IDI5My4zIDc3Ni45IDMxMiA3NzYuOSAzMzNDNzc2LjkgMzQ2IDc3MC41IDM1Ny40IDc2Mi4wOSAzNjUuODhDNzU3LjU3IDM2Ny43NiA3NTMuNjcgMzcxLjQyIDc0OS4yNSAzNzMuNzNDNzQwLjA3IDM3OC41MiA3MjkuNjQgMzgxLjM4IDcxOS40IDM4Mi42NEM2ODYuNDggMzg2LjY3IDY1My4zOSAzNzYuODMgNjI2LjIgMzU4LjMzQzYwNC45IDM0My44MyA1ODYuMjggMzI1LjE5IDU2My4yNyAzMTMuMjRDNTUyIDMwNy4zOSA1MzkuOTIgMzAyLjU1IDUyNy40NiAyOTkuOTNDNTIwLjc3IDI5OC41MiA1MDkuNDIgMjk4Ljk1IDUwNC4xMSAyOTcuMjFDNTE2Ljc0IDI5MS42MSA1MzEuNDEgMjkwLjQzIDU0NSAyODkuMzVDNTU1IDI4OC41NiA1NjYgMjkwLjQ3IDU3Ni4xMiAyOTEuNzRDNTk5LjE0IDI5NC42NCA2MjAuNjEgMzA1LjE3IDY0MS4xMyAzMTUuNDFDNjUwLjYyIDMyMC4xNCA2NjAuMjkgMzI0Ljk5IDY3MC41NCAzMjcuOTNDNjc4LjUgMzMwLjIxIDY5OS42MiAzMzYuODMgNzA0LjA4IDMyNi41QzcwOC45MyAzMTUuMjggNjg4Ljk1IDMwNi4zMyA2ODEuMjcgMzAzLjI2QzY2MS4zNiAyOTUuMjggNjQwLjgzIDI4OS4zNSA2MjEuNDggMjgwLjAzQzYxMS40OSAyNzUuMjIgNTk5LjgxIDI2OC45IDU5Mi44OSAyNTkuOTlDNTkwLjMgMjU2LjcgNTkxLjYgMjU0IDU5NS4xNCAyNTQuNzNaIi8+PHBhdGggZmlsbD0iIzA0OGRmYyIgc3Ryb2tlPSIjMDQ4ZGZjIiBzdHJva2Utd2lkdGg9IjAuMjUiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTY3Mi43MyAxMjAuNUM2NTkuNDUgMTI5LjggNjQ0Ljc2IDEzNi43NSA2MzEuNDYgMTQ1Ljk4QzYyNC41NSAxNTAuNzcgNjE3LjQyIDE1Ni42NCA2MTQuMjQgMTY0LjdDNjA1Ljc0IDE4Ni4xOSA2MzAuMjggMTk4LjY1IDY0Ni4wNiAyMDUuNDVDNjU3LjM1IDIxMC4zMiA2NjkuMjggMjEzLjg4IDY4MSAyMTcuNTFDNzE3LjE2IDIyOC43IDc1NS45NSAyNDEuMTggNzg0Ljg1IDI2Ni42MkM4MTAuNTMgMjg5LjIyIDgxNC40MyAzMjMuNjcgNzk1LjIxIDM1MS43MkM3OTAuNjMgMzU4LjQgNzg1LjAxIDM2NC4xMSA3NzguNjIgMzY5LjA4Qzc3Ni4xOSAzNzAuOTcgNzczLjg4IDM3My4yNyA3NzAuOTEgMzczLjVDNzc3LjA0IDM2Ni43NiA3ODEuNjEgMzU5Ljk5IDc4NC44MyAzNTEuNDRDNzg2LjggMzQ2LjIzIDc4Ny43MyAzNDEuMDcgNzg4LjIzIDMzNS41M0M3OTEuNDMgMjk5LjcgNzUxLjY3IDI3NS40NCA3MjIuMDUgMjY2LjQ3QzcxNi4xIDI2NC42NyA3MTAuMDggMjYyLjk3IDcwNC4wMyAyNjEuNDhDNjk2LjU3IDI1OS42NSA2ODkuMDggMjU4LjE0IDY4MS41IDI1Ni44NEM2NzEuNTIgMjU1LjEyIDY2MS40OSAyNTMuNjMgNjUxLjQ1IDI1Mi4zM0M2MzcuMzYgMjUwLjUgNjIzLjQ5IDI0OC43OCA2MDkuNjEgMjQ1LjczQzU5Mi41OSAyNDIgNTc1LjYyIDIzNC45OCA1NjQuMDYgMjIxLjQyQzU2MC4yMiAyMTYuOSA1NTcuNTIgMjExLjM2IDU1NS42NyAyMDUuNzZDNTQyLjM3IDE2NS40NyA1ODcuNTEgMTM3LjgxIDYxOS43OCAxMjguMzdDNjI2LjUxIDEyNi40IDYzMy40MiAxMjUuMDkgNjQwLjI4IDEyMy42NUM2NDkuNDggMTIxLjcxIDY2My41OCAxMTguNjIgNjcyLjczIDEyMC41Wk01NTcuNzUgMjM1LjVDNTUzLjM3IDI0MS4xOSA1NDEuODcgMjQwIDUzNS41NiAyMzguNzRDNTIwLjM4IDIzNS42OSA1MDYuMDUgMjIzLjYzIDUwMS44OCAyMDguNTNDNTAwLjEgMjAyLjA2IDUwMC4yMSAxOTMuNzQgNTA0Ljk5IDE4OC41QzUwNy40MSAxODUuODYgNTEwLjc4IDE4NC4yOCA1MTQuMjYgMTgzLjYxQzUzOC4yNCAxNzguOTUgNTM4LjczIDIwNi45NyA1NDcuMjQgMjIxLjI4QzU1MC4yNiAyMjYuMzYgNTU1LjA3IDIzMC4zNSA1NTcuNzUgMjM1LjVaTTgxMS42NSAyMzYuMjVDODI2LjYyIDIzMi42MyA4MzAuODcgMjUzLjQ4IDgxNy4wOCAyNTYuNTJDODA0LjYxIDI1OS4yNiA3OTkuMDggMjM5LjI5IDgxMS42NSAyMzYuMjVaTTQ5Ny42NyAyNDUuNDRDNTE5LjM1IDI0My45MyA1MTkuMiAyNzcuNjQgNDk3LjUgMjc3LjZDNDc2LjU3IDI3Ny41NiA0NzcuMzMgMjQ2Ljg1IDQ5Ny42NyAyNDUuNDRaTTUzNC43MiAyNTUuNEM1NDguNiAyNTMuNjEgNTUwLjgzIDI3NS44MSA1MzcuNSAyNzcuMjlDNTIzLjQ0IDI3OC44NSA1MjAuOTQgMjU3LjE3IDUzNC43MiAyNTUuNFpNODYzLjYyIDMzNi4yN0M4ODUuMzYgMzMxLjY3IDg4NC45NyAzNjQuNDkgODY0LjUgMzY1LjI5Qzg0Ni44OSAzNjUuOTggODQ4LjQ3IDMzOS40NyA4NjMuNjIgMzM2LjI3WiIvPjxwYXRoIGZpbGw9IiMwNGJkZmQiIHN0cm9rZT0iIzA0YmRmZCIgc3Ryb2tlLXdpZHRoPSIwLjI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik04MDAuNjIgMzY2LjVDODAzLjYzIDM2MS40NiA4MDcuMjUgMzU2LjggODEwLjMgMzUxLjc3QzgxNi4zMSAzNDEuODQgODIwLjkyIDMzMC42MyA4MjMuODUgMzE5LjQ0QzgyNy43NiAzMDQuNTQgODI1LjQzIDI4Ny4wOCA4MzEuNjEgMjczLjE0QzgzNi4wNCAyNjMuMTYgODQ4Ljk4IDI1Ny43NCA4NTguOCAyNjMuNjZDODcxLjE0IDI3MS4xIDg2OS42MSAyODguODcgODY1LjE0IDMwMC41OEM4NTYuODMgMzIyLjMgODQwLjEyIDMzOS41IDgyMi4yMSAzNTMuNjhDODE2Ljk2IDM1Ny44NCA4MDcuMDcgMzY1LjU5IDgwMC42MiAzNjYuNVpNNTA0LjExIDI5Ny4yMUM1MDkuNDIgMjk4Ljk1IDUyMC43NyAyOTguNTIgNTI3LjQ2IDI5OS45M0M1MzkuOTIgMzAyLjU1IDU1MiAzMDcuMzkgNTYzLjI3IDMxMy4yNEM1ODYuMjggMzI1LjE5IDYwNC45IDM0My44MyA2MjYuMiAzNTguMzNDNjUzLjM5IDM3Ni44MyA2ODYuNDggMzg2LjY3IDcxOS40IDM4Mi42NEM3MjkuNjQgMzgxLjM4IDc0MC4wNyAzNzguNTIgNzQ5LjI1IDM3My43M0M3NTMuNjcgMzcxLjQyIDc1Ny41NyAzNjcuNzYgNzYyLjA5IDM2NS44OEM3NTQuOTUgMzc4Ljg1IDczMC40NyAzODguODYgNzE2Ljc2IDM5Mi4zNkM2NzguNyA0MDIuMDggNjQwLjkgMzkxLjA0IDYwNy43NiAzNzEuNzJDNTg1LjY3IDM1OC44NSA1NjQuODEgMzQyLjMyIDU0MC4yIDMzNC4zOUM1MjUuNDQgMzI5LjYzIDUxMC4xOCAzMjUuNyA0OTQuNSAzMjYuMjVDNDg4LjkxIDMyNi40NCA0ODMuMTYgMzI3LjIgNDc3LjY4IDMyOC4zMkM0NzMuOTkgMzI5LjA3IDQ3MS4wMSAzMzAuNDcgNDY3LjY0IDMyOC41QzQ2Ni42NSAzMjMuNTMgNDY5Ljg5IDMxOS45OSA0NzIuOTEgMzE2LjM3QzQ4MC40NyAzMDcuMzMgNDkyLjgxIDMwMC4yNyA1MDQuMTEgMjk3LjIxWk02NDIuMTkgNDAwLjVDNjM5LjQ1IDQwMi4xMyA2MzUuODQgNDAxLjY3IDYzMi41IDQwMS42M0M2MjQuMzYgNDAxLjUyIDYxNi41MiA0MDAuMzMgNjA4LjUgMzk5LjA4QzU5MC4yNCAzOTYuMjQgNTcyLjk4IDM4OS41NyA1NTUuMzkgMzg0LjE5QzUzOS45MiAzNzkuNDcgNTI0LjU0IDM3Ni4zNSA1MDguNjIgMzczLjY3QzQ5Ny4yNyAzNzEuNzYgNDc5LjMxIDM2NS44NCA0ODQuMTMgMzUwLjU2QzQ4OS41MSAzMzMuNDcgNTE1Ljk1IDMzOC42MyA1MjguNTMgMzQyLjg5QzU1NS4zNCAzNTEuOTYgNTc3LjUzIDM2OC42NCA2MDEuNzEgMzgyLjc4QzYxNC4zOSAzOTAuMiA2MjguMjUgMzk1LjkyIDY0Mi4xOSA0MDAuNVoiLz48cGF0aCBmaWxsPSIjN2Y1NDQ3IiBzdHJva2U9IiM3ZjU0NDciIHN0cm9rZS13aWR0aD0iMC4yNSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNODQwLjA1IDE0Mi44NUM4MzIuMTUgMTQwLjY1IDgyMi41OSAxNDcuNjcgODE2LjMzIDE1MS44N0M4MDguMSAxNTcuMzkgNzk3Ljk3IDE2MC4zMyA3ODguNzMgMTU2LjIzQzgwMC45MSAxNDguODggNzkwLjkxIDEzMC4wNCA3NzkuMzMgMTI4LjM2Qzc3MC4yMSAxMjcuMDQgNzYwLjgyIDEzMi43NyA3NTkuOTggMTQyLjVDNzU5LjY2IDE0Ni4yNyA3NjAuOTEgMTQ5LjQyIDc2Mi4wOSAxNTIuODZDNzQyLjcgMTU2LjA5IDcyNy4wMyAxNjQuNzkgNzE0Ljk2IDE4MC40NEM3MTAuNTYgMTg2LjE1IDcwNS4xOSAxOTMuMjcgNzA0LjE2IDIwMC41QzcxMS40MSAyMDUuNTMgNzE4Ljc1IDIxMC40MiA3MjUuOTQgMjE1LjU1QzcyOS40NSAyMTguMDUgNzMzLjg5IDIyMC40NyA3MzYgMjI0LjI1QzcxOC42OSAyMTcuNTQgNzAwLjk5IDIxMi4xMiA2ODMuNDMgMjA2LjEzQzY3MS43OSAyMDIuMTYgNjU5LjkzIDE5OC45MiA2NDguNyAxOTMuNzlDNjM5LjIzIDE4OS40NiA2MjMuNzEgMTgxLjU2IDYyOS4xNyAxNjguNjdDNjM1LjUxIDE1My43MSA2NTYuMDcgMTQ2Ljk1IDY2OC4xOSAxMzcuNjVDNjcyLjE0IDEzNC42MiA2NzUuMjEgMTMwLjcyIDY3OC44MSAxMjcuMzJDNjg1Ljk3IDEyMC41NiA2OTMuOTMgMTE0LjY4IDcwMi43OSAxMTAuMzNDNzM5LjU0IDkyLjI3IDc4Ni45OCA5NS43IDgyMS4xIDExOC40MkM4MjkuMzMgMTIzLjkgODQwLjQ5IDEzMC41MiA4NDUuMSAxMzkuNUM4NDIuNTggMTQwLjI5IDg0MS4xMSAxNDAuNCA4NDAuMDUgMTQyLjg1Wk03MTUuNjkgMTQ2LjVDNzA4LjQ5IDEzMC45OSA2ODAuNDQgMTM5Ljk2IDY4Ny45IDE1OC41MkM2ODguNzMgMTYwLjYgNjkwIDE2Mi4zNiA2OTEuNyAxNjMuODJDNjkzLjc1IDE2NS41OCA2OTUuOTQgMTY2Ljc5IDY5OC41IDE2Ny41M0M3MDAuNjMgMTU1LjI2IDcwNC4yNiAxNTEuMjcgNzE1LjY5IDE0Ni41WiIvPjxwYXRoIGZpbGw9IiNlYmU2ZGYiIHN0cm9rZT0iI2ViZTZkZiIgc3Ryb2tlLXdpZHRoPSIwLjI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik04NDAuMDUgMTQyLjg1QzgzOC4zNiAxNDQuNTMgODM1Ljc4IDE0NS42OCA4MzQuNDUgMTQ3LjlDODI3Ljk3IDE1OC42NCA4NDQuMDIgMTY2LjA5IDg1MC4wNCAxNzEuNUM4NDUuODUgMTkxLjIyIDgyMC4wNCAxOTIuMSA4MDYuNSAxODEuMzVDODA0LjU0IDE3OS44IDc5OC44NCAxODIuNTggODAwLjQ0IDE4NC41QzgwNy4xMSAxOTIuNTMgODIwLjY4IDE5NS45NSA4MzAuNjcgMTk0LjM3QzgzNS44OSAxOTMuNTUgODQwLjkyIDE5MC42OCA4NDYgMTkwLjIyQzg0NS42NCAxOTQuMDYgODQyLjc2IDE5Ni4wNCA4NDAuMyAxOTguODRDODI4LjU5IDIxMi4xOCA4MTMuNTcgMjA4LjY5IDc5OC41NyAyMTMuMDJDNzg5LjEzIDIxNS43NSA3NzkuMTggMjIxLjc5IDc3Ni4xNiAyMzEuNjFDNzc0LjgxIDIzNS45OSA3NzUuMjMgMjQwLjMyIDc3NC41IDI0NC43NEM3NjcuNDEgMjM5LjYxIDc1OS4yOCAyMzQuODMgNzUxLjM2IDIzMS4xMkM3NDYuMzQgMjI4Ljc2IDc0MC43NiAyMjYuOTYgNzM2IDIyNC4yNUM3MzMuODkgMjIwLjQ3IDcyOS40NSAyMTguMDUgNzI1Ljk0IDIxNS41NUM3MTguNzUgMjEwLjQyIDcxMS40MSAyMDUuNTMgNzA0LjE2IDIwMC41QzcwNS4xOSAxOTMuMjcgNzEwLjU2IDE4Ni4xNSA3MTQuOTYgMTgwLjQ0QzcyNy4wMyAxNjQuNzkgNzQyLjcgMTU2LjA5IDc2Mi4wOSAxNTIuODZDNzY2LjIyIDE1My4wMyA3NzAuMzYgMTUyLjc0IDc3NC40OSAxNTMuMjFDNzc5LjM1IDE1My43NiA3ODMuOTcgMTU1LjMzIDc4OC43MyAxNTYuMjNDNzk3Ljk3IDE2MC4zMyA4MDguMSAxNTcuMzkgODE2LjMzIDE1MS44N0M4MjIuNTkgMTQ3LjY3IDgzMi4xNSAxNDAuNjUgODQwLjA1IDE0Mi44NVpNNzkyLjc5IDE2NS44OUM3OTEuNjEgMTY4LjEyIDc5MS41OCAxNjkuNDUgNzkyLjEyIDE3MS45Qzc4NC41IDE3NS45OSA3NjcuMjMgMTgxLjg4IDc2NC41IDE5MS4xMUM3NzMuNzMgMTg1Ljc2IDc4MC4wNSAxODEuNzQgNzkwLjA3IDE3Ny41NEM3OTIuNjMgMTc2LjQ3IDc5My4wMyAxNzQuOTEgNzk1Ljg4IDE3NS4wM0M3OTUuMSAxNzUuMyA3OTQuMyAxNzUuNyA3OTMuOSAxNzYuNEM3OTMuNCAxNzcuNiA3OTUuMiAxNzkuOSA3OTYuNSAxODEuMTZDNzk4Ljg4IDE4MC4yOCA4MDEuMjYgMTc5LjM5IDgwMy42NCAxNzguNUM4MDMuMjUgMTc3LjEgODAyLjggMTc1LjM1IDgwMi41IDE3My45NUM4MDIuMjQgMTcyLjc1IDgwMS42MyAxNzEuMjIgODAxLjgzIDE3MC4wMkM4MDIuMDQgMTY4LjggODAzLjIgMTY3LjcgODAzLjc2IDE2Ni41QzgwMC4xNiAxNjQuNzIgNzk2LjYzIDE2NS4yNSA3OTIuNzkgMTY1Ljg5Qzc5MC41NCAxNjQuMTYgNzg3LjkxIDE2NC44OSA3ODUuMTUgMTY1LjU4Qzc3OS44NCAxNjYuOTMgNzcwLjI3IDE2OC40NyA3NjcuNSAxNzMuNzFDNzc1LjkzIDE3MS4xIDc4NC4zNiAxNjguNSA3OTIuNzkgMTY1Ljg5Wk04NjYuMjggMTY2LjEyQzg2Ni4yMiAxNjYuMzYgODY2LjY4IDE2Ni40NiA4NjYuNzMgMTY2LjdDODY2Ljk1IDE2Ny42NyA4NjUuNDYgMTY4LjAyIDg2NSAxNjguNUM4NjUuNjQgMTY5LjQ2IDg2NS43IDE2OC41NiA4NjYuMTcgMTY5LjY5Qzg2Ni44MiAxNzEuMjYgODY1LjYxIDE3My41OSA4NjUuMDQgMTc1Qzg2Mi45NSAxODAuMTQgODU5LjM4IDE4Ni4yMSA4NTMuOTkgMTg4LjE3Qzg1My42OCAxNzguNDMgODU4LjMyIDE3MS4zNyA4NjYuMjggMTY2LjEyWiIvPjxwYXRoIGZpbGw9IiNmZmZmZmYiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIwLjI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik03NzUuNzUgMTM1LjI3Qzc4MS4xOSAxMzIuOTkgNzg2LjU5IDE0MC4zNyA3ODAuOTcgMTQzLjQ2Qzc3NC4zNSAxNDcuMTEgNzY5LjkgMTM3LjczIDc3NS43NSAxMzUuMjdaTTc5Mi43OSAxNjUuODlDNzg0LjM2IDE2OC41IDc3NS45MyAxNzEuMSA3NjcuNSAxNzMuNzFDNzcwLjI3IDE2OC40NyA3NzkuODQgMTY2LjkzIDc4NS4xNSAxNjUuNThDNzg3LjkxIDE2NC44OSA3OTAuNTQgMTY0LjE2IDc5Mi43OSAxNjUuODlaTTgwMS44MyAxNzAuMDJDODAxLjYzIDE3MS4yMiA4MDIuMjQgMTcyLjc1IDgwMi41IDE3My45NUM4MDAuMjkgMTc0LjA5IDc5OC4wOSAxNzQuNDYgNzk1Ljg4IDE3NS4wM0M3OTMuMDMgMTc0LjkxIDc5Mi42MyAxNzYuNDcgNzkwLjA3IDE3Ny41NEM3ODAuMDUgMTgxLjc0IDc3My43MyAxODUuNzYgNzY0LjUgMTkxLjExQzc2Ny4yMyAxODEuODggNzg0LjUgMTc1Ljk5IDc5Mi4xMiAxNzEuOUM3OTUuMzYgMTcxLjI3IDc5OC41OSAxNzAuNjQgODAxLjgzIDE3MC4wMloiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg5NzEuMDUgMTYxLjI0KSBzY2FsZSgxLjQzMjMpIHRyYW5zbGF0ZSgtMjM1LjA4IC0zOTguNTcpIj48cGF0aCBmaWxsPSIjMDQxODNmIiBzdHJva2U9IiMwNDE4M2YiIHN0cm9rZS13aWR0aD0iMC4yNSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMzI5Ljg0IDQ4MkMzMjkuNTUgNDgyLjE3IDMyOS4yNyA0ODIuMzMgMzI4Ljk4IDQ4Mi41QzMyOC45NyA0ODMuODMgMzI4Ljk2IDQ4NS4xNyAzMjguOTUgNDg2LjVDMzI5LjI0IDQ4Ni42NyAzMjkuNTQgNDg2LjgzIDMyOS44MyA0ODdDMzI4LjA2IDUxOS45OCAyODQuNzkgNTI2LjIxIDI2MC4wNiA1MTYuNDdDMjQ5LjQ2IDUxMi4yOSAyMzUuMDggNDk5Ljk3IDIzNi4zNyA0ODcuNUMyNDQuNDEgNDg1LjI2IDI1Mi40NiA0ODMuMDIgMjYwLjUgNDgwLjc4QzI2Mi40OSA0ODMuMjYgMjYzLjc1IDQ4Ni4yNSAyNjUuOCA0ODguNzJDMjcwLjc0IDQ5NC43IDI3OS4wMSA0OTYuOTUgMjg2LjUgNDk2LjY0QzI5Mi43NCA0OTYuMzggMzAxLjQ3IDQ5Mi43NCAzMDAuNDIgNDg0Ljk3QzI5OS4xMSA0NzUuMzQgMjg0LjAyIDQ3My44NSAyNzYuNTcgNDcxLjc3QzI1Ny4zNiA0NjYuNDIgMjM2LjA3IDQ1Ny45MSAyMzkuNzQgNDMzLjVDMjQwLjMyIDQyOS42NCAyNDEuMzQgNDI2LjE0IDI0My4yMSA0MjIuNjlDMjU0LjY2IDQwMS41MSAyODUuMzggMzk4LjU3IDMwNS43IDQwNi43N0MzMTQuNjUgNDEwLjM5IDMyNi43NiA0MjAuMDkgMzI3LjUgNDMwLjQ0QzMyMS40NCA0MzMuOTUgMzEwLjM1IDQzOC41NyAzMDMuNSA0MzkuMDdDMjk3LjU1IDQzMS44NCAyOTQuMDcgNDI2LjYgMjgzLjUgNDI2LjU1QzI3Ni43OCA0MjYuNTIgMjY3LjE1IDQzMC4wNCAyNjkuMDMgNDM4LjQ2QzI3MC42IDQ0NS40NiAyODUuNDMgNDQ3LjgzIDI5MS4yNyA0NDkuMzNDMzA4LjQ1IDQ1My43NCAzMjkuMDggNDYxLjEgMzI5Ljg0IDQ4MlpNMzY2LjkzIDQxNi4xMkMzNjkuOTUgNDIzLjE2IDM2Ni42NyA0MzEuNjYgMzY5LjA4IDQzOC45MUMzNzUuMDEgNDM4LjkxIDM4MC45NCA0MzguOTEgMzg2Ljg4IDQzOC45MUMzODguODIgNDQ0LjM4IDM4OS4wNSA0NTMuOTQgMzg3LjM2IDQ1OS41QzM4Mi4wNyA0NjIuMTUgMzc0LjQgNDYwLjM2IDM2OC41IDQ2MC45NUMzNjcuMiA0NjcuOTMgMzY3LjU5IDQ4MC4xOSAzNjguMSA0ODcuNUMzNjguMzMgNDkwLjc2IDM2OS4xOCA0OTQuNSAzNzIuMDggNDk2LjQzQzM3Ni42MSA0OTkuNDQgMzgyLjY1IDQ5Ny41MSAzODcuNjEgNDk4LjVDMzg3LjYxIDUwNC41IDM4Ny42MSA1MTAuNSAzODcuNjEgNTE2LjVDMzgzLjQxIDUxOS4wOSAzNzcuNDMgNTE5LjU5IDM3Mi41IDUxOS43MkMzNjguMzIgNTE5LjgzIDM2My45NSA1MTkuNTYgMzU5Ljg5IDUxOC41NEMzMzUuNTkgNTEyLjQ3IDM0MS41IDQ4MC4xNiAzNDEuMDkgNDYxLjVDMzM3LjAzIDQ2MC45NSAzMzIuOTggNDYwLjQgMzI4LjkyIDQ1OS44NEMzMjguOTIgNDUyLjg2IDMyOC45MiA0NDUuODggMzI4LjkyIDQzOC44OUMzMzIuNzUgNDM4Ljg5IDMzNi41OCA0MzguODkgMzQwLjQxIDQzOC44OUMzNDEuNzIgNDMxLjU5IDMzOS40MiA0MjIuOSAzNDIuNSA0MTYuMTJDMzUwLjY0IDQxNi4xMiAzNTguNzkgNDE2LjEyIDM2Ni45MyA0MTYuMTJaTTUzMi41IDQ4NC4yMUM1MjcuMzQgNDg2LjAzIDUyMC45NiA0ODUuMDcgNTE1LjUgNDg1LjA3QzUwMy41IDQ4NS4wNiA0ODcuNDQgNDgzLjcxIDQ3NS45NiA0ODUuNUM0NzYuMzkgNDk3Ljc2IDQ5MC43MiA1MDIuMyA1MDEuMDQgNDk4LjUxQzUwNSA0OTcuMDUgNTA3LjU5IDQ5My44NCA1MTAuNSA0OTFDNTE1Ljc1IDQ5MS42OCA1MjUuMTkgNDk2LjE5IDUyOS4zOSA0OTkuNUM1MjguMjMgNTAzLjI0IDUyNS45MiA1MDUuODcgNTIzLjE3IDUwOC42OEM1MTAuODMgNTIxLjMxIDQ4OS41NCA1MjMuNTUgNDczLjY1IDUxNi44NkM0NTMuNzIgNTA4LjQ4IDQ0NS40MSA0ODUuMTQgNDUxLjU3IDQ2NS4xNUM0NTkuMzMgNDM5Ljk3IDQ5MC40MiA0MjguNDkgNTEzLjE5IDQ0MS4zNUM1MjQuNDQgNDQ3LjcxIDUzMS4zNiA0NTguNzkgNTMzLjA5IDQ3MS41QzUzMy42NiA0NzUuNjQgNTM0LjQzIDQ4MC40NSA1MzIuNSA0ODQuMjFaTTYxMy4yMiA1MTcuNUM2MDguNyA1MTkuODMgNTk0Ljk5IDUxOS4xOCA1ODkuOTEgNTE3Ljc4QzU4OS45MSA1MTUuNjggNTg5LjkxIDUxMy41OSA1ODkuOTEgNTExLjVDNTg2LjEzIDUxMi4yMiA1ODAuNzQgNTE3LjM3IDU3NS40NiA1MTguOTJDNTYwLjE1IDUyMy40MSA1MzguMjkgNTE3Ljg2IDUzNi4yIDQ5OS40OEM1MzUuODYgNDk2LjQzIDUzNS45MiA0OTMuMjQgNTM2LjYxIDQ5MC4yNEM1NDEuODYgNDY3LjM5IDU3MC42MiA0NzEuNDggNTg3LjcxIDQ2Ny41QzU4OC43NSA0NTYuNDcgNTc3LjQgNDU0LjUyIDU2OC44NCA0NTcuNDNDNTY1LjIzIDQ1OC42NSA1NjMuMDQgNDYxLjQ1IDU2MC41IDQ2NC4xQzU1NC4zOCA0NjIuNyA1NDQuNzggNDU5LjkzIDU0MC4yMyA0NTUuNUM1NDguMjYgNDMyLjA0IDU5MC40MiA0MzAuNzUgNjA1Ljc0IDQ0Ni43NUM2MTcuNDIgNDU4Ljk1IDYxMy44OSA0ODEuOTUgNjEzLjc0IDQ5Ny41QzYxMy42OCA1MDMuODggNjE1LjA0IDUxMS4zOSA2MTMuMjIgNTE3LjVaTTM5NC4yNyA0NjhDMzk0LjQ4IDQ2Ny44MyAzOTQuNyA0NjcuNjcgMzk0LjkyIDQ2Ny41QzM5NC45MiA0NjUuODMgMzk0LjkyIDQ2NC4xNyAzOTQuOTIgNDYyLjVDMzk0LjcgNDYyLjMzIDM5NC40OSA0NjIuMTcgMzk0LjI3IDQ2MkMzOTQuMyA0NTUuMTMgMzkyLjUyIDQ0NS43IDM5NS41IDQzOS40N0M0MDEuMjMgNDM3Ljc2IDQxMy4zMyA0MzcuOTcgNDE5LjEgNDM5LjVDNDE5LjU2IDQ0Mi45NCA0MjAuMDMgNDQ2LjM4IDQyMC41IDQ0OS44MkM0MjcuNjEgNDQyLjc4IDQzNy44OCA0MzUuMTkgNDQ4LjUgNDM5LjI1QzQ0OC40MiA0NDYuMzMgNDQ4LjM0IDQ1My40MiA0NDguMjYgNDYwLjVDNDQyLjEyIDQ2Mi42NyA0MzUuNiA0NjEuNDUgNDI5LjczIDQ2NS4yM0M0MTMuNDcgNDc1LjcyIDQyNC40NCA1MDIuMzQgNDIwLjEgNTE3LjVDNDE2LjA3IDUxOS44NCA0MDAuMTYgNTE5LjM3IDM5NS41IDUxNy45NEMzOTMuMDkgNTEyLjk5IDM5NC4yNyA1MDUuOTUgMzk0LjM1IDUwMC41QzM5NC41MiA0ODkuNjcgMzk0LjI1IDQ3OC44MyAzOTQuMjcgNDY4Wk02OTAuOCA0OTdDNjkwLjUzIDQ5Ny4xNyA2OTAuMjYgNDk3LjMzIDY4OS45OSA0OTcuNUM2ODkuOTggNTAyLjE3IDY4OS45NyA1MDYuODMgNjg5Ljk2IDUxMS41QzY5MC4yNCA1MTEuNjcgNjkwLjUyIDUxMS44MyA2OTAuNzkgNTEyQzY5MC41OSA1MTMuODMgNjkwLjM5IDUxNS42NyA2OTAuMTkgNTE3LjVDNjgzLjkxIDUxOS44MiA2NzUuMTEgNTE5LjE1IDY2OC41IDUxOC4wMkM2NjYuNjQgNTEyLjk3IDY2Ny40OSA1MDYuOSA2NjcuNTcgNTAxLjVDNjY3LjcgNDkyLjg1IDY2Ny42NyA0ODQuMTUgNjY3LjYgNDc1LjVDNjY3LjU0IDQ2OC43MSA2NjUuNzcgNDYwLjY1IDY1Ny41IDQ2MC4yOUM2NDcuNzQgNDU5Ljg2IDY0NC44IDQ2Ny4wNSA2NDQuMjMgNDc1LjVDNjQzLjU3IDQ4NS4xMSA2NDQuMDIgNDk0Ljg3IDY0NC4wNCA1MDQuNUM2NDQuMDUgNTA4Ljg5IDY0NC41MSA1MTMuNTEgNjQzLjUgNTE3Ljc2QzYzOS4xMyA1MTkuNjggNjI0Ljk2IDUxOS41NCA2MjAuNSA1MTcuNjRDNjIwLjUgNDkxLjYgNjIwLjUgNDY1LjU1IDYyMC41IDQzOS41QzYyNy45OCA0MzkuNSA2MzUuNDYgNDM5LjUgNjQyLjk0IDQzOS41QzY0My40NiA0NDIuMjUgNjQzLjk4IDQ0NS4wMSA2NDQuNSA0NDcuNzZDNjUzLjk0IDQzOS4yMSA2NjQuNTEgNDMzLjY0IDY3Ny4yOSA0NDAuMkM2ODEuMzkgNDQyLjMgNjg0LjIgNDQ1LjY3IDY4Ny41IDQ0OC43N0M2OTIuMTMgNDQ1LjI2IDY5NS45MyA0NDEuMTQgNzAxLjU0IDQzOS4wNkM3MDUuMzYgNDM3LjY1IDcwOS40NyA0MzcuMzcgNzEzLjUgNDM3Ljc2Qzc0Mi41MiA0NDAuNTYgNzM3LjAyIDQ3NS44NyA3MzcuMDggNDk2LjVDNzM3LjEgNTAzLjI1IDczOC4yNCA1MTEuMTkgNzM2LjUgNTE3LjY4QzczMi4wMiA1MTkuNjMgNzE4LjAzIDUxOS42MiA3MTMuNSA1MTcuNjdDNzEyLjIyIDUxMi44OCA3MTIuODUgNTA3LjQ2IDcxMi44NyA1MDIuNUM3MTIuOTEgNDk0LjE3IDcxMi44OCA0ODUuODMgNzEyLjgzIDQ3Ny41QzcxMi43OSA0NzEuNiA3MTIuOTMgNDYzLjY5IDcwNi4zMyA0NjEuMkM3MDAuMDcgNDU4Ljg0IDY5My43MyA0NjIuMDggNjkxLjczIDQ2OC4zM0M2ODkuMTcgNDc2LjMxIDY5MC45OSA0ODguNDggNjkwLjggNDk3Wk01MDcuNzQgNDY4LjVDNTA0LjI4IDQ1MS44MiA0ODAuNDYgNDUyLjQ4IDQ3Ni4wOSA0NjguNUM0ODIuNjQgNDcwLjAxIDUwMS4zIDQ3MC4yNCA1MDcuNzQgNDY4LjVaTTU4OC41IDQ4NC4zOUM1ODEuNjEgNDgzLjQ4IDU1Ni4zNSA0ODQuNDEgNTYyLjIzIDQ5Ny4yOUM1NjQuMjMgNTAxLjY1IDU3MC41NiA1MDIuMDIgNTc0LjYxIDUwMS4zNEM1ODMuNzUgNDk5LjggNTg5LjQgNDkzLjg2IDU4OC41IDQ4NC4zOVoiLz48cGF0aCBmaWxsPSIjMDQ4ZGZjIiBzdHJva2U9IiMwNDhkZmMiIHN0cm9rZS13aWR0aD0iMC4yNSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNNzk3LjU2IDQwMy40M0M4MDUuMjUgNDAzLjExIDgxMy4yNiA0MDQuMzcgODIwLjQ5IDQwNy4wMUM4NjQuMTQgNDIyLjkzIDg2OS41MSA0ODguNiA4MzAgNTEyLjQ5QzgyMS42NyA1MTcuNTMgODExLjg5IDUyMC4xNSA4MDIuMjEgNTIwLjUxQzc5My43OSA1MjAuODMgNzg1LjY2IDUxOS42MSA3NzcuNzYgNTE2LjY5Qzc0MC44NCA1MDMuMDUgNzMyLjM5IDQ1Mi40MSA3NTUuNjMgNDIzLjE0Qzc2NS41MSA0MTAuNzEgNzgyLjA1IDQwNC4wNyA3OTcuNTYgNDAzLjQzWk04OTUuNSA0MTguNDlDODk4LjY3IDQyNC4yMiA4OTYuMTkgNDMyLjg3IDg5Ny41IDQzOS4zN0M5MDUuNTggNDM5LjM3IDkxMy42NSA0MzkuMzcgOTIxLjczIDQzOS4zN0M5MjEuNzMgNDMyLjY1IDkyMS43MyA0MjUuOTIgOTIxLjczIDQxOS4yQzkyOC41MyA0MTcuMzUgOTQxLjQ0IDQxNy4yNSA5NDguMTkgNDE5LjI0Qzk0OC4xOSA0MjUuNzEgOTQ4LjE5IDQzMi4xOCA5NDguMTkgNDM4LjY1Qzk1NC4zNSA0MzkuMjcgOTYwLjUxIDQzOS44OCA5NjYuNjcgNDQwLjVDOTY2LjY3IDQ0Ni44MyA5NjYuNjcgNDUzLjE3IDk2Ni42NyA0NTkuNUM5NjAuNjEgNDYwLjAzIDk1NC41NiA0NjAuNTcgOTQ4LjUgNDYxLjFDOTQ3LjYxIDQ2OS41OSA5NDcuNzkgNDc4Ljk0IDk0OC4zMyA0ODcuNDhDOTQ4LjU2IDQ5MS4wMiA5NDkuMjggNDk0Ljk5IDk1Mi41MyA0OTcuMDFDOTU2LjQzIDQ5OS40NCA5NjEuNjcgNDk3LjQ2IDk2NS45MSA0OTguODNDOTY1LjkxIDUwNC43NiA5NjUuOTEgNTEwLjcgOTY1LjkxIDUxNi42M0M5NjEuNTEgNTE5LjA1IDk1Ni41IDUxOS42MyA5NTEuNSA1MTkuODhDOTQ3Ljc5IDUyMC4wNyA5NDQuMTIgNTE5LjkxIDk0MC41IDUxOS4wOEM5MTEuNDcgNTEyLjQ2IDkyNi4zOSA0NzkuMTcgOTIwLjUgNDYwLjQ2QzkxMi44MyA0NjAuNDYgOTA1LjE3IDQ2MC40NiA4OTcuNSA0NjAuNDZDODk1LjcyIDQ2Ni44NSA4OTYuMzQgNDgwLjQ4IDg5Ni44IDQ4Ny41Qzg5Ny4wMSA0OTAuNiA4OTcuNjEgNDk0LjI2IDkwMC4xNSA0OTYuMzdDOTA0IDQ5OS41OCA5MDkuNTggNDk3LjY4IDkxNC4wMiA0OTguODFDOTE0LjAyIDUwNC44NiA5MTQuMDIgNTEwLjkxIDkxNC4wMiA1MTYuOTZDOTA5LjM3IDUxOC43OSA5MDQuNDkgNTE5LjcgODk5LjUgNTE5Ljg4Qzg5NS41IDUyMC4wMyA4OTEuNDIgNTIwLjAyIDg4Ny41MyA1MTguOTVDODYyLjIzIDUxMi4wMiA4NzIuMjMgNDc5LjEyIDg2OS41IDQ2MC4zNUM4NjYuMzcgNDYwLjM1IDg2My4yMyA0NjAuMzUgODYwLjEgNDYwLjM1Qzg2MC4xIDQ1My40MSA4NjAuMSA0NDYuNDggODYwLjEgNDM5LjU0Qzg2My40IDQzOS41NCA4NjYuNzEgNDM5LjU0IDg3MC4wMSA0MzkuNTRDODcwLjAxIDQzMi43NyA4NzAuMDEgNDI2IDg3MC4wMSA0MTkuMjNDODc1LjU1IDQxNi43NCA4ODkuNDUgNDE3LjE2IDg5NS41IDQxOC40OVpNNzk3Ljc4IDQzMC40OEM3NTkuNTkgNDMyLjUzIDc2MS45IDQ5Ni4xMyA4MDEuNSA0OTMuOTJDODQwLjAxIDQ5MS43OCA4MzcuODMgNDI4LjM0IDc5Ny43OCA0MzAuNDhaTTEwNDkuMjQgNDg1LjVDMTA0MS4xNCA0ODguMDUgMTAxOC4yIDQ4Ni41MSAxMDA4LjUgNDg2LjQ2QzEwMDMuNzUgNDg2LjQzIDk5Ny43NCA0ODUuNDcgOTkzLjUgNDg3LjM2Qzk5NS43NSA0OTguNyAxMDA5LjIxIDUwMy4xNiAxMDE5LjI0IDQ5OC43MUMxMDIzLjAyIDQ5Ny4wMyAxMDI1LjEyIDQ5My41MSAxMDI4LjUgNDkxLjQ2QzEwMzQuMzIgNDk0LjQ3IDEwNDAuMTUgNDk3LjQ5IDEwNDUuOTcgNTAwLjVDMTAzNy4xMyA1MjIuMzYgMTAwMi43MyA1MjUuMjIgOTg1LjI4IDUxMy4yMkM5NjguOSA1MDEuOTYgOTY0LjQyIDQ4MC43IDk3MS4zIDQ2Mi43NEM5NzkuMzQgNDQxLjczIDEwMDQuNjggNDMyLjQxIDEwMjUuMDggNDQwLjQ1QzEwMzguNDEgNDQ1LjcgMTA0Ni4zNiA0NTYuNzYgMTA0OS4xNyA0NzAuNDhDMTA1MC4xNCA0NzUuMiAxMDUxLjAzIDQ4MC45OCAxMDQ5LjI0IDQ4NS41Wk0xMTA3LjUgNDM4Ljc0QzExMDkuNjkgNDQyLjkzIDExMDkuMzEgNDU0LjkgMTEwNy44MiA0NTkuNUMxMTAyLjQ1IDQ2MS42MyAxMDk2LjIxIDQ2MC4yOSAxMDkxLjA3IDQ2My41N0MxMDc0LjYyIDQ3NC4wNSAxMDg1LjcxIDUwMi4wNCAxMDgxLjUgNTE3LjY2QzEwNzcuMDEgNTE5LjY3IDEwNjEuMTUgNTE5LjY0IDEwNTYuNSA1MTcuOTVDMTA1NC44NCA1MTIuNTIgMTA1NS43MSA1MDYuMTggMTA1NS43NCA1MDAuNUMxMDU1LjgxIDQ4OC45NiAxMDU2LjE4IDQ3Ny4yNiAxMDU1LjU0IDQ2NS43NEMxMDU1LjE5IDQ1OS40MSAxMDUyLjk0IDQ0NS45OSAxMDU0Ljg4IDQ0MC41QzEwNjAuNjcgNDM4LjY2IDEwNzAuNzkgNDM4LjIgMTA3Ni41IDQ0MC4zMkMxMDc3LjE3IDQ0My41NiAxMDc3LjgzIDQ0Ni44MSAxMDc4LjUgNDUwLjA2QzEwODUuODIgNDQyLjM5IDEwOTYuMzQgNDM1LjE4IDExMDcuNSA0MzguNzRaTTEwMjUuMTMgNDY5LjVDMTAyMi4yNiA0NTMuMTYgOTk4LjAxIDQ1My42MiA5OTMuOTMgNDY5LjVDMTAwMC42OSA0NzEuMTYgMTAxOC4zNSA0NzEuMTUgMTAyNS4xMyA0NjkuNVoiLz48L2c+PC9zdmc+Cg==" alt="StreamOtter">
+  <img class="logo-dark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjQ2Mi42NSA4OC4yNyAxNzY1LjA5IDMxNy44NiIgd2lkdGg9IjE3NjUiIGhlaWdodD0iMzE4IiByb2xlPSJpbWciPjx0aXRsZT5TdHJlYW1PdHRlcjwvdGl0bGU+PHBhdGggZmlsbD0iIzA0MTgzZiIgc3Ryb2tlPSIjMDQxODNmIiBzdHJva2Utd2lkdGg9IjAuMjUiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTc4OC43MyAxNTYuMjNDNzgzLjk3IDE1NS4zMyA3NzkuMzUgMTUzLjc2IDc3NC40OSAxNTMuMjFDNzcwLjM2IDE1Mi43NCA3NjYuMjIgMTUzLjAzIDc2Mi4wOSAxNTIuODZDNzYwLjkxIDE0OS40MiA3NTkuNjYgMTQ2LjI3IDc1OS45OCAxNDIuNUM3NjAuODIgMTMyLjc3IDc3MC4yMSAxMjcuMDQgNzc5LjMzIDEyOC4zNkM3OTAuOTEgMTMwLjA0IDgwMC45MSAxNDguODggNzg4LjczIDE1Ni4yM1pNNzc1Ljc1IDEzNS4yN0M3NjkuOSAxMzcuNzMgNzc0LjM1IDE0Ny4xMSA3ODAuOTcgMTQzLjQ2Qzc4Ni41OSAxNDAuMzcgNzgxLjE5IDEzMi45OSA3NzUuNzUgMTM1LjI3Wk03MTUuNjkgMTQ2LjVDNzA0LjI2IDE1MS4yNyA3MDAuNjMgMTU1LjI2IDY5OC41IDE2Ny41M0M2OTUuOTQgMTY2Ljc5IDY5My43NSAxNjUuNTggNjkxLjcgMTYzLjgyQzY5MCAxNjIuMzYgNjg4LjczIDE2MC42IDY4Ny45IDE1OC41MkM2ODAuNDQgMTM5Ljk2IDcwOC40OSAxMzAuOTkgNzE1LjY5IDE0Ni41Wk04NDAuMDUgMTQyLjg1Qzg1MC4wMiAxNDEuOTggODY5LjQ3IDE0MC45MSA4NjkuNDkgMTU1LjVDODY5LjUgMTU5LjU5IDg2Ny4xOSAxNjIuNCA4NjYuMjggMTY2LjEyQzg1OC4zMiAxNzEuMzcgODUzLjY4IDE3OC40MyA4NTMuOTkgMTg4LjE3Qzg1MS4yNCAxODkuNzQgODQ5LjIzIDE5MC4yMSA4NDYgMTkwLjIyQzg0MC45MiAxOTAuNjggODM1Ljg5IDE5My41NSA4MzAuNjcgMTk0LjM3QzgyMC42OCAxOTUuOTUgODA3LjExIDE5Mi41MyA4MDAuNDQgMTg0LjVDNzk4Ljg0IDE4Mi41OCA4MDQuNTQgMTc5LjggODA2LjUgMTgxLjM1QzgyMC4wNCAxOTIuMSA4NDUuODUgMTkxLjIyIDg1MC4wNCAxNzEuNUM4NDQuMDIgMTY2LjA5IDgyNy45NyAxNTguNjQgODM0LjQ1IDE0Ny45QzgzNS43OCAxNDUuNjggODM4LjM2IDE0NC41MyA4NDAuMDUgMTQyLjg1Wk04MDEuODMgMTcwLjAyQzc5OC41OSAxNzAuNjQgNzk1LjM2IDE3MS4yNyA3OTIuMTIgMTcxLjlDNzkxLjU4IDE2OS40NSA3OTEuNjEgMTY4LjEyIDc5Mi43OSAxNjUuODlDNzk2LjYzIDE2NS4yNSA4MDAuMTYgMTY0LjcyIDgwMy43NiAxNjYuNUM4MDMuMiAxNjcuNyA4MDIuMDQgMTY4LjggODAxLjgzIDE3MC4wMlpNNzk1Ljg4IDE3NS4wM0M3OTguMDkgMTc0LjQ2IDgwMC4yOSAxNzQuMDkgODAyLjUgMTczLjk1QzgwMi44IDE3NS4zNSA4MDMuMjUgMTc3LjEgODAzLjY0IDE3OC41QzgwMS4yNiAxNzkuMzkgNzk4Ljg4IDE4MC4yOCA3OTYuNSAxODEuMTZDNzk1LjIgMTc5LjkgNzkzLjQgMTc3LjYgNzkzLjkgMTc2LjRDNzk0LjMgMTc1LjcgNzk1LjEgMTc1LjMgNzk1Ljg4IDE3NS4wM1oiLz48cGF0aCBmaWxsPSIjMDQ4ZGZjIiBzdHJva2U9IiMwNDhkZmMiIHN0cm9rZS13aWR0aD0iMC4yNSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNNjcyLjczIDEyMC41QzY1OS40NSAxMjkuOCA2NDQuNzYgMTM2Ljc1IDYzMS40NiAxNDUuOThDNjI0LjU1IDE1MC43NyA2MTcuNDIgMTU2LjY0IDYxNC4yNCAxNjQuN0M2MDUuNzQgMTg2LjE5IDYzMC4yOCAxOTguNjUgNjQ2LjA2IDIwNS40NUM2NTcuMzUgMjEwLjMyIDY2OS4yOCAyMTMuODggNjgxIDIxNy41MUM3MTcuMTYgMjI4LjcgNzU1Ljk1IDI0MS4xOCA3ODQuODUgMjY2LjYyQzgxMC41MyAyODkuMjIgODE0LjQzIDMyMy42NyA3OTUuMjEgMzUxLjcyQzc5MC42MyAzNTguNCA3ODUuMDEgMzY0LjExIDc3OC42MiAzNjkuMDhDNzc2LjE5IDM3MC45NyA3NzMuODggMzczLjI3IDc3MC45MSAzNzMuNUM3NzcuMDQgMzY2Ljc2IDc4MS42MSAzNTkuOTkgNzg0LjgzIDM1MS40NEM3ODYuOCAzNDYuMjMgNzg3LjczIDM0MS4wNyA3ODguMjMgMzM1LjUzQzc5MS40MyAyOTkuNyA3NTEuNjcgMjc1LjQ0IDcyMi4wNSAyNjYuNDdDNzE2LjEgMjY0LjY3IDcxMC4wOCAyNjIuOTcgNzA0LjAzIDI2MS40OEM2OTYuNTcgMjU5LjY1IDY4OS4wOCAyNTguMTQgNjgxLjUgMjU2Ljg0QzY3MS41MiAyNTUuMTIgNjYxLjQ5IDI1My42MyA2NTEuNDUgMjUyLjMzQzYzNy4zNiAyNTAuNSA2MjMuNDkgMjQ4Ljc4IDYwOS42MSAyNDUuNzNDNTkyLjU5IDI0MiA1NzUuNjIgMjM0Ljk4IDU2NC4wNiAyMjEuNDJDNTYwLjIyIDIxNi45IDU1Ny41MiAyMTEuMzYgNTU1LjY3IDIwNS43NkM1NDIuMzcgMTY1LjQ3IDU4Ny41MSAxMzcuODEgNjE5Ljc4IDEyOC4zN0M2MjYuNTEgMTI2LjQgNjMzLjQyIDEyNS4wOSA2NDAuMjggMTIzLjY1QzY0OS40OCAxMjEuNzEgNjYzLjU4IDExOC42MiA2NzIuNzMgMTIwLjVaTTU1Ny43NSAyMzUuNUM1NTMuMzcgMjQxLjE5IDU0MS44NyAyNDAgNTM1LjU2IDIzOC43NEM1MjAuMzggMjM1LjY5IDUwNi4wNSAyMjMuNjMgNTAxLjg4IDIwOC41M0M1MDAuMSAyMDIuMDYgNTAwLjIxIDE5My43NCA1MDQuOTkgMTg4LjVDNTA3LjQxIDE4NS44NiA1MTAuNzggMTg0LjI4IDUxNC4yNiAxODMuNjFDNTM4LjI0IDE3OC45NSA1MzguNzMgMjA2Ljk3IDU0Ny4yNCAyMjEuMjhDNTUwLjI2IDIyNi4zNiA1NTUuMDcgMjMwLjM1IDU1Ny43NSAyMzUuNVpNODExLjY1IDIzNi4yNUM4MjYuNjIgMjMyLjYzIDgzMC44NyAyNTMuNDggODE3LjA4IDI1Ni41MkM4MDQuNjEgMjU5LjI2IDc5OS4wOCAyMzkuMjkgODExLjY1IDIzNi4yNVpNNDk3LjY3IDI0NS40NEM1MTkuMzUgMjQzLjkzIDUxOS4yIDI3Ny42NCA0OTcuNSAyNzcuNkM0NzYuNTcgMjc3LjU2IDQ3Ny4zMyAyNDYuODUgNDk3LjY3IDI0NS40NFpNNTM0LjcyIDI1NS40QzU0OC42IDI1My42MSA1NTAuODMgMjc1LjgxIDUzNy41IDI3Ny4yOUM1MjMuNDQgMjc4Ljg1IDUyMC45NCAyNTcuMTcgNTM0LjcyIDI1NS40Wk04NjMuNjIgMzM2LjI3Qzg4NS4zNiAzMzEuNjcgODg0Ljk3IDM2NC40OSA4NjQuNSAzNjUuMjlDODQ2Ljg5IDM2NS45OCA4NDguNDcgMzM5LjQ3IDg2My42MiAzMzYuMjdaIi8+PHBhdGggZmlsbD0iIzA0YmRmZCIgc3Ryb2tlPSIjMDRiZGZkIiBzdHJva2Utd2lkdGg9IjAuMjUiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTgwMC42MiAzNjYuNUM4MDMuNjMgMzYxLjQ2IDgwNy4yNSAzNTYuOCA4MTAuMyAzNTEuNzdDODE2LjMxIDM0MS44NCA4MjAuOTIgMzMwLjYzIDgyMy44NSAzMTkuNDRDODI3Ljc2IDMwNC41NCA4MjUuNDMgMjg3LjA4IDgzMS42MSAyNzMuMTRDODM2LjA0IDI2My4xNiA4NDguOTggMjU3Ljc0IDg1OC44IDI2My42NkM4NzEuMTQgMjcxLjEgODY5LjYxIDI4OC44NyA4NjUuMTQgMzAwLjU4Qzg1Ni44MyAzMjIuMyA4NDAuMTIgMzM5LjUgODIyLjIxIDM1My42OEM4MTYuOTYgMzU3Ljg0IDgwNy4wNyAzNjUuNTkgODAwLjYyIDM2Ni41Wk01MDQuMTEgMjk3LjIxQzUwOS40MiAyOTguOTUgNTIwLjc3IDI5OC41MiA1MjcuNDYgMjk5LjkzQzUzOS45MiAzMDIuNTUgNTUyIDMwNy4zOSA1NjMuMjcgMzEzLjI0QzU4Ni4yOCAzMjUuMTkgNjA0LjkgMzQzLjgzIDYyNi4yIDM1OC4zM0M2NTMuMzkgMzc2LjgzIDY4Ni40OCAzODYuNjcgNzE5LjQgMzgyLjY0QzcyOS42NCAzODEuMzggNzQwLjA3IDM3OC41MiA3NDkuMjUgMzczLjczQzc1My42NyAzNzEuNDIgNzU3LjU3IDM2Ny43NiA3NjIuMDkgMzY1Ljg4Qzc1NC45NSAzNzguODUgNzMwLjQ3IDM4OC44NiA3MTYuNzYgMzkyLjM2QzY3OC43IDQwMi4wOCA2NDAuOSAzOTEuMDQgNjA3Ljc2IDM3MS43MkM1ODUuNjcgMzU4Ljg1IDU2NC44MSAzNDIuMzIgNTQwLjIgMzM0LjM5QzUyNS40NCAzMjkuNjMgNTEwLjE4IDMyNS43IDQ5NC41IDMyNi4yNUM0ODguOTEgMzI2LjQ0IDQ4My4xNiAzMjcuMiA0NzcuNjggMzI4LjMyQzQ3My45OSAzMjkuMDcgNDcxLjAxIDMzMC40NyA0NjcuNjQgMzI4LjVDNDY2LjY1IDMyMy41MyA0NjkuODkgMzE5Ljk5IDQ3Mi45MSAzMTYuMzdDNDgwLjQ3IDMwNy4zMyA0OTIuODEgMzAwLjI3IDUwNC4xMSAyOTcuMjFaTTY0Mi4xOSA0MDAuNUM2MzkuNDUgNDAyLjEzIDYzNS44NCA0MDEuNjcgNjMyLjUgNDAxLjYzQzYyNC4zNiA0MDEuNTIgNjE2LjUyIDQwMC4zMyA2MDguNSAzOTkuMDhDNTkwLjI0IDM5Ni4yNCA1NzIuOTggMzg5LjU3IDU1NS4zOSAzODQuMTlDNTM5LjkyIDM3OS40NyA1MjQuNTQgMzc2LjM1IDUwOC42MiAzNzMuNjdDNDk3LjI3IDM3MS43NiA0NzkuMzEgMzY1Ljg0IDQ4NC4xMyAzNTAuNTZDNDg5LjUxIDMzMy40NyA1MTUuOTUgMzM4LjYzIDUyOC41MyAzNDIuODlDNTU1LjM0IDM1MS45NiA1NzcuNTMgMzY4LjY0IDYwMS43MSAzODIuNzhDNjE0LjM5IDM5MC4yIDYyOC4yNSAzOTUuOTIgNjQyLjE5IDQwMC41WiIvPjxwYXRoIGZpbGw9IiM3ZjU0NDciIHN0cm9rZT0iIzdmNTQ0NyIgc3Ryb2tlLXdpZHRoPSIwLjI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik04NDAuMDUgMTQyLjg1QzgzMi4xNSAxNDAuNjUgODIyLjU5IDE0Ny42NyA4MTYuMzMgMTUxLjg3QzgwOC4xIDE1Ny4zOSA3OTcuOTcgMTYwLjMzIDc4OC43MyAxNTYuMjNDODAwLjkxIDE0OC44OCA3OTAuOTEgMTMwLjA0IDc3OS4zMyAxMjguMzZDNzcwLjIxIDEyNy4wNCA3NjAuODIgMTMyLjc3IDc1OS45OCAxNDIuNUM3NTkuNjYgMTQ2LjI3IDc2MC45MSAxNDkuNDIgNzYyLjA5IDE1Mi44NkM3NDIuNyAxNTYuMDkgNzI3LjAzIDE2NC43OSA3MTQuOTYgMTgwLjQ0QzcxMC41NiAxODYuMTUgNzA1LjE5IDE5My4yNyA3MDQuMTYgMjAwLjVDNzExLjQxIDIwNS41MyA3MTguNzUgMjEwLjQyIDcyNS45NCAyMTUuNTVDNzI5LjQ1IDIxOC4wNSA3MzMuODkgMjIwLjQ3IDczNiAyMjQuMjVDNzE4LjY5IDIxNy41NCA3MDAuOTkgMjEyLjEyIDY4My40MyAyMDYuMTNDNjcxLjc5IDIwMi4xNiA2NTkuOTMgMTk4LjkyIDY0OC43IDE5My43OUM2MzkuMjMgMTg5LjQ2IDYyMy43MSAxODEuNTYgNjI5LjE3IDE2OC42N0M2MzUuNTEgMTUzLjcxIDY1Ni4wNyAxNDYuOTUgNjY4LjE5IDEzNy42NUM2NzIuMTQgMTM0LjYyIDY3NS4yMSAxMzAuNzIgNjc4LjgxIDEyNy4zMkM2ODUuOTcgMTIwLjU2IDY5My45MyAxMTQuNjggNzAyLjc5IDExMC4zM0M3MzkuNTQgOTIuMjcgNzg2Ljk4IDk1LjcgODIxLjEgMTE4LjQyQzgyOS4zMyAxMjMuOSA4NDAuNDkgMTMwLjUyIDg0NS4xIDEzOS41Qzg0Mi41OCAxNDAuMjkgODQxLjExIDE0MC40IDg0MC4wNSAxNDIuODVaTTcxNS42OSAxNDYuNUM3MDguNDkgMTMwLjk5IDY4MC40NCAxMzkuOTYgNjg3LjkgMTU4LjUyQzY4OC43MyAxNjAuNiA2OTAgMTYyLjM2IDY5MS43IDE2My44MkM2OTMuNzUgMTY1LjU4IDY5NS45NCAxNjYuNzkgNjk4LjUgMTY3LjUzQzcwMC42MyAxNTUuMjYgNzA0LjI2IDE1MS4yNyA3MTUuNjkgMTQ2LjVaIi8+PHBhdGggZmlsbD0iI2ViZTZkZiIgc3Ryb2tlPSIjZWJlNmRmIiBzdHJva2Utd2lkdGg9IjAuMjUiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTg0MC4wNSAxNDIuODVDODM4LjM2IDE0NC41MyA4MzUuNzggMTQ1LjY4IDgzNC40NSAxNDcuOUM4MjcuOTcgMTU4LjY0IDg0NC4wMiAxNjYuMDkgODUwLjA0IDE3MS41Qzg0NS44NSAxOTEuMjIgODIwLjA0IDE5Mi4xIDgwNi41IDE4MS4zNUM4MDQuNTQgMTc5LjggNzk4Ljg0IDE4Mi41OCA4MDAuNDQgMTg0LjVDODA3LjExIDE5Mi41MyA4MjAuNjggMTk1Ljk1IDgzMC42NyAxOTQuMzdDODM1Ljg5IDE5My41NSA4NDAuOTIgMTkwLjY4IDg0NiAxOTAuMjJDODQ1LjY0IDE5NC4wNiA4NDIuNzYgMTk2LjA0IDg0MC4zIDE5OC44NEM4MjguNTkgMjEyLjE4IDgxMy41NyAyMDguNjkgNzk4LjU3IDIxMy4wMkM3ODkuMTMgMjE1Ljc1IDc3OS4xOCAyMjEuNzkgNzc2LjE2IDIzMS42MUM3NzQuODEgMjM1Ljk5IDc3NS4yMyAyNDAuMzIgNzc0LjUgMjQ0Ljc0Qzc2Ny40MSAyMzkuNjEgNzU5LjI4IDIzNC44MyA3NTEuMzYgMjMxLjEyQzc0Ni4zNCAyMjguNzYgNzQwLjc2IDIyNi45NiA3MzYgMjI0LjI1QzczMy44OSAyMjAuNDcgNzI5LjQ1IDIxOC4wNSA3MjUuOTQgMjE1LjU1QzcxOC43NSAyMTAuNDIgNzExLjQxIDIwNS41MyA3MDQuMTYgMjAwLjVDNzA1LjE5IDE5My4yNyA3MTAuNTYgMTg2LjE1IDcxNC45NiAxODAuNDRDNzI3LjAzIDE2NC43OSA3NDIuNyAxNTYuMDkgNzYyLjA5IDE1Mi44NkM3NjYuMjIgMTUzLjAzIDc3MC4zNiAxNTIuNzQgNzc0LjQ5IDE1My4yMUM3NzkuMzUgMTUzLjc2IDc4My45NyAxNTUuMzMgNzg4LjczIDE1Ni4yM0M3OTcuOTcgMTYwLjMzIDgwOC4xIDE1Ny4zOSA4MTYuMzMgMTUxLjg3QzgyMi41OSAxNDcuNjcgODMyLjE1IDE0MC42NSA4NDAuMDUgMTQyLjg1Wk03OTIuNzkgMTY1Ljg5Qzc5MS42MSAxNjguMTIgNzkxLjU4IDE2OS40NSA3OTIuMTIgMTcxLjlDNzg0LjUgMTc1Ljk5IDc2Ny4yMyAxODEuODggNzY0LjUgMTkxLjExQzc3My43MyAxODUuNzYgNzgwLjA1IDE4MS43NCA3OTAuMDcgMTc3LjU0Qzc5Mi42MyAxNzYuNDcgNzkzLjAzIDE3NC45MSA3OTUuODggMTc1LjAzQzc5NS4xIDE3NS4zIDc5NC4zIDE3NS43IDc5My45IDE3Ni40Qzc5My40IDE3Ny42IDc5NS4yIDE3OS45IDc5Ni41IDE4MS4xNkM3OTguODggMTgwLjI4IDgwMS4yNiAxNzkuMzkgODAzLjY0IDE3OC41QzgwMy4yNSAxNzcuMSA4MDIuOCAxNzUuMzUgODAyLjUgMTczLjk1QzgwMi4yNCAxNzIuNzUgODAxLjYzIDE3MS4yMiA4MDEuODMgMTcwLjAyQzgwMi4wNCAxNjguOCA4MDMuMiAxNjcuNyA4MDMuNzYgMTY2LjVDODAwLjE2IDE2NC43MiA3OTYuNjMgMTY1LjI1IDc5Mi43OSAxNjUuODlDNzkwLjU0IDE2NC4xNiA3ODcuOTEgMTY0Ljg5IDc4NS4xNSAxNjUuNThDNzc5Ljg0IDE2Ni45MyA3NzAuMjcgMTY4LjQ3IDc2Ny41IDE3My43MUM3NzUuOTMgMTcxLjEgNzg0LjM2IDE2OC41IDc5Mi43OSAxNjUuODlaTTg2Ni4yOCAxNjYuMTJDODY2LjIyIDE2Ni4zNiA4NjYuNjggMTY2LjQ2IDg2Ni43MyAxNjYuN0M4NjYuOTUgMTY3LjY3IDg2NS40NiAxNjguMDIgODY1IDE2OC41Qzg2NS42NCAxNjkuNDYgODY1LjcgMTY4LjU2IDg2Ni4xNyAxNjkuNjlDODY2LjgyIDE3MS4yNiA4NjUuNjEgMTczLjU5IDg2NS4wNCAxNzVDODYyLjk1IDE4MC4xNCA4NTkuMzggMTg2LjIxIDg1My45OSAxODguMTdDODUzLjY4IDE3OC40MyA4NTguMzIgMTcxLjM3IDg2Ni4yOCAxNjYuMTJaIi8+PHBhdGggZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjAuMjUiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTc3NS43NSAxMzUuMjdDNzgxLjE5IDEzMi45OSA3ODYuNTkgMTQwLjM3IDc4MC45NyAxNDMuNDZDNzc0LjM1IDE0Ny4xMSA3NjkuOSAxMzcuNzMgNzc1Ljc1IDEzNS4yN1pNNzkyLjc5IDE2NS44OUM3ODQuMzYgMTY4LjUgNzc1LjkzIDE3MS4xIDc2Ny41IDE3My43MUM3NzAuMjcgMTY4LjQ3IDc3OS44NCAxNjYuOTMgNzg1LjE1IDE2NS41OEM3ODcuOTEgMTY0Ljg5IDc5MC41NCAxNjQuMTYgNzkyLjc5IDE2NS44OVpNODAxLjgzIDE3MC4wMkM4MDEuNjMgMTcxLjIyIDgwMi4yNCAxNzIuNzUgODAyLjUgMTczLjk1QzgwMC4yOSAxNzQuMDkgNzk4LjA5IDE3NC40NiA3OTUuODggMTc1LjAzQzc5My4wMyAxNzQuOTEgNzkyLjYzIDE3Ni40NyA3OTAuMDcgMTc3LjU0Qzc4MC4wNSAxODEuNzQgNzczLjczIDE4NS43NiA3NjQuNSAxOTEuMTFDNzY3LjIzIDE4MS44OCA3ODQuNSAxNzUuOTkgNzkyLjEyIDE3MS45Qzc5NS4zNiAxNzEuMjcgNzk4LjU5IDE3MC42NCA4MDEuODMgMTcwLjAyWiIvPjxwYXRoIGZpbGw9IiNhOWJhZDUiIHN0cm9rZT0iI2E5YmFkNSIgc3Ryb2tlLXdpZHRoPSIwLjI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik04OTMuNTggMTkxLjVDODkwLjY5IDE5MC42MSA4ODguODMgMTg4LjExIDg4Ni40NyAxODYuMDNDODgzLjExIDE4My4wNyA4NzkuMDEgMTgwLjY3IDg3NS4xOCAxNzguMzZDODczLjk1IDE3Ny42MiA4NzAuNzEgMTc2LjYxIDg3MC4xMSAxNzUuMjRDODY5LjU5IDE3NC4wMyA4NzAuMTQgMTczLjY4IDg3MC4xNiAxNzIuNUM4NzkuOTcgMTczLjE0IDg4OS4xOCAxODMuNDcgODkzLjU4IDE5MS41Wk04ODUuNSAyMTMuNzZDODgyLjM5IDIwNy43MiA4NzguNzggMjAxLjM0IDg3NC4zNSAxOTYuMTVDODcxLjY0IDE5Mi45OCA4NjcuMDggMTkwLjE0IDg2Ni41IDE4NS44OUM4NjkuNDUgMTg1LjM1IDg3Mi42MiAxODguNjcgODc0LjY0IDE5MC44M0M4NzkuODEgMTk2LjM2IDg4Ny4xMiAyMDUuOTEgODg1LjUgMjEzLjc2Wk04NTcuNSAxOTQuMDhDODY1LjU0IDE5Ny41MiA4NjkuMjggMjE0LjU0IDg2OS44MyAyMjIuNUM4NzAuMDYgMjI1LjgyIDg3MC4yNCAyMjkuMDQgODY4LjUgMjMxLjkyQzg2Ny4wOCAyMjMuMTggODY1IDIxNC45OCA4NjEuNyAyMDYuNzZDODYwLjExIDIwMi44IDg1Ni42NiAxOTguMTIgODU3LjUgMTk0LjA4WiIvPjxwYXRoIGZpbGw9IiNlOWYyZmMiIHN0cm9rZT0iI2U5ZjJmYyIgc3Ryb2tlLXdpZHRoPSIwLjI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik01OTUuMTQgMjU0LjczQzYwMi43NiAyNTYuMjcgNjEwLjM4IDI1Ny44IDYxOCAyNTkuMzRDNjU3LjA4IDI2Ny4xNCA2OTcuODEgMjY2Ljg2IDczNC43MSAyODMuNzhDNzU1LjUgMjkzLjMgNzc2LjkgMzEyIDc3Ni45IDMzM0M3NzYuOSAzNDYgNzcwLjUgMzU3LjQgNzYyLjA5IDM2NS44OEM3NTcuNTcgMzY3Ljc2IDc1My42NyAzNzEuNDIgNzQ5LjI1IDM3My43M0M3NDAuMDcgMzc4LjUyIDcyOS42NCAzODEuMzggNzE5LjQgMzgyLjY0QzY4Ni40OCAzODYuNjcgNjUzLjM5IDM3Ni44MyA2MjYuMiAzNTguMzNDNjA0LjkgMzQzLjgzIDU4Ni4yOCAzMjUuMTkgNTYzLjI3IDMxMy4yNEM1NTIgMzA3LjM5IDUzOS45MiAzMDIuNTUgNTI3LjQ2IDI5OS45M0M1MjAuNzcgMjk4LjUyIDUwOS40MiAyOTguOTUgNTA0LjExIDI5Ny4yMUM1MTYuNzQgMjkxLjYxIDUzMS40MSAyOTAuNDMgNTQ1IDI4OS4zNUM1NTUgMjg4LjU2IDU2NiAyOTAuNDcgNTc2LjEyIDI5MS43NEM1OTkuMTQgMjk0LjY0IDYyMC42MSAzMDUuMTcgNjQxLjEzIDMxNS40MUM2NTAuNjIgMzIwLjE0IDY2MC4yOSAzMjQuOTkgNjcwLjU0IDMyNy45M0M2NzguNSAzMzAuMjEgNjk5LjYyIDMzNi44MyA3MDQuMDggMzI2LjVDNzA4LjkzIDMxNS4yOCA2ODguOTUgMzA2LjMzIDY4MS4yNyAzMDMuMjZDNjYxLjM2IDI5NS4yOCA2NDAuODMgMjg5LjM1IDYyMS40OCAyODAuMDNDNjExLjQ5IDI3NS4yMiA1OTkuODEgMjY4LjkgNTkyLjg5IDI1OS45OUM1OTAuMyAyNTYuNyA1OTEuNiAyNTQgNTk1LjE0IDI1NC43M1oiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg5NzEuMDUgMTYxLjI0KSBzY2FsZSgxLjQzMjMpIHRyYW5zbGF0ZSgtMjM1LjA4IC0zOTguNTcpIj48cGF0aCBmaWxsPSIjMDQ4ZGZjIiBzdHJva2U9IiMwNDhkZmMiIHN0cm9rZS13aWR0aD0iMC4yNSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNNzk3LjU2IDQwMy40M0M4MDUuMjUgNDAzLjExIDgxMy4yNiA0MDQuMzcgODIwLjQ5IDQwNy4wMUM4NjQuMTQgNDIyLjkzIDg2OS41MSA0ODguNiA4MzAgNTEyLjQ5QzgyMS42NyA1MTcuNTMgODExLjg5IDUyMC4xNSA4MDIuMjEgNTIwLjUxQzc5My43OSA1MjAuODMgNzg1LjY2IDUxOS42MSA3NzcuNzYgNTE2LjY5Qzc0MC44NCA1MDMuMDUgNzMyLjM5IDQ1Mi40MSA3NTUuNjMgNDIzLjE0Qzc2NS41MSA0MTAuNzEgNzgyLjA1IDQwNC4wNyA3OTcuNTYgNDAzLjQzWk04OTUuNSA0MTguNDlDODk4LjY3IDQyNC4yMiA4OTYuMTkgNDMyLjg3IDg5Ny41IDQzOS4zN0M5MDUuNTggNDM5LjM3IDkxMy42NSA0MzkuMzcgOTIxLjczIDQzOS4zN0M5MjEuNzMgNDMyLjY1IDkyMS43MyA0MjUuOTIgOTIxLjczIDQxOS4yQzkyOC41MyA0MTcuMzUgOTQxLjQ0IDQxNy4yNSA5NDguMTkgNDE5LjI0Qzk0OC4xOSA0MjUuNzEgOTQ4LjE5IDQzMi4xOCA5NDguMTkgNDM4LjY1Qzk1NC4zNSA0MzkuMjcgOTYwLjUxIDQzOS44OCA5NjYuNjcgNDQwLjVDOTY2LjY3IDQ0Ni44MyA5NjYuNjcgNDUzLjE3IDk2Ni42NyA0NTkuNUM5NjAuNjEgNDYwLjAzIDk1NC41NiA0NjAuNTcgOTQ4LjUgNDYxLjFDOTQ3LjYxIDQ2OS41OSA5NDcuNzkgNDc4Ljk0IDk0OC4zMyA0ODcuNDhDOTQ4LjU2IDQ5MS4wMiA5NDkuMjggNDk0Ljk5IDk1Mi41MyA0OTcuMDFDOTU2LjQzIDQ5OS40NCA5NjEuNjcgNDk3LjQ2IDk2NS45MSA0OTguODNDOTY1LjkxIDUwNC43NiA5NjUuOTEgNTEwLjcgOTY1LjkxIDUxNi42M0M5NjEuNTEgNTE5LjA1IDk1Ni41IDUxOS42MyA5NTEuNSA1MTkuODhDOTQ3Ljc5IDUyMC4wNyA5NDQuMTIgNTE5LjkxIDk0MC41IDUxOS4wOEM5MTEuNDcgNTEyLjQ2IDkyNi4zOSA0NzkuMTcgOTIwLjUgNDYwLjQ2QzkxMi44MyA0NjAuNDYgOTA1LjE3IDQ2MC40NiA4OTcuNSA0NjAuNDZDODk1LjcyIDQ2Ni44NSA4OTYuMzQgNDgwLjQ4IDg5Ni44IDQ4Ny41Qzg5Ny4wMSA0OTAuNiA4OTcuNjEgNDk0LjI2IDkwMC4xNSA0OTYuMzdDOTA0IDQ5OS41OCA5MDkuNTggNDk3LjY4IDkxNC4wMiA0OTguODFDOTE0LjAyIDUwNC44NiA5MTQuMDIgNTEwLjkxIDkxNC4wMiA1MTYuOTZDOTA5LjM3IDUxOC43OSA5MDQuNDkgNTE5LjcgODk5LjUgNTE5Ljg4Qzg5NS41IDUyMC4wMyA4OTEuNDIgNTIwLjAyIDg4Ny41MyA1MTguOTVDODYyLjIzIDUxMi4wMiA4NzIuMjMgNDc5LjEyIDg2OS41IDQ2MC4zNUM4NjYuMzcgNDYwLjM1IDg2My4yMyA0NjAuMzUgODYwLjEgNDYwLjM1Qzg2MC4xIDQ1My40MSA4NjAuMSA0NDYuNDggODYwLjEgNDM5LjU0Qzg2My40IDQzOS41NCA4NjYuNzEgNDM5LjU0IDg3MC4wMSA0MzkuNTRDODcwLjAxIDQzMi43NyA4NzAuMDEgNDI2IDg3MC4wMSA0MTkuMjNDODc1LjU1IDQxNi43NCA4ODkuNDUgNDE3LjE2IDg5NS41IDQxOC40OVpNNzk3Ljc4IDQzMC40OEM3NTkuNTkgNDMyLjUzIDc2MS45IDQ5Ni4xMyA4MDEuNSA0OTMuOTJDODQwLjAxIDQ5MS43OCA4MzcuODMgNDI4LjM0IDc5Ny43OCA0MzAuNDhaTTEwNDkuMjQgNDg1LjVDMTA0MS4xNCA0ODguMDUgMTAxOC4yIDQ4Ni41MSAxMDA4LjUgNDg2LjQ2QzEwMDMuNzUgNDg2LjQzIDk5Ny43NCA0ODUuNDcgOTkzLjUgNDg3LjM2Qzk5NS43NSA0OTguNyAxMDA5LjIxIDUwMy4xNiAxMDE5LjI0IDQ5OC43MUMxMDIzLjAyIDQ5Ny4wMyAxMDI1LjEyIDQ5My41MSAxMDI4LjUgNDkxLjQ2QzEwMzQuMzIgNDk0LjQ3IDEwNDAuMTUgNDk3LjQ5IDEwNDUuOTcgNTAwLjVDMTAzNy4xMyA1MjIuMzYgMTAwMi43MyA1MjUuMjIgOTg1LjI4IDUxMy4yMkM5NjguOSA1MDEuOTYgOTY0LjQyIDQ4MC43IDk3MS4zIDQ2Mi43NEM5NzkuMzQgNDQxLjczIDEwMDQuNjggNDMyLjQxIDEwMjUuMDggNDQwLjQ1QzEwMzguNDEgNDQ1LjcgMTA0Ni4zNiA0NTYuNzYgMTA0OS4xNyA0NzAuNDhDMTA1MC4xNCA0NzUuMiAxMDUxLjAzIDQ4MC45OCAxMDQ5LjI0IDQ4NS41Wk0xMTA3LjUgNDM4Ljc0QzExMDkuNjkgNDQyLjkzIDExMDkuMzEgNDU0LjkgMTEwNy44MiA0NTkuNUMxMTAyLjQ1IDQ2MS42MyAxMDk2LjIxIDQ2MC4yOSAxMDkxLjA3IDQ2My41N0MxMDc0LjYyIDQ3NC4wNSAxMDg1LjcxIDUwMi4wNCAxMDgxLjUgNTE3LjY2QzEwNzcuMDEgNTE5LjY3IDEwNjEuMTUgNTE5LjY0IDEwNTYuNSA1MTcuOTVDMTA1NC44NCA1MTIuNTIgMTA1NS43MSA1MDYuMTggMTA1NS43NCA1MDAuNUMxMDU1LjgxIDQ4OC45NiAxMDU2LjE4IDQ3Ny4yNiAxMDU1LjU0IDQ2NS43NEMxMDU1LjE5IDQ1OS40MSAxMDUyLjk0IDQ0NS45OSAxMDU0Ljg4IDQ0MC41QzEwNjAuNjcgNDM4LjY2IDEwNzAuNzkgNDM4LjIgMTA3Ni41IDQ0MC4zMkMxMDc3LjE3IDQ0My41NiAxMDc3LjgzIDQ0Ni44MSAxMDc4LjUgNDUwLjA2QzEwODUuODIgNDQyLjM5IDEwOTYuMzQgNDM1LjE4IDExMDcuNSA0MzguNzRaTTEwMjUuMTMgNDY5LjVDMTAyMi4yNiA0NTMuMTYgOTk4LjAxIDQ1My42MiA5OTMuOTMgNDY5LjVDMTAwMC42OSA0NzEuMTYgMTAxOC4zNSA0NzEuMTUgMTAyNS4xMyA0NjkuNVoiLz48cGF0aCBmaWxsPSIjZTlmMmZjIiBzdHJva2U9IiNlOWYyZmMiIHN0cm9rZS13aWR0aD0iMC4yNSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMzI5Ljg0IDQ4MkMzMjkuNTUgNDgyLjE3IDMyOS4yNyA0ODIuMzMgMzI4Ljk4IDQ4Mi41QzMyOC45NyA0ODMuODMgMzI4Ljk2IDQ4NS4xNyAzMjguOTUgNDg2LjVDMzI5LjI0IDQ4Ni42NyAzMjkuNTQgNDg2LjgzIDMyOS44MyA0ODdDMzI4LjA2IDUxOS45OCAyODQuNzkgNTI2LjIxIDI2MC4wNiA1MTYuNDdDMjQ5LjQ2IDUxMi4yOSAyMzUuMDggNDk5Ljk3IDIzNi4zNyA0ODcuNUMyNDQuNDEgNDg1LjI2IDI1Mi40NiA0ODMuMDIgMjYwLjUgNDgwLjc4QzI2Mi40OSA0ODMuMjYgMjYzLjc1IDQ4Ni4yNSAyNjUuOCA0ODguNzJDMjcwLjc0IDQ5NC43IDI3OS4wMSA0OTYuOTUgMjg2LjUgNDk2LjY0QzI5Mi43NCA0OTYuMzggMzAxLjQ3IDQ5Mi43NCAzMDAuNDIgNDg0Ljk3QzI5OS4xMSA0NzUuMzQgMjg0LjAyIDQ3My44NSAyNzYuNTcgNDcxLjc3QzI1Ny4zNiA0NjYuNDIgMjM2LjA3IDQ1Ny45MSAyMzkuNzQgNDMzLjVDMjQwLjMyIDQyOS42NCAyNDEuMzQgNDI2LjE0IDI0My4yMSA0MjIuNjlDMjU0LjY2IDQwMS41MSAyODUuMzggMzk4LjU3IDMwNS43IDQwNi43N0MzMTQuNjUgNDEwLjM5IDMyNi43NiA0MjAuMDkgMzI3LjUgNDMwLjQ0QzMyMS40NCA0MzMuOTUgMzEwLjM1IDQzOC41NyAzMDMuNSA0MzkuMDdDMjk3LjU1IDQzMS44NCAyOTQuMDcgNDI2LjYgMjgzLjUgNDI2LjU1QzI3Ni43OCA0MjYuNTIgMjY3LjE1IDQzMC4wNCAyNjkuMDMgNDM4LjQ2QzI3MC42IDQ0NS40NiAyODUuNDMgNDQ3LjgzIDI5MS4yNyA0NDkuMzNDMzA4LjQ1IDQ1My43NCAzMjkuMDggNDYxLjEgMzI5Ljg0IDQ4MlpNMzY2LjkzIDQxNi4xMkMzNjkuOTUgNDIzLjE2IDM2Ni42NyA0MzEuNjYgMzY5LjA4IDQzOC45MUMzNzUuMDEgNDM4LjkxIDM4MC45NCA0MzguOTEgMzg2Ljg4IDQzOC45MUMzODguODIgNDQ0LjM4IDM4OS4wNSA0NTMuOTQgMzg3LjM2IDQ1OS41QzM4Mi4wNyA0NjIuMTUgMzc0LjQgNDYwLjM2IDM2OC41IDQ2MC45NUMzNjcuMiA0NjcuOTMgMzY3LjU5IDQ4MC4xOSAzNjguMSA0ODcuNUMzNjguMzMgNDkwLjc2IDM2OS4xOCA0OTQuNSAzNzIuMDggNDk2LjQzQzM3Ni42MSA0OTkuNDQgMzgyLjY1IDQ5Ny41MSAzODcuNjEgNDk4LjVDMzg3LjYxIDUwNC41IDM4Ny42MSA1MTAuNSAzODcuNjEgNTE2LjVDMzgzLjQxIDUxOS4wOSAzNzcuNDMgNTE5LjU5IDM3Mi41IDUxOS43MkMzNjguMzIgNTE5LjgzIDM2My45NSA1MTkuNTYgMzU5Ljg5IDUxOC41NEMzMzUuNTkgNTEyLjQ3IDM0MS41IDQ4MC4xNiAzNDEuMDkgNDYxLjVDMzM3LjAzIDQ2MC45NSAzMzIuOTggNDYwLjQgMzI4LjkyIDQ1OS44NEMzMjguOTIgNDUyLjg2IDMyOC45MiA0NDUuODggMzI4LjkyIDQzOC44OUMzMzIuNzUgNDM4Ljg5IDMzNi41OCA0MzguODkgMzQwLjQxIDQzOC44OUMzNDEuNzIgNDMxLjU5IDMzOS40MiA0MjIuOSAzNDIuNSA0MTYuMTJDMzUwLjY0IDQxNi4xMiAzNTguNzkgNDE2LjEyIDM2Ni45MyA0MTYuMTJaTTUzMi41IDQ4NC4yMUM1MjcuMzQgNDg2LjAzIDUyMC45NiA0ODUuMDcgNTE1LjUgNDg1LjA3QzUwMy41IDQ4NS4wNiA0ODcuNDQgNDgzLjcxIDQ3NS45NiA0ODUuNUM0NzYuMzkgNDk3Ljc2IDQ5MC43MiA1MDIuMyA1MDEuMDQgNDk4LjUxQzUwNSA0OTcuMDUgNTA3LjU5IDQ5My44NCA1MTAuNSA0OTFDNTE1Ljc1IDQ5MS42OCA1MjUuMTkgNDk2LjE5IDUyOS4zOSA0OTkuNUM1MjguMjMgNTAzLjI0IDUyNS45MiA1MDUuODcgNTIzLjE3IDUwOC42OEM1MTAuODMgNTIxLjMxIDQ4OS41NCA1MjMuNTUgNDczLjY1IDUxNi44NkM0NTMuNzIgNTA4LjQ4IDQ0NS40MSA0ODUuMTQgNDUxLjU3IDQ2NS4xNUM0NTkuMzMgNDM5Ljk3IDQ5MC40MiA0MjguNDkgNTEzLjE5IDQ0MS4zNUM1MjQuNDQgNDQ3LjcxIDUzMS4zNiA0NTguNzkgNTMzLjA5IDQ3MS41QzUzMy42NiA0NzUuNjQgNTM0LjQzIDQ4MC40NSA1MzIuNSA0ODQuMjFaTTYxMy4yMiA1MTcuNUM2MDguNyA1MTkuODMgNTk0Ljk5IDUxOS4xOCA1ODkuOTEgNTE3Ljc4QzU4OS45MSA1MTUuNjggNTg5LjkxIDUxMy41OSA1ODkuOTEgNTExLjVDNTg2LjEzIDUxMi4yMiA1ODAuNzQgNTE3LjM3IDU3NS40NiA1MTguOTJDNTYwLjE1IDUyMy40MSA1MzguMjkgNTE3Ljg2IDUzNi4yIDQ5OS40OEM1MzUuODYgNDk2LjQzIDUzNS45MiA0OTMuMjQgNTM2LjYxIDQ5MC4yNEM1NDEuODYgNDY3LjM5IDU3MC42MiA0NzEuNDggNTg3LjcxIDQ2Ny41QzU4OC43NSA0NTYuNDcgNTc3LjQgNDU0LjUyIDU2OC44NCA0NTcuNDNDNTY1LjIzIDQ1OC42NSA1NjMuMDQgNDYxLjQ1IDU2MC41IDQ2NC4xQzU1NC4zOCA0NjIuNyA1NDQuNzggNDU5LjkzIDU0MC4yMyA0NTUuNUM1NDguMjYgNDMyLjA0IDU5MC40MiA0MzAuNzUgNjA1Ljc0IDQ0Ni43NUM2MTcuNDIgNDU4Ljk1IDYxMy44OSA0ODEuOTUgNjEzLjc0IDQ5Ny41QzYxMy42OCA1MDMuODggNjE1LjA0IDUxMS4zOSA2MTMuMjIgNTE3LjVaTTM5NC4yNyA0NjhDMzk0LjQ4IDQ2Ny44MyAzOTQuNyA0NjcuNjcgMzk0LjkyIDQ2Ny41QzM5NC45MiA0NjUuODMgMzk0LjkyIDQ2NC4xNyAzOTQuOTIgNDYyLjVDMzk0LjcgNDYyLjMzIDM5NC40OSA0NjIuMTcgMzk0LjI3IDQ2MkMzOTQuMyA0NTUuMTMgMzkyLjUyIDQ0NS43IDM5NS41IDQzOS40N0M0MDEuMjMgNDM3Ljc2IDQxMy4zMyA0MzcuOTcgNDE5LjEgNDM5LjVDNDE5LjU2IDQ0Mi45NCA0MjAuMDMgNDQ2LjM4IDQyMC41IDQ0OS44MkM0MjcuNjEgNDQyLjc4IDQzNy44OCA0MzUuMTkgNDQ4LjUgNDM5LjI1QzQ0OC40MiA0NDYuMzMgNDQ4LjM0IDQ1My40MiA0NDguMjYgNDYwLjVDNDQyLjEyIDQ2Mi42NyA0MzUuNiA0NjEuNDUgNDI5LjczIDQ2NS4yM0M0MTMuNDcgNDc1LjcyIDQyNC40NCA1MDIuMzQgNDIwLjEgNTE3LjVDNDE2LjA3IDUxOS44NCA0MDAuMTYgNTE5LjM3IDM5NS41IDUxNy45NEMzOTMuMDkgNTEyLjk5IDM5NC4yNyA1MDUuOTUgMzk0LjM1IDUwMC41QzM5NC41MiA0ODkuNjcgMzk0LjI1IDQ3OC44MyAzOTQuMjcgNDY4Wk02OTAuOCA0OTdDNjkwLjUzIDQ5Ny4xNyA2OTAuMjYgNDk3LjMzIDY4OS45OSA0OTcuNUM2ODkuOTggNTAyLjE3IDY4OS45NyA1MDYuODMgNjg5Ljk2IDUxMS41QzY5MC4yNCA1MTEuNjcgNjkwLjUyIDUxMS44MyA2OTAuNzkgNTEyQzY5MC41OSA1MTMuODMgNjkwLjM5IDUxNS42NyA2OTAuMTkgNTE3LjVDNjgzLjkxIDUxOS44MiA2NzUuMTEgNTE5LjE1IDY2OC41IDUxOC4wMkM2NjYuNjQgNTEyLjk3IDY2Ny40OSA1MDYuOSA2NjcuNTcgNTAxLjVDNjY3LjcgNDkyLjg1IDY2Ny42NyA0ODQuMTUgNjY3LjYgNDc1LjVDNjY3LjU0IDQ2OC43MSA2NjUuNzcgNDYwLjY1IDY1Ny41IDQ2MC4yOUM2NDcuNzQgNDU5Ljg2IDY0NC44IDQ2Ny4wNSA2NDQuMjMgNDc1LjVDNjQzLjU3IDQ4NS4xMSA2NDQuMDIgNDk0Ljg3IDY0NC4wNCA1MDQuNUM2NDQuMDUgNTA4Ljg5IDY0NC41MSA1MTMuNTEgNjQzLjUgNTE3Ljc2QzYzOS4xMyA1MTkuNjggNjI0Ljk2IDUxOS41NCA2MjAuNSA1MTcuNjRDNjIwLjUgNDkxLjYgNjIwLjUgNDY1LjU1IDYyMC41IDQzOS41QzYyNy45OCA0MzkuNSA2MzUuNDYgNDM5LjUgNjQyLjk0IDQzOS41QzY0My40NiA0NDIuMjUgNjQzLjk4IDQ0NS4wMSA2NDQuNSA0NDcuNzZDNjUzLjk0IDQzOS4yMSA2NjQuNTEgNDMzLjY0IDY3Ny4yOSA0NDAuMkM2ODEuMzkgNDQyLjMgNjg0LjIgNDQ1LjY3IDY4Ny41IDQ0OC43N0M2OTIuMTMgNDQ1LjI2IDY5NS45MyA0NDEuMTQgNzAxLjU0IDQzOS4wNkM3MDUuMzYgNDM3LjY1IDcwOS40NyA0MzcuMzcgNzEzLjUgNDM3Ljc2Qzc0Mi41MiA0NDAuNTYgNzM3LjAyIDQ3NS44NyA3MzcuMDggNDk2LjVDNzM3LjEgNTAzLjI1IDczOC4yNCA1MTEuMTkgNzM2LjUgNTE3LjY4QzczMi4wMiA1MTkuNjMgNzE4LjAzIDUxOS42MiA3MTMuNSA1MTcuNjdDNzEyLjIyIDUxMi44OCA3MTIuODUgNTA3LjQ2IDcxMi44NyA1MDIuNUM3MTIuOTEgNDk0LjE3IDcxMi44OCA0ODUuODMgNzEyLjgzIDQ3Ny41QzcxMi43OSA0NzEuNiA3MTIuOTMgNDYzLjY5IDcwNi4zMyA0NjEuMkM3MDAuMDcgNDU4Ljg0IDY5My43MyA0NjIuMDggNjkxLjczIDQ2OC4zM0M2ODkuMTcgNDc2LjMxIDY5MC45OSA0ODguNDggNjkwLjggNDk3Wk01MDcuNzQgNDY4LjVDNTA0LjI4IDQ1MS44MiA0ODAuNDYgNDUyLjQ4IDQ3Ni4wOSA0NjguNUM0ODIuNjQgNDcwLjAxIDUwMS4zIDQ3MC4yNCA1MDcuNzQgNDY4LjVaTTU4OC41IDQ4NC4zOUM1ODEuNjEgNDgzLjQ4IDU1Ni4zNSA0ODQuNDEgNTYyLjIzIDQ5Ny4yOUM1NjQuMjMgNTAxLjY1IDU3MC41NiA1MDIuMDIgNTc0LjYxIDUwMS4zNEM1ODMuNzUgNDk5LjggNTg5LjQgNDkzLjg2IDU4OC41IDQ4NC4zOVoiLz48L2c+PC9zdmc+Cg==" alt="StreamOtter">
+  <nav aria-label="Under the Hood"><ol class="volnav"><li><a href="index.html">Introduction</a></li><li><span class="n">1</span><span aria-current="page">How it works</span></li><li><span class="n">2</span><a href="2-how-its-built.html">How it's built</a></li><li><span class="n">3</span><a href="3-why-its-built-this-way.html">Why it's built this way</a></li><li><span class="n">4</span><a href="4-guarantees-and-limits.html">Guarantees and limits</a></li><li><span class="n">5</span><a href="5-using-and-running-it.html">Using and running it</a></li></ol></nav>
+</div>
+
+<header class="top">
+  <span class="eyebrow">StreamOtter · main @ 1c75aaa · packages at 0.2.0-rc.1 · Under the Hood, part 1 of 5</span>
+  <h1>How it works</h1>
+  <p class="lead">StreamOtter is <strong>one Node process that turns Kafka records into live, per-user state in the browser.</strong> Your code supplies four handlers: <code>authenticate</code> a token, <code>authorize</code> a subscription, <code>map</code> a Kafka record into full-state rows keyed by tenant, channel and params, and <code>snapshot</code> the current state from your own database. The gateway reads Kafka one record at a time, runs <code>map</code>, routes each row to the browsers subscribed to that exact key, and commits the Kafka offset once the row is queued. Every browser subscription starts from a snapshot and then receives only newer revisions. When anything goes wrong (slow reader, dropped socket, overflow, expired token) the gateway throws the queue away and re-snapshots, which is safe because every frame is a whole state and never a delta. V1.1 adds a durable failure journal so a bad record can be held, quarantined and, under strict guards, stepped past instead of stalling the source forever.</p>
+  <div class="ideas">
+    <div class="idea"><b>Full state, never deltas</b><span>Each frame replaces the last. Dropping frames is always safe; a fresh snapshot repairs anything.</span></div>
+    <div class="idea"><b>Your app owns the truth</b><span>Snapshots come from your <code>snapshot</code> handler. The gateway stores no channel state (inferred, see the end).</span></div>
+    <div class="idea"><b>Revisions guard every hop</b><span>Canonical decimal revisions, epochs and sequence numbers let both sides reject stale or out-of-order data.</span></div>
+    <div class="idea"><b>Never skip a record silently</b><span>An unprocessable record pauses the source. V1.1 only moves past one with quarantined evidence and a recovery guard.</span></div>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#map">Architecture map</a>
+    <a href="#packages">The six packages</a>
+    <a href="#journey">One record, topic to browser</a>
+    <a href="#sync">How a subscription syncs</a>
+    <a href="#components">The runtime pieces</a>
+    <a href="#limits">What it deliberately doesn't do</a>
+    <a href="#inferred">What's inferred</a>
+  </nav>
+</header>
+
+<section id="map">
+  <div class="section-head">
+    <span class="eyebrow">Figure 1</span>
+    <h2>Architecture map</h2>
+    <p>Data flows left to right along the blue arrows. Dashed grey arrows flow back (offset commits, browser receipts). Brown dashed arrows are calls into your handlers. Orange is the V1.1 failure path. Paths inside the shaded gateway region are under <code>packages/gateway/src/</code>; elsewhere on the page paths are under <code>packages/</code> unless they start with <code>apps/</code>.</p>
+  </div>
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1250 800" role="img" aria-label="Kafka records flow through the Kafka source adapter, the record pipeline that calls your map handler, the subscription router and per-subscription queues, the Socket.IO client session, and into the browser SDK or its React hooks. Offsets are committed back to Kafka after a record is queued; browsers send receipts back. Failed records go to the failure service, which writes the SQLite journal and the Kafka quarantine topic and can advance the source. The operator CLI reaches the operator service over a local socket. The development workbench calls the management API for config, sources, traces, preview tokens and failures, and its Preview tab subscribes through the browser SDK like any browser.">
+        <defs>
+          <marker id="md" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="m-data" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="mb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="m-back" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="m-call" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="mf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="m-fail" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+
+        <!-- gateway process region -->
+        <rect class="region" x="210" y="6" width="870" height="660" rx="10"/>
+        <text class="l" x="226" y="656">one gateway process · @streamotter/gateway · Node ≥ 24</text>
+
+        <!-- your handlers -->
+        <rect class="box-you" x="450" y="24" width="620" height="58" rx="6"/>
+        <text class="t" x="466" y="47">Your handlers module</text>
+        <text class="lo" x="1056" y="47" text-anchor="end">your code, loaded in-process</text>
+        <text class="n" x="466" y="68" style="fill:var(--otter)">authenticate · authorize · map · snapshot · sources[id] recovery guard</text>
+
+        <path class="a-call" d="M550,82 L550,128" marker-end="url(#mc)"/>
+        <text class="lo" x="557" y="110">map(record)</text>
+        <path class="a-call" d="M790,82 L790,128" marker-end="url(#mc)"/>
+        <text class="lo" x="797" y="110">authorize · snapshot</text>
+        <path class="a-call" d="M1000,82 L1000,128" marker-end="url(#mc)"/>
+        <text class="lo" x="993" y="110" text-anchor="end">authenticate</text>
+
+        <!-- A: Kafka -->
+        <rect class="box-infra" x="20" y="130" width="140" height="210" rx="6"/>
+        <text class="t" x="34" y="152">Kafka</text>
+        <text class="f" x="34" y="169">source topics</text>
+        <g>
+          <rect class="strip" x="34" y="184" width="112" height="14"/>
+          <rect class="cell-on" x="34" y="184" width="70" height="14"/>
+          <rect class="strip" x="34" y="206" width="112" height="14"/>
+          <rect class="cell-on" x="34" y="206" width="42" height="14"/>
+          <rect class="strip" x="34" y="228" width="112" height="14"/>
+          <rect class="cell-on" x="34" y="228" width="84" height="14"/>
+          <path class="cell" d="M48,184v58 M62,184v58 M76,184v58 M90,184v58 M104,184v58 M118,184v58 M132,184v58"/>
+        </g>
+        <text class="l" x="34" y="260">partitions; shaded =</text>
+        <text class="l" x="34" y="275">committed by the group</text>
+        <text x="34" y="300">one consumer group</text>
+        <text x="34" y="317">per source</text>
+
+        <!-- B: adapter -->
+        <rect class="box" x="230" y="130" width="170" height="210" rx="6"/>
+        <text class="t" x="244" y="152">KafkaSourceAdapter</text>
+        <text class="f" x="244" y="169">sources/kafka.ts</text>
+        <text x="244" y="194">kafkajs 2.2.4 consumer</text>
+        <text x="244" y="211">auto-commit off</text>
+        <text x="244" y="228">one record at a time</text>
+        <text x="244" y="245">heartbeats while mapping</text>
+        <text x="244" y="262">commits offset + 1 after</text>
+        <text x="244" y="279">a "commit" outcome</text>
+        <text x="244" y="296">bad record: pause + seek</text>
+
+        <!-- C: pipeline -->
+        <rect class="box-strong" x="450" y="130" width="200" height="210" rx="6"/>
+        <text class="t" x="464" y="152">Record pipeline</text>
+        <text class="f" x="464" y="169">runtime/gateway.ts</text>
+        <text x="464" y="194"><tspan class="n">1</tspan>  decode JSON, size check</text>
+        <text x="464" y="211"><tspan class="n">2</tspan>  map() for each channel</text>
+        <text x="464" y="228"><tspan class="n">3</tspan>  check tenant, params,</text>
+        <text x="476" y="245">revision, frame, schema</text>
+        <text x="464" y="262"><tspan class="n">4</tspan>  revision-conflict check</text>
+        <text x="464" y="279"><tspan class="n">5</tspan>  admit to subscribers</text>
+        <text class="l" x="464" y="300">returns commit, or pause</text>
+
+        <!-- D: subscriptions -->
+        <rect class="box" x="700" y="130" width="180" height="210" rx="6"/>
+        <text class="t" x="714" y="152">Router + subscriptions</text>
+        <text class="f" x="714" y="169">runtime/subscription.ts</text>
+        <text x="714" y="194">key: channel, version,</text>
+        <text x="714" y="211">tenant, canonical params</text>
+        <text x="714" y="228">drops revision ≤ latest</text>
+        <text x="714" y="245">queues full states</text>
+        <text x="714" y="262">one frame in flight</text>
+        <text x="714" y="279">receipt releases the next</text>
+        <text x="714" y="296">overflow: re-snapshot</text>
+
+        <!-- E: session -->
+        <rect class="box" x="930" y="130" width="140" height="210" rx="6"/>
+        <text class="t" x="944" y="152">Client session</text>
+        <text class="f" x="944" y="169" style="font-size:9.5px">runtime/session.ts</text>
+        <text class="f" x="944" y="182" style="font-size:9.5px">transport/socketio.ts</text>
+        <text x="944" y="206">Socket.IO server</text>
+        <text x="944" y="223">WebSocket only</text>
+        <text x="944" y="240">origin + token</text>
+        <text x="944" y="257">rate, size limits</text>
+        <text x="944" y="274">token expiry timer</text>
+        <text x="944" y="291">drops stalled</text>
+        <text x="944" y="308">readers</text>
+
+        <!-- F: browser -->
+        <rect class="box-ext" x="1130" y="130" width="110" height="210" rx="6"/>
+        <text class="t" x="1142" y="152">Browser SDK</text>
+        <text class="f" x="1142" y="169">client/src</text>
+        <text x="1142" y="194">createClient()</text>
+        <text x="1142" y="211">subscribe()</text>
+        <text x="1142" y="228">checks epoch,</text>
+        <text x="1142" y="245">sequence, rev</text>
+        <text x="1142" y="262">receipts frames</text>
+        <text x="1142" y="279">jittered</text>
+        <text x="1142" y="296">reconnect</text>
+        <text x="1142" y="320">+ React hooks</text>
+
+        <!-- forward data arrows -->
+        <path class="a-data" d="M160,200 L228,200" marker-end="url(#md)"/>
+        <text class="la" x="185" y="192" text-anchor="middle">fetch</text>
+        <path class="a-data" d="M400,200 L448,200" marker-end="url(#md)"/>
+        <text class="la" x="425" y="192" text-anchor="middle">record</text>
+        <path class="a-data" d="M650,200 L698,200" marker-end="url(#md)"/>
+        <text class="la" x="675" y="192" text-anchor="middle">admit</text>
+        <path class="a-data" d="M880,200 L928,200" marker-end="url(#md)"/>
+        <text class="la" x="905" y="192" text-anchor="middle">frames</text>
+        <path class="a-data" d="M1070,200 L1128,200" marker-end="url(#md)"/>
+        <text class="la" x="1106" y="192" text-anchor="middle">so:data</text>
+
+        <!-- back arrows -->
+        <path class="a-back" d="M230,305 L162,305" marker-end="url(#mb)"/>
+        <text class="l" x="185" y="322" text-anchor="middle">commit</text>
+        <path class="a-back" d="M450,305 L402,305" marker-end="url(#mb)"/>
+        <text class="l" x="425" y="322" text-anchor="middle">"commit"</text>
+        <path class="a-back" d="M930,305 L882,305" marker-end="url(#mb)"/>
+        <text class="l" x="905" y="322" text-anchor="middle">receipt</text>
+        <path class="a-back" d="M1130,305 L1072,305" marker-end="url(#mb)"/>
+        <text class="l" x="1106" y="322" text-anchor="middle">so:receipt</text>
+
+        <!-- failure plane -->
+        <rect class="box-infra" x="20" y="450" width="140" height="80" rx="6"/>
+        <text class="t" x="34" y="472">Quarantine topic</text>
+        <text x="34" y="492">same Kafka cluster</text>
+        <text x="34" y="509">acks=all, idempotent</text>
+
+        <rect class="box" x="450" y="410" width="200" height="130" rx="6" style="stroke:var(--warn)"/>
+        <text class="t" x="464" y="432">FailureService <tspan class="lw">V1.1</tspan></text>
+        <text class="f" x="464" y="449">failures/service.ts</text>
+        <text x="464" y="472">opens an incident per held record</text>
+        <text x="464" y="489">writes the quarantine copy</text>
+        <text x="464" y="506">recovery guard + circuit breaker</text>
+        <text x="464" y="523">advances only when all agree</text>
+
+        <rect class="box" x="700" y="410" width="180" height="130" rx="6"/>
+        <text class="t" x="714" y="432">Failure journal</text>
+        <text class="f" x="714" y="449">failures/journal.ts</text>
+        <text x="714" y="472">node:sqlite, WAL, FULL sync</text>
+        <text x="714" y="489">incidents, evidence,</text>
+        <text x="714" y="506">boundaries, circuits,</text>
+        <text x="714" y="523">operator operations</text>
+
+        <rect class="box" x="930" y="410" width="140" height="130" rx="6"/>
+        <text class="t" x="944" y="432">Operator service</text>
+        <text class="f" x="944" y="449">operator/service.ts</text>
+        <text x="944" y="472">status, list, show</text>
+        <text x="944" y="489">evaluate: a plan</text>
+        <text x="944" y="506">redrive, retry,</text>
+        <text x="944" y="523">reassess, reopen</text>
+
+        <path class="a-fail" d="M550,340 L550,408" marker-end="url(#mf)"/>
+        <text class="lw" x="557" y="380">pause, then held()</text>
+        <path class="a-fail" d="M450,500 L162,500" marker-end="url(#mf)"/>
+        <text class="lw" x="305" y="493" text-anchor="middle">publish original bytes</text>
+        <path class="a-fail" d="M450,425 L315,425 L315,342" marker-end="url(#mf)"/>
+        <text class="lw" x="383" y="418" text-anchor="middle">advancePast()</text>
+        <path class="a-ctl" d="M650,470 L698,470" marker-end="url(#mb)"/>
+        <text class="l" x="675" y="463" text-anchor="middle">writes</text>
+        <path class="a-ctl" d="M930,440 L882,440" marker-end="url(#mb)"/>
+        <text class="l" x="905" y="433" text-anchor="middle">reads</text>
+
+        <!-- management API (dev), inside the process -->
+        <rect class="box" x="930" y="575" width="140" height="80" rx="6"/>
+        <text class="t" x="944" y="597">Management API</text>
+        <text class="f" x="944" y="614">management/router.ts</text>
+        <text x="944" y="633">config, sources,</text>
+        <text x="944" y="649">traces, failures</text>
+        <path class="a-ctl" d="M1000,575 L1000,542" marker-end="url(#mb)"/>
+
+        <!-- outside: CLI and workbench -->
+        <rect class="box-ext" x="700" y="700" width="180" height="80" rx="6"/>
+        <text class="t" x="714" y="722">streamotter CLI</text>
+        <text class="f" x="714" y="739">cli/src/operator.ts</text>
+        <text x="714" y="760">separate process</text>
+        <path class="a-ctl" d="M880,740 L905,740 L905,500 L928,500" marker-end="url(#mb)"/>
+        <text class="l" x="890" y="790">via run/operator.sock</text>
+
+        <rect class="box-ext" x="1130" y="700" width="110" height="80" rx="6"/>
+        <text class="t" x="1142" y="722">Workbench</text>
+        <text class="f" x="1142" y="739">apps/workbench</text>
+        <text x="1142" y="760">dev only</text>
+        <path class="a-ctl" d="M1160,700 L1160,612 L1072,612" marker-end="url(#mb)"/>
+        <text class="l" x="1116" y="605" text-anchor="middle">HTTP :7401</text>
+        <path class="a-data" d="M1215,700 L1215,343" marker-end="url(#md)"/>
+        <text class="la" x="1209" y="520" text-anchor="end">Preview</text>
+        <text class="l" x="1209" y="535" text-anchor="end">uses the SDK</text>
+
+        <!-- legend -->
+        <g transform="translate(20,700)">
+          <path class="a-data" d="M0,8 L36,8"/><text x="46" y="12">records and frames</text>
+          <path class="a-back" d="M0,30 L36,30"/><text x="46" y="34">commits, receipts, control</text>
+          <path class="a-call" d="M0,52 L36,52"/><text x="46" y="56">calls into your handlers</text>
+          <path class="a-fail" d="M0,74 L36,74"/><text x="46" y="78">V1.1 failure path</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>One record in, many full-state frames out. The Kafka offset moves when the pipeline returns "commit", which happens once outputs are queued, not when browsers have them. A health listener (<code>gateway/src/runtime/health.ts</code>) is omitted for space.</figcaption>
+  </figure>
+</section>
+
+<section id="packages">
+  <div class="section-head">
+    <span class="eyebrow">Figure 2</span>
+    <h2>The six packages</h2>
+    <p>A pnpm workspace (<code>package.json</code>, Node ≥ 24, TypeScript 5.9). Five packages build with <code>tsc -b</code>; the workbench builds with esbuild. All six publish at <code>0.2.0-rc.1</code>. Each of the five TypeScript packages' <code>exports</code> carries a <code>streamotter-source</code> condition so tests and the CLI run straight from <code>.ts</code> sources.</p>
+  </div>
+  <figure>
+    <div class="diagram small">
+      <svg viewBox="0 0 760 320" role="img" aria-label="Package dependencies: streamotter depends on cli, gateway, client and contracts. cli depends on gateway, workbench and contracts. gateway and client each depend on contracts. contracts has no dependencies. workbench has no runtime dependencies but bundles client and contracts at build time.">
+        <defs>
+          <marker id="pd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="m-data" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="pb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="m-back" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+        <rect class="box-strong" x="300" y="16" width="160" height="50" rx="6"/>
+        <text class="t" x="380" y="38" text-anchor="middle">streamotter</text>
+        <text class="l" x="380" y="55" text-anchor="middle">all-in-one re-exports + bin</text>
+
+        <rect class="box" x="40" y="120" width="170" height="50" rx="6"/>
+        <text class="t" x="125" y="142" text-anchor="middle">@streamotter/cli</text>
+        <text class="l" x="125" y="159" text-anchor="middle">bin: streamotter</text>
+
+        <rect class="box" x="300" y="120" width="160" height="50" rx="6"/>
+        <text class="t" x="380" y="142" text-anchor="middle">@streamotter/gateway</text>
+        <text class="l" x="380" y="159" text-anchor="middle">+ kafkajs, socket.io</text>
+
+        <rect class="box" x="560" y="120" width="170" height="50" rx="6"/>
+        <text class="t" x="645" y="142" text-anchor="middle">@streamotter/client</text>
+        <text class="l" x="645" y="159" text-anchor="middle">+ socket.io-client</text>
+
+        <rect class="box" x="40" y="220" width="170" height="50" rx="6"/>
+        <text class="t" x="125" y="242" text-anchor="middle">@streamotter/workbench</text>
+        <text class="l" x="125" y="259" text-anchor="middle">static dist/ only</text>
+
+        <rect class="box" x="300" y="220" width="160" height="50" rx="6"/>
+        <text class="t" x="380" y="242" text-anchor="middle">@streamotter/contracts</text>
+        <text class="l" x="380" y="259" text-anchor="middle">no dependencies</text>
+
+        <path class="a-data" d="M330,66 L180,118" marker-end="url(#pd)"/>
+        <path class="a-data" d="M380,66 L380,118" marker-end="url(#pd)"/>
+        <path class="a-data" d="M430,66 L600,118" marker-end="url(#pd)"/>
+        <path class="a-data" d="M210,145 L298,145" marker-end="url(#pd)"/>
+        <path class="a-data" d="M125,170 L125,218" marker-end="url(#pd)"/>
+        <path class="a-data" d="M200,170 L304,226" marker-end="url(#pd)"/>
+        <path class="a-data" d="M380,170 L380,218" marker-end="url(#pd)"/>
+        <path class="a-data" d="M600,170 L462,238" marker-end="url(#pd)"/>
+        <path class="a-back" d="M125,270 L125,300 L645,300 L645,172" marker-end="url(#pb)"/>
+        <text class="l" x="510" y="293" text-anchor="middle">bundled into app.js at build (esbuild)</text>
+      </svg>
+    </div>
+    <figcaption>Solid arrows are runtime <code>dependencies</code>. <code>streamotter</code> also depends on <code>contracts</code> directly (arrow omitted). The dashed edge is a build-time bundle: the workbench ships <code>client</code>, <code>contracts</code> and <code>socket.io-client</code> inside <code>dist/app.js</code>.</figcaption>
+  </figure>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Package</th><th>What's in it</th><th>Main files</th><th>Src lines</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pkg">@streamotter/contracts</span></td><td>The shared vocabulary: every public type (<code>types.ts</code>), config validation, the small JSON Schema dialect and param canonicalization, default limits, protocol constants and event names, V1.1 failure, operator and workbench-host contracts. Imported by everything.</td><td class="ref">contracts/src/types.ts, config.ts, schema.ts, limits.ts, protocol.ts, failures.ts, operator.ts</td><td class="num">2,271</td></tr>
+        <tr><td><span class="pkg">@streamotter/gateway</span></td><td>The server. <code>createGateway()</code> and <code>defineProject()</code>, the Kafka and fixture sources, the record pipeline, subscriptions and backpressure, the Socket.IO transport, V1.1 failure handling. Subpaths <code>/management</code> (dev HTTP API), <code>/operator</code> (operator API + socket), <code>/internals</code> (CLI and tests only).</td><td class="ref">gateway/src/index.ts, runtime/, sources/, transport/, failures/, operator/, management/</td><td class="num">10,242</td></tr>
+        <tr><td><span class="pkg">@streamotter/client</span></td><td>The browser SDK. <code>createClient&lt;AppChannels&gt;()</code>, one Socket.IO connection, typed subscriptions, frame validation, receipts, reconnect, token refresh. New in 1.0: React hooks on the <code>/react</code> subpath (<code>StreamOtterProvider</code>, <code>useSubscription</code>, <code>useConnectionState</code>), 382 more lines.</td><td class="ref">client/src/client.ts, connection.ts, subscription.ts, frames.ts, react.ts (1.0)</td><td class="num">1,226</td></tr>
+        <tr><td><span class="pkg">@streamotter/cli</span></td><td>The <code>streamotter</code> command: init, validate, generate, dev, start, plus the operator commands. Also exports <code>generateFiles()</code> for programmatic codegen.</td><td class="ref">cli/src/cli.ts, generate.ts, templates.ts, operator.ts</td><td class="num">1,372</td></tr>
+        <tr><td><span class="pkg">@streamotter/workbench</span></td><td>A static single-page app (no runtime deps) that <code>streamotter dev</code> serves, or that you host yourself under the workbench host contract (WHC-1). Tabs: Connect, Define, Preview, Inspect, Failures, Export.</td><td class="ref">apps/workbench/src/main.ts, api.ts, host.ts, views/*.ts, build.mjs</td><td class="num">1,680</td></tr>
+        <tr><td><span class="pkg">streamotter</span></td><td>The all-in-one package. Six two-line shim files that re-export the others under <code>streamotter/client</code>, <code>/gateway</code>, <code>/gateway/management</code>, <code>/gateway/operator</code>, <code>/contracts</code>, <code>/cli</code>, plus the same <code>streamotter</code> bin. 1.0 adds a seventh, <code>streamotter/react</code>.</td><td class="ref">streamotter/src/*.ts, streamotter/bin/streamotter.js</td><td class="num">12</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="journey">
+  <div class="section-head">
+    <span class="eyebrow">Walkthrough</span>
+    <h2>One record, topic to browser</h2>
+    <p>The live path for a record on a Kafka source with a browser already subscribed and live.</p>
+  </div>
+  <ol class="journey">
+    <li><div><span class="where">Kafka adapter</span><b>The consumer hands over one message.</b> KafkaJS runs with <code>autoCommit: false</code> and one partition at a time. For each message the adapter builds a <code>SourceInput</code> (key, raw bytes, headers, record timestamp, position <code>{topic, partition, offset}</code>), starts a 3-second heartbeat so a slow mapper doesn't get the member evicted, and awaits the gateway's <code>process()</code>.<span class="ref">gateway/src/sources/kafka.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Records on one source are processed strictly one after another.</b> <code>SourceRuntimeImpl.exclusive()</code> chains every <code>process()</code> and any operator redrive onto one promise lock. With failure handling on, the pipeline first checks that the source hasn't moved past a held record without a recorded advance.<span class="ref">gateway/src/runtime/gateway.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Decode and size-check.</b> Bytes over <code>maxSourceRecordBytes</code> (1 MiB default), invalid UTF-8, invalid JSON, nesting deeper than 16, and tombstones (null values) are all caught before your code sees them. None is thrown away: the record pauses its source, uncommitted, and is reported (see Failure handling below).<span class="ref">gateway/src/runtime/gateway.ts · contracts/src/limits.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Freeze a <code>SourceRecord</code>.</b> Its ID is a SHA-256 of project, source, the source's <code>generation</code> and the Kafka position, so the same record always gets the same ID.<span class="ref">gateway/src/runtime/gateway.ts · runtime/identity.ts</span></div></li>
+    <li><div><span class="where">Your code</span><b>Run <code>map()</code> for every channel on that source.</b> Each call gets an <code>AbortSignal</code> and a 2-second <code>handlerTimeoutMs</code>. It returns an array (max 100) of <code>MappedState</code>: <code>{ tenantId, params, revision, data }</code>. A <code>TransientMappingError</code> re-runs the whole mapping after 250 ms and 1 s, only if the V1.1 policy allows retries.<span class="ref">gateway/src/runtime/gateway.ts · runtime/util.ts · contracts/src/types.ts (ChannelHandlers)</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Turn each row into a routed frame.</b> Only those four fields are allowed. Params are canonicalized against the channel's <code>paramsSchema</code>, the revision must be a canonical unsigned decimal string, the frame must fit <code>maxDataFrameBytes</code> (64 KiB), and <code>data</code> must pass <code>payloadSchema</code>. The routing key is <code>[channel, version, tenantId, canonicalParams]</code>.<span class="ref">gateway/src/runtime/gateway.ts · runtime/core.ts</span></div></li>
+    <li><div><span class="where">Pipeline</span><b>Refuse a revision conflict.</b> If the same key gets the same revision with different data (within this record, or against what a subscriber already holds), the source pauses with <code>REVISION_CONFLICT</code>. Nothing from the record is admitted.<span class="ref">gateway/src/runtime/gateway.ts</span></div></li>
+    <li><div><span class="where">Subscriptions</span><b>Admit to every subscriber of that key.</b> Each <code>ServerSubscription</code> drops anything at or below its latest revision, reserves room in its byte budget, queues the frame and pumps. Admission never waits: if the budget is full, that subscription is reset and re-snapshotted instead.<span class="ref">gateway/src/runtime/gateway.ts · runtime/subscription.ts</span></div></li>
+    <li><div><span class="where">Kafka adapter</span><b>Commit the offset.</b> <code>process()</code> returns <code>{kind: "commit"}</code>; the adapter resolves the offset and commits <code>offset + 1</code> through a serialized commit chain. A failed commit is retried in the background and the record may be redelivered, which the revision filter absorbs.<span class="ref">gateway/src/runtime/gateway.ts · sources/kafka.ts</span></div></li>
+    <li><div><span class="where">Subscriptions</span><b>Send one frame.</b> Only one frame per subscription is in flight. It goes out as <code>so:data {subscriptionId, epoch, sequence, event}</code> and starts a 5-second receipt timer.<span class="ref">gateway/src/runtime/subscription.ts</span></div></li>
+    <li><div><span class="where">Transport</span><b>Socket.IO writes it to the WebSocket.</b> WebSocket only, no long-polling, Socket.IO's own connection-state recovery off, inbound frames capped at <code>maxControlFrameBytes</code>.<span class="ref">gateway/src/transport/socketio.ts</span></div></li>
+    <li><div><span class="where">Browser</span><b>The SDK checks the frame and hands it to your listener.</b> <code>ClientSubscription</code> accepts a frame only for its current epoch, with exactly the next sequence number, where frame 1 is a snapshot and later frames have strictly higher revisions. It calls your <code>on("data")</code> listeners synchronously, then sends <code>so:receipt</code>.<span class="ref">client/src/subscription.ts · client/src/frames.ts</span></div></li>
+    <li><div><span class="where">Subscriptions</span><b>The receipt releases the next frame.</b> <code>onReceipt</code> frees the budget and pumps. A missing receipt closes the whole connection with <code>OVERLOADED</code>; the SDK reconnects and every subscription starts over from a snapshot.<span class="ref">gateway/src/runtime/subscription.ts · runtime/session.ts</span></div></li>
+  </ol>
+  <p class="callout"><b>The commit point.</b> The commit (step 9) never waits for the browser. When a subscription is live and has no frame in flight, admission in step 8 already sends <code>so:data</code> (steps 10 and 11) before <code>process()</code> returns "commit", and receipts (steps 12 and 13) arrive independently of the commit. A Kafka offset means "the gateway processed and queued this record, and may already have sent it", not "a browser has it". That is deliberate for state delivery: a browser that misses a frame gets a fresh snapshot from your app (inferred rationale; the code shows the order, not the reason).</p>
+</section>
+
+<section id="sync">
+  <div class="section-head">
+    <span class="eyebrow">Subscription lifecycle</span>
+    <h2>How a subscription syncs</h2>
+    <p>A new subscription, a resync, a reconnect, a source coming back and an overflow all run the same sequence, each as a new <em>epoch</em>. Live updates are captured from the moment the key is registered, so nothing that lands during the snapshot is lost.</p>
+  </div>
+  <div class="phases" aria-label="Synchronization phases in order">
+    <span class="phase">authorize()</span><span class="arrow">→</span>
+    <span class="phase">wait for source</span><span class="arrow">→</span>
+    <span class="phase">new epoch, start capture</span><span class="arrow">→</span>
+    <span class="phase">snapshot()</span><span class="arrow">→</span>
+    <span class="phase">validate + re-authorize</span><span class="arrow">→</span>
+    <span class="phase">send snapshot (seq 1)</span><span class="arrow">→</span>
+    <span class="phase">receipt</span><span class="arrow">→</span>
+    <span class="phase">drain buffered newer states</span><span class="arrow">→</span>
+    <span class="phase live">live</span>
+  </div>
+  <div class="prose" style="display:grid;gap:10px">
+    <p>Snapshots run under a gateway-wide semaphore (<code>maxConcurrentSnapshots</code> 32) with a 10-second timeout. A snapshot that fails the payload schema or the frame size, or a <code>snapshot</code> or <code>authorize</code> handler that throws or denies, fails the subscription outright. A timeout, an overflow, a regression below a revision the browser already saw, or (under V1.1 quarantine-resync) a missing or superseded <code>recoveryBoundaryId</code> makes the attempt go <code>stale</code> and retry after 1 s, then 2 s; after <code>maxSyncAttempts</code> (3) it reports <code>resync-required</code>. After the receipt, buffered updates at or below the snapshot revision are dropped and the rest drain in order.</p>
+    <p class="ref">gateway/src/runtime/subscription.ts (phases, #beginAttempt, #attemptFailed) · contracts/src/types.ts (SubscriptionState)</p>
+  </div>
+</section>
+
+<section id="components">
+  <div class="section-head">
+    <span class="eyebrow">Reference</span>
+    <h2>The runtime pieces</h2>
+  </div>
+  <div class="components">
+
+    <article class="comp">
+      <h3>Kafka consumption and offsets</h3>
+      <ul>
+        <li>One KafkaJS consumer per source, one dedicated consumer group per source (validation refuses a shared group), <code>partitionsConsumedConcurrently: 1</code>, auto-commit and auto-resolve off.</li>
+        <li>On a bad record the adapter pauses <em>every</em> topic of the source and seeks back to that offset, so a resume retries the same record. Nothing after it is committed.</li>
+        <li>Startup records "latest" high-water marks before consuming, so a restart doesn't silently skip; out-of-range committed offsets are logged as possible skips.</li>
+        <li>A watchdog marks the source <code>degraded</code> after 12 s without broker activity; status changes push every subscription on that source to <code>stale</code> and back.</li>
+        <li>Sockets are tracked so <code>stop()</code> always releases them; a small KafkaJS 2.2.4 patch fixes an idle timer spin.</li>
+      </ul>
+      <span class="ref">gateway/src/sources/kafka.ts · sources/kafkajs-patch.ts · sources/fixture.ts (deterministic dev source) · runtime/gateway.ts</span>
+    </article>
+
+    <article class="comp">
+      <h3>Typed state and the mapper contract</h3>
+      <ul>
+        <li><code>streamotter.json</code> is a <code>ProjectConfig</code>: connections, sources (<code>kafka</code> or <code>fixture</code>, each with a <code>generation</code>), schemas, channels <code>{version, source, paramsSchema, payloadSchema, handlersRef, delivery: {kind: "state", overflow: "resync"}}</code>, limits, and optional V1.1 <code>failureHandling</code>.</li>
+        <li>Schemas use a deliberately small JSON Schema dialect: string, number, integer, boolean, null, bounded arrays, closed objects.</li>
+        <li><code>ChannelContract&lt;Params, Data, Version&gt;</code> types both ends: your <code>HandlerRegistry</code> on the server and <code>createClient&lt;AppChannels&gt;()</code> in the browser.</li>
+        <li>Revisions are decimal strings compared by length, then lexically, so they never lose precision.</li>
+        <li>Validation is structural only. It never resolves secrets or connects to brokers, and keys for future features (history, replay, schemaRegistry…) get an explicit "not in V1" message.</li>
+      </ul>
+      <span class="ref">contracts/src/types.ts · config.ts · schema.ts · primitives.ts · gateway/src/index.ts (defineProject, createGateway)</span>
+    </article>
+
+    <article class="comp">
+      <h3>Access control</h3>
+      <ul>
+        <li>The handshake checks the exact <code>Origin</code> against <code>allowedOrigins</code> (in production a missing <code>Origin</code> header is refused; development allows it), takes only <code>{token, protocolVersion}</code>, caps the token at 8 KiB and connections at <code>maxConnections</code>.</li>
+        <li>Your <code>authenticate</code> returns a <code>Principal</code> <code>{subject, tenantId, sessionId, expiresAt, claims}</code> or null. The session closes itself at <code>expiresAt</code>.</li>
+        <li>Your <code>authorize</code> runs per subscription, and again just before the snapshot is sent.</li>
+        <li>The tenant in the routing key is the verified one, so a row mapped for tenant A can only reach tenant A's subscriptions.</li>
+        <li><code>gateway.revoke()</code> closes by session, subject or channel. A sequence-numbered <code>RevocationLog</code> also catches revocations that land mid-handshake or mid-snapshot.</li>
+      </ul>
+      <span class="ref">gateway/src/runtime/gateway.ts · runtime/identity.ts · runtime/session.ts · runtime/subscription.ts</span>
+    </article>
+
+    <article class="comp">
+      <h3>Browser delivery and reconnects</h3>
+      <ul>
+        <li>The SDK owns one connection at a time and turns off Socket.IO's own reconnection; it subscribes again only after an authenticated <code>so:hello</code>.</li>
+        <li>Reconnect delay is full jitter: a random wait up to <code>min(30 s, 500 ms × 2ⁿ)</code>, and only while subscriptions exist.</li>
+        <li>A refused handshake (<code>UNAUTHENTICATED</code>, <code>FORBIDDEN</code>, <code>INVALID_REQUEST</code>, <code>UNSUPPORTED_CAPABILITY</code>) or a non-retryable <code>UNAUTHENTICATED</code> such as a revocation suspends in <code>auth-required</code> until your app calls <code>reconnect()</code>. An expired session reconnects promptly.</li>
+        <li>30 s before the token expires it opens a fresh connection with a new <code>getToken()</code> and swaps it in. If the identity key changes (account switch) every subscription is closed so one user's view never carries over.</li>
+        <li>Control requests time out after 5 s and are never buffered while offline.</li>
+        <li>In React (new in 1.0), <code>useSubscription</code> holds one of these subscriptions for as long as a component is mounted. It reports the subscription's state unchanged and keeps the last data while <code>stale</code>.</li>
+      </ul>
+      <span class="ref">client/src/client.ts · client/src/connection.ts · contracts/src/protocol.ts (timings) · client/src/react.ts (PR #73)</span>
+    </article>
+
+    <article class="comp">
+      <h3>Backpressure</h3>
+      <ul>
+        <li>A three-level byte budget: subscription (1 MiB, 100 frames) inside connection (4 MiB) inside gateway (64 MiB). A reservation must fit every level.</li>
+        <li>One frame in flight per subscription, released by the browser's receipt; no receipt in 5 s closes the connection.</li>
+        <li>Overflow never blocks Kafka. It invalidates that subscription's epoch, which goes <code>stale</code> and re-snapshots.</li>
+        <li>A socket whose unread output passes the connection budget is force-closed. Control messages are rate-limited (20/s token bucket) and size-capped.</li>
+        <li>What does slow Kafka: your <code>map()</code> and records on one source run in series (inferred consequence of the one-at-a-time design).</li>
+      </ul>
+      <span class="ref">gateway/src/runtime/budget.ts · runtime/subscription.ts · runtime/session.ts · contracts/src/limits.ts</span>
+    </article>
+
+    <article class="comp">
+      <h3>Failure handling <span class="tag v11">V1.1</span></h3>
+      <ul>
+        <li>Without <code>failureHandling</code>, a bad record pauses its source until someone calls <code>resumeSource()</code>, which retries it (V1 behavior).</li>
+        <li>Nine failure classes. Only <code>invalid-json</code> and <code>payload-schema</code> may be quarantined; mapper errors, routing errors, conflicts, tombstones and oversize records always hold. There is no skip policy.</li>
+        <li>Policies per source: <code>pause</code>, <code>quarantine-hold</code> (keep a verified copy, stay paused), <code>quarantine-resync</code> (copy, then try to continue).</li>
+        <li>Continuing requires an acknowledged quarantine write, a closed circuit breaker (it trips after five distinct incidents are advanced automatically within 60 s by default: <code>automaticAdvanceLimit: { incidents: 5, windowMs: 60000 }</code>), and your recovery guard saying "recoverable". The journal records a recovery boundary first; from then on every snapshot must acknowledge it. Then <code>advancePast()</code> commits <code>offset + 1</code>, reads it back and resumes. Any doubt leaves the record held.</li>
+        <li>The journal is one SQLite file under <code>stateDirectory</code>: WAL with full sync, one transaction per change, an exclusive OS lock. When full it refuses writes; it never evicts.</li>
+        <li><code>/health/live</code> answers ok while the process serves; <code>/health/ready</code> answers 503 with reason categories (starting, source-held, source-unavailable, journal, quarantine), never topic names.</li>
+      </ul>
+      <span class="ref">contracts/src/failures.ts · gateway/src/failures/service.ts · failures/journal.ts · failures/quarantine.ts · failures/rebaseline.ts · sources/kafka.ts · runtime/health.ts</span>
+    </article>
+
+    <article class="comp">
+      <h3>Operator and management APIs</h3>
+      <ul>
+        <li><code>OperatorApi</code> has ten operations: status, listFailures, showFailure, exportFailure, retryCurrent, reassess, reopenCircuit, retireBoundary, evaluate, redrive. Every change carries an expected revision and is recorded as an operation in the journal.</li>
+        <li><code>evaluate</code> dry-runs the stored original bytes through the same <code>#prepare</code> as live traffic and returns a plan with a hash of the outputs. <code>redrive</code> re-runs it under the source lock and admits only if the hash still matches. It never commits or seeks.</li>
+        <li>Reached in-process (<code>getGatewayOperator</code>) or over a Unix socket at <code>&lt;stateDir&gt;/run/operator.sock</code>: a token file, one JSON line per connection, rate-limited.</li>
+        <li>The management HTTP API (<code>/management/v1</code>, default port 7401) is development-only: loopback, per-run bearer token, no CORS. <code>createManagementHandler</code> lets a host mount it behind its own session.</li>
+      </ul>
+      <span class="ref">contracts/src/operator.ts · gateway/src/operator/service.ts · operator/ipc.ts · runtime/gateway.ts · management/index.ts · management/router.ts</span>
+    </article>
+
+    <article class="comp">
+      <h3>Codegen and the CLI</h3>
+      <ul>
+        <li><code>streamotter init</code> scaffolds a project; <code>validate</code> runs the contracts validator.</li>
+        <li><code>generate</code> writes <code>streamotter.generated.ts</code> (a TypeScript type per schema, the <code>AppChannels</code> map and <code>channelVersions</code>) and a client example, stamped with the config's SHA-256 so drift is visible. It picks <code>@streamotter/*</code> or <code>streamotter/*</code> imports from your package.json.</li>
+        <li><code>dev</code> imports your handlers module, starts a development gateway, the management server and the workbench. <code>start</code> runs production, which refuses fixture sources and plaintext Kafka.</li>
+        <li>Operator commands talk to <code>run/operator.sock</code>, with exit codes 0 ok, 1 failed, 2 invalid, 3 refused, 4 unknown outcome.</li>
+      </ul>
+      <span class="ref">cli/src/cli.ts · cli/src/generate.ts · cli/src/templates.ts · cli/src/operator.ts · gateway/src/runtime/gateway.ts</span>
+    </article>
+
+    <article class="comp">
+      <h3>The workbench app</h3>
+      <ul>
+        <li>A vanilla TypeScript SPA, bundled by esbuild into one ES module with a strict CSP, no inline script and no <code>eval</code>.</li>
+        <li>Tabs: Connect (source diagnostics), Define (edit and validate candidate config), Preview (a real <code>@streamotter/client</code> subscription as a development principal, using a 5-minute preview token), Inspect (payload-free traces), Failures (V1.1 incidents and actions), Export (canonical <code>streamotter.json</code>).</li>
+        <li>It discovers what the host offers via <code>GET …/workbench</code> and greys out the rest, so the same assets run under <code>streamotter dev</code> or on your own site (WHC-1, the contract Lontra Creek's planned hosted sandbox is built against).</li>
+        <li>Retiring a recovery boundary is deliberately CLI-only.</li>
+      </ul>
+      <span class="ref">apps/workbench/src/main.ts · views/preview.ts · views/failures.ts · host.ts · build.mjs · docs/releases/v1.1/WORKBENCH_HOST_CONTRACT.md</span>
+    </article>
+
+    <article class="comp">
+      <h3>Traces and tests</h3>
+      <ul>
+        <li>Every stage (source, validate, map, authorize, snapshot, queue, send, receipt, commit) writes a payload-free trace into a bounded ring buffer (10,000 entries, 8 MiB) that the workbench's Inspect tab pages through.</li>
+        <li>Tests: 12 unit files under <code>packages/*/test</code>, and 58 under <code>tests/</code> split into integration, real Kafka (single and replicated), load, browser (Playwright), deploy and install suites.</li>
+      </ul>
+      <span class="ref">gateway/src/runtime/traces.ts · contracts/src/types.ts (TraceStage) · package.json scripts · tests/</span>
+    </article>
+
+  </div>
+</section>
+
+<section id="limits">
+  <div class="section-head">
+    <span class="eyebrow">Scope</span>
+    <h2>What it deliberately doesn't do</h2>
+    <p>The config validator names these as future work and rejects them with a clear message. They describe the edges of the current design.</p>
+  </div>
+  <div class="notdo">
+    <div><b>No history or replay.</b> Delivery is current state only; retained event channels (<code>delivery.kind: "events"</code>), recovery cursors and replay are V2.</div>
+    <div><b>One gateway process.</b> Multiple gateways or a cluster are V2; there is one Kafka connection profile per project.</div>
+    <div><b>JSON only.</b> One codec; Schema Registry integration is V2.</div>
+    <div><b>Read-only to Kafka.</b> Commands (browser to Kafka) are V3. The only V1.1 write is the quarantine topic.</div>
+    <div><b>One transport.</b> Socket.IO over WebSocket.</div>
+    <div><b>No skip button.</b> No ignore or discard policy exists; moving past a record always needs quarantined evidence or an explicit operator action.</div>
+  </div>
+  <p class="ref">contracts/src/config.ts (DEFERRED_FEATURES) · contracts/src/failures.ts</p>
+</section>
+
+<section id="inferred">
+  <div class="section-head">
+    <span class="eyebrow">Confidence</span>
+    <h2>What's inferred rather than read</h2>
+    <p>Everything above with a file reference was read in the code at 1c75aaa, except the React hooks, which were read on PR #73 at e919cc0. These points are my interpretation.</p>
+  </div>
+  <div class="inferred">
+    <ul>
+      <li><b>No durable channel state in the gateway.</b> I found no store of channel data in <code>runtime/</code>: only per-subscription queues, the trace ring buffer and the V1.1 failure journal. Snapshots always come from your handler.</li>
+      <li><b>Why the offset commit doesn't wait for browser delivery.</b> The order is in the code; the reason (full-state frames plus re-snapshot make browser loss harmless) is my reading of the design.</li>
+      <li><b>Throughput shape.</b> One record at a time per source, awaited through every <code>map()</code>, means the slowest mapper sets a source's pace. That follows from the code but I didn't measure it.</li>
+      <li><b>Line counts</b> are <code>wc -l</code> over each package's <code>src/*.ts</code>, comments included.</li>
+    </ul>
+  </div>
+</section>
+
+<aside class="next-step" aria-label="Before you continue">
+  <span class="eyebrow">Before part 2</span>
+  <p><b>See it run first.</b> Before reading the code, spend ten minutes on the <a href="5-using-and-running-it.html#first">first run in part 5</a>. You'll scaffold a project, open the workbench, watch a fixture record travel to a browser page, and stop the gateway to see the page turn <code>stale</code>, then reload it after a restart. Then continue with <a href="2-how-its-built.html">part 2, How it's built</a>.</p>
+</aside>
+
+<nav class="pager" aria-label="Next page"><a href="2-how-its-built.html"><span class="eyebrow">Next</span><b>2 How it's built →</b></a></nav>
+
+<footer><nav aria-label="All pages"><ol class="pagelist"><li><a href="index.html">Introduction</a></li><li><span aria-current="page">1 How it works</span></li><li><a href="2-how-its-built.html">2 How it's built</a></li><li><a href="3-why-its-built-this-way.html">3 Why it's built this way</a></li><li><a href="4-guarantees-and-limits.html">4 Guarantees and limits</a></li><li><a href="5-using-and-running-it.html">5 Using and running it</a></li></ol></nav></footer>
+
+</div>
+
+</body>
+</html>

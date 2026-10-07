@@ -140,6 +140,8 @@ export interface ApiSymbol {
   typeParameters: ApiTypeParameter[];
   signatures: ApiSignature[];
   members: ApiMember[];
+  /** A union or intersection type alias's documented fields, from the object types it combines. */
+  fields: ApiField[];
   notes: ApiNote[];
   examples: ApiExample[];
   deprecatedHtml: string | null;
@@ -149,6 +151,8 @@ export interface ApiReference { release: string; modules: ApiModule[]; symbols: 
 
 export interface BuildOptions {
   release: string;
+  /** The import paths to document, in order; by default every one in modules.ts. */
+  modules?: readonly ApiModuleInfo[];
   /** Maps a declaration's source file (as TypeDoc reports it) to a page on GitHub, or null. */
   sourceUrl?: (fileName: string, line: number) => string | null;
 }
@@ -176,8 +180,9 @@ const anchorFor = (name: string) => `member-${name.replace(/[^\w-]+/g, "-").repl
 
 /** Builds the reference. Throws when the model lacks an import path the site documents. */
 export function buildApiReference(project: TdProject, options: BuildOptions): ApiReference {
+  const documented = options.modules ?? API_MODULES;
   const byName = new Map((project.children ?? []).map(module => [module.name, module]));
-  for (const info of API_MODULES) {
+  for (const info of documented) {
     if (!byName.has(info.entry)) throw new Error(`API reference: the TypeDoc model has no ${info.entry} entry point for ${info.importPath}.`);
   }
 
@@ -187,7 +192,7 @@ export function buildApiReference(project: TdProject, options: BuildOptions): Ap
   const homes: { info: ApiModuleInfo; declaration: TdReflection; segment: string }[] = [];
   const importPaths = new Map<number, string[]>();
   const anchorsOf = new Map<number, Map<number, string>>();
-  for (const info of API_MODULES) {
+  for (const info of documented) {
     const declared = (byName.get(info.entry)!.children ?? []).filter(child => child.kind !== KIND.Reference && child.kind in KIND_OF);
     const segments = pathSegments(declared);
     for (const child of declared) {
@@ -212,7 +217,7 @@ export function buildApiReference(project: TdProject, options: BuildOptions): Ap
     }
     anchorsOf.set(declaration.id, anchors);
   }
-  for (const info of API_MODULES) {
+  for (const info of documented) {
     for (const child of byName.get(info.entry)!.children ?? []) {
       const id = child.kind === KIND.Reference ? child.target : child.id;
       if (id === undefined || !symbolHref.has(id)) continue;
@@ -227,7 +232,7 @@ export function buildApiReference(project: TdProject, options: BuildOptions): Ap
     renderSymbol(ctx, info, declaration, segment, importPaths.get(declaration.id) ?? [info.importPath], anchorsOf.get(declaration.id)!));
   const bySymbolId = new Map(homes.map(({ declaration }, index) => [declaration.id, symbols[index]!]));
 
-  const modules = API_MODULES.map(info => {
+  const modules = documented.map(info => {
     const exports: ApiExport[] = [];
     for (const child of byName.get(info.entry)!.children ?? []) {
       const id = child.kind === KIND.Reference ? child.target : child.id;
@@ -300,6 +305,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
   let codeHtml: string | null = null;
   let signatures: ApiSignature[] = [];
   let members: ApiMember[] = [];
+  let fields: ApiField[] = [];
   if (kind === "function") {
     signatures = (declaration.signatures ?? []).map(signature => renderSignature(ctx, signature, `function ${declaration.name}`, signature === declaration.signatures?.[0] && declaration.comment === undefined));
   } else if (kind === "variable") {
@@ -310,6 +316,9 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
     const objectLike = (target === undefined && (declaration.children?.length ?? 0) > 0) ||
       (target?.type === "reflection" && (target.declaration?.children?.length ?? 0) > 0 && !(target.declaration?.signatures?.length));
     codeHtml = `<span class="kw">type</span> ${escapeHtml(declaration.name)}${typeParametersHtml(ctx, declaration.typeParameters)} = ${objectLike ? "{ … }" : typeHtml(ctx, target, { block: true })}`;
+    // A union or intersection of object types (Schema, StreamOtterProviderProps) shows in full above;
+    // its fields' doc comments are listed under it.
+    if (target?.type === "union" || target?.type === "intersection") fields = fieldDocs(ctx, target, "");
     // A function type's code is already the declaration; its signature is listed only for what it documents.
     if (target?.type === "reflection" && target.declaration?.signatures?.length) {
       signatures = target.declaration.signatures.map(signature => renderSignature(ctx, signature, null, false))
@@ -358,6 +367,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
     typeParameters: kind === "function" ? [] : typeParameterDocs(ctx, declaration.typeParameters),
     signatures,
     members,
+    fields,
     notes: doc.notes,
     examples: doc.examples,
     deprecatedHtml: doc.deprecated,

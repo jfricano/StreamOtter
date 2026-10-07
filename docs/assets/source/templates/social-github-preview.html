@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/github-social-preview.png">
+<meta name="size" content="1280x640">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<script src="social-motifs.js"></script>
+<style>
+  .lockup { left: 84px; top: 92px; width: 400px; }
+  .copy { left: 560px; top: 104px; width: 660px; }
+  .head { font-size: 60px; }
+  .cmd { margin-top: 34px; --cmd: 27px; }
+</style></head>
+<body><div class="stage dark">
+  <svg class="art" id="art"></svg>
+  <img class="layer lockup logo" src="../../streamotter-lockup-stacked-dark.svg" alt="StreamOtter">
+  <div class="layer copy">
+    <div class="head">Live state from Kafka to&nbsp;the&nbsp;browser. <em>Never silently wrong.</em></div>
+    <div class="cmd"><b>$</b>npm install streamotter</div>
+  </div>
+</div>
+<script>
+  const W = 1280, H = 640;
+  const c = SO.creek(W, H, { top: 530, rise: 50, seed: 5, scale: 0.9, streams: 2,
+    ticksAt: [850, 950, 1050], tickSize: 17, chipState: "live", chipSize: 17 });
+  SO.paint(document.getElementById("art"),
+    SO.texture(W, H, { rows: 7, y0: 20, y1: 470, opacity: 0.045 }) + c.svg);
+</script>
+</body></html>

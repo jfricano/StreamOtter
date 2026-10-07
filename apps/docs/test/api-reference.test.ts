@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { loadApiReference, sourceUrlFor } from "../integrations/api-reference.mjs";
+import { documentedModules, loadApiReference, sourceUrlFor } from "../integrations/api-reference.mjs";
 import { buildApiReference, KIND, type ApiReference, type TdProject, type TdReflection } from "../src/api-reference/build.ts";
 import { API_MODULES, API_ROOT } from "../src/api-reference/modules.ts";
 import { RELEASE } from "../src/site.ts";
@@ -126,16 +126,42 @@ describe("buildApiReference", () => {
     assert.equal(strip(member("[BRAND]").codeHtml), "readonly [BRAND]: true");
     assert.deepEqual(member("options").fields.map(field => [field.name, strip(field.codeHtml)]), [["port", "port?: number"]]);
   });
+
+  test("a union or intersection alias lists its documented fields; an undocumented `?: never` adds none", () => {
+    const object = (id: number, children: TdReflection[]) => ({ type: "reflection" as const, declaration: { id, name: "__type", kind: KIND.TypeLiteral, children } });
+    const reference = buildApiReference(model([{
+      id: 1, name: "Props", kind: KIND.TypeAlias,
+      type: { type: "intersection", types: [
+        object(2, [{ id: 3, name: "children", kind: KIND.Property, flags: { isOptional: true }, comment: text("The children."), type: { type: "intrinsic", name: "unknown" } }]),
+        { type: "union", types: [
+          object(4, [
+            { id: 5, name: "client", kind: KIND.Property, comment: text("A client you manage."), type: { type: "intrinsic", name: "unknown" } },
+            { id: 6, name: "options", kind: KIND.Property, flags: { isOptional: true }, type: { type: "intrinsic", name: "never" } }
+          ]),
+          object(7, [{ id: 8, name: "options", kind: KIND.Property, comment: text("Options for a managed client."), type: { type: "intrinsic", name: "string" } }])
+        ] }
+      ] }
+    }]), { release: "1.2.3" });
+    const strip = (html: string) => html.replace(/<[^>]*>/g, "");
+    assert.deepEqual(reference.symbols[0]!.fields.map(field => strip(field.codeHtml)), ["children?: unknown", "client: unknown", "options: string"]);
+  });
 });
 
 describe("the reference for the workspace's streamotter package", () => {
   let reference: ApiReference;
   before(async () => { reference = await loadApiReference(); });
 
-  test("documents every entry point the package exports", async () => {
+  test("documents every entry point the package exports, and only those", async () => {
     const manifest = (await import("streamotter/package.json", { with: { type: "json" } })).default as { exports: Record<string, unknown> };
     const exported = Object.keys(manifest.exports).filter(path => path !== "./package.json").map(path => `streamotter${path.slice(1)}`);
-    assert.deepEqual([...exported].sort(), API_MODULES.map(module => module.importPath).sort(), "add the new entry point to src/api-reference/modules.ts");
+    assert.deepEqual(reference.modules.map(module => module.importPath).sort(), [...exported].sort());
+  });
+
+  test("an exported entry point that modules.ts doesn't describe fails the build", () => {
+    const installed = { dir: "", version: "1.2.3", exports: ["./client", "./brand-new", "./package.json"], require: () => undefined };
+    assert.throws(() => documentedModules(installed as never), /describe streamotter\/brand-new in src\/api-reference\/modules\.ts/);
+    installed.exports = ["./client", "./contracts"];
+    assert.deepEqual(documentedModules(installed as never).map(module => module.slug), ["client", "contracts"]);
   });
 
   test("describes the package version the site documents", () => {

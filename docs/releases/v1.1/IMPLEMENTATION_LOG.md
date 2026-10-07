@@ -12,7 +12,7 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
 - slice C, PR #16 (`feat/v1.1-guarded-continuation`, on #15), which includes `feat/v1.1-recovery-store`;
 - slice D, PR #17 (`feat/v1.1-operator`, on #16), which merges PR #14 and four helper branches;
 - slice E, PR #18 (`feat/v1.1-operations-release`, on #17), which merges `feat/v1.1-docs-runbook`, `feat/v1.1-reference-guard` and `feat/v1.1-replicated-kafka`;
-- the review fixes, PR #19 (`feat/v1.1-review-fixes`, on #18), which fix the [independent review](./REVIEW.md)'s findings in #13 to #18.
+- the review fixes, PR #19 (`feat/v1.1-review-fixes`, on #18), which fix the [code review](./REVIEW.md)'s findings in #13 to #18.
 
 **Next step:** the owner reviews and merges the stack in order, ending with the review fixes, retargeting each PR to `main` as its base merges. Then CI runs the extended tiers on `main`, and the owner decides on publishing; the [acceptance packet](./ACCEPTANCE_PACKET.md) recommends `0.2.0-rc.1`. Nothing is published, tagged or deployed without the owner's go. Tell the Lontra Creek thread when PR #14 merges and when a release is published.
 
@@ -240,7 +240,7 @@ This is the working record for the V1.1 build: what was decided, what ran, what 
   - The status fields `store.durable`, `openIncidents`, `circuit.reason` and `quarantine.topic` are not described in the API draft. (Fixed by the review fixes, S3.)
   - F45 (Firefox and WebKit) needs browsers this environment can't install.
 
-### October 4, 2026 — independent review and fixes, branch `feat/v1.1-review-fixes`
+### October 4, 2026 — code review and fixes, branch `feat/v1.1-review-fixes`
 
 - **Review.** Six reviewers, none of whom wrote the code, each took one area of #12–#18 and proved each finding with a scratch test: 13 major and 22 minor findings. R1, A, B, O3, O4 and J2 were reproduced a second time before fixing. The findings, the fix commit for each and its regression test are in [REVIEW.md](./REVIEW.md).
 - **Fixes.** Six fixers worked in parallel in their own worktrees, each limited to its own files, on branches `fix/review-runtime`, `fix/review-journal`, `fix/review-surfaces`, `fix/review-operator`, `fix/review-workbench` and `fix/review-advance`. Each branch was merged into `feat/v1.1-review-fixes` as a merge commit. One commit per finding, each with a regression test that failed before the fix. J7 (fixture evidence never deleted) is not fixed; it is listed as a limitation.

@@ -1,7 +1,8 @@
 import {
-  isWorkbenchOperation, PRE_WHC1_NATIVE_OPERATIONS, WORKBENCH_HOST_CONTRACT, WORKBENCH_MOUNT_ELEMENT_ID,
-  type WorkbenchHostConfigIssue, type WorkbenchOperation
+  isWorkbenchOperation, WORKBENCH_HOST_CONTRACT, WORKBENCH_MOUNT_ELEMENT_ID, type WorkbenchHostConfigIssue,
+  type WorkbenchOperation
 } from "@streamotter/contracts";
+import { PRE_WHC1_NATIVE_OPERATIONS } from "@streamotter/contracts/internal";
 import { ApiError, ManagementApi, type ApiAuth } from "./api.ts";
 import { h, pill, replace, UNAVAILABLE_TEXT } from "./dom.ts";
 import { readBoot, WORKBENCH_VERSION, type HostSettings } from "./host.ts";

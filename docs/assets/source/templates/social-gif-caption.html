@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/gif-caption.png">
+<meta name="size" content="1200x80">
+<!-- Caption strip to sit under the "Drop my connection" GIF from the streamotter.dev home page.
+     Before publishing, set DATE below and re-render: node render.mjs social-gif-caption -->
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<style>
+  .bar { position: absolute; inset: 0; background: var(--ink); border-top: 2px solid var(--panel-line);
+    display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 32px;
+    font: 500 22px/1 var(--mono); color: var(--whisker); white-space: nowrap; }
+  .bar b { color: var(--light-ink); font-weight: 600; }
+  .seq { display: flex; align-items: center; gap: 10px; }
+  .chip { font: 600 20px/1 var(--mono); padding: 7px 12px 7px 26px; border-radius: 999px; position: relative; }
+  .chip::before { content: ""; position: absolute; left: 11px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: currentColor; }
+  .live { color: var(--live); background: var(--live-bg); }
+  .stale { color: var(--stale); background: var(--stale-bg); }
+  .arrow { color: var(--whisker); font-size: 20px; }
+</style></head>
+<body>
+<div class="bar">
+  <span id="label"></span>
+  <span class="seq" aria-label="live, then stale, then live">
+    <span class="chip live">live</span><span class="arrow">→</span><span class="chip stale">stale</span><span class="arrow">→</span><span class="chip live">live</span>
+  </span>
+</div>
+<script>
+  const DATE = "2026-10-XX";
+  document.getElementById("label").innerHTML = `Recording · <b>${DATE}</b> · <b>streamotter.dev</b>`;
+</script>
+</body></html>

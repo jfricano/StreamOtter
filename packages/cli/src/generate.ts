@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { assertValidProjectConfig, canonicalJson, MAX_CONFIG_DEPTH, type ProjectConfig, type Schema } from "@streamotter/contracts";
+import { assertValidProjectConfig, canonicalJson, type ProjectConfig, type Schema } from "@streamotter/contracts";
+import { MAX_CONFIG_DEPTH } from "@streamotter/contracts/internal";
 
 /**
  * The first line of every file {@link generateFiles} produces. `streamotter generate` overwrites

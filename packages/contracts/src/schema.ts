@@ -1,5 +1,5 @@
 import { canonicalJson, codePointLength, isPlainObject, MAX_NESTING_DEPTH } from "./primitives.ts";
-import type { ConfigIssue, Json, Params, Schema } from "./types.ts";
+import type { ConfigIssue, Params, Schema } from "./types.ts";
 
 const KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   string: ["type", "minLength", "maxLength", "enum"],
@@ -269,18 +269,4 @@ export function canonicalizeParams(schema: Schema, params: unknown): CanonicalPa
     });
   }
   return { ok: true, params: normalized, canonical: canonicalJson(normalized) };
-}
-
-/**
- * Returns true when {@link canonicalJson} accepts `value`: finite numbers, strings, booleans, null,
- * arrays and plain objects within {@link MAX_NESTING_DEPTH}. Unlike {@link isJsonValue}, object
- * properties set to `undefined` are accepted, since they are dropped.
- */
-export function isJsonData(value: unknown): value is Json {
-  try {
-    canonicalJson(value);
-    return true;
-  } catch {
-    return false;
-  }
 }

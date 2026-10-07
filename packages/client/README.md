@@ -90,52 +90,52 @@ await client.close();      // closes every subscription and the connection, perm
 
 Unsubscribe when a view unmounts. Close a shared client only when its owning application scope ends.
 
-## React hook pattern
+## React hooks
 
-Create one client per signed-in session and one subscription per mounted component:
+`@streamotter/client/react` (or `streamotter/react`) has a provider and hooks for React 18 or later. React is an optional peer dependency: apps that don't import this subpath don't load it.
 
 ```tsx
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { createClient, type Client, type StreamError, type SubscriptionState } from "@streamotter/client";
-import { channelVersions, type AppChannels, type JobProgress } from "./generated/streamotter.generated.js";
+import { createStreamOtterHooks, StreamOtterProvider } from "@streamotter/client/react";
+import { channelVersions, type AppChannels } from "./generated/streamotter.generated.js";
 
-const ClientContext = createContext<Client<AppChannels> | null>(null);
+// Once: the hooks typed for your generated channels.
+export const { useSubscription, useConnectionState } = createStreamOtterHooks<AppChannels>();
 
-export function StreamOtterProvider({ getToken, children }: { getToken: () => Promise<string>; children: ReactNode }) {
-  // Create the client in the effect that closes it. close() is permanent, and React StrictMode runs
-  // effects twice in development, so a client from useMemo would be closed and then reused.
-  const [client, setClient] = useState<Client<AppChannels> | null>(null);
-  useEffect(() => {
-    const created = createClient<AppChannels>({ getToken });
-    setClient(created);
-    return () => {
-      setClient(null);
-      void created.close();
-    };
-  }, [getToken]);
-  return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
+// At the root. The provider creates the client after mounting and closes it on unmount.
+// A new key for a new signed-in user gives that user a new client.
+type Session = { userId: string; token(): Promise<string> };
+export function App({ session }: { session: Session }) {
+  return (
+    <StreamOtterProvider key={session.userId} options={{ getToken: () => session.token() }}>
+      <JobCard jobId="job_1" />
+    </StreamOtterProvider>
+  );
 }
 
-export function useJobProgress(jobId: string) {
-  const client = useContext(ClientContext);
-  const [data, setData] = useState<JobProgress | null>(null);
-  const [state, setState] = useState<SubscriptionState>("idle");
-  const [error, setError] = useState<StreamError | null>(null);
-  useEffect(() => {
-    if (client === null) return;
-    setData(null);
-    setError(null);
-    const job = client.subscribe("jobProgress", { channelVersion: channelVersions.jobProgress, params: { jobId } });
-    const offData = job.on("data", event => setData(event.data));
-    const offState = job.on("state", change => setState(change.state));
-    const offError = job.on("error", setError);
-    return () => { offData(); offState(); offError(); void job.unsubscribe(); };
-  }, [client, jobId]);
-  return { data, state, error, live: state === "live" };
+function JobCard({ jobId }: { jobId: string }) {
+  const { data, revision, state, live, error, resync } = useSubscription("jobProgress", {
+    channelVersion: channelVersions.jobProgress,
+    params: { jobId }
+  });
+  if (error?.code === "FORBIDDEN") return <p>You don't have access to this job.</p>;
+  if (data === undefined) return <p>Loading…</p>;
+  return (
+    <section className={live ? "" : "stale"}>
+      {data.state} · {data.percent}% · revision {revision} {live ? "" : `(${state})`}
+      {state === "resync-required" && <button onClick={() => void resync()}>Refresh</button>}
+    </section>
+  );
 }
 ```
 
-Pass a stable `getToken` (for example from `useCallback`) so the client is not recreated on every render. The [reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard) has vanilla TypeScript and React versions of this pattern, including denied access and reconnection.
+- **`StreamOtterProvider`** takes `options` (it creates and closes the client; `getToken` is read from the latest render, so an inline function is fine; a new `origin` or `path` replaces the client) or `client` (one you create and close yourself; `null` while there is none, for example before sign-in).
+- **`useSubscription(channel, options)`** subscribes while the component is mounted and unsubscribes on unmount, or when the channel, version, param values, or client change. A new `params` object with the same values keeps the subscription. Pass `null` to wait (for example, until an id is known). It returns `data` and `revision` (kept while `stale`, so render them as last known; cleared when the subscription changes), `state`, `live`, `error` (the latest error, cleared when the subscription is `live` again), and `resync()`.
+- **`useConnectionState()`** returns the client's connection state, and **`useClient()`** the client itself (for `reconnect()`), or `null` before the provider has one.
+- Hooks subscribe in effects, so nothing connects during server rendering, and React StrictMode's development double mount leaves exactly one subscription per component. The hooks add no caching or retries: two components that subscribe to the same channel and params are two subscriptions, as with `subscribe`.
+- Without the factory, `useSubscription`, `useConnectionState` and `useStreamOtterClient` are exported directly, typed against a generic channel map. `SubscriptionOptions<AppChannels, "jobProgress">` names the type of the options argument, for wrappers around `useSubscription`.
+- Hooks used outside a `StreamOtterProvider` throw a `StreamOtterError` with code `INVALID_REQUEST`, as do `options` without a `getToken` function or without a numeric `channelVersion` and a params object. While the client is closed (for example, one your app closed before replacing it), a subscription hook renders `"idle"` rather than subscribing.
+
+The [reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard) has a React page built on these hooks, including denied access.
 
 ## Documentation
 

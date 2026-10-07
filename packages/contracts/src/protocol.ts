@@ -7,11 +7,6 @@ import type { Capabilities } from "./types.ts";
 export const PROTOCOL_VERSION = 1 as const;
 /** Default Socket.IO HTTP path, `/streamotter/socket.io`. The SDK uses it when `ClientOptions.path` is not set. */
 export const DEFAULT_SOCKET_PATH = "/streamotter/socket.io";
-/**
- * Conventional gateway port (7400), used by the StreamOtter examples and the project that
- * `streamotter init` creates. The gateway listens on the `gateway.port` of its configuration.
- */
-export const DEFAULT_GATEWAY_PORT = 7400;
 /** Default port (7401) of the development management server, which serves the management API and the workbench. */
 export const DEFAULT_MANAGEMENT_PORT = 7401;
 

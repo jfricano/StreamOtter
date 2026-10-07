@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import ts from "typescript";
+import { entryPoints } from "./entries.ts";
 
 // streamotter.dev generates its API reference from these doc comments, so every public export and
 // every member of an exported interface, class, or object type needs one. `@internal` opts a
@@ -9,8 +10,7 @@ import ts from "typescript";
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const PACKAGES = `${ROOT}packages/`;
-// Contracts first, so a shared symbol is reported under the entry point that declares it.
-const ENTRIES = ["contracts", "client", "gateway", "operator", "management", "cli"];
+const ENTRIES = entryPoints();
 
 function program(): ts.Program {
   const config = ts.getParsedCommandLineOfConfigFile(`${ROOT}tsconfig.check.json`, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: diagnostic => assert.fail(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")) });
@@ -39,7 +39,9 @@ function members(symbol: ts.Symbol, checker: ts.TypeChecker): { name: string; sy
     return [...own, ...statics].map(member => ({ name: member.escapedName === "__constructor" ? "constructor" : member.name, symbol: member }));
   }
   if (ts.isTypeAliasDeclaration(declaration)) {
+    // `client?: never` only makes a union's variants exclusive; it has nothing to describe.
     return typeLiterals(declaration.type).flatMap(literal => literal.members.flatMap(member => {
+      if (ts.isPropertySignature(member) && member.type?.kind === ts.SyntaxKind.NeverKeyword) return [];
       const memberSymbol = member.name === undefined ? undefined : checker.getSymbolAtLocation(member.name);
       return memberSymbol === undefined ? [] : [{ name: memberSymbol.name, symbol: memberSymbol }];
     }));
@@ -48,11 +50,9 @@ function members(symbol: ts.Symbol, checker: ts.TypeChecker): { name: string; sy
 }
 
 describe("API documentation", () => {
-  it("checks every entry point the package exports", async () => {
-    const manifest = (await import("../package.json", { with: { type: "json" } })).default as { exports: Record<string, unknown> };
-    const exported = Object.keys(manifest.exports).filter(path => path !== "./package.json")
-      .map(path => (manifest.exports[path] as Record<string, string>)["streamotter-source"]!.replace(/^\.\/src\/|\.ts$/g, ""));
-    assert.deepEqual([...exported].sort(), [...ENTRIES].sort(), "add the new entry point to ENTRIES here and to apps/docs/src/api-reference/modules.ts");
+  it("checks every entry point the package exports, contracts first", () => {
+    assert.equal(ENTRIES[0], "contracts");
+    assert.ok(ENTRIES.includes("client") && ENTRIES.includes("gateway"), ENTRIES.join(", "));
   });
 
   it("every public export of the streamotter entry points has a doc comment, and so does each member", () => {

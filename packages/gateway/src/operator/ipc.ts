@@ -3,10 +3,13 @@ import { chmodSync, closeSync, constants, fchmodSync, fstatSync, fsyncSync, lsta
 import { createConnection, createServer, type Socket } from "node:net";
 import { join } from "node:path";
 import {
-  asStreamOtterError, isOperatorOperation, isPlainObject, isStreamError, OPERATOR_IPC_MAX_REQUEST_BYTES, OPERATOR_IPC_VERSION, OPERATOR_SOCKET_FILE,
-  OPERATOR_TOKEN_FILE, StreamOtterError, toStreamError, validateOperatorRequest,
-  type GatewayLogger, type Json, type OperatorApi, type OperatorIpcResponse, type OperatorOperation, type OperatorRequests, type StreamError
+  isStreamError, StreamOtterError, type GatewayLogger, type Json, type OperatorApi, type OperatorOperation,
+  type OperatorRequests, type StreamError
 } from "@streamotter/contracts";
+import {
+  asStreamOtterError, isOperatorOperation, isPlainObject, OPERATOR_IPC_MAX_REQUEST_BYTES, OPERATOR_IPC_VERSION,
+  OPERATOR_SOCKET_FILE, OPERATOR_TOKEN_FILE, toStreamError, validateOperatorRequest, type OperatorIpcResponse
+} from "@streamotter/contracts/internal";
 import { RUN_DIRECTORY } from "../failures/journal.ts";
 
 /**

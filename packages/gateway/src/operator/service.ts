@@ -1,12 +1,14 @@
 import { randomBytes } from "node:crypto";
 import {
-  PLAN_TTL_MS, QUARANTINE_ELIGIBLE_CLASSES, StreamOtterError, validateOperatorRequest,
-  type EvaluateRequest, type EvaluationResult, type ExportFailureRequest, type FailureClass, type Gateway, type GatewayLogger,
-  type IncidentDetail, type IncidentNextAction, type IncidentSummary, type Json, type ListFailuresRequest, type OperationResult,
+  PLAN_TTL_MS, QUARANTINE_ELIGIBLE_CLASSES, StreamOtterError, type EvaluateRequest, type EvaluationResult,
+  type ExportFailureRequest, type FailureClass, type Gateway, type GatewayLogger, type IncidentDetail,
+  type IncidentNextAction, type IncidentSummary, type Json, type ListFailuresRequest, type OperationResult,
   type OperatorApi, type OperatorSourceStatus, type OperatorStatus, type Page, type ProjectConfig, type RawEvidenceView,
-  type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle, type ResolvedSourcePolicy,
-  type RetireBoundaryRequest, type RetryCurrentRequest, type ShowFailureRequest, type SourceRecord, type SourceStatus, type Trace
+  type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle,
+  type ResolvedSourcePolicy, type RetireBoundaryRequest, type RetryCurrentRequest, type ShowFailureRequest,
+  type SourceRecord, type SourceStatus, type Trace
 } from "@streamotter/contracts";
+import { validateOperatorRequest } from "@streamotter/contracts/internal";
 import { evidenceHash } from "../failures/evidence.ts";
 import type { QuarantineReader, QuarantineTopicReport } from "../failures/quarantine.ts";
 import { gatewayVersion, type BoundaryInForce, type FailureService } from "../failures/service.ts";

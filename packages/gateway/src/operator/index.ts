@@ -4,12 +4,11 @@
  * connectOperator. Never exposed to browsers.
  */
 export type {
-  EvaluateRequest, EvaluationResult, ExportFailureRequest, IncidentDetail, IncidentEvent, IncidentSummary, ListFailuresRequest,
-  OperationResult, OperatorApi, OperatorStatus, RawEvidenceView, ReassessRequest, RedriveRequest, ReopenCircuitRequest,
-  ReproductionBundle, RetireBoundaryRequest, RetryCurrentRequest, ShowFailureRequest
+  EvaluateRequest, EvaluationOutput, EvaluationResult, ExportFailureRequest, FailureClass, IncidentDetail,
+  IncidentEvent, IncidentEventName, IncidentNextAction, IncidentProgress, IncidentQuarantine, IncidentRecovery,
+  IncidentSummary, ListFailuresRequest, OperationResult, OperatorApi, OperatorOperation, OperatorRequests,
+  OperatorSourceStatus, OperatorStatus, Page, RawEvidenceView, ReassessRequest, RedriveRequest, ReopenCircuitRequest,
+  ReproductionBundle, RetireBoundaryRequest, RetryCurrentRequest, ShowFailureRequest, SourceStatus, Trace, TraceStage
 } from "@streamotter/contracts";
 export { getGatewayOperator } from "./service.ts";
-export {
-  callOperator, connectOperator, startOperatorSocket,
-  type OperatorClientOptions, type OperatorResult, type OperatorSocket, type OperatorSocketOptions
-} from "./ipc.ts";
+export { callOperator, connectOperator, type OperatorClientOptions, type OperatorResult } from "./ipc.ts";

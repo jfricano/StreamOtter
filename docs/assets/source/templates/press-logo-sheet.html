@@ -1,0 +1,125 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/logo-sheet.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<style>
+  .panels { position: absolute; left: 64px; right: 64px; top: 168px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .panel { border-radius: 20px; padding: 30px 32px 22px; height: 636px; display: flex; flex-direction: column; gap: 24px; }
+  .panel.light { background: #FFFFFF; border: 1.5px solid #D5DEEC; }
+  .panel.dark { background: var(--ink); color: var(--light-ink); }
+  .ptitle { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); font-size: 14px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--azure-text); }
+  .dark .ptitle { color: var(--splash); }
+  .ptitle em { font-style: normal; letter-spacing: .02em; text-transform: none; font-weight: 400; color: #5D6F91; }
+  .dark .ptitle em { color: var(--whisker); }
+  .row { display: flex; justify-content: space-between; align-items: flex-end; }
+  .item { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .cap { font-family: var(--mono); font-size: 12.5px; line-height: 1.45; color: #2B3F66; }
+  .cap b { font-weight: 600; color: var(--ink); }
+  .dark .cap { color: var(--whisker); }
+  .dark .cap b { color: var(--light-ink); }
+  /* clear-space drawing */
+  .cs-zone { position: absolute; inset: 0; border: 1.5px dashed var(--azure-text); background: var(--azure-wash); border-radius: 2px; }
+  .cs-art { position: absolute; outline: 1px solid rgba(3,105,201,.45); }
+  .dark .cs-zone { border-color: var(--splash); background: rgba(4,189,253,.09); }
+  .dark .cs-art { outline-color: rgba(4,189,253,.5); }
+  .cs-dim { position: absolute; }
+  .cs-dim.v { width: 1px; background: var(--azure-text); }
+  .cs-dim.h { height: 1px; background: var(--azure-text); }
+  .cs-dim.v::before, .cs-dim.v::after { content: ""; position: absolute; left: -4px; width: 9px; height: 1px; background: inherit; }
+  .cs-dim.v::before { top: 0; } .cs-dim.v::after { bottom: 0; }
+  .cs-dim.h::before, .cs-dim.h::after { content: ""; position: absolute; top: -4px; height: 9px; width: 1px; background: inherit; }
+  .cs-dim.h::before { left: 0; } .cs-dim.h::after { right: 0; }
+  .cs-dim span { position: absolute; font-family: var(--display); font-size: 13px; font-weight: 800; color: var(--azure-text); line-height: 1; }
+  .cs-dim.v span { left: 6px; top: 50%; transform: translateY(-50%); }
+  .cs-dim.h span { top: 5px; left: 50%; transform: translateX(-50%); }
+  .dark .cs-dim.v, .dark .cs-dim.h { background: var(--splash); }
+  .dark .cs-dim span { color: var(--splash); }
+  /* minimum sizes strip */
+  .mins { position: absolute; left: 64px; right: 64px; top: 828px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .minp { border-radius: 16px; height: 192px; padding: 18px 32px 0; position: relative; }
+  .minp.light { background: var(--azure-wash); }
+  .minp.dark { background: var(--ink); }
+  .minrow { position: absolute; left: 56px; right: 56px; bottom: 66px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .minrow > div { position: relative; display: flex; flex-direction: column; align-items: center; flex: none; }
+  .minrow .lbl { position: absolute; top: calc(100% + 16px); white-space: nowrap; text-align: center; font-family: var(--mono); font-size: 12px; line-height: 1.35; color: #2B3F66; }
+  .minrow .lbl b { font-weight: 600; color: var(--ink); }
+  .dark .minrow .lbl b { color: var(--light-ink); }
+  .dark .minrow .lbl { color: var(--whisker); }
+  .minrow img { display: block; }
+</style></head>
+<body>
+<div class="press-head">
+  <div><div class="eyebrow">StreamOtter press kit · 01</div><h1>Logo sheet</h1></div>
+  <div class="note">Clear space: the height of the wordmark’s <b>O</b> around every lockup, and a quarter of the mark’s height (<b>¼h</b>) around the mark alone. Use the files as they are: no recoloring, redrawing, stretching or cropping.</div>
+</div>
+
+<div class="panels">
+  <div class="panel light">
+    <div class="ptitle">On light <em>files without a suffix: white or light-ink backgrounds</em></div>
+    <div class="row">
+      <div class="item"><div id="l-h"></div><div class="cap"><b>lockup-horizontal</b> · the default signature<br>min 120 px wide · clear space: O height</div></div>
+      <div class="item"><div id="l-w"></div><div class="cap"><b>wordmark</b> · rarely<br>min 80 px wide · clear space: O height</div></div>
+    </div>
+    <div class="row">
+      <div class="item"><div id="l-s"></div><div class="cap"><b>lockup-stacked</b><br>min 96 px wide<br>clear space: O height</div></div>
+      <div class="item"><div id="l-r"></div><div class="cap"><b>readme-lockup</b> · READMEs only<br>min 240 px wide (shown at it)<br>clear space: O height</div></div>
+      <div class="item"><div id="l-m"></div><div class="cap"><b>mark</b> · symbol alone<br>min 24 px tall<br>clear space: ¼h</div></div>
+    </div>
+  </div>
+  <div class="panel dark">
+    <div class="ptitle">On dark <em>-dark files: ink and creek backgrounds</em></div>
+    <div class="row">
+      <div class="item"><div id="d-h"></div><div class="cap"><b>lockup-horizontal-dark</b> · the default signature<br>min 120 px wide · clear space: O height</div></div>
+      <div class="item"><div id="d-w"></div><div class="cap"><b>wordmark-dark</b> · rarely<br>min 80 px wide · clear space: O height</div></div>
+    </div>
+    <div class="row">
+      <div class="item"><div id="d-s"></div><div class="cap"><b>lockup-stacked-dark</b><br>min 96 px wide<br>clear space: O height</div></div>
+      <div class="item"><div id="d-r"></div><div class="cap"><b>readme-lockup-dark</b><br>min 240 px wide (shown at it)<br>clear space: O height</div></div>
+      <div class="item"><div id="d-m"></div><div class="cap"><b>mark-dark</b><br>min 24 px tall<br>clear space: ¼h</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="mins">
+  <div class="minp light">
+    <div class="ptitle">Minimum sizes <em>shown 1:1 in this 1920 × 1080 sheet</em></div>
+    <div class="minrow" id="min-l"></div>
+  </div>
+  <div class="minp dark">
+    <div class="ptitle">Minimum sizes, dark <em>icons carry their own ink square</em></div>
+    <div class="minrow" id="min-d"></div>
+  </div>
+</div>
+
+<div class="press-foot"><span>docs/assets · rules in docs/assets/README.md</span><span>The detailed raster logo is for illustration-sized uses only, at 240 px wide or more.</span></div>
+
+<script src="press-common.js"></script>
+<script>
+  for (const [p, dark] of [["l", false], ["d", true]]) {
+    mount(`#${p}-h`, "horizontal", { w: 400, clear: true, dark });
+    mount(`#${p}-w`, "wordmark", { w: 200, clear: true, dark });
+    mount(`#${p}-s`, "stacked", { w: 196, clear: true, dark });
+    mount(`#${p}-r`, "readme", { w: 240, clear: true, dark });
+    mount(`#${p}-m`, "mark", { h: 110, clear: true, dark });
+    const row = document.getElementById(`min-${p}`);
+    const d = dark ? "-dark" : "";
+    const items = [
+      [`streamotter-lockup-horizontal${d}.svg`, "width:120px", "horizontal<br><b>120 px</b>"],
+      [`streamotter-lockup-stacked${d}.svg`, "width:96px", "stacked<br><b>96 px</b>"],
+      [`streamotter-mark${d}.svg`, "height:24px", "mark<br><b>24 px tall</b>"],
+      [`streamotter-wordmark${d}.svg`, "width:80px", "wordmark<br><b>80 px</b>"],
+    ];
+    for (const [f, st, l] of items) {
+      const el = document.createElement("div");
+      el.innerHTML = `<img src="../../${f}" style="${st}"><span class="lbl">${l}</span>`;
+      row.appendChild(el);
+    }
+    const ic = document.createElement("div");
+    ic.innerHTML = `<div style="display:flex;gap:16px;align-items:flex-end"><img src="../../streamotter-app-icon.svg" style="width:32px"><img src="../../streamotter-favicon.svg" style="width:16px"></div><span class="lbl">app icon <b>32 px</b><br>favicon <b>16 px</b></span>`;
+    ic.style.marginRight = "24px";
+    row.appendChild(ic);
+  }
+</script>
+</body></html>

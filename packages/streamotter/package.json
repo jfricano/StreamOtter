@@ -36,6 +36,11 @@
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
     },
+    "./react": {
+      "streamotter-source": "./src/react.ts",
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
     "./gateway": {
       "streamotter-source": "./src/gateway.ts",
       "types": "./dist/gateway.d.ts",
@@ -81,6 +86,10 @@
         "types": "./dist/client.d.ts",
         "default": "./dist/client.js"
       },
+      "./react": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
       "./gateway": {
         "types": "./dist/gateway.d.ts",
         "default": "./dist/gateway.js"
@@ -109,6 +118,14 @@
     "@streamotter/client": "workspace:*",
     "@streamotter/contracts": "workspace:*",
     "@streamotter/gateway": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "24.13.6"

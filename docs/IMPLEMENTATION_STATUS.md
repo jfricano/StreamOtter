@@ -32,7 +32,7 @@ This document records what exists, the commands that verify it, the results obse
 | Sources | `packages/gateway/src/sources` | Deterministic fixture source; KafkaJS 2.2.4 adapter with explicit per-record commits, pause-and-seek on poison records, rebalance/crash/inactivity detection, staged diagnostics, tracked sockets. |
 | Transport | `packages/gateway/src/transport/socketio.ts`, `packages/client/src/connection.ts` | Socket.IO 4.8.3, namespace `/`, WebSocket only, recovery and client reconnection disabled; the only files that import Socket.IO. |
 | Management API | `packages/gateway/src/management` | All specified `/management/v1` routes plus `GET /dev/principals`; bearer token, exact-origin/Referer checks, `Result` envelopes and status codes, 1 MiB bodies, rate limit, workbench hosting with CSP. Refuses production gateways. |
-| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. |
+| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. React hooks on `@streamotter/client/react` and `streamotter/react` (V1.3, ships in 1.0.0; unreleased); see below. |
 | CLI | `packages/cli` | `init`, `validate` (prints the canonical fingerprint), `generate` (manifest-guarded overwrite), `dev`, `start`; exit codes 0/1/2; SIGINT/SIGTERM graceful shutdown; startup diagnostics. |
 | Workbench | `apps/workbench` | Connect (status, staged checks, resume, fixture advance), Define (channel contracts, candidate editor, validation, restart-required indicator), Preview (real SDK subscription as a development principal; advance, disconnect, resync), Inspect (filterable, polling trace table), Export (canonical file, fingerprint, CLI commands). |
 | Reference example | `examples/order-dashboard` | Application-owned identity, ownership rules, snapshot storage; fixture and Kafka modes; vanilla TypeScript and React views; reproducible scenarios. |
@@ -196,7 +196,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 
 ### Runs recorded in the implementation log
 
-All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, after the [independent review](./releases/v1.1/REVIEW.md)'s fixes (October 4):
+All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, after the [code review](./releases/v1.1/REVIEW.md)'s fixes (October 4):
 
 | Command | Result |
 | --- | --- |
@@ -233,7 +233,7 @@ The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.
 
 ## V1.2 quality review (0.2.0-rc.1)
 
-An independent review of V1 and V1.1 together found 15 major and 57 minor issues. Every major is fixed, each with a regression test confirmed to fail without its fix, and so are 25 minors. The other minors are fixed in V1.2.1, which ships in the same release. The findings, the fix list and the test runs are in [docs/releases/v1.2](./releases/v1.2/README.md). On Node 24.21.0, at the head of #20, every tier passed:
+A review of V1 and V1.1 together, by reviewers who hadn't written the code, found 15 major and 57 minor issues. Every major is fixed, each with a regression test confirmed to fail without its fix, and so are 25 minors. The other minors are fixed in V1.2.1, which ships in the same release. The findings, the fix list and the test runs are in [docs/releases/v1.2](./releases/v1.2/README.md). On Node 24.21.0, at the head of #20, every tier passed:
 
 | Tier | Tests passed |
 | --- | --- |
@@ -249,7 +249,7 @@ CI ran `pnpm verify` on Node 24 and 26.
 
 ## V1.2.1 minor fixes (0.2.0-rc.1)
 
-The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolved ([docs/releases/v1.2.1](./releases/v1.2.1/README.md)). An independent review of the fixes found 19 minor issues, all fixed. On Node 24.21.0, after the review fixes, every tier passed, none skipped:
+The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolved ([docs/releases/v1.2.1](./releases/v1.2.1/README.md)). A separate review of the fixes found 19 minor issues, all fixed. On Node 24.21.0, after the review fixes, every tier passed, none skipped:
 
 | Tier | Tests passed |
 | --- | --- |
@@ -262,6 +262,10 @@ The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolv
 | `test:load` | 1 |
 
 GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by hand, passed on Node 24 and 26, along with the nightly replicated-Kafka job. On the release commit `fc7f47c` on `main`, CI and the [extended workflow](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser and deploy on Node 24 and 26, replicated Kafka on Node 24) passed, and the publishing workflow ran the full release checks again before publishing.
+
+## V1.3 React hooks (unreleased; ships in 1.0.0)
+
+`@streamotter/client/react` and `streamotter/react` add a provider and hooks over the SDK ([docs/releases/v1.3](./releases/v1.3/README.md)). Built on `feat/v1.3-react-hooks`; ships in `1.0.0` (owner, October 6, 2026); not published. Its exact API is locked in the [API contract](./releases/v1.3/API.md), and every hooks test names the contract clauses it covers. Independently reviewed (three reviewers; two behavior fixes and a wider test suite came out of it). On Node 24.21.0: `pnpm verify` 471 passed; `test:install` 23 passed and 1 skipped (TLS Kafka, no local broker), including bundling and type-checking React apps against the packed packages on React 19 and React 18; `test:browser` 59 passed, including the reference example's React page on the hooks, on a preinstalled Chromium headless shell (revision 1194) rather than the pinned one. Details in the [implementation log](./releases/v1.3/IMPLEMENTATION_LOG.md).
 
 ## Gate A status (home site and demo plan)
 

@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/make-it-lie.png">
+<meta name="size" content="1200x630">
+<!-- Open invitation card. Layout works for LinkedIn's 1200x627 too (nothing sits in the bottom 3px). -->
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<script src="social-motifs.js"></script>
+<style>
+  .lockup { left: 64px; top: 52px; width: 280px; }
+  .copy { left: 64px; top: 136px; width: 600px; }
+  .eyebrow { --eb: 17px; }
+  .head { font-size: 76px; font-weight: 900; margin-top: 16px; line-height: 1; }
+  .body { margin-top: 22px; font: 400 23px/1.42 var(--display); color: var(--light-ink); max-width: 560px; }
+  .body code { font: 600 0.88em var(--mono); color: var(--live); background: var(--live-bg); padding: 0.08em 0.4em; border-radius: 0.5em; }
+  .body strong { font-weight: 700; color: #fff; }
+  .url { left: 64px; top: 492px; font: 500 17px/1 var(--mono); color: var(--whisker); }
+  .url b { color: var(--splash); font-weight: 600; }
+</style></head>
+<body><div class="stage dark">
+  <svg class="art" id="art"></svg>
+  <img class="layer lockup logo" src="../../streamotter-lockup-horizontal-dark.svg" alt="StreamOtter">
+  <div class="layer copy">
+    <div class="eyebrow">Open invitation</div>
+    <div class="head">Can you make it&nbsp;lie?</div>
+    <div class="body">Break it on purpose. Get a view to say <code>live</code> while it’s wrong, or get a bad record skipped silently, and file it. <strong>Credit in the changelog, if you want it.</strong></div>
+  </div>
+  <div class="layer url"><b>→</b> github.com/jfricano/StreamOtter</div>
+</div>
+<script>
+  const W = 1200, H = 630;
+  const c = SO.creek(W, H, { top: 572, rise: 24, seed: 21, scale: 0.8, streams: 1, phase: 0.3, drops: false });
+  const mono = (x, y, size, fill, text, extra = "") => `<text x="${x}" y="${y}" font-family="JetBrains Mono, monospace" font-weight="600" font-size="${size}" fill="${fill}" ${extra}>${text}</text>`;
+  let o = "";
+  // the honest view: says it's behind
+  o += SO.viewCard(716, 92, 400, 170, { title: "den-sites", state: "stale", rev: "", size: 19, seed: 31, rows: 3 });
+  o += mono(737, 244, 17, "#A9BAD5", "view r41 · source r44");
+  o += `<path d="M1052 234l9 9l17 -19" fill="none" stroke="#01e1fc" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // the lie we want found: says live, but it's behind
+  o += `<rect x="686" y="290" width="440" height="196" rx="16" fill="none" stroke="#f2b84b" stroke-width="2.5" stroke-dasharray="10 9" opacity="0.9"/>`;
+  o += SO.viewCard(702, 306, 408, 164, { title: "your-view?", state: "live", rev: "", size: 19, seed: 37, rows: 3 });
+  o += mono(723, 452, 17, "#A9BAD5", 'view r43 · source <tspan fill="#f2b84b">r47</tspan>');
+  // magnifier over the suspicious live chip
+  const mx = 1036, my = 330, mr = 52;
+  o += `<line x1="${mx + mr * 0.72}" y1="${my + mr * 0.72}" x2="${mx + mr * 1.55}" y2="${my + mr * 1.55}" stroke="#7F5447" stroke-width="16" stroke-linecap="round"/>`;
+  o += `<circle cx="${mx}" cy="${my}" r="${mr}" fill="#04173a" fill-opacity="0.82" stroke="#E9F2FC" stroke-width="9"/>`;
+  o += SO.chip(mx, my, "live", { size: 22, anchor: "middle" });
+  o += mono(mx + mr + 8, my - mr + 6, 30, "#f2b84b", "?", 'font-weight="700"');
+  SO.paint(document.getElementById("art"), SO.texture(W, H, { rows: 7, y0: 20, y1: 470, opacity: 0.04 }) + o + c.svg);
+</script>
+</body></html>
