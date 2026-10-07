@@ -47,7 +47,7 @@ Open the workbench URL that `dev` prints, paste its one-time token, then preview
 | Guide | |
 | --- | --- |
 | [Getting started](./docs/guides/getting-started.md) | From `npm install` to a live page in the browser, in about ten minutes |
-| [Add live state to an existing app](./docs/guides/existing-app.md) | Your sessions, your database, Kafka events, revocation, and React |
+| [Add live state to an existing app](./docs/guides/existing-app.md) | Your sessions, your database, Kafka events, revocation, and React (React hooks are coming in 1.0.0) |
 | [Connect to Kafka](./docs/guides/kafka.md) | Topic shape, TLS and SASL, progress, bad records, crashes, and diagnostics |
 | [Run in production](./docs/DEPLOYMENT.md) | `streamotter start`, supervision, and the reverse-proxy recipe |
 | [Handle bad records](./docs/guides/source-failures.md) | V1.1 (new in 0.2.0-rc.1): failure policies, quarantine, recovery guards, operator commands, and the runbook |
@@ -57,9 +57,9 @@ Open the workbench URL that `dev` prints, paste its one-time token, then preview
 
 | Package | Use it for | |
 | --- | --- | --- |
-| [`streamotter`](https://www.npmjs.com/package/streamotter) | Everything below in one install, with the `streamotter` command. Import `streamotter/client` in the browser and `streamotter/gateway` on the server. | [guide](./packages/streamotter/README.md) |
+| [`streamotter`](https://www.npmjs.com/package/streamotter) | Everything below in one install, with the `streamotter` command. Import `streamotter/client` in the browser and `streamotter/gateway` on the server; from 1.0.0, `streamotter/react` for React hooks. | [guide](./packages/streamotter/README.md) |
 | [`@streamotter/cli`](https://www.npmjs.com/package/@streamotter/cli) | `init`, `validate`, `generate`, `dev` with the workbench, and the production `start`. Includes the gateway. | [guide](./packages/cli/README.md) |
-| [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up | [guide](./packages/client/README.md) |
+| [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) | The browser SDK: subscribe, render `live` and `stale`, and clean up; from 1.0.0, React hooks on `@streamotter/client/react` | [guide](./packages/client/README.md) |
 | [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) | Your handlers' types, and running the gateway from your own Node.js code | [guide](./packages/gateway/README.md) |
 | [`@streamotter/contracts`](https://www.npmjs.com/package/@streamotter/contracts) | Shared types and configuration validation, for tooling authors | [guide](./packages/contracts/README.md) |
 | [`@streamotter/workbench`](https://www.npmjs.com/package/@streamotter/workbench) | The local workbench's assets; installed by the CLI | [guide](./apps/workbench/README.md) |

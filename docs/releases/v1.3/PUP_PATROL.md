@@ -1,6 +1,6 @@
 # Pup Patrol — the V1.3 demo, a React game on lontracreek.dev
 
-**Status: planned, not approved for build.** Decided by the owner on October 6, 2026 (Pacific): the demo for StreamOtter's React hooks ([StreamOtter V1.3](./README.md), shipping as `streamotter@1.1.0` after the `1.0.0` launch) is a small React game, **Pup Patrol**, in **its own repository in the orca-solutions GitHub organization** (decided October 6, 2026, Pacific; not a monorepo), on its own domain, **lontracreek.dev**, linked from streamotter.dev. This document is the plan. It lives here until that repository exists; the owner creates the repository when the build starts, and the plan moves there. The build waits for the owner's go. Only the launch waits for `1.1.0` on npm and the Lontra Creek phase-two site: development can start earlier (see Sequencing). The concept comparison that led here is kept in [PUP_PATROL_CONCEPTS.md](PUP_PATROL_CONCEPTS.md).
+**Status: planned, not approved for build.** Decided by the owner on October 6, 2026 (Pacific): the demo for StreamOtter's React hooks ([StreamOtter V1.3](./README.md), shipping in `streamotter@1.0.0`, the public launch) is a small React game, **Pup Patrol**, in **its own repository in the orca-solutions GitHub organization** (decided October 6, 2026, Pacific; not a monorepo), on its own domain, **lontracreek.dev**, linked from streamotter.dev. This document is the plan. It lives here until that repository exists; the owner creates the repository when the build starts, and the plan moves there. The build waits for the owner's go. Only the launch waits for `1.0.0` on npm and the Lontra Creek phase-two site: development can start earlier (see Sequencing). The concept comparison that led here is kept in [PUP_PATROL_CONCEPTS.md](PUP_PATROL_CONCEPTS.md).
 
 ## What it is
 
@@ -30,7 +30,7 @@ Everything is read-only: no new write anywhere, visitors send nothing to the bro
 
 **Its own repository, `orca-solutions/pup-patrol`** (name open), created by the owner when the build starts. Not a workspace in lontra-creek and not a monorepo. It follows Lontra Creek's ground rules as a second consumer of the published packages:
 
-- A small React app built with Vite (not Astro: the game is one interactive screen, not a content site). At launch it pins `streamotter@1.1.0` exactly from npm. During development it may use a prerelease (`1.1.0-rc.N` from the registry) or a packed tarball of the hooks branch, since this repository is not bound by Lontra Creek's published-packages-only rule; the pin moves to the final `1.1.0` before anything goes live. It never links the StreamOtter or lontra-creek checkouts; the few creek identifiers it needs (reach and holt ids, the `den` and `reach` channel types) come from its own generated `streamotter.generated.ts`, produced by `streamotter generate` against a copy of the field station's public channel definitions, so a drift is caught by the contract check, not by a shared import.
+- A small React app built with Vite (not Astro: the game is one interactive screen, not a content site). At launch it pins `streamotter@1.0.0` exactly from npm. During development it may use a prerelease (`1.0.0-rc.N` from the registry) or a packed tarball of the hooks branch, since this repository is not bound by Lontra Creek's published-packages-only rule; the pin moves to the final `1.0.0` before anything goes live. It never links the StreamOtter or lontra-creek checkouts; the few creek identifiers it needs (reach and holt ids, the `den` and `reach` channel types) come from its own generated `streamotter.generated.ts`, produced by `streamotter generate` against a copy of the field station's public channel definitions, so a drift is caught by the contract check, not by a shared import.
 - Its own CI: typecheck, unit tests, a Playwright round in fixture mode, and a release-pin guard copied from lontra-creek (`scripts/check-release-pins.mjs`) so the registry is the only source of `streamotter`.
 - Its own deploy: a static build to **lontracreek.dev** on Cloudflare Pages, the way streamotter.dev is deployed, with the domain on Cloudflare DNS.
 - A fixture mode for development and tests: a local `streamotter dev` with the `den` and `reach` fixtures, so the game runs without Kafka and without the demo host.
@@ -49,13 +49,13 @@ Everything is read-only: no new write anywhere, visitors send nothing to the bro
 
 ## The page on streamotter.dev
 
-One page on streamotter.dev (in lontra-creek's `apps/site`), in the site's existing Docs family rather than a new navigation item (the design thread's layout for Docs applies): what Pup Patrol is, a short recording, the three hooks it uses with the real code from the game repository, what to watch for (pull your network cable; see the round pause), and the link out to lontracreek.dev. It describes the pinned version and shows the hooks only once `1.1.0` is published, per the site's "every claim matches the pinned release" rule. The site's own `streamotter` pin moves to `1.1.0` in the same release.
+One page on streamotter.dev (in lontra-creek's `apps/site`), in the site's existing Docs family rather than a new navigation item (the design thread's layout for Docs applies): what Pup Patrol is, a short recording, the three hooks it uses with the real code from the game repository, what to watch for (pull your network cable; see the round pause), and the link out to lontracreek.dev. It describes the pinned version and shows the hooks only once `1.0.0` is published, per the site's "every claim matches the pinned release" rule. The site's own `streamotter` pin moves to `1.0.0` in the same release.
 
 ## Sequencing
 
 1. Lontra Creek's phase-two site in production (its main freeze lifts). Nothing in lontra-creek from this plan merges before that.
 2. The owner gives the go and creates `orca-solutions/pup-patrol`; this plan moves there and the game gets its own thread. Work can start at once, in fixture mode, against the hooks as a prerelease or a packed tarball; it does not wait for the publication.
-3. StreamOtter builds and publishes V1.3 as `1.1.0-rc.1`, then `1.1.0`. The game pins the rc for a preview, then the final before launch. The explainer page on streamotter.dev and the production pin follow `1.1.0`.
+3. StreamOtter publishes the hooks in `1.0.0-rc.1`, then `1.0.0`. The game pins the rc for a preview, then the final before launch. The explainer page on streamotter.dev and the production pin follow `1.0.0`.
 4. Build order: in lontra-creek, the `den` view and channel (fixture first, then Kafka) and the second-origin change; in the game repository, the game on fixture mode, then against the demo gateway; in lontra-creek, the explainer page; then hosted acceptance on the real deployment, including the stale and reconnect states.
 5. Domain and host: lontracreek.dev on Cloudflare DNS and a Pages project for the game; the origin added to the demo host's configuration through the shared-host procedure with devops.
 
@@ -63,5 +63,5 @@ One page on streamotter.dev (in lontra-creek's `apps/site`), in the site's exist
 
 1. The repository name under orca-solutions (`pup-patrol` assumed above).
 2. Session handling for the second origin: token in memory (recommended) or a cross-site cookie.
-3. Whether the explainer page waits for `1.1.0` final or goes up with the rc preview, labeled as such.
+3. Whether the explainer page waits for `1.0.0` final or goes up with the rc preview, labeled as such.
 4. Name and route of the explainer page on streamotter.dev.

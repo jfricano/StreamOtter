@@ -380,10 +380,10 @@ These are ordered increments, not calendar estimates. Each adds working behavior
 | V1.0-b | Kafka adapter, application authentication, JSON mapping and parameter validation. | Stable source and channel interfaces. |
 | V1.0-c | Snapshot synchronization, overload behavior, revocation, and staged diagnostics. | V1.0-b plus the application snapshot contract. |
 | V1.0 | Usable workbench, generated TypeScript example, CLI/export, deployment recipe, engineering checks. | The complete V1 workflow. |
-| V1 public launch | First-class home site, public docs, live demo, reproducible local example, and verified demo operations. | Tested V1.0 release candidate; website/demo launch gate. |
+| V1 public launch | First-class home site, public docs, live demo, reproducible local example, and verified demo operations. Ships V1.3's React hooks too (decided October 6, 2026). | Tested V1.0 release candidate; website/demo launch gate. |
 | V1.x | KafkaSocks migration guide, configuration polish, fixture improvements, compatibility fixes. | V1 API; no durable replay required. |
 | V1.1 — Contain, explain, recover | Native source-failure policy, protected Kafka quarantine, persistent local incident state, guarded snapshot recovery, controlled single-record reprocessing, failure console, local operator tooling and minimal health probes. Quarantine retains failed source-record evidence, not an event feed or browser history. [Specification](./releases/v1.1/README.md). | V1 state contract; V1 public launch; the V1.1 ADRs. |
-| V1.3 — React hooks | `@streamotter/client/react` and `streamotter/react`: a provider and typed hooks over the existing SDK, with React as an optional peer dependency. Brought forward from V2.2 on October 6, 2026. [Plan](./releases/v1.3/README.md). | V1 public launch; no other increment. |
+| V1.3 — React hooks | `@streamotter/client/react` and `streamotter/react`: a provider and typed hooks over the existing SDK, with React as an optional peer dependency. Brought forward from V2.2 on October 6, 2026, and folded into the V1 public launch the same day: it ships in `1.0.0`. [Plan](./releases/v1.3/README.md). | The V1 SDK; no other increment. |
 | V2.0 | Retained event channels, delivery store, cursors, paged history, SDK checkpoints, replay diagnostics, configuration migration checks for the first store schema. | Stable event identity and a storage handoff design, including how quarantine dispositions and any gaps appear in history. |
 | V2.1 | Multiple gateways, ownership/fanout, shared revocation, topology and metrics. | Durable recovery independent of process memory; incident and recovery-boundary state shared beyond one node. |
 | V2.2 | Schema Registry/Avro integration, AsyncAPI export, independently configured Kafka clusters, declared bounded filtering. | Public channel contracts and compatible generation tooling. |
@@ -404,16 +404,15 @@ Decided by the owner on October 5, 2026. Product milestones map to npm minor ver
 | --- | --- |
 | V1 | `0.1.0-rc.1` to `0.1.0-rc.3` (published) |
 | V1.1, V1.2 and V1.2.1 | `0.2.0-rc.1`, with fixes as `0.2.0-rc.N`. There is no final `0.2.0`. |
-| V1 public launch | `1.0.0`, after a `1.0.0-rc.1` |
+| V1 public launch, with V1.3 (React hooks) | `1.0.0`, after a `1.0.0-rc.1` |
 | V1.x | `1.0.x` patches, or a `1.x` minor for new options |
-| V1.3 (React hooks) | `1.1.0`, after a `1.1.0-rc.1` |
-| V2.0 | `1.2.0` |
-| V2.1 | `1.3.0` |
-| V2.2 | `1.4.0` |
-| V2.3 (proposed) | `1.5.0`, if adopted |
-| V3.0, V3.1, V3.2 | `1.6.0`, `1.7.0`, `1.8.0`, or `2.0.0` only if commands require a breaking change |
+| V2.0 | `1.1.0` |
+| V2.1 | `1.2.0` |
+| V2.2 | `1.3.0` |
+| V2.3 (proposed) | `1.4.0`, if adopted |
+| V3.0, V3.1, V3.2 | `1.5.0`, `1.6.0`, `1.7.0`, or `2.0.0` only if commands require a breaking change |
 
-The `0.2.0-rc.N` candidates are where the V1.1 surface (`failureHandling`, the operator CLI and the incident journal) can still change. `1.0.0-rc.1` follows once the checks the V1.1 acceptance packet requires before a final release pass ([§10](./releases/v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status)): a Kafka broker with ACLs enabled, Firefox and WebKit, the proxy deployment with failure handling on, and one integrator walking the [source-failure runbook](./guides/source-failures.md) end to end. Versions after `1.0.0` are a plan: a milestone that ships in pieces may take more than one minor, and a later milestone shifts its number up rather than reusing one. V1.3 (decided October 6, 2026) is the first such shift: it took `1.1.0`, and V2.0 onward moved up by one.
+The `0.2.0-rc.N` candidates are where the V1.1 surface (`failureHandling`, the operator CLI and the incident journal) can still change. `1.0.0-rc.1` follows once the checks the V1.1 acceptance packet requires before a final release pass ([§10](./releases/v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status)): a Kafka broker with ACLs enabled, Firefox and WebKit, the proxy deployment with failure handling on, and one integrator walking the [source-failure runbook](./guides/source-failures.md) end to end. Versions after `1.0.0` are a plan: a milestone that ships in pieces may take more than one minor, and a later milestone shifts its number up rather than reusing one. V1.3 (React hooks, added October 6, 2026) briefly took `1.1.0`; the same day the owner folded it into `1.0.0`, so V2.0 onward keep the numbers above.
 
 ### Public experience sequencing
 

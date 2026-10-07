@@ -1,6 +1,6 @@
 # V1.3 — React hooks
 
-**Status: built on `feat/v1.3-react-hooks`, not released.** Plan approved by the owner on October 6, 2026 (Pacific); build started the same evening at his go. A single-feature release that brings the React hooks forward from V2.2. The exact public API is locked in the [API contract](./API.md). Nothing is published to npm; see the [implementation log](./IMPLEMENTATION_LOG.md) for what was built and verified, and [folding V1.3 into the launch](./IMPLEMENTATION_LOG.md#folding-v13-into-the-100-launch) for the owner's option to ship it with `1.0.0`.
+**Status: built and independently reviewed on `feat/v1.3-react-hooks`; ships in `1.0.0`, the V1 public launch.** Plan approved by the owner on October 6, 2026 (Pacific); build started the same evening at the owner's go; later that evening the owner folded it into the launch release instead of a later `1.1.0`. A single feature that brings the React hooks forward from V2.2. The exact public API is locked in the [API contract](./API.md). Nothing is published to npm; see the [implementation log](./IMPLEMENTATION_LOG.md) for what was built and verified, and [folded into 1.0.0](./IMPLEMENTATION_LOG.md#folded-into-100) for what shipping it with the launch took.
 
 ## Why now
 
@@ -72,29 +72,33 @@ Suspense and `use()` integration, React Server Components, React Native, event c
 | Integration test | `tests/integration/react.test.ts`: components under StrictMode against the fixture gateway render the snapshot, a live update and a `FORBIDDEN` denial; `subscriptionCount()` stays 1; unmount brings it to 0 |
 | Reference example | `examples/order-dashboard/src/web/react.tsx` rewritten on the hooks; the Playwright order-dashboard check (`/react`: two live orders, one denial) keeps passing |
 | Install test | `tests/install/install.test.ts` adds a React consumer: bundles `@streamotter/client/react` and `streamotter/react` from the packed tarballs, type-checks against the published declarations, and confirms a non-React consumer's bundle contains no React |
-| Documentation | Client README "React hook pattern" becomes "React hooks"; the existing-app guide §6 points at them; V1_API.md §13 records the addition; IMPLEMENTATION_STATUS.md lists the hooks and the tests that verify them; CHANGELOG.md; the roadmap's feature-allocation and increment tables (done in this plan's PR). The root README and getting-started guide describe the published packages and change with the `1.1.0` release |
+| Documentation | Client README "React hook pattern" becomes "React hooks"; the existing-app guide §6 points at them; V1_API.md §13 records the addition; IMPLEMENTATION_STATUS.md lists the hooks and the tests that verify them; the root README and getting-started guide name them; CHANGELOG.md; the roadmap's feature-allocation, increment and npm tables |
 
 The build started from the prototype written while planning ([prototype handoff](./PROTOTYPE_HANDOFF.md)).
 
 ## Versioning and sequencing
 
-Per the roadmap's [npm versions](../../API_AND_FEATURE_ROADMAP.md#npm-versions), milestones are npm minors and a milestone added later shifts the numbers after it up by one. The owner chose (October 6, 2026) to ship V1.3 **after** the V1 public launch:
+Per the roadmap's [npm versions](../../API_AND_FEATURE_ROADMAP.md#npm-versions), milestones are npm minors. The owner first chose (October 6, 2026) to ship V1.3 as `1.1.0` after the launch, and later the same evening, with the build done and reviewed, folded it into the launch:
 
 | Milestone | npm |
 | --- | --- |
-| V1 public launch | `1.0.0` (unchanged) |
-| **V1.3 React hooks** | **`1.1.0`**, after a `1.1.0-rc.1` |
-| V2.0, V2.1, V2.2, V2.3 (proposed) | `1.2.0`, `1.3.0`, `1.4.0`, `1.5.0` |
+| **V1 public launch, with V1.3 React hooks** | **`1.0.0`**, after a `1.0.0-rc.1` |
+| V2.0, V2.1, V2.2, V2.3 (proposed) | `1.1.0`, `1.2.0`, `1.3.0`, `1.4.0` (unchanged from before V1.3 was added) |
 
-So V1.3 adds nothing to the 1.0.0 launch gate (the V1.1 acceptance-packet checks), and the launch's documentation keeps pointing at the copyable hook pattern until 1.1.0 exists. Because `react` is an optional peer and the SDK's existing surface is unchanged, 1.1.0 is a plain minor for every current user. All six packages move to 1.1.0 together, as usual.
+What folding in means:
 
-The demo of the hooks is [Pup Patrol](./PUP_PATROL.md), a React game on the creek's public channels, in its own repository under the orca-solutions organization on lontracreek.dev; it installs `streamotter@1.1.0` from npm once published and never links this repository. The plan lives here until that repository exists.
+- **Stability.** The hooks API in [API.md](./API.md) is covered by the 1.x compatibility promise from `1.0.0`: every export, signature and behavior clause there keeps working until a new major. Additions (a new field on `SubscriptionResult`, a new hook) are minors.
+- **Launch gate.** The hooks add one check to the `1.0.0` release candidate: the extended workflow's install and browser tiers, on Node 24 and 26, with the hooks included. They add nothing to the V1.1 acceptance-packet checks.
+- **Documentation.** The launch documentation points at the hooks, not the copyable hook pattern: the client README's "React hooks" section, the existing-app guide, the reference example and the all-in-one package's import table already do on this branch; the root README and getting-started guide name them too.
+- **Users.** Because `react` is an optional peer and the SDK's existing surface is unchanged, apps without React see nothing new. All six packages move to `1.0.0` together, as usual.
+
+The demo of the hooks is [Pup Patrol](./PUP_PATROL.md), a React game on the creek's public channels, in its own repository under the orca-solutions organization on lontracreek.dev; it installs `streamotter@1.0.0` from npm once published and never links this repository. The plan lives here until that repository exists.
 
 ## Acceptance
 
 Status as of the [implementation log](./IMPLEMENTATION_LOG.md):
 
-- `pnpm verify`, `pnpm test:install` and `pnpm test:browser` green with the new tests included. **Met on Node 24** (the log has the counts); Node 26 runs in CI's extended workflow when the PR opens.
+- `pnpm verify`, `pnpm test:install` and `pnpm test:browser` green with the new tests included. **Met on Node 24** (the log has the counts); `pnpm verify` is also green on Node 26 in CI. The install and browser tiers on Node 26 run in CI's extended workflow on the `1.0.0` release candidate.
 - The React consumer in the install test type-checks `useSubscription` against generated `AppChannels` and rejects a wrong channel name, version or params shape at compile time. **Met**, on React 19 and React 18 type packages.
 - A non-React consumer bundles no React. **Met**: the install test checks the bundler's inputs for React, not a byte count; the plan's original "bundle size unchanged" wording claimed a measurement that no test makes.
 - The client README's example compiles against the published declarations. **Met by review**, not by a test: the reference example is a different page (orders, with denial), so the plan's original "run as written in the reference example" was not done.

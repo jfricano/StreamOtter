@@ -6,7 +6,7 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ### Added
 
-- React hooks (V1.3): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
+- React hooks (V1.3, shipping in 1.0.0): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
 
 ### Changed
 

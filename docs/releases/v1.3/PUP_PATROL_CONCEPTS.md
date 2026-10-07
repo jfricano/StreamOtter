@@ -22,7 +22,7 @@ A sixty-second round herding Sprout and Skipper back to Holt A before the Beaver
 
 | Change | A | B | C |
 | --- | --- | --- | --- |
-| Pin `streamotter@1.1.0` from npm | yes | yes | yes |
+| Pin `streamotter@1.0.0` from npm (`1.1.0` when this was written; the hooks moved into `1.0.0`) | yes | yes | yes |
 | React island or app | yes | yes | yes |
 | New channel view or simulation change | no | no | yes |
 | New backend route | no | no | no |

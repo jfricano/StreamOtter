@@ -43,7 +43,7 @@ Open the workbench URL that `dev` prints and paste its one-time token. Then prev
 | `streamotter/gateway/operator` | Node.js | The V1.1 operator API for source failures (`getGatewayOperator`, `callOperator`); new in 0.2.0-rc.1 |
 | `streamotter/contracts` | Anywhere | Shared types, protocol constants, and configuration validation |
 | `streamotter/cli` | Node.js | The CLI's programmatic API (`runCli`, `generateFiles`) |
-| `streamotter/react` | Browser | The React provider and hooks (`StreamOtterProvider`, `useSubscription`, `useConnectionState`, `createStreamOtterHooks`); your app installs `react` 18 or later. Unreleased (V1.3) |
+| `streamotter/react` | Browser | The React provider and hooks (`StreamOtterProvider`, `useSubscription`, `useConnectionState`, `createStreamOtterHooks`); your app installs `react` 18 or later. New in 1.0.0 |
 
 There is no bare `import "streamotter"`. Browser code and server code are separate subpaths, so a browser bundle never pulls in the gateway.
 

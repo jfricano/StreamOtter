@@ -1,6 +1,6 @@
 # V1.3 implementation log
 
-Branch `feat/v1.3-react-hooks`, on top of the approved [plan](./README.md). Started October 6, 2026 (Pacific) at the owner's go. Nothing published. The public API is locked in the [API contract](./API.md).
+Branch `feat/v1.3-react-hooks`, on top of the approved [plan](./README.md). Started October 6, 2026 (Pacific) at the owner's go. Ships in `1.0.0` (see [Folded into 1.0.0](#folded-into-100)). Nothing published. The public API is locked in the [API contract](./API.md).
 
 ## What was built
 
@@ -55,18 +55,18 @@ After the review fixes:
 
 `test:browser` ran on the Chromium headless shell preinstalled in the build environment (revision 1194), linked into `.local/ms-playwright` because the environment's network policy blocked Playwright's download of the pinned revision. CI's extended workflow runs the pinned revision. `test:kafka`, `test:deploy` and `test:load` do not touch the client package and were not run for this change.
 
-## Folding V1.3 into the 1.0.0 launch
+## Folded into 1.0.0
 
-The owner may compress V1.3 into the launch if it is safe at that time. What that would take:
+On October 6, 2026 (Pacific), after the review, the owner decided the hooks ship in `1.0.0` rather than a later `1.1.0`. What that took, against the checklist this log had prepared:
 
-1. **Merge order.** This branch adds files and touches no gateway, CLI, workbench or protocol code. Its only edits to shared files are additive: two package manifests, `tests/package.json`, the lockfile, the install test, and documentation. A rebase onto whatever `main` holds at launch should be mechanical; the lockfile is the likeliest conflict, regenerated with `pnpm install`.
-2. **Versions.** No version bump is in this branch. Folding in means `1.0.0` (via `1.0.0-rc.N`) carries the hooks, and the roadmap's npm table in [npm versions](../../API_AND_FEATURE_ROADMAP.md#npm-versions) goes back to its pre-V1.3 numbering (V2.0 = `1.1.0`, and so on); that is one table and a sentence in this folder's README.
-3. **Launch gate.** The hooks add nothing to the V1.1 acceptance-packet checks the launch waits on. They do add one thing to verify on the launch candidate: the extended workflow's install and browser tiers on Node 24 and 26 with this branch included.
-4. **Review.** The independent review of this branch should be done before folding, so the launch candidate isn't carrying unreviewed API.
-5. **Documentation.** The CHANGELOG entry moves from Unreleased into the launch entry; the client README's status line and the release index change with the version.
-6. **Risk.** The new public surface is `@streamotter/client/react` and `streamotter/react`. Once in `1.0.0` it is covered by the 1.x compatibility promise, so any API change found later would wait for 2.0. Shipping as `1.1.0` instead keeps the launch surface smaller and gives the hooks a release of their own to settle in.
+1. **Merge order.** Unchanged: the branch adds files and makes additive edits to two manifests, `tests/package.json`, the lockfile, the install test and documentation, so it merges onto `main` ahead of the release candidate. The lockfile is the likeliest conflict, regenerated with `pnpm install`.
+2. **Versions.** No version bump in this branch; the release candidate sets `1.0.0-rc.1` for all six packages as planned. The roadmap's [npm table](../../API_AND_FEATURE_ROADMAP.md#npm-versions) is back to its pre-V1.3 numbering (V2.0 = `1.1.0`, and so on), and the plan's [versioning section](./README.md#versioning-and-sequencing) records the decision.
+3. **Launch gate.** One added check on the release candidate: the extended workflow's install and browser tiers on Node 24 and 26 with the hooks included.
+4. **Review.** Done before folding; see [Independent review](#independent-review-october-6-2026-pacific).
+5. **Documentation.** The CHANGELOG's Unreleased entry says the hooks ship in `1.0.0` and becomes part of that entry at release; the release index, plan, status document, V1 API §13 and the all-in-one README say `1.0.0` instead of "unreleased"; the root README and getting-started guide name the hooks.
+6. **Stability.** From `1.0.0` the hooks API in [API.md](./API.md) is covered by the 1.x compatibility promise, recorded in its decisions log. A breaking change found later waits for `2.0.0`; additions are minors.
 
 ## Open items
 
-- The consolidated V1.3 pull request (plan and build) and the owner's own review.
+- The owner's review and merge of the consolidated V1.3 pull request, ahead of the `1.0.0` release candidate.
 - The demo, [Pup Patrol](./PUP_PATROL.md), remains planning only.
