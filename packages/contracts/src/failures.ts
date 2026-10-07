@@ -181,8 +181,20 @@ export interface RecoveryIncident {
  * metadata. Any other answer is an error, and the record stays held.
  */
 export type RecoveryDecision =
-  | { decision: "hold"; reason: string }
-  | { decision: "recoverable"; context: Json; evidenceRef: string };
+  | {
+    /** Keep the record held. */
+    decision: "hold";
+    /** Why, for operators; truncated to 512 characters. */
+    reason: string;
+  }
+  | {
+    /** Snapshots can supersede the record, so the gateway may advance past it. */
+    decision: "recoverable";
+    /** Carried by the new recovery boundary; at most {@link MAX_RECOVERY_CONTEXT_BYTES} of JSON. */
+    context: Json;
+    /** Where the evidence for this decision is, for operators; 1 to 512 characters. */
+    evidenceRef: string;
+  };
 
 /** Application recovery contract for a source using quarantine-resync (ADR-15B §2). */
 export interface SourceRecoveryHandlers {

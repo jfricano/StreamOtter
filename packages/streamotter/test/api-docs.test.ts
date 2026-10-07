@@ -1,64 +1,78 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { describe, it } from "node:test";
 import ts from "typescript";
 
 // streamotter.dev generates its API reference from these doc comments, so every public export and
 // every member of an exported interface, class, or object type needs one. `@internal` opts a
-// declaration out; the reference leaves it out too.
+// declaration out, and the site's generator leaves those out too (`excludeInternal`).
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
-const PACKAGES = fileURLToPath(new URL("../../", import.meta.url));
-const ENTRIES = ["client", "gateway", "contracts", "operator", "management", "cli"];
+const PACKAGES = `${ROOT}packages/`;
+// Contracts first, so a shared symbol is reported under the entry point that declares it.
+const ENTRIES = ["contracts", "client", "gateway", "operator", "management", "cli"];
 
 function program(): ts.Program {
-  return ts.createProgram(ENTRIES.map(entry => `${SRC}${entry}.ts`), {
-    module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ES2023,
-    lib: ["lib.es2023.d.ts", "lib.dom.d.ts"], types: ["node"], strict: true, noEmit: true,
-    allowImportingTsExtensions: true, customConditions: ["streamotter-source"]
-  });
+  const config = ts.getParsedCommandLineOfConfigFile(`${ROOT}tsconfig.check.json`, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: diagnostic => assert.fail(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")) });
+  assert.ok(config, "tsconfig.check.json");
+  return ts.createProgram(ENTRIES.map(entry => `${SRC}${entry}.ts`), config.options);
 }
 
 const ours = (declaration: ts.Declaration) => declaration.getSourceFile().fileName.startsWith(PACKAGES);
 const internal = (symbol: ts.Symbol) => symbol.declarations?.some(declaration => ts.getJSDocTags(declaration).some(tag => tag.tagName.text === "internal")) ?? false;
 
-function documented(symbol: ts.Symbol, checker: ts.TypeChecker): boolean {
-  if (symbol.getDocumentationComment(checker).length > 0) return true;
-  // A function's comment belongs to its signatures.
-  return (symbol.declarations ?? []).some(declaration => ts.isFunctionDeclaration(declaration) && ts.getJSDocCommentsAndTags(declaration).length > 0);
+/** The object type literals an alias is made of, directly or as members of a union or intersection. */
+function typeLiterals(node: ts.TypeNode): ts.TypeLiteralNode[] {
+  if (ts.isTypeLiteralNode(node)) return [node];
+  if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node)) return node.types.flatMap(typeLiterals);
+  if (ts.isParenthesizedTypeNode(node)) return typeLiterals(node.type);
+  return [];
 }
 
-/** The members a reader expects described: an interface's or class's own, or an object type alias's. */
-function members(symbol: ts.Symbol, checker: ts.TypeChecker): ts.Symbol[] {
+/** The members a reader expects described: an interface's or class's own, or those of an object type alias. */
+function members(symbol: ts.Symbol, checker: ts.TypeChecker): { name: string; symbol: ts.Symbol }[] {
   const declaration = symbol.declarations?.[0];
   if (declaration === undefined) return [];
   if (ts.isInterfaceDeclaration(declaration) || ts.isClassDeclaration(declaration)) {
-    return [...symbol.members?.values() ?? []].filter(member => !(member.flags & ts.SymbolFlags.TypeParameter) && member.escapedName !== "__constructor" && member.escapedName !== "__index");
+    const own = [...symbol.members?.values() ?? []].filter(member => !(member.flags & ts.SymbolFlags.TypeParameter) && member.escapedName !== "__index");
+    const statics = [...symbol.exports?.values() ?? []].filter(member => member.flags & (ts.SymbolFlags.Method | ts.SymbolFlags.Property));
+    return [...own, ...statics].map(member => ({ name: member.escapedName === "__constructor" ? "constructor" : member.name, symbol: member }));
   }
-  if (ts.isTypeAliasDeclaration(declaration) && ts.isTypeLiteralNode(declaration.type)) {
-    return checker.getPropertiesOfType(checker.getTypeAtLocation(declaration.type));
+  if (ts.isTypeAliasDeclaration(declaration)) {
+    return typeLiterals(declaration.type).flatMap(literal => literal.members.flatMap(member => {
+      const memberSymbol = member.name === undefined ? undefined : checker.getSymbolAtLocation(member.name);
+      return memberSymbol === undefined ? [] : [{ name: memberSymbol.name, symbol: memberSymbol }];
+    }));
   }
   return [];
 }
 
-test("every public export of the streamotter entry points has a doc comment, and so does each member", () => {
-  const built = program();
-  const checker = built.getTypeChecker();
-  const missing: string[] = [];
-  const seen = new Set<ts.Symbol>();
-  for (const entry of ENTRIES) {
-    const file = built.getSourceFile(`${SRC}${entry}.ts`);
-    assert.ok(file, entry);
-    for (const exported of checker.getExportsOfModule(checker.getSymbolAtLocation(file)!)) {
-      const symbol = exported.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported;
-      if (seen.has(symbol) || internal(symbol) || !(symbol.declarations ?? []).some(ours)) continue;
-      seen.add(symbol);
-      if (!documented(symbol, checker)) missing.push(`${entry}: ${symbol.name}`);
-      for (const member of members(symbol, checker)) {
-        if (!(member.declarations ?? []).some(ours) || internal(member)) continue;
-        if (member.getDocumentationComment(checker).length === 0) missing.push(`${entry}: ${symbol.name}.${member.name}`);
+describe("API documentation", () => {
+  it("every public export of the streamotter entry points has a doc comment, and so does each member", () => {
+    const built = program();
+    const checker = built.getTypeChecker();
+    const missing: string[] = [];
+    const seen = new Set<ts.Symbol>();
+    for (const entry of ENTRIES) {
+      const file = built.getSourceFile(`${SRC}${entry}.ts`);
+      assert.ok(file, entry);
+      const exports = checker.getExportsOfModule(checker.getSymbolAtLocation(file)!)
+        .map(exported => (exported.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported))
+        .filter(symbol => (symbol.declarations ?? []).some(ours));
+      assert.ok(exports.length > 0, `streamotter/${entry} exports nothing of ours; its re-exports did not resolve`);
+      for (const symbol of exports) {
+        if (seen.has(symbol) || internal(symbol)) continue;
+        seen.add(symbol);
+        if (symbol.getDocumentationComment(checker).length === 0) missing.push(`${entry}: ${symbol.name}`);
+        for (const member of members(symbol, checker)) {
+          if (!(member.symbol.declarations ?? []).some(ours) || internal(member.symbol)) continue;
+          const documented = member.name === "constructor"
+            ? member.symbol.declarations!.every(declaration => ts.getJSDocCommentsAndTags(declaration).length > 0)
+            : member.symbol.getDocumentationComment(checker).length > 0;
+          if (!documented) missing.push(`${entry}: ${symbol.name}.${member.name}`);
+        }
       }
     }
-  }
-  assert.ok(seen.size > 200, `only ${seen.size} exports were found; the entry points did not resolve`);
-  assert.deepEqual(missing, []);
+    assert.deepEqual(missing, []);
+  });
 });

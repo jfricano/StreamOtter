@@ -24,9 +24,9 @@ export const EXIT = { ok: 0, runtime: 1, invalid: 2 } as const;
 
 /** The input and output {@link runCli} uses in place of the process's stdio and signals. */
 export interface CliIO {
-  /** Writes one line of normal output, without a trailing newline. Usage text, results and gateway info logs go here. */
+  /** Receives one chunk of output without a trailing newline; the implementation adds one. Results, help text and info logs go here. */
   out(line: string): void;
-  /** Writes one line of diagnostics, without a trailing newline. Errors and gateway warnings go here. */
+  /** Receives one chunk of diagnostics without a trailing newline. Errors (with usage after invalid input) and warnings go here. */
   err(line: string): void;
   /** Resolves when the process should shut down (SIGINT/SIGTERM). */
   shutdownSignal: Promise<string>;

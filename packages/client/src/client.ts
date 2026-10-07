@@ -461,8 +461,9 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
  * The client keeps one Socket.IO connection at a time. While subscriptions are active it
  * reconnects after network failures with full-jitter backoff, starting at 500 ms and capped at
  * 30 seconds, and replaces the connection with a freshly authenticated one 30 seconds before its
- * authentication expires. When the gateway refuses the connection, for example because the token
- * is rejected, it stops retrying until {@link Client.reconnect} is called. Close the client with
+ * authentication expires. It stops retrying until {@link Client.reconnect} is called when
+ * authentication fails (the token is rejected, or `getToken` fails or times out) or the handshake is
+ * refused as forbidden, invalid or unsupported; an overloaded gateway is retried. Close the client with
  * {@link Client.close} when its owning application scope ends. The page's own origin must be
  * listed in the gateway's `gateway.allowedOrigins`.
  *

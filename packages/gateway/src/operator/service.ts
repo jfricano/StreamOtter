@@ -19,9 +19,10 @@ import { nowIso, sha256Hex } from "../runtime/util.ts";
  * Returns the in-process operator service of a gateway configured with `failureHandling`
  * (ADR-15C §1).
  *
- * The service exists once {@link Gateway.start} has opened the failure journal. Its methods
- * resolve to their results; a refused operation is a result with `result: "refused"`, not an
- * exception. Raw evidence is available here and over the local socket, never through the
+ * The service exists once {@link Gateway.start} has opened the incident store. A refused
+ * operation is a result with `result: "refused"`, not an exception; malformed input and unknown
+ * incidents reject with `INVALID_REQUEST`, and `evaluate` can reject with `OVERLOADED` or
+ * `SOURCE_UNAVAILABLE`. Raw evidence is available here and over the local socket, never through the
  * management API.
  *
  * @param gateway - A gateway returned by `createGateway`.

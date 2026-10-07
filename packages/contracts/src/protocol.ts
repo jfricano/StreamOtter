@@ -53,7 +53,8 @@ export const CONTROL_CALLBACK_TIMEOUT_MS = 5_000;
 export const UNSUBSCRIBE_TIMEOUT_MS = 5_000;
 /**
  * Deadline in ms (10 seconds) for the application's `getToken`. A call still pending is aborted
- * through its signal, and the client enters `auth-required`.
+ * through its signal. While connecting, the client then enters `auth-required`; during a refresh it
+ * reports an error and tries again.
  */
 export const GET_TOKEN_TIMEOUT_MS = 10_000;
 /** Default `timeoutMs` in ms (30 seconds) for SDK waits such as `ready()`, `resync()` and `reconnect()`. */

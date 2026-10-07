@@ -284,13 +284,14 @@ function outcomeOf(data: unknown): string {
  *
  * @param options - The state directory, the operator service, the logger and optional limits.
  * @returns The listening socket.
- * @throws A StreamOtterError with code CONFIG_INVALID and a `details.reason` when the state or
+ * @throws Rejects with a StreamOtterError with code CONFIG_INVALID and a `details.reason` when the state or
  * run directory is missing (`state-dir-missing`, `run-dir-missing`) or could be tampered with
  * (`state-dir-insecure`, `run-dir-insecure`), when the socket path is longer than 103 bytes
  * (`socket-path-too-long`), when another gateway answers on the socket (`socket-in-use`), when
  * something other than a socket occupies its path (`socket-path-occupied`), when an existing
- * socket cannot be checked (`socket-unusable`), or when it cannot listen (`socket-listen`). Also CONFIG_INVALID when a numeric option is not a positive number,
- * and UNSUPPORTED_CAPABILITY on Windows.
+ * socket cannot be checked (`socket-unusable`), or when it cannot listen (`socket-listen`).
+ * Also CONFIG_INVALID when a numeric option is not a positive number, and
+ * UNSUPPORTED_CAPABILITY on Windows.
  */
 export async function startOperatorSocket(options: OperatorSocketOptions): Promise<OperatorSocket> {
   requirePosix();
@@ -584,13 +585,13 @@ function responseError(value: unknown): StreamOtterError {
  * @param args - That method's request object; `{}` for `"status"`.
  * @param options - The answer timeout. Default 30,000 ms.
  * @returns The method's result, as {@link OperatorApi} describes it.
- * @throws The StreamOtterError the gateway returned, unchanged. Locally: INVALID_REQUEST for an
+ * @throws Rejects with the StreamOtterError the gateway returned, unchanged. Locally: INVALID_REQUEST for an
  * unknown operation, invalid arguments, or a request longer than 64 KiB; UNSUPPORTED_CAPABILITY
  * with `details.reason` `"operator-not-running"` when no gateway serves the directory;
  * CONFIG_INVALID when the token file or its directories are insecure, the token is malformed, or
  * `timeoutMs` is not a positive number; TIMEOUT when no answer arrives in time; INTERNAL when the
- * socket cannot be reached or answers unexpectedly; UNSUPPORTED_CAPABILITY on Windows. An error raised after the request was sent but before a
- * usable answer arrived carries `details.reason` `"no-answer"`: the gateway may have run the request.
+ * socket cannot be reached or answers unexpectedly; UNSUPPORTED_CAPABILITY on Windows. An error
+ * raised after the request was sent but before a usable answer arrived carries `details.reason` `"no-answer"`: the gateway may have run the request.
  */
 export async function callOperator<O extends OperatorOperation>(
   stateDirectory: string, op: O, args: OperatorRequests[O], options: OperatorClientOptions = {}

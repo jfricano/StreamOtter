@@ -49,16 +49,19 @@ export type ChannelMap = Record<string, ChannelContract>;
  * Public error codes carried by {@link StreamError}.
  *
  * - `UNAUTHENTICATED`: no valid authentication, or it was rejected, expired or revoked.
- * - `FORBIDDEN`: the subscription or connection is not permitted. Unknown channels and versions also answer `FORBIDDEN`.
+ * - `FORBIDDEN`: the subscription or connection is not permitted. Unknown channels and versions, and in production
+ *   parameters that fail the schema, also answer `FORBIDDEN`.
  * - `INVALID_PARAMS`: the parameters are not a JSON object, exceed `maxParamsBytes`, or (in development) fail the parameter schema.
  * - `CHANNEL_NOT_FOUND`: the channel is not configured. Shown only in operator traces and diagnostics.
  * - `CHANNEL_VERSION_UNSUPPORTED`: the requested channel version is not deployed. Shown only in operator traces and diagnostics.
- * - `SOURCE_UNAVAILABLE`: the source is not ready, so the view may be stale.
+ * - `SOURCE_UNAVAILABLE`: the source, the gateway or the connection to it is not available, so the view may be stale.
+ *   Also used when a source operation conflicts with the source's current state.
  * - `INVALID_PAYLOAD`: source, mapped or snapshot data did not match its declared contract.
  * - `OVERLOADED`: a configured limit was reached; try again later.
  * - `RESYNC_REQUIRED`: automatic synchronization stopped; call {@link Subscription.resync}.
  * - `UNSUPPORTED_CAPABILITY`: the requested operation, option or protocol version is not supported.
- * - `INVALID_REQUEST`: the request is malformed or conflicts with an earlier one.
+ * - `INVALID_REQUEST`: the request is malformed, names an unknown resource (management answers 404), or conflicts
+ *   with an earlier one or with the protocol.
  * - `CONFIG_INVALID`: the configuration or gateway options are invalid.
  * - `TIMEOUT`: an operation or wait did not finish before its deadline.
  * - `CANCELLED`: the operation was cancelled explicitly, for example through an `AbortSignal`.
@@ -85,7 +88,10 @@ export interface StreamError {
   message: string;
   /** Whether another attempt under changed conditions can succeed. It is not permission to retry in a loop. */
   retryable: boolean;
-  /** Correlation ID of the request that failed, matching gateway traces. Empty when no request applies. */
+  /**
+   * Correlation ID of the request that failed. For gateway errors it matches the gateway's traces; SDK-detected
+   * errors carry a locally generated ID. Empty when no request applies.
+   */
   requestId: string;
   /** Optional structured detail, such as the `issues` list of a `CONFIG_INVALID` error. */
   details?: Readonly<Record<string, Json>>;
@@ -110,7 +116,7 @@ export interface StreamEvent<D extends Json = Json> {
   data: D;
   /** Revision of this state. */
   revision: Revision;
-  /** UTC RFC3339 time the gateway received the source record (update) or built the snapshot event (snapshot). */
+  /** UTC RFC3339 time the gateway decoded the source record (update) or built the snapshot event (snapshot). */
   receivedAt: string;
 }
 /**
@@ -119,8 +125,10 @@ export interface StreamEvent<D extends Json = Json> {
  * - `idle`: no connection; the client connects when a subscription needs one.
  * - `connecting`: obtaining a token and opening a connection.
  * - `connected`: authenticated; the gateway's hello has arrived.
- * - `reconnecting`: the connection was lost and is retried with backoff while subscriptions are active.
- * - `auth-required`: authentication failed or `getToken` failed; automatic retries stop until {@link Client.reconnect}.
+ * - `reconnecting`: the connection was lost or could not be opened, and is retried with backoff while subscriptions are active.
+ * - `auth-required`: the gateway refused the handshake (`UNAUTHENTICATED`, `FORBIDDEN`, `INVALID_REQUEST` or
+ *   `UNSUPPORTED_CAPABILITY`), or `getToken` failed, timed out or returned an empty string. Automatic retries stop
+ *   until {@link Client.reconnect}.
  * - `closed`: {@link Client.close} was called. Permanent.
  */
 export type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "auth-required" | "closed";
@@ -131,7 +139,9 @@ export type ConnectionState = "idle" | "connecting" | "connected" | "reconnectin
  * - `authorizing`: the subscribe or a retry is being validated and authorized.
  * - `synchronizing`: a new epoch started; the snapshot and buffered updates are being delivered.
  * - `live`: synchronized and receiving updates while the source is healthy. Not proof of wall-clock freshness.
- * - `stale`: the view may be out of date (source outage, transport loss, overflow or timeout); synchronization is retried automatically.
+ * - `stale`: the view may be out of date (source outage, transport loss, overflow or timeout). Synchronization resumes
+ *   automatically once the cause clears, except while the client is `auth-required` (call {@link Client.reconnect}) or
+ *   the source is paused (an operator must resume it).
  * - `resync-required`: automatic retries are exhausted; call {@link Subscription.resync}.
  * - `failed`: terminal, for example after denied access or a handler failure. Create a new subscription.
  * - `closed`: terminal after unsubscribe or client close.
@@ -169,6 +179,7 @@ export interface Subscription<D extends Json> {
   on(event: "data", listener: (event: StreamEvent<D>) => void): Unlisten;
   /**
    * Listens for state changes after this call; read {@link Subscription.state} for the current state.
+   * A listener that throws or returns a rejected promise fails the subscription with `HANDLER_FAILED`.
    * @returns A function that removes the listener.
    */
   on(event: "state", listener: (state: StateChange<SubscriptionState>) => void): Unlisten;
@@ -243,23 +254,59 @@ export interface Client<C extends ChannelMap> {
    * Obtains a new token, replaces the connection and recreates active subscriptions
    * with fresh snapshots. The recovery action after `auth-required`; it does not revive
    * failed or closed subscriptions. Resolves when connected; rejects with `TIMEOUT`
-   * (default 30000 ms), `CANCELLED`, `CLIENT_CLOSED` or the authentication error.
+   * (default 30000 ms), `CANCELLED`, `CLIENT_CLOSED` or the error that refused the connection.
    */
   reconnect(options?: WaitOptions): Promise<void>;
   /**
    * Closes every subscription and the connection and makes the client permanently
-   * closed. Later calls fail with `CLIENT_CLOSED`. Idempotent.
+   * closed. Later `subscribe` and `reconnect` calls, and waits on its subscriptions, fail with
+   * `CLIENT_CLOSED`. Idempotent.
    */
   close(): Promise<void>;
 }
 
 /** Deliberately limited JSON Schema dialect; see the specification. */
 export type Schema =
-  | { type: "string"; minLength?: number; maxLength?: number; enum?: readonly string[] }
-  | { type: "number" | "integer"; minimum?: number; maximum?: number }
-  | { type: "boolean" | "null" }
-  | { type: "array"; items: Schema; maxItems: number }
-  | { type: "object"; properties: Readonly<Record<string, Schema>>; required: readonly string[]; additionalProperties: false };
+  | {
+    /** A string. */
+    type: "string";
+    /** Fewest characters, counted in Unicode code points. */
+    minLength?: number;
+    /** Most characters, counted in Unicode code points. */
+    maxLength?: number;
+    /** The only strings allowed; each must satisfy the length bounds. */
+    enum?: readonly string[];
+  }
+  | {
+    /** A finite number, or with `integer` a safe integer. */
+    type: "number" | "integer";
+    /** Smallest allowed value, inclusive. */
+    minimum?: number;
+    /** Largest allowed value, inclusive. */
+    maximum?: number;
+  }
+  | {
+    /** A boolean, or exactly `null`. */
+    type: "boolean" | "null";
+  }
+  | {
+    /** An array. */
+    type: "array";
+    /** The schema every item must match. */
+    items: Schema;
+    /** Most items allowed; required, since arrays must be bounded. */
+    maxItems: number;
+  }
+  | {
+    /** A plain object. */
+    type: "object";
+    /** The schema of each allowed property; any other property is rejected. */
+    properties: Readonly<Record<string, Schema>>;
+    /** Properties that must be present. */
+    required: readonly string[];
+    /** Must be `false`: objects never accept undeclared properties. */
+    additionalProperties: false;
+  };
 /**
  * A reference to a secret held in an environment variable. Resolved at gateway
  * startup, which fails when the variable is missing; exports keep the reference.
@@ -291,18 +338,24 @@ export interface KafkaConnection {
  * it when topics are recreated, the cluster changes or fixture contents are replaced.
  */
 export type Source = {
+  /** A Kafka consumer. */
   kind: "kafka";
+  /** Identifies the source's contents; change it when topics are recreated or the cluster changes. */
   generation: string;
   /** ID of the connection profile in {@link ProjectConfig.connections}. */
   connectionRef: string;
+  /** The topics to consume. */
   topics: readonly string[];
   /** A consumer group dedicated to this source. */
   consumerGroup: string;
+  /** How record values are decoded; V1 decodes JSON only. */
   codec: "json";
   /** Where to start on partitions without a committed offset. */
   startFrom: "latest" | "earliest";
 } | {
+  /** A development fixture whose records advance only on request. */
   kind: "fixture";
+  /** Identifies the source's contents; change it when the fixture contents are replaced. */
   generation: string;
   /** Key of the records in {@link DevelopmentOptions.fixtures}. */
   fixtureRef: string;
@@ -327,7 +380,11 @@ export interface Limits {
   maxPendingFramesPerSubscription: number;
   /** Bytes queued for one subscription. At most `maxPendingBytesPerConnection`. Default 1048576. */
   maxPendingBytesPerSubscription: number;
-  /** Unsent bytes for one connection; a connection over it is closed. At most `maxPendingBytesGateway`. Default 4194304. */
+  /**
+   * Bytes queued across one connection's subscriptions (over it, a subscription overflows and resynchronizes), and
+   * the most unsent transport output a connection may hold before it is closed. At most `maxPendingBytesGateway`.
+   * Default 4194304.
+   */
   maxPendingBytesPerConnection: number;
   /** Bytes queued across the gateway. Not a bound on process memory. Default 67108864. */
   maxPendingBytesGateway: number;
@@ -403,11 +460,11 @@ export type ProjectConfig<C extends ChannelMap = ChannelMap> = {
 
 /** A verified identity returned by the `authenticate` handler. */
 export interface Principal {
-  /** Non-empty user or service identifier within the tenant. */
+  /** Non-empty user or service identifier within the tenant, at most 512 characters. */
   subject: string;
-  /** Non-empty tenant identifier. Routing never accepts a tenant from the browser. */
+  /** Non-empty tenant identifier, at most 512 characters. Routing never accepts a tenant from the browser. */
   tenantId: string;
-  /** Non-empty session identifier, matched by session revocations. */
+  /** Non-empty session identifier, at most 512 characters, matched by session revocations. */
   sessionId: string;
   /** UTC RFC3339 expiry, which must be in the future. Delivery stops when it passes. */
   expiresAt: string;
@@ -462,9 +519,10 @@ export interface ChannelHandlers<C extends ChannelContract> {
   authorize(input: HandlerContext & { principal: Principal; params: C["params"] }): Awaitable<boolean>;
   /**
    * Maps one source record to the channel states it changes. An empty array filters
-   * the record. A throw, timeout or invalid output pauses the source at that record
-   * unless a V1.1 failure policy applies; throw {@link TransientMappingError} to
-   * request a bounded retry where the source's policy allows it.
+   * the record. A throw, a timeout or invalid routing pauses the source at that record.
+   * Only mapped data that fails the payload schema can be quarantined instead, under a
+   * V1.1 `invalidPublicPayload` policy. Throw {@link TransientMappingError} to request up
+   * to `transientMapperRetries` retries where the source's policy allows them.
    */
   map(input: HandlerContext & { record: SourceRecord }): Awaitable<readonly MappedState<C["params"], C["data"]>[]>;
   /**
@@ -504,9 +562,36 @@ export interface HandlerRegistry<C extends ChannelMap> {
  * - `channel`: one subject's subscriptions to a channel version, narrowed to one instance when `params` is given.
  */
 export type Revocation =
-  | { kind: "session"; tenantId: string; sessionId: string }
-  | { kind: "subject"; tenantId: string; subject: string }
-  | { kind: "channel"; tenantId: string; subject: string; channel: string; channelVersion: number; params?: Params };
+  | {
+    /** Every connection of one session. */
+    kind: "session";
+    /** The tenant the session belongs to. */
+    tenantId: string;
+    /** The {@link Principal.sessionId} to revoke. */
+    sessionId: string;
+  }
+  | {
+    /** Every connection of one subject. */
+    kind: "subject";
+    /** The tenant the subject belongs to. */
+    tenantId: string;
+    /** The {@link Principal.subject} to revoke. */
+    subject: string;
+  }
+  | {
+    /** One subject's subscriptions to a channel version. */
+    kind: "channel";
+    /** The tenant the subject belongs to. */
+    tenantId: string;
+    /** The {@link Principal.subject} whose subscriptions are revoked. */
+    subject: string;
+    /** The channel name. */
+    channel: string;
+    /** The channel version. */
+    channelVersion: number;
+    /** Narrows the revocation to the one instance with these parameters. */
+    params?: Params;
+  };
 /** A gateway instance, created by `createGateway` without opening any connections. */
 export interface Gateway {
   /**
@@ -526,15 +611,15 @@ export interface Gateway {
    * selectors, closes matching connections. Update the application's own session
    * policy first, so a reconnect cannot restore access.
    * @returns How many subscriptions and connections were closed.
-   * @throws `INVALID_REQUEST` for a malformed selector.
+   * Rejects with `INVALID_REQUEST` for a malformed selector.
    */
   revoke(request: Revocation): Promise<{ closedSubscriptions: number; closedConnections: number }>;
   /**
    * Retries a paused source at its held record, after the cause was fixed. Never
-   * skips the record; already healthy is a no-op.
-   * @throws `INVALID_REQUEST` for an unknown source; `SOURCE_UNAVAILABLE` when the
-   * gateway is not running, the source is not paused, or (V1.1) an advance is
-   * unresolved or the source's circuit is open.
+   * skips the record; already healthy is a no-op. Rejects with `INVALID_REQUEST` for an
+   * unknown source, and with `SOURCE_UNAVAILABLE` when the gateway is not running, when
+   * the source is starting, degraded or stopped, or (V1.1) when an advance is unresolved
+   * or the source's circuit is open.
    */
   resumeSource(sourceId: string): Promise<void>;
 }
@@ -551,7 +636,17 @@ export interface GatewayLogger {
  * One fixture record: a JSON value, or raw text the gateway decodes exactly as it
  * decodes broker bytes, so malformed input can be rehearsed in development (V1.1).
  */
-export type FixtureRecord = { key: string | null; value: Json } | { key: string | null; raw: string };
+export type FixtureRecord = {
+  /** The record key, or null for none. */
+  key: string | null;
+  /** The record value as JSON. */
+  value: Json;
+} | {
+  /** The record key, or null for none. */
+  key: string | null;
+  /** The record value as text, decoded like broker bytes. */
+  raw: string;
+};
 
 /** Development-only principals and fixture records. Rejected in production. */
 export interface DevelopmentOptions {
@@ -562,7 +657,7 @@ export interface DevelopmentOptions {
 }
 /** Options for `createGateway`. */
 export interface GatewayOptions<C extends ChannelMap> {
-  /** The validated project configuration. */
+  /** The project configuration; `createGateway` validates it. */
   config: ProjectConfig<C>;
   /** The trusted server handlers. */
   handlers: HandlerRegistry<C>;
@@ -584,7 +679,7 @@ export interface GatewayOptions<C extends ChannelMap> {
   handlerBuildId?: string;
   /**
    * Serve the local operator socket at `<stateDirectory>/run/operator.sock` (ADR-15C §3).
-   * Requires stateDirectory. Default false.
+   * Requires stateDirectory and failureHandling. Default false.
    */
   operatorSocket?: boolean;
   /**
@@ -648,8 +743,21 @@ export type ControlRequest = {
   subscriptionId: string
 };
 /** Reply envelope for control requests and management responses. */
-export type Result<T> = { ok: true; requestId: string; data: T }
-  | { ok: false; requestId: string; error: StreamError };
+export type Result<T> = {
+  /** The request succeeded. */
+  ok: true;
+  /** Correlation ID of the request. */
+  requestId: string;
+  /** The response. */
+  data: T;
+} | {
+  /** The request failed. */
+  ok: false;
+  /** Correlation ID of the request. */
+  requestId: string;
+  /** Why it failed. */
+  error: StreamError;
+};
 /** Wire body of `so:data`: one event for a subscription. */
 export interface DataFrame {
   /** The subscription the event is for. */
@@ -686,7 +794,14 @@ export interface Receipt {
  * {@link Capabilities}, a connection ID, an opaque `identityKey` that changes only
  * when the tenant or subject changes, and `authExpiresAt`, the principal's expiry.
  */
-export type Hello = Capabilities & { connectionId: string; identityKey: string; authExpiresAt: string };
+export type Hello = Capabilities & {
+  /** The gateway's ID for this connection. */
+  connectionId: string;
+  /** Opaque identity that changes only when the tenant or subject changes. */
+  identityKey: string;
+  /** UTC RFC3339 time the principal's authentication expires. */
+  authExpiresAt: string;
+};
 /** Wire body of `so:error`. */
 export interface ErrorFrame {
   /** The affected subscription, when the error concerns one. */
@@ -778,7 +893,7 @@ export interface SourceStatus {
    * - `starting`: not ready yet.
    * - `healthy`: consuming normally.
    * - `degraded`: temporarily unavailable, for example during a broker outage or rebalance.
-   * - `paused`: held at a record it could not process; see {@link Gateway.resumeSource}.
+   * - `paused`: held at a record it could not process or (V1.1) behind another held record; see {@link Gateway.resumeSource}.
    * - `stopped`: the gateway stopped it.
    */
   status: "starting" | "healthy" | "degraded" | "paused" | "stopped";
@@ -849,7 +964,7 @@ export interface ManagementOperations {
   "GET /management/v1/traces": { request: { limit?: number; cursor?: string; sourceId?: string; channel?: string; outcome?: Trace["outcome"] }; response: Page<Trace> };
   /** Retries a paused source at its held record; see {@link Gateway.resumeSource}. */
   "POST /management/v1/sources/resume": { request: { sourceId: string }; response: SourceStatus };
-  /** Mints a five-minute preview token for a registered development principal. */
+  /** Mints a preview token, valid for at most five minutes, for a registered development principal. */
   "POST /management/v1/preview-sessions": { request: { fixturePrincipalRef: string }; response: { token: string; expiresAt: string; previewSessionId: string } };
   /** Registered development principals, without claims. */
   "GET /management/v1/dev/principals": { request: null; response: { items: readonly DevelopmentPrincipalSummary[] } };
@@ -869,7 +984,7 @@ export interface ManagementOperations {
   "POST /management/v1/failures/export": { request: { failureId: string }; response: ReproductionBundle };
   /** Runs an incident's stored record through the current handlers without admitting anything (V1.1). */
   "POST /management/v1/failures/evaluate": { request: EvaluateRequest; response: EvaluationResult };
-  /** Admits an evaluated record's outputs under an approved plan (V1.1). */
+  /** Admits an evaluated record's outputs under the plan `evaluate` issued; a refusal is a 200 response (V1.1). */
   "POST /management/v1/failures/redrive": { request: RedriveRequest; response: OperationResult };
   /** Resumes a source so its held record is processed again (V1.1). */
   "POST /management/v1/sources/retry-current": { request: RetryCurrentRequest; response: OperationResult };

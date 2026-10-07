@@ -72,8 +72,8 @@ function tokensEqual(expected: string, provided: string): boolean {
  *
  * @param options - The gateway and listener settings.
  * @returns The running server, once it is listening.
- * @throws A StreamOtterError with code FORBIDDEN when the gateway is in production mode, or
- * INVALID_REQUEST when `gateway` was not created by `createGateway`. Rejects with the
+ * @throws Rejects with a StreamOtterError with code FORBIDDEN when the gateway is in production
+ * mode, or INVALID_REQUEST when `gateway` was not created by `createGateway`, and with the
  * Node.js listen error when the address cannot be bound.
  */
 export async function startManagementServer(options: ManagementServerOptions): Promise<ManagementServer> {

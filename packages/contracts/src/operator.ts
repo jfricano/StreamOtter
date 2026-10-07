@@ -16,8 +16,10 @@ import type { ErrorCode, Page, SourceRecord, SourceStatus, StreamError, Trace } 
  * - `retrying`: the record is being processed again after a retry.
  * - `advance-pending`: a recovery boundary is installed and the move past the record is not yet confirmed.
  * - `advanced`: the source moved past the record under a recovery boundary; the record was not delivered.
- * - `processed`: the record processed normally on a retry; nothing was skipped.
- * - `uncertain`: an advance could not be confirmed; the whole source holds until a restart reconciles it from the group's committed offset.
+ * - `processed`: the record processed normally when it was redelivered, after a retry or a restart; nothing was skipped.
+ * - `uncertain`: an advance could not be confirmed, and the whole source holds. At the next start the gateway checks the
+ *   group's committed offset and marks it advanced or held; it stays uncertain when that offset is unexplained or the
+ *   record came from another cluster.
  */
 export type IncidentProgress = "held" | "retrying" | "advance-pending" | "advanced" | "processed" | "uncertain";
 /**
@@ -47,7 +49,7 @@ export type IncidentQuarantine = "not-required" | "pending" | "unknown" | "ackno
  * - `reassess`: correct what made the recovery guard hold, then run it again with {@link OperatorApi.reassess}.
  * - `evaluate`: the record was advanced past and may be redriven; {@link OperatorApi.evaluate} checks it against the current mapping.
  * - `reopen-circuit`: the source's automatic-continuation circuit is open; find the cause, then {@link OperatorApi.reopenCircuit} and reassess.
- * - `none`: nothing to do. The incident is resolved, or the gateway is still working on it or reconciles it at restart.
+ * - `none`: nothing to do. The incident is resolved, or the gateway is still working on it or checks it again at the next start.
  */
 export type IncidentNextAction = "repair-and-retry" | "reassess" | "evaluate" | "reopen-circuit" | "none";
 /**
@@ -99,7 +101,10 @@ export interface IncidentSummary {
   impact: "source-wide";
   /** The failure policy that applied to this record's class when the incident was first observed. */
   policy: FailurePolicy;
-  /** `open` while the incident still needs something; `resolved` once the record processed, was advanced past, or the source was rebaselined. */
+  /**
+   * `open` while the incident still needs something; `resolved` once the record processed, was advanced past, or the
+   * source was rebaselined. A resolved incident reopens if the same record is observed failing again.
+   */
   state: "open" | "resolved";
   /** How the incident was resolved, in words (for example "processed after retry"), or null while it is open. */
   resolution: string | null;
@@ -113,7 +118,12 @@ export interface IncidentSummary {
   evidence: {
     /** Where the original bytes are kept: `kafka` (the quarantine topic), `local` (the local store, for fixture sources) or `none`. */
     location: "kafka" | "local" | "none";
-    /** Whether the original bytes were captured in full. `incomplete` means the record exceeded the capture limits; `unavailable` means no bytes were captured. */
+    /**
+     * Whether the record's bytes were within the capture limits when it was observed: `complete`, `incomplete` (over
+     * the limits) or `unavailable` (no bytes to capture). Only `location` says whether a copy is kept: under the `pause`
+     * policy the bytes are hashed but not kept. `expired` is reserved; expiry of a kept copy is reported when it is read
+     * back (`evidence-expired`).
+     */
     completeness: "complete" | "incomplete" | "unavailable" | "expired";
     /** Size of the record value in bytes; null for a tombstone or when nothing was captured. */
     valueBytes: number | null;
@@ -124,7 +134,7 @@ export interface IncidentSummary {
     /** "sha256:<hex>" over key, value and headers, or "" when nothing was captured. */
     hash: string;
   };
-  /** Whether a copy of the record is in the quarantine topic. */
+  /** Whether a copy of the record is in the quarantine topic (or, for a fixture source, the local store). */
   quarantine: IncidentQuarantine;
   /** What happened to the source position at the record. */
   progress: IncidentProgress;
@@ -162,7 +172,7 @@ export interface IncidentDetail extends IncidentSummary {
   guard: { decision: "hold" | "recoverable" | "error" | "timeout"; reason: string | null; evidenceRef: string | null; at: string } | null;
   /**
    * Identities recorded when the incident was first observed: the configuration fingerprint, the handler
-   * build ID (`handlerBuildId` gateway option), a revision of the `failureHandling` configuration, and the gateway version.
+   * build ID (`handlerBuildId` gateway option), a hash of the `failureHandling` section (16 hex digits), and the gateway version.
    */
   fingerprints: { config: string; handlerBuildId: string; policyRevision: string; gatewayVersion: string };
   /** Bounded, newest last. */
@@ -292,8 +302,9 @@ export interface OperatorStatus {
   /** The gateway's mode, version, configuration fingerprint, handler build ID and lifecycle state. */
   gateway: { mode: "development" | "production"; version: string; configFingerprint: string; handlerBuildId: string; state: string };
   /**
-   * The incident store: `sqlite` (the durable journal at `path`) or `memory` (development without a state
-   * directory; never durable, `path` null), with its size and limit in bytes and its schema version.
+   * The incident store: `sqlite` (the durable journal at `path`) or `memory` (used when the gateway has no `stateDirectory`;
+   * production allows that only when no source uses a quarantine policy). `memory` is never durable and `path` is null.
+   * Also gives its size and limit in bytes and its schema version.
    */
   store: { kind: "sqlite" | "memory"; durable: boolean; path: string | null; sizeBytes: number; limitBytes: number; schemaVersion: number };
   /** The quarantine topic, or null when none is configured. Its Kafka settings are null until the topic has been described. */
@@ -429,9 +440,10 @@ export interface OperatorApi {
   /** Builds a {@link ReproductionBundle} for one incident, for a bug report. Rejects with INVALID_REQUEST for an unknown incident. */
   exportFailure(request: ExportFailureRequest): Promise<ReproductionBundle>;
   /**
-   * Resumes a paused source at its held record so the record is processed again; it never skips the record.
-   * Waits up to 15 seconds for the record to settle and reports `retried` (processed), `advanced`, `held`
-   * (failed again) or `retrying` (not settled yet). Refused, for example, when the incident is not the held
+   * Resumes a paused source at its held record so the record is processed again; the retry itself never skips it.
+   * Waits up to 15 seconds and reports `retried` (processed), `held` (failed again), `advanced` (on a
+   * quarantine-resync source, the guard approved an advance past the record), or the record's progress if it has
+   * not settled yet (usually `retrying`). Refused, for example, when the incident is not the held
    * record at the expected revision, an advance on the source is unresolved, or a quarantine-resync source's circuit is open.
    */
   retryCurrent(request: RetryCurrentRequest): Promise<OperationResult>;
@@ -444,7 +456,7 @@ export interface OperatorApi {
   /** Closes a source's open automatic-continuation circuit and clears its window. It approves no record; records already held stay held. */
   reopenCircuit(request: ReopenCircuitRequest): Promise<OperationResult>;
   /**
-   * Retires a recovery boundary by hand, so snapshots stop acknowledging it. Only when the source's
+   * Retires a recovery boundary by hand, so snapshots no longer have to acknowledge it. Only when the source's
    * `boundaryRetirement` is "operator", and refused while an incident the boundary covers is held or its advance
    * is unresolved. StreamOtter cannot check that snapshots reflect the quarantined record. Not offered by the
    * development management routes.
@@ -458,8 +470,9 @@ export interface OperatorApi {
   evaluate(request: EvaluateRequest): Promise<EvaluationResult>;
   /**
    * Executes an approved plan: rechecks it, reads the original record back, maps it again and admits the outputs
-   * through the normal revision filter. The outcome is `reprocessed` when a subscription queued a frame, else
-   * `superseded`. Nothing is published to Kafka and no offset moves.
+   * through the normal revision filter. When the outputs are admitted, the outcome is `reprocessed` if a subscription
+   * queued a frame, else `superseded`. A record that still fails ends `failed`, and a changed mapping or a stale plan is
+   * refused. Nothing is published to Kafka and no offset moves.
    */
   redrive(request: RedriveRequest): Promise<OperationResult>;
 }
@@ -537,8 +550,26 @@ export interface OperatorIpcRequest<O extends OperatorOperation = OperatorOperat
  * `data`, or the error. `id` echoes the request's ID, or is "" when the request had no usable one.
  */
 export type OperatorIpcResponse =
-  | { v: 1; id: string; ok: true; data: unknown }
-  | { v: 1; id: string; ok: false; error: StreamError };
+  | {
+    /** The protocol version, {@link OPERATOR_IPC_VERSION}. */
+    v: 1;
+    /** The request's ID, or "" when it had no usable one. */
+    id: string;
+    /** The operation ran. */
+    ok: true;
+    /** The operation's result. */
+    data: unknown;
+  }
+  | {
+    /** The protocol version, {@link OPERATOR_IPC_VERSION}. */
+    v: 1;
+    /** The request's ID, or "" when it had no usable one. */
+    id: string;
+    /** The request failed. */
+    ok: false;
+    /** Why it failed. */
+    error: StreamError;
+  };
 
 /** CLI exit status for an operation result (API §10, D7): 0 completed, 3 refused, 1 failed, 4 unknown. */
 export function operationExitCode(result: OperationResult["result"]): 0 | 1 | 3 | 4 {

@@ -10,7 +10,7 @@ export interface ConfigValidation {
   /** True when `issues` is empty. */
   valid: boolean;
   /** Every problem found, each with a JSON Pointer path (`""` for the root), a code and a message. */
-  issues: ConfigIssue[]
+  issues: ConfigIssue[];
 }
 
 /** Keys that belong to deferred V2/V3 features; reported with a clear message. */
@@ -312,7 +312,7 @@ export function validateProjectConfig(input: unknown): ConfigValidation {
 
 /**
  * Validates like {@link validateProjectConfig} and throws when the configuration is invalid.
- * @throws {@link StreamOtterError} `CONFIG_INVALID`, with every issue in `details.issues` and the first three in the message.
+ * @throws A {@link StreamOtterError} with code `CONFIG_INVALID`, with every issue in `details.issues` and the first three in the message.
  */
 export function assertValidProjectConfig(input: unknown): asserts input is ProjectConfig {
   const { valid, issues } = validateProjectConfig(input);

@@ -176,7 +176,7 @@ export interface ValueIssue {
   /** Where the problem is: `$` for the value itself, followed by `.key` and `[index]` segments. */
   path: string;
   /** What is wrong, in plain English. */
-  message: string
+  message: string;
 }
 
 /** Validates a value against a schema. Returns the first issue, or null when valid. */
@@ -237,8 +237,20 @@ export function validateValue(schema: Schema, value: unknown, path = "$", depth 
  * encoding, or the first validation issue.
  */
 export type CanonicalParamsResult =
-  | { ok: true; params: Params; canonical: string }
-  | { ok: false; issue: ValueIssue };
+  | {
+    /** The parameters are valid. */
+    ok: true;
+    /** The normalized parameters. */
+    params: Params;
+    /** Their canonical JSON encoding. */
+    canonical: string;
+  }
+  | {
+    /** The parameters are invalid. */
+    ok: false;
+    /** The first validation issue. */
+    issue: ValueIssue;
+  };
 
 /**
  * Validates parameters and produces their canonical encoding: -0 normalized to 0,
