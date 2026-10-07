@@ -1,7 +1,8 @@
 /**
- * The import paths the API reference documents, in the order the reference lists them. Each is
- * one of the `streamotter` package's entry points and is also published as its own package.
- * `entry` is the TypeDoc module name: the entry file's base name in streamotter's dist/.
+ * The import paths the API reference can document, in the order the reference lists them. Each is
+ * one of the `streamotter` package's entry points and is also published in its own package. The
+ * site documents those the built package exports; one it exports that isn't listed here fails the
+ * build. `entry` is the TypeDoc module name: the entry file's base name in streamotter's dist/.
  */
 export interface ApiModuleInfo {
   slug: string;
@@ -17,6 +18,10 @@ export const API_MODULES: readonly ApiModuleInfo[] = [
   {
     slug: "client", entry: "client", importPath: "streamotter/client", scopedImport: "@streamotter/client", title: "Browser SDK",
     description: "createClient, subscriptions, connection and subscription states, and the errors a browser sees."
+  },
+  {
+    slug: "react", entry: "react", importPath: "streamotter/react", scopedImport: "@streamotter/client/react", title: "React hooks",
+    description: "StreamOtterProvider and typed hooks over the browser SDK: useSubscription, useConnectionState and createStreamOtterHooks. Needs React 18 or later."
   },
   {
     slug: "gateway", entry: "gateway", importPath: "streamotter/gateway", scopedImport: "@streamotter/gateway", title: "Gateway",

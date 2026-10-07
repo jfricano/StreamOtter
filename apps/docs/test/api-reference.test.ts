@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { loadApiReference, sourceUrlFor } from "../integrations/api-reference.mjs";
+import { documentedModules, loadApiReference, sourceUrlFor } from "../integrations/api-reference.mjs";
 import { buildApiReference, KIND, type ApiReference, type TdProject, type TdReflection } from "../src/api-reference/build.ts";
 import { API_MODULES, API_ROOT } from "../src/api-reference/modules.ts";
 import { RELEASE } from "../src/site.ts";
@@ -132,10 +132,17 @@ describe("the reference for the workspace's streamotter package", () => {
   let reference: ApiReference;
   before(async () => { reference = await loadApiReference(); });
 
-  test("documents every entry point the package exports", async () => {
+  test("documents every entry point the package exports, and only those", async () => {
     const manifest = (await import("streamotter/package.json", { with: { type: "json" } })).default as { exports: Record<string, unknown> };
     const exported = Object.keys(manifest.exports).filter(path => path !== "./package.json").map(path => `streamotter${path.slice(1)}`);
-    assert.deepEqual([...exported].sort(), API_MODULES.map(module => module.importPath).sort(), "add the new entry point to src/api-reference/modules.ts");
+    assert.deepEqual(reference.modules.map(module => module.importPath).sort(), [...exported].sort());
+  });
+
+  test("an exported entry point that modules.ts doesn't describe fails the build", () => {
+    const installed = { dir: "", version: "1.2.3", exports: ["./client", "./brand-new", "./package.json"], require: () => undefined };
+    assert.throws(() => documentedModules(installed as never), /describe streamotter\/brand-new in src\/api-reference\/modules\.ts/);
+    installed.exports = ["./client", "./contracts"];
+    assert.deepEqual(documentedModules(installed as never).map(module => module.slug), ["client", "contracts"]);
   });
 
   test("describes the package version the site documents", () => {

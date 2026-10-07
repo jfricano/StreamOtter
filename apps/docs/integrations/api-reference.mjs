@@ -23,7 +23,18 @@ export function installedStreamotter() {
   const manifest = require.resolve("streamotter/package.json");
   const dir = dirname(manifest);
   if (!existsSync(join(dir, "dist", "client.d.ts"))) throw new Error("API reference: the streamotter package has no declarations yet. Run `pnpm build` at the repository root first.");
-  return { dir, version: require(manifest).version, require: createRequire(manifest) };
+  return { dir, version: require(manifest).version, exports: Object.keys(require(manifest).exports), require: createRequire(manifest) };
+}
+
+/**
+ * The import paths this release exports, in modules.ts order. Throws when the package exports an
+ * entry point modules.ts doesn't describe, so a new one can't ship undocumented.
+ */
+export function documentedModules(installed = installedStreamotter()) {
+  const exported = installed.exports.filter(path => path !== "./package.json").map(path => `streamotter${path.slice(1)}`);
+  const missing = exported.filter(path => !API_MODULES.some(module => module.importPath === path));
+  if (missing.length > 0) throw new Error(`API reference: describe ${missing.join(", ")} in src/api-reference/modules.ts.`);
+  return API_MODULES.filter(module => exported.includes(module.importPath));
 }
 
 /**
@@ -42,7 +53,7 @@ export function sourceUrlFor(version) {
 /** Runs TypeDoc over the installed release's entry points and returns its JSON model. */
 export async function readStreamotterModel(installed = installedStreamotter()) {
   // Contracts first: a symbol several entry points export is documented where it is declared.
-  const order = ["contracts", ...API_MODULES.map(module => module.entry).filter(entry => entry !== "contracts")];
+  const order = ["contracts", ...documentedModules(installed).map(module => module.entry).filter(entry => entry !== "contracts")];
   const entryPoints = order.map(entry => join(installed.dir, "dist", `${entry}.d.ts`));
   // The declarations import node: modules; @types/node is this app's own dependency.
   const typesNode = dirname(createRequire(import.meta.url).resolve("@types/node/package.json"));
@@ -72,7 +83,7 @@ export async function readStreamotterModel(installed = installedStreamotter()) {
 /** The reference's data for the installed release. */
 export async function loadApiReference(installed = installedStreamotter()) {
   const model = await readStreamotterModel(installed);
-  return buildApiReference(model, { release: installed.version, sourceUrl: sourceUrlFor(installed.version) });
+  return buildApiReference(model, { release: installed.version, modules: documentedModules(installed), sourceUrl: sourceUrlFor(installed.version) });
 }
 
 /** The Astro integration: builds the reference once and serves it as a virtual module. */

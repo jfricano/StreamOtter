@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import ts from "typescript";
+import { entryPoints } from "./entries.ts";
 
 // The public API is what the streamotter entry points export; 1.0.0 freezes it. The names below
 // were made private before 1.0.0 (docs/releases/1.0.0/PUBLIC_API_TRIM.md). This test keeps them
@@ -9,7 +10,7 @@ import ts from "typescript";
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const CONTRACTS_INTERNAL = `${ROOT}packages/contracts/src/internal.ts`;
-const ENTRIES = ["contracts", "client", "gateway", "operator", "management", "cli"];
+const ENTRIES = entryPoints();
 
 /** Shared by StreamOtter's own packages through `@streamotter/contracts/internal`. */
 const CONTRACTS_INTERNALS = [

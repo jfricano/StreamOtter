@@ -149,6 +149,8 @@ export interface ApiReference { release: string; modules: ApiModule[]; symbols: 
 
 export interface BuildOptions {
   release: string;
+  /** The import paths to document, in order; by default every one in modules.ts. */
+  modules?: readonly ApiModuleInfo[];
   /** Maps a declaration's source file (as TypeDoc reports it) to a page on GitHub, or null. */
   sourceUrl?: (fileName: string, line: number) => string | null;
 }
@@ -176,8 +178,9 @@ const anchorFor = (name: string) => `member-${name.replace(/[^\w-]+/g, "-").repl
 
 /** Builds the reference. Throws when the model lacks an import path the site documents. */
 export function buildApiReference(project: TdProject, options: BuildOptions): ApiReference {
+  const documented = options.modules ?? API_MODULES;
   const byName = new Map((project.children ?? []).map(module => [module.name, module]));
-  for (const info of API_MODULES) {
+  for (const info of documented) {
     if (!byName.has(info.entry)) throw new Error(`API reference: the TypeDoc model has no ${info.entry} entry point for ${info.importPath}.`);
   }
 
@@ -187,7 +190,7 @@ export function buildApiReference(project: TdProject, options: BuildOptions): Ap
   const homes: { info: ApiModuleInfo; declaration: TdReflection; segment: string }[] = [];
   const importPaths = new Map<number, string[]>();
   const anchorsOf = new Map<number, Map<number, string>>();
-  for (const info of API_MODULES) {
+  for (const info of documented) {
     const declared = (byName.get(info.entry)!.children ?? []).filter(child => child.kind !== KIND.Reference && child.kind in KIND_OF);
     const segments = pathSegments(declared);
     for (const child of declared) {
@@ -212,7 +215,7 @@ export function buildApiReference(project: TdProject, options: BuildOptions): Ap
     }
     anchorsOf.set(declaration.id, anchors);
   }
-  for (const info of API_MODULES) {
+  for (const info of documented) {
     for (const child of byName.get(info.entry)!.children ?? []) {
       const id = child.kind === KIND.Reference ? child.target : child.id;
       if (id === undefined || !symbolHref.has(id)) continue;
@@ -227,7 +230,7 @@ export function buildApiReference(project: TdProject, options: BuildOptions): Ap
     renderSymbol(ctx, info, declaration, segment, importPaths.get(declaration.id) ?? [info.importPath], anchorsOf.get(declaration.id)!));
   const bySymbolId = new Map(homes.map(({ declaration }, index) => [declaration.id, symbols[index]!]));
 
-  const modules = API_MODULES.map(info => {
+  const modules = documented.map(info => {
     const exports: ApiExport[] = [];
     for (const child of byName.get(info.entry)!.children ?? []) {
       const id = child.kind === KIND.Reference ? child.target : child.id;
