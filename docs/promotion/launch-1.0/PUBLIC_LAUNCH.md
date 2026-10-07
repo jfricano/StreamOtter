@@ -37,6 +37,7 @@ October 5, 2026 · Prepared for Jason Fricano · **Status: draft for your decisi
 | D6 | Reword "independent review" in the repo docs to "review by separate AI agent sessions that didn't write the code", before `1.0.0-rc.1`? | **Yes** | It's what happened; HN will read those docs, and the 1.0 npm pages should carry the corrected text |
 | D7 | Two articles (1.0 at T-0; your short "Making it lie" at T+7), the origin story as a LinkedIn post, and one Medium story updated in place? | **Yes** | Half the writing, and each piece has a reason to exist |
 | D8 | HN Plan B: if your account can't submit by T-7, lead with r/apachekafka on T-0 and do Show HN later, once the account qualifies? | **Yes** | Never a friend's account, never a repost; the rest of the plan doesn't depend on HN |
+| D9 | No bots that post, reply, vote or DM anywhere; instead a read-only weekly listening digest (Reddit, Stack Overflow, HN, GitHub, dev.to), from which you pick at most two threads and reply by hand with disclosure? | **Yes** | Every platform's rules ban promotional bots, and it would undercut the launch's honesty. About 15 min a week, replacing the optional Stack Overflow item. See `briefs/listening.md` |
 
 **Your time:** about 15 hours from today to T+14, counting the decisions, approvals and your own writing; about 13 in the lean version (§5). Not counted: publishing rc.1 and 1.0.0, and the engineering approvals in the release and site work.
 

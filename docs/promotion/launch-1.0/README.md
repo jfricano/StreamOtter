@@ -15,6 +15,7 @@ Outreach plan for the official public launch (npm `1.0.0`), October 5, 2026, rev
 | [REVIEW.md](REVIEW.md) | The two review passes (accuracy and strategy; AI review passes that didn't write the kit), what was fixed, and what is left for you |
 | [review/FIX_DECISIONS.md](review/FIX_DECISIONS.md) | The binding calls for the fix pass |
 | [briefs/channels.md](briefs/channels.md) | Channel research for Oct 2026, ranked, with sources and dates |
+| [briefs/listening.md](briefs/listening.md) | Bot outreach assessed (no) and the read-only listen-and-alert routine (Oct 7) |
 | [drafts/make-it-lie-local.md](drafts/make-it-lie-local.md) | The no-Kafka "make it lie" recipe, run and verified on 0.2.0-rc.1 (Oct 5) |
 | [drafts/ai-disclosure.md](drafts/ai-disclosure.md) | The one AI sentence, and where it goes on each surface **[approve wording]** |
 | [drafts/launch-article.md](drafts/launch-article.md) | The 1.0 article, the only full article at T-0 |
