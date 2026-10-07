@@ -1,6 +1,6 @@
 # The StreamOtter blog: plan
 
-October 7, 2026 · Prepared for Jason Fricano · **Status: being built (a PR, no deploy).** The blog is a launch gate since you answered D2 "no" (Oct 7). On Oct 7 you chose a subdomain: **blog.streamotter.dev**.
+October 7, 2026 · Prepared for Jason Fricano · **Status: built, in StreamOtter PR #75 (stacked on #72); nothing deployed.** The blog is a launch gate since you answered D2 "no" (Oct 7). On Oct 7 you chose a subdomain: **blog.streamotter.dev**.
 
 ## Where it lives
 **`blog.streamotter.dev`**, a small Astro app in the StreamOtter repo (`apps/blog`), beside the docs site (`apps/docs`, docs.streamotter.dev, PR #72), with an RSS feed at `/rss.xml`.
