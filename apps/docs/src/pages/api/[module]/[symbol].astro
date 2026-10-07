@@ -36,6 +36,14 @@ const description = symbol.summaryText || `The ${label.toLowerCase()} ${symbol.n
       {symbol.sourceUrl && <p><a href={symbol.sourceUrl}>View source on GitHub ↗</a></p>}
     </div>
   </section>
+  {symbol.fields.length > 0 && (
+    <section aria-labelledby="group-fields">
+      <h2 id="group-fields">Fields</h2>
+      <dl class="api-fields">{symbol.fields.map(field => (
+        <div><dt><code set:html={field.codeHtml} /></dt><dd class="api-doc" set:html={field.html} /></div>
+      ))}</dl>
+    </section>
+  )}
   {groups.map(group => (
     <section aria-labelledby={`group-${group.title.toLowerCase().replace(/\s+/g, "-")}`}>
       <h2 id={`group-${group.title.toLowerCase().replace(/\s+/g, "-")}`}>{group.title}</h2>

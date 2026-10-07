@@ -126,6 +126,25 @@ describe("buildApiReference", () => {
     assert.equal(strip(member("[BRAND]").codeHtml), "readonly [BRAND]: true");
     assert.deepEqual(member("options").fields.map(field => [field.name, strip(field.codeHtml)]), [["port", "port?: number"]]);
   });
+
+  test("a union or intersection alias lists its documented fields; an undocumented `?: never` adds none", () => {
+    const object = (id: number, children: TdReflection[]) => ({ type: "reflection" as const, declaration: { id, name: "__type", kind: KIND.TypeLiteral, children } });
+    const reference = buildApiReference(model([{
+      id: 1, name: "Props", kind: KIND.TypeAlias,
+      type: { type: "intersection", types: [
+        object(2, [{ id: 3, name: "children", kind: KIND.Property, flags: { isOptional: true }, comment: text("The children."), type: { type: "intrinsic", name: "unknown" } }]),
+        { type: "union", types: [
+          object(4, [
+            { id: 5, name: "client", kind: KIND.Property, comment: text("A client you manage."), type: { type: "intrinsic", name: "unknown" } },
+            { id: 6, name: "options", kind: KIND.Property, flags: { isOptional: true }, type: { type: "intrinsic", name: "never" } }
+          ]),
+          object(7, [{ id: 8, name: "options", kind: KIND.Property, comment: text("Options for a managed client."), type: { type: "intrinsic", name: "string" } }])
+        ] }
+      ] }
+    }]), { release: "1.2.3" });
+    const strip = (html: string) => html.replace(/<[^>]*>/g, "");
+    assert.deepEqual(reference.symbols[0]!.fields.map(field => strip(field.codeHtml)), ["children?: unknown", "client: unknown", "options: string"]);
+  });
 });
 
 describe("the reference for the workspace's streamotter package", () => {

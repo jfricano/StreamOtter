@@ -140,6 +140,8 @@ export interface ApiSymbol {
   typeParameters: ApiTypeParameter[];
   signatures: ApiSignature[];
   members: ApiMember[];
+  /** A union or intersection type alias's documented fields, from the object types it combines. */
+  fields: ApiField[];
   notes: ApiNote[];
   examples: ApiExample[];
   deprecatedHtml: string | null;
@@ -303,6 +305,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
   let codeHtml: string | null = null;
   let signatures: ApiSignature[] = [];
   let members: ApiMember[] = [];
+  let fields: ApiField[] = [];
   if (kind === "function") {
     signatures = (declaration.signatures ?? []).map(signature => renderSignature(ctx, signature, `function ${declaration.name}`, signature === declaration.signatures?.[0] && declaration.comment === undefined));
   } else if (kind === "variable") {
@@ -313,6 +316,9 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
     const objectLike = (target === undefined && (declaration.children?.length ?? 0) > 0) ||
       (target?.type === "reflection" && (target.declaration?.children?.length ?? 0) > 0 && !(target.declaration?.signatures?.length));
     codeHtml = `<span class="kw">type</span> ${escapeHtml(declaration.name)}${typeParametersHtml(ctx, declaration.typeParameters)} = ${objectLike ? "{ … }" : typeHtml(ctx, target, { block: true })}`;
+    // A union or intersection of object types (Schema, StreamOtterProviderProps) shows in full above;
+    // its fields' doc comments are listed under it.
+    if (target?.type === "union" || target?.type === "intersection") fields = fieldDocs(ctx, target, "");
     // A function type's code is already the declaration; its signature is listed only for what it documents.
     if (target?.type === "reflection" && target.declaration?.signatures?.length) {
       signatures = target.declaration.signatures.map(signature => renderSignature(ctx, signature, null, false))
@@ -361,6 +367,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
     typeParameters: kind === "function" ? [] : typeParameterDocs(ctx, declaration.typeParameters),
     signatures,
     members,
+    fields,
     notes: doc.notes,
     examples: doc.examples,
     deprecatedHtml: doc.deprecated,

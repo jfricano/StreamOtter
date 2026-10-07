@@ -39,7 +39,9 @@ function members(symbol: ts.Symbol, checker: ts.TypeChecker): { name: string; sy
     return [...own, ...statics].map(member => ({ name: member.escapedName === "__constructor" ? "constructor" : member.name, symbol: member }));
   }
   if (ts.isTypeAliasDeclaration(declaration)) {
+    // `client?: never` only makes a union's variants exclusive; it has nothing to describe.
     return typeLiterals(declaration.type).flatMap(literal => literal.members.flatMap(member => {
+      if (ts.isPropertySignature(member) && member.type?.kind === ts.SyntaxKind.NeverKeyword) return [];
       const memberSymbol = member.name === undefined ? undefined : checker.getSymbolAtLocation(member.name);
       return memberSymbol === undefined ? [] : [{ name: memberSymbol.name, symbol: memberSymbol }];
     }));
