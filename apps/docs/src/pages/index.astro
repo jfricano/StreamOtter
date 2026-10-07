@@ -1,0 +1,55 @@
+---
+import DocsPage from "../layouts/DocsPage.astro";
+import reference from "virtual:streamotter-docs/api-reference";
+import { GUIDES, HAS_UNDER_THE_HOOD, LINKS, RELEASE } from "../site.ts";
+const UNDER_THE_HOOD_PARTS = ["How it works", "How it's built", "Why it's built this way", "Guarantees and limits", "Using and running it"];
+---
+<DocsPage title="Build with StreamOtter" description="Guides for getting things done, the API reference for exact signatures, and Under the Hood for how it all works.">
+  <section class="doors" aria-label="Where to start">
+    <article class="door">
+      <p class="ask">I want to get something working</p>
+      <h2><a href="/guides/">Guides</a></h2>
+      <ul>{GUIDES.map(guide => <li><a href={`/guides/${guide.slug}/`}>{guide.label}</a></li>)}</ul>
+    </article>
+    <article class="door">
+      <p class="ask">I need an exact signature</p>
+      <h2><a href="/api/">API reference</a></h2>
+      <ul>{reference.modules.map(module => <li><a href={module.href}><code>{module.importPath}</code></a></li>)}</ul>
+      <p class="foot">Generated from the package's types and doc comments.</p>
+    </article>
+    {HAS_UNDER_THE_HOOD && (
+      <article class="door">
+        <p class="ask">I want to understand how it works</p>
+        <h2><a href="/under-the-hood/">Under the Hood</a></h2>
+        <p>Five short guides that explain how StreamOtter works without reading every line of code: the architecture, the code, the design decisions, the guarantees and limits, and how to run it.</p>
+        <ol>{UNDER_THE_HOOD_PARTS.map(part => <li>{part}</li>)}</ol>
+      </article>
+    )}
+  </section>
+  <section aria-labelledby="specs">
+    <h2 id="specs">Specifications and release</h2>
+    <ul class="links">
+      <li><a href={LINKS.v1Api}>V1 API specification: contracts, handlers, SDK, states, and protocol</a></li>
+      <li><a href={LINKS.v11Api}>V1.1 API: failureHandling, recovery guards, incidents, and the operator service</a></li>
+      <li><a href={LINKS.v11Spec}>V1.1 source-failure specification</a> and its <a href={LINKS.v11Decisions}>decision records</a></li>
+      <li><a href={LINKS.deployment}>Deployment guide</a></li>
+      <li><a href={LINKS.status}>Implementation status and verified support matrix</a></li>
+      <li><a href={LINKS.changelog}>Changelog</a></li>
+      <li><a href={LINKS.release}>streamotter@{RELEASE} on npm</a></li>
+    </ul>
+    <p class="muted">The specifications open on GitHub, pinned to this release. To see StreamOtter running, visit <a href={LINKS.home}>streamotter.dev</a>.</p>
+  </section>
+</DocsPage>
+<style>
+.doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 18px; }
+.door { display: grid; gap: 12px; align-content: start; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.door .ask { font: 600 .74rem/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.door h2 { font-size: 1.5rem; }
+.door h2 a { color: var(--ink); text-decoration: none; }
+.door h2 a:hover { color: var(--accent); }
+.door :is(ul, ol) { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.door ul { list-style: none; padding: 0; }
+.door code { overflow-wrap: anywhere; }
+.door .foot { color: var(--ink-3); font-size: .92rem; }
+.links { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; }
+</style>

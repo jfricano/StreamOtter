@@ -1,0 +1,16 @@
+---
+import DocsPage from "../../layouts/DocsPage.astro";
+import { GUIDES } from "../../site.ts";
+---
+<DocsPage title="Guides" description="Step-by-step guides, from a first live channel to operating source failures in production.">
+  <ol class="guides">
+    {GUIDES.map(guide => <li><h2><a href={`/guides/${guide.slug}/`}>{guide.label}</a></h2><p>{guide.summary}</p></li>)}
+  </ol>
+</DocsPage>
+<style>
+.guides { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); max-width: 850px; counter-reset: guide; }
+.guides li { display: grid; gap: 6px; padding: 20px 0 20px 3rem; border-bottom: 1px solid var(--line); position: relative; counter-increment: guide; }
+.guides li::before { content: counter(guide); position: absolute; left: 0; top: 22px; font: 600 .9rem var(--mono); color: var(--ink-3); }
+.guides h2 { font-size: 1.3rem; }
+.guides p { color: var(--ink-2); }
+</style>

@@ -1,0 +1,362 @@
+/*
+ * streamotter.dev design tokens. Brand colors are the StreamOtter brandmark's
+ * flat palette: ink (#04183F, the wordmark's "Stream" and the S), azure
+ * (#048DFC, "Otter"), splash cyan (#04BDFD), and otter brown and cream. The
+ * detailed logo adds deep channel water (#01448A) and the cyan code lines in
+ * its water (#01E1FC), which on this site mean "live". Stale borrows the color
+ * of silt. Status colors never double as decoration.
+ *
+ * The bright brand blues can't carry text on light grounds (3.4:1 at best), so
+ * text and white-label buttons use --azure-ink; the blues stay fills and
+ * display accents.
+ */
+:root {
+  color-scheme: light;
+  --ground: #f3f7fb;
+  --surface: #ffffff;
+  --surface-2: #e8f0f8;
+  --line: #d0dce8;
+  /** Borders that are a control's only edge (quiet buttons, the menu): 3:1 against the ground. */
+  --line-strong: #768aa5;
+  --ink: #04183f;
+  --ink-2: #41506b;
+  --ink-3: #586680;
+  --accent: #0068c2;
+  --accent-ink: #ffffff;
+  --azure: #048dfc;
+  --azure-ink: #0369c9;
+  --channel: #01448a;
+  --signal: #01e1fc;
+  --splash: #04bdfd;
+  --otter: #7f5447;
+  --fur: #9a6a5a;
+  --cream: #ebe6df;
+  --otter-ink: #6e3f33;
+  /** The brandmark's themable paths: the S and "Stream" (.bi), and the whiskers (.bw). */
+  --brand-navy: #04183f;
+  --brand-ink: #04183f;
+  --brand-whisker: #04183f;
+  --button-bg: #0369c9;
+  --button-ink: #ffffff;
+  --button-bg-hover: #04183f;
+  --live: #00728a;
+  --live-bg: #d6f5fb;
+  --sync: #0058a6;
+  --sync-bg: #dceafa;
+  --stale: #7f4f00;
+  --stale-bg: #fae9c6;
+  --resync: #9c4300;
+  --resync-bg: #fbe3cf;
+  --failed: #ae1f2c;
+  --failed-bg: #fbe0e2;
+  --code-bg: #07142e;
+  --code-ink: #d6e5f8;
+  /** Night Owl's comments (#637777) measure 3.9:1 on --code-bg; they carry meaning in the samples. */
+  --code-comment: #8b9e9e;
+  --shadow: 0 1px 2px rgba(5, 18, 47, 0.05), 0 12px 32px rgba(5, 18, 47, 0.08);
+
+  /* Figtree's heavy weights are the wordmark's geometric cousin, so one family sets both. */
+  --display: "Figtree Variable", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree Variable", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius: 14px;
+  --radius-lg: 22px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --max: 1180px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ground: #030b1f;
+    --surface: #081631;
+    --surface-2: #0d1f42;
+    --line: #1b2f5a;
+    --line-strong: #5670a0;
+    --ink: #e9f2fc;
+    --ink-2: #a9bad5;
+    --ink-3: #7d90b1;
+    --accent: #52b8ff;
+    --accent-ink: #031027;
+    --azure-ink: #52b8ff;
+    --otter-ink: #e3a98c;
+    --brand-ink: #e9f2fc;
+    --brand-whisker: #a9bad5;
+    --button-bg: #048dfc;
+    --button-ink: #04183f;
+    --button-bg-hover: #36a6ff;
+    --live: #01e1fc;
+    --live-bg: #062f3d;
+    --sync: #7cc4ff;
+    --sync-bg: #0c2747;
+    --stale: #f2b84b;
+    --stale-bg: #33260b;
+    --resync: #ff9c52;
+    --resync-bg: #3a230e;
+    --failed: #ff6f76;
+    --failed-bg: #3b1519;
+    /* Lifted off the ground (#030b1f), which it nearly matched; code panels also get a border. */
+    --code-bg: #0a1a3a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.3);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 88px;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 17px/1.62 var(--body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img,
+svg,
+canvas {
+  max-width: 100%;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  margin: 0;
+  text-wrap: balance;
+  color: var(--ink);
+}
+
+h1 {
+  font-size: clamp(2.5rem, 6.2vw, 4.6rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+h2 {
+  font-size: clamp(1.8rem, 3.6vw, 2.6rem);
+  font-weight: 780;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  font-size: 1.16rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+p {
+  margin: 0;
+}
+
+code,
+kbd,
+.mono {
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+
+:not(pre) > code {
+  background: var(--surface-2);
+  padding: 0.08em 0.36em;
+  border-radius: 5px;
+}
+
+.wrap {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding-inline: var(--gutter);
+}
+
+.eyebrow {
+  font: 600 0.75rem/1.2 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.lede {
+  color: var(--ink-2);
+  font-size: clamp(1.05rem, 1.6vw, 1.22rem);
+  max-width: 62ch;
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.section {
+  padding-block: clamp(56px, 9vw, 104px);
+}
+
+.section + .section {
+  border-top: 1px solid var(--line);
+}
+
+.section-head {
+  display: grid;
+  gap: 14px;
+  margin-bottom: clamp(28px, 4vw, 44px);
+  max-width: 760px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 0.98rem/1 var(--body);
+  padding: 13px 18px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .button:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.button-primary {
+  background: var(--button-bg);
+  color: var(--button-ink);
+}
+
+.button-primary:hover {
+  background: var(--button-bg-hover);
+}
+
+.button-quiet {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.button-quiet:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/*
+ * The brandmark, inlined from src/assets/brand/. Its S body and "Stream" (.bi)
+ * and its whiskers (.bw) follow the scheme; everything else keeps its brand color.
+ */
+.brand .bi {
+  fill: var(--brand-ink);
+  stroke: var(--brand-ink);
+}
+
+.brand .bw {
+  fill: var(--brand-whisker);
+  stroke: var(--brand-whisker);
+}
+
+/* "In progress": deliberately neutral, so an unfinished page never reads as a stale view. */
+.badge-soon {
+  display: inline-block;
+  font: 600 0.75rem/1 var(--mono);
+  letter-spacing: 0.04em;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-block;
+  font: 600 0.7rem/1 var(--mono);
+  letter-spacing: 0.04em;
+  padding: 5px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.chip[data-state="live"] { color: var(--live); background: var(--live-bg); }
+.chip[data-state="idle"],
+.chip[data-state="authorizing"],
+.chip[data-state="synchronizing"] { color: var(--sync); background: var(--sync-bg); }
+.chip[data-state="stale"] { color: var(--stale); background: var(--stale-bg); }
+.chip[data-state="resync-required"] { color: var(--resync); background: var(--resync-bg); }
+.chip[data-state="failed"],
+.chip[data-state="closed"] { color: var(--failed); background: var(--failed-bg); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+pre.astro-code {
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  font: 400 0.84rem/1.65 var(--mono);
+  overflow-x: auto;
+  background-color: var(--code-bg) !important;
+}
+
+/* Night Owl's comment color, raised to AA (the theme sets it inline on each token). */
+pre.astro-code span[style*="#637777"] {
+  color: var(--code-comment) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  pre.astro-code {
+    border: 1px solid var(--line);
+  }
+}
+
+@media (forced-colors: active) {
+  .brand {
+    forced-color-adjust: none;
+  }
+  .brand .bi,
+  .brand .bw {
+    fill: CanvasText;
+    stroke: CanvasText;
+  }
+  .badge-soon {
+    border-style: solid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

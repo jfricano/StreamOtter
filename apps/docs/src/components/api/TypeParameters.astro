@@ -1,0 +1,16 @@
+---
+/** A table of documented type parameters. */
+import type { ApiTypeParameter } from "../../api-reference/build.ts";
+interface Props { typeParameters: readonly ApiTypeParameter[] }
+const { typeParameters } = Astro.props;
+---
+{typeParameters.length > 0 && (
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Type parameters">
+    <table class="api-params">
+      <thead><tr><th scope="col">Type parameter</th><th scope="col">Constraint</th><th scope="col">Description</th></tr></thead>
+      <tbody>{typeParameters.map(parameter => (
+        <tr><th scope="row"><code>{parameter.name}</code></th><td>{parameter.typeHtml && <code class="api-type" set:html={parameter.typeHtml} />}</td><td class="api-doc" set:html={parameter.html} /></tr>
+      ))}</tbody>
+    </table>
+  </div>
+)}

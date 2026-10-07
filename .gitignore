@@ -16,3 +16,5 @@ docs/promotion/
 # StreamOtter failure journal (V1.1 spec §12): decision state, never committed
 journal.sqlite*
 journal.lock
+# Astro generated types (apps/docs)
+.astro/
