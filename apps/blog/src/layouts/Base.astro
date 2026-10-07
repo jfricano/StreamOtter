@@ -53,7 +53,7 @@ const feed = new URL("/rss.xml", Astro.site);
     <meta property="og:title" content={cardTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content={article ? "article" : "website"} />
-    <meta property="og:url" content={canonical} />
+    {!noindex && <meta property="og:url" content={canonical} />}
     {imageUrl && <meta property="og:image" content={imageUrl} />}
     {article && <meta property="article:published_time" content={article.published.toISOString()} />}
     {article?.updated && <meta property="article:modified_time" content={article.updated.toISOString()} />}
@@ -98,6 +98,16 @@ const feed = new URL("/rss.xml", Astro.site);
 </html>
 
 <style>
+  /* The footer sits at the bottom of the window, even on a short page. */
+  body {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  main {
+    flex: 1;
+  }
+
   .skip {
     position: absolute;
     left: -9999px;
@@ -184,8 +194,8 @@ const feed = new URL("/rss.xml", Astro.site);
     border-color: var(--accent);
     color: var(--accent);
   }
-  /* On a phone the header keeps the lockup, the tag and the way back to streamotter.dev; the
-     footer carries every link. */
+  /* Narrow screens drop the header's links, Docs first and then streamotter.dev at 420px; the
+     footer carries every link at any width. */
   @media (max-width: 720px) {
     .bar {
       gap: 14px;

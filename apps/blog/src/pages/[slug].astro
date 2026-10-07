@@ -56,11 +56,9 @@ const { title, description, published, updated, canonical, image, draft } = post
 .byline { display: grid; gap: 2px; }
 .author { font: 700 1rem/1.4 var(--display); }
 .bio { color: var(--ink-2); }
-.dates { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; font: 500 .85rem/1.5 var(--mono); }
-/* A dot between the dates; the draft tag sits apart. */
-.dates > :not(:first-child)::before { content: "·"; margin-inline: 10px; }
-.dates > .badge-soon { margin-left: 10px; }
-.dates > .badge-soon::before { content: none; }
+.dates { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 500 .85rem/1.5 var(--mono); }
+/* A dot between the dates; the draft tag sits apart, so it wraps cleanly on a phone. */
+.dates > :not(:first-child, .badge-soon)::before { content: "·"; margin-right: 10px; }
 .post-foot { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
 .post-foot > a { font-weight: 700; text-decoration: none; }
 .post-foot p { font-size: .93rem; }
