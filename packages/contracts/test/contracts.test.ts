@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  canonicalJson, canonicalizeParams, compareRevisions, isJsonValue, isRevision, isUuid, StreamOtterError,
-  streamError, utf8ByteLength, validateProjectConfig, validateSchemaDefinition, validateValue, withoutUndefinedProperties,
-  type ConfigIssue, type Schema
+  canonicalJson, canonicalizeParams, compareRevisions, isRevision, StreamOtterError, streamError, validateProjectConfig,
+  validateSchemaDefinition, validateValue, type ConfigIssue, type Schema
 } from "@streamotter/contracts";
+import { isJsonValue, isUuid, utf8ByteLength, withoutUndefinedProperties } from "@streamotter/contracts/internal";
 
 const orderParams: Schema = {
   type: "object", additionalProperties: false, required: ["orderId"],

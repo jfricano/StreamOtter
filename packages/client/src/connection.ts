@@ -1,8 +1,9 @@
 import { io, type Socket } from "socket.io-client";
 import {
-  CONTROL_CALLBACK_TIMEOUT_MS, EVENTS, HELLO_TIMEOUT_MS, isStreamError, PROTOCOL_VERSION, streamError,
-  type DataFrame, type ErrorFrame, type Hello, type Receipt, type Result, type StreamError, type SubscriptionFrame
+  EVENTS, isStreamError, PROTOCOL_VERSION, streamError, type DataFrame, type ErrorFrame, type Hello, type Receipt,
+  type Result, type StreamError, type SubscriptionFrame
 } from "@streamotter/contracts";
+import { CONTROL_CALLBACK_TIMEOUT_MS, HELLO_TIMEOUT_MS } from "@streamotter/contracts/internal";
 import { isDataFrame, isErrorFrame, isHello, isResult, isSubscriptionFrame } from "./frames.ts";
 
 export interface ConnectionEvents {

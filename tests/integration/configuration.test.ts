@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createServer, type AddressInfo } from "node:net";
 import { describe, it } from "node:test";
 import { generateFiles } from "@streamotter/cli";
-import { MAX_NESTING_DEPTH, validateProjectConfig, type Schema } from "@streamotter/contracts";
+import { validateProjectConfig, type Schema } from "@streamotter/contracts";
+import { MAX_NESTING_DEPTH } from "@streamotter/contracts/internal";
 import { createGateway, defineProject, silentLogger, type ProjectConfig } from "@streamotter/gateway";
 import { OrderApp, orderConfig, type TestChannels } from "./harness.ts";
 

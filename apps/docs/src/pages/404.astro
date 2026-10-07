@@ -1,0 +1,13 @@
+---
+import DocsPage from "../layouts/DocsPage.astro";
+import { SECTIONS } from "../site.ts";
+---
+<DocsPage title="Page not found" description="That page isn't part of the StreamOtter docs. These sections are." noindex>
+  <ul class="sections">
+    <li><a href="/">Overview</a></li>
+    {SECTIONS.map(section => <li><a href={section.href}>{section.label}</a></li>)}
+  </ul>
+</DocsPage>
+<style>
+.sections { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; font-size: 1.1rem; }
+</style>

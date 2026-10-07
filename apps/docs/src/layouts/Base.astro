@@ -1,0 +1,376 @@
+---
+/**
+ * Every docs.streamotter.dev page: the header with the docs sections, the page, and the footer.
+ * The palette, type and header follow streamotter.dev, so the two read as one site, and the
+ * header links back to it.
+ */
+import "@fontsource-variable/schibsted-grotesk";
+import "@fontsource-variable/source-sans-3";
+import "@fontsource-variable/source-sans-3/wght-italic.css";
+import "@fontsource-variable/jetbrains-mono";
+import "../styles/global.css";
+import sourceSansLatin from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url";
+import LockupHorizontal from "../assets/brand/lockup-horizontal.svg";
+import LockupStacked from "../assets/brand/lockup-stacked.svg";
+import { GUIDES, LINKS, RELEASE, SECTIONS } from "../site.ts";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Keeps search engines away from the not-found page. */
+  noindex?: boolean;
+}
+
+const { title, description, noindex = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const current = Astro.url.pathname;
+/** The current page's own link is the page; a section's link is current on every page inside it. */
+const isCurrent = (href: string) => (current === href ? "page" : current.startsWith(href) ? "true" : undefined);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {!noindex && <link rel="canonical" href={canonical} />}
+    <link rel="preload" href={sourceSansLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta property="og:site_name" content="StreamOtter Docs" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta name="theme-color" content="#f3f7fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#030b1f" media="(prefers-color-scheme: dark)" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap bar">
+        <a class="lockup" href="/" aria-label="StreamOtter docs home">
+          <LockupHorizontal class="brand lockup-svg" aria-hidden="true" focusable="false" />
+        </a>
+        <a class="docs-chip" href="/">Docs</a>
+        <nav class="nav" aria-label="Docs">
+          <a href="/" aria-current={current === "/" ? "page" : undefined}>Overview</a>
+          {SECTIONS.map(section => <a href={section.href} aria-current={isCurrent(section.href)}>{section.label}</a>)}
+        </nav>
+        <div class="bar-end">
+          <span class="version" title={`Documents streamotter@${RELEASE}`}>v{RELEASE}</span>
+          <a class="home" href={LINKS.home}>streamotter.dev ↗</a>
+          <a class="gh" href={LINKS.github}>GitHub</a>
+          <details class="menu" data-menu>
+            <summary>Menu</summary>
+            <nav aria-label="Docs, small screens">
+              <a href="/" aria-current={current === "/" ? "page" : undefined}>Overview</a>
+              {SECTIONS.map(section => <a href={section.href} aria-current={isCurrent(section.href)}>{section.label}</a>)}
+              <a href={LINKS.home}>streamotter.dev ↗</a>
+              <a href={LINKS.github}>GitHub</a>
+            </nav>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap foot">
+        <div class="foot-brand">
+          <a class="foot-lockup" href={LINKS.home} aria-label="streamotter.dev">
+            <LockupStacked class="brand foot-svg" aria-hidden="true" focusable="false" />
+          </a>
+          <p class="muted">Documentation for StreamOtter <code>{RELEASE}</code>, MIT licensed.</p>
+          <p class="muted">Maintained by Jason Fricano · Orca Solutions</p>
+        </div>
+        <nav class="foot-links" aria-labelledby="foot-guides">
+          <p class="eyebrow" id="foot-guides">Guides</p>
+          {GUIDES.map(guide => <a href={`/guides/${guide.slug}/`}>{guide.label}</a>)}
+        </nav>
+        <nav class="foot-links" aria-labelledby="foot-project">
+          <p class="eyebrow" id="foot-project">Project</p>
+          <a href={LINKS.home}>streamotter.dev</a>
+          <a href="/api/">API reference</a>
+          <a href={LINKS.github}>GitHub</a>
+          <a href={LINKS.npm}>npm</a>
+          <a href={LINKS.changelog}>Changelog</a>
+        </nav>
+      </div>
+      <div class="wrap copyright muted">© 2026 Orca Solutions</div>
+    </footer>
+  </body>
+</html>
+
+<script>
+  // The small-screen menu is a <details>: close it on Escape (back to its summary),
+  // on a click or focus outside it, and once a link in it is chosen.
+  const menu = document.querySelector<HTMLDetailsElement>("[data-menu]");
+  if (menu) {
+    const summary = menu.querySelector("summary")!;
+    const close = (refocus: boolean) => {
+      if (!menu.open) return;
+      menu.open = false;
+      if (refocus) summary.focus();
+    };
+    menu.addEventListener("keydown", event => {
+      if (event.key === "Escape") close(true);
+    });
+    menu.addEventListener("focusout", event => {
+      if (event.relatedTarget instanceof Node && !menu.contains(event.relatedTarget)) close(false);
+    });
+    document.addEventListener("click", event => {
+      if (event.target instanceof Node && !menu.contains(event.target)) close(false);
+    });
+    for (const link of menu.querySelectorAll("a")) link.addEventListener("click", () => close(false));
+  }
+</script>
+
+<style>
+  .skip {
+    position: absolute;
+    left: -9999px;
+  }
+  .skip:focus {
+    left: var(--gutter);
+    top: 12px;
+    z-index: 100;
+    background: var(--surface);
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--ground) 82%, transparent);
+    backdrop-filter: saturate(1.4) blur(12px);
+    -webkit-backdrop-filter: saturate(1.4) blur(12px);
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    min-height: 64px;
+  }
+  .lockup {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding-block: 4px;
+  }
+  /* The lockup's viewBox is 1765.1 × 317.9; the ratio is set so the header never shifts. */
+  .lockup-svg {
+    display: block;
+    height: 32px;
+    width: auto;
+    aspect-ratio: 1765.1 / 317.9;
+  }
+  .docs-chip {
+    font: 600 0.78rem/1 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 5px 9px;
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .nav {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+  .nav a {
+    white-space: nowrap;
+    color: var(--ink-2);
+    text-decoration: none;
+    font-family: var(--display);
+    font-size: 0.93rem;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+  .nav a:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+  .nav a[aria-current="page"] {
+    color: var(--ink);
+    box-shadow: inset 0 -2px var(--azure);
+    border-radius: 8px 8px 0 0;
+  }
+  .bar-end {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .gh {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 0.93rem;
+    color: var(--ink);
+    text-decoration: none;
+    border: 1px solid var(--line-strong);
+    padding: 7px 12px;
+    border-radius: 10px;
+  }
+  .version {
+    font: 600 0.78rem/1 var(--mono);
+    color: var(--ink-2);
+    background: var(--surface-2);
+    border-radius: 999px;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .home {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 0.93rem;
+    color: var(--ink);
+    text-decoration: none;
+    border: 1px solid var(--line-strong);
+    padding: 7px 12px;
+    border-radius: 10px;
+  }
+  .home:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .gh:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .menu {
+    display: none;
+    position: relative;
+  }
+  .menu summary {
+    list-style: none;
+    cursor: pointer;
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 0.93rem;
+    border: 1px solid var(--line-strong);
+    padding: 7px 12px;
+    border-radius: 10px;
+  }
+  .menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .menu nav {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    display: grid;
+    min-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: var(--shadow);
+  }
+  .menu nav a {
+    padding: 10px 12px;
+    border-radius: 8px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .menu nav a:hover {
+    background: var(--surface-2);
+  }
+  .menu nav a[aria-current="page"] {
+    box-shadow: inset 3px 0 var(--azure);
+  }
+  @media (max-width: 1180px) {
+    .nav,
+    .gh,
+    .home,
+    .version {
+      display: none;
+    }
+    .menu {
+      display: block;
+    }
+  }
+  @media (max-width: 380px) {
+    .bar {
+      gap: 12px;
+    }
+    .docs-chip {
+      display: none;
+    }
+  }
+  @media (max-width: 720px) {
+    .lockup-svg {
+      height: 28px;
+    }
+  }
+
+  .site-footer {
+    border-top: 1px solid var(--line);
+    padding-block: 48px 28px;
+    background: var(--surface);
+  }
+  .foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr));
+    gap: 32px;
+  }
+  .foot-brand {
+    display: grid;
+    gap: 10px;
+    align-content: start;
+  }
+  .foot-lockup {
+    justify-self: start;
+    margin-bottom: 6px;
+  }
+  /* The stacked lockup's viewBox is 635.8 × 456. */
+  .foot-svg {
+    display: block;
+    height: 72px;
+    width: auto;
+    aspect-ratio: 635.8 / 456;
+  }
+  .foot-links {
+    display: grid;
+    gap: 8px;
+    align-content: start;
+  }
+  .foot-links .eyebrow {
+    margin-bottom: 4px;
+  }
+  .foot-links a {
+    color: var(--ink-2);
+    text-decoration: none;
+  }
+  .foot-links a:hover {
+    color: var(--accent);
+  }
+  .copyright {
+    margin-top: 32px;
+    font-size: 0.85rem;
+  }
+  @media (max-width: 720px) {
+    .foot {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 32px 20px;
+    }
+    .foot-brand {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

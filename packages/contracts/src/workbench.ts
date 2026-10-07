@@ -41,12 +41,14 @@ export const PRE_WHC1_NATIVE_OPERATIONS: readonly WorkbenchOperation[] = Object.
 
 const OPERATION_SET: ReadonlySet<string> = new Set(WORKBENCH_OPERATIONS);
 
+/** Returns true when `value` names a WHC-1 operation, one of {@link WORKBENCH_OPERATIONS}. */
 export function isWorkbenchOperation(value: unknown): value is WorkbenchOperation {
   return typeof value === "string" && OPERATION_SET.has(value);
 }
 
-/** Limits of WHC-1 §3.2. */
+/** Maximum length of the boot block's `environment.label`, in characters (Unicode code points); WHC-1 §3.2. */
 export const WORKBENCH_LABEL_MAX_LENGTH = 64;
+/** Maximum length of the boot block's `environment.detail`, in characters (Unicode code points); WHC-1 §3.2. */
 export const WORKBENCH_DETAIL_MAX_LENGTH = 280;
 const MAX_PATH_LENGTH = 256;
 const MAX_VERSION_LENGTH = 64;

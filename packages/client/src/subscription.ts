@@ -1,8 +1,9 @@
 import {
-  asStreamOtterError, compareRevisions, EVENTS, streamError, StreamOtterError, UNSUBSCRIBE_TIMEOUT_MS,
-  type DataFrame, type ErrorCode, type Json, type Params, type Revision, type StateChange, type StreamError,
-  type StreamEvent, type Subscription, type SubscriptionFrame, type SubscriptionState, type Unlisten, type WaitOptions
+  compareRevisions, EVENTS, streamError, StreamOtterError, type DataFrame, type ErrorCode, type Json, type Params,
+  type Revision, type StateChange, type StreamError, type StreamEvent, type Subscription, type SubscriptionFrame,
+  type SubscriptionState, type Unlisten, type WaitOptions
 } from "@streamotter/contracts";
+import { asStreamOtterError, UNSUBSCRIBE_TIMEOUT_MS } from "@streamotter/contracts/internal";
 import type { Connection } from "./connection.ts";
 import { WaiterSet } from "./waiters.ts";
 

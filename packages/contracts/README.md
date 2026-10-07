@@ -46,9 +46,11 @@ This is the same validator `defineProject()`, the CLI, and the workbench use. It
 | Values and schemas | `validateValue(schema, value)`, `validateSchemaDefinition`, `canonicalizeParams`, `canonicalJson`, `canonicalJsonPretty` (the workbench's export format) |
 | Revisions and identifiers | `isRevision`, `compareRevisions` (numeric, no `number` conversion), `isIdentifier`, `REVISION_PATTERN`, `IDENTIFIER_PATTERN` |
 | Errors | `ERROR_CODES`, `StreamOtterError`, `isStreamError`, `PUBLIC_MESSAGES` |
-| Protocol and limits | `PROTOCOL_VERSION`, `CAPABILITIES`, `EVENTS` (`so:subscribe`, `so:data`, …), `DEFAULT_LIMITS`, default ports and paths, and timeouts |
-| Source failures (V1.1, new in 0.2.0-rc.1) | `FailureHandlingConfig`, `FailurePolicy`, `FailureClass`, `resolveSourcePolicy`, `TransientMappingError`, the recovery-guard types (`SourceRecoveryHandlers`, `RecoveryBoundary`), and the operator types (`IncidentSummary`, `IncidentDetail`, `OperationResult`, `OperatorStatus`, …) with `validateOperatorRequest` |
+| Protocol and limits | `PROTOCOL_VERSION`, `CAPABILITIES`, `EVENTS` (`so:subscribe`, `so:data`, …), `DEFAULT_LIMITS`, `DEFAULT_SOCKET_PATH` |
+| Source failures (V1.1, new in 0.2.0-rc.1) | `FailureHandlingConfig`, `FailurePolicy`, `FailureClass`, `resolveSourcePolicy`, `TransientMappingError`, the recovery-guard types (`SourceRecoveryHandlers`, `RecoveryBoundary`), and the operator types (`IncidentSummary`, `IncidentDetail`, `OperationResult`, `OperatorStatus`, …) |
 | Workbench host contract | `WorkbenchHostConfig`, `validateWorkbenchHostConfig`, `WORKBENCH_OPERATIONS`, `WorkbenchHostManifest` |
+
+`@streamotter/contracts/internal` holds the timers, validators and helpers that StreamOtter's own packages share. It is not a stable API: `streamotter` doesn't re-export it, and any release may change it.
 
 The types are the public contract that the [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md) describes. Where the specification and the types differ, this package is authoritative for types (see its §13).
 

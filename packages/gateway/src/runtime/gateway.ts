@@ -5,15 +5,18 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type { Server as IoServer } from "socket.io";
 import {
-  MAX_CONFIG_DEPTH, assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, DEFAULT_STOP_TIMEOUT_MS,
-  isJsonValue, isPlainObject, isRevision, MAX_TOKEN_BYTES, parseUtcTimestamp, PREVIEW_TOKEN_TTL_MS,
-  resolveLimits, resolveSourcePolicy, STARTUP_DEADLINE_MS, streamError, StreamOtterError, TransientMappingError, utf8ByteLength, validateValue, withoutUndefinedProperties,
-  QUARANTINE_ELIGIBLE_CLASSES, type FailureClass, type OperatorApi,
-  type ChannelMap, type ChannelSummary, type DevelopmentOptions, type DevelopmentPrincipalSummary,
-  type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger, type GatewayOptions, type HandlerRegistry, type HealthReason,
-  type Json, type Page, type Principal, type ProjectConfig, type Revocation, type Schema, type SourceRecord,
-  type SourceStatus, type StreamError, type StreamEvent, type Trace, type ValueIssue
+  assertValidProjectConfig, canonicalizeParams, canonicalJson, compareRevisions, isRevision, PREVIEW_TOKEN_TTL_MS,
+  resolveSourcePolicy, streamError, StreamOtterError, TransientMappingError, validateValue, QUARANTINE_ELIGIBLE_CLASSES,
+  type FailureClass, type OperatorApi, type ChannelMap, type ChannelSummary, type DevelopmentOptions,
+  type DevelopmentPrincipalSummary, type DiagnosticStep, type ErrorCode, type Gateway, type GatewayLogger,
+  type GatewayOptions, type HandlerRegistry, type HealthReason, type Json, type Page, type Principal,
+  type ProjectConfig, type Revocation, type Schema, type SourceRecord, type SourceStatus, type StreamError,
+  type StreamEvent, type Trace, type ValueIssue
 } from "@streamotter/contracts";
+import {
+  MAX_CONFIG_DEPTH, DEFAULT_STOP_TIMEOUT_MS, isJsonValue, isPlainObject, MAX_TOKEN_BYTES, parseUtcTimestamp,
+  resolveLimits, STARTUP_DEADLINE_MS, utf8ByteLength, withoutUndefinedProperties
+} from "@streamotter/contracts/internal";
 import { JOURNAL_FILE, openJournal } from "../failures/journal.ts";
 import { KafkaQuarantineReader, KafkaQuarantineWriter, type QuarantineReader, type QuarantineTopicReport } from "../failures/quarantine.ts";
 import { FailureService, type AdvanceHooks } from "../failures/service.ts";
@@ -171,7 +174,11 @@ export interface InternalGatewayOptions {
   operatorHooks?: OperatorHooks;
 }
 
-/** Development and management access to a running gateway; never exposed to browsers. */
+/**
+ * Internal gateway access used by StreamOtter's own management server and CLI; not part of the supported API.
+ *
+ * @internal
+ */
 export interface GatewayInternals {
   readonly mode: "development" | "production";
   readonly config: ProjectConfig;

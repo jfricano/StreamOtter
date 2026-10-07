@@ -1,5 +1,5 @@
 import { canonicalJson, codePointLength, isPlainObject, MAX_NESTING_DEPTH } from "./primitives.ts";
-import type { ConfigIssue, Json, Params, Schema } from "./types.ts";
+import type { ConfigIssue, Params, Schema } from "./types.ts";
 
 const KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   string: ["type", "minLength", "maxLength", "enum"],
@@ -171,7 +171,13 @@ export function validateParamsSchema(schema: Schema, path: string, issues: Confi
   return issues.length === before;
 }
 
-export interface ValueIssue { path: string; message: string }
+/** A problem {@link validateValue} found in a value. */
+export interface ValueIssue {
+  /** Where the problem is: `$` for the value itself, followed by `.key` and `[index]` segments. */
+  path: string;
+  /** What is wrong, in plain English. */
+  message: string;
+}
 
 /** Validates a value against a schema. Returns the first issue, or null when valid. */
 export function validateValue(schema: Schema, value: unknown, path = "$", depth = 1): ValueIssue | null {
@@ -226,9 +232,25 @@ export function validateValue(schema: Schema, value: unknown, path = "$", depth 
   }
 }
 
+/**
+ * Result of {@link canonicalizeParams}: the normalized parameters with their canonical JSON
+ * encoding, or the first validation issue.
+ */
 export type CanonicalParamsResult =
-  | { ok: true; params: Params; canonical: string }
-  | { ok: false; issue: ValueIssue };
+  | {
+    /** The parameters are valid. */
+    ok: true;
+    /** The normalized parameters. */
+    params: Params;
+    /** Their canonical JSON encoding. */
+    canonical: string;
+  }
+  | {
+    /** The parameters are invalid. */
+    ok: false;
+    /** The first validation issue. */
+    issue: ValueIssue;
+  };
 
 /**
  * Validates parameters and produces their canonical encoding: -0 normalized to 0,
@@ -247,13 +269,4 @@ export function canonicalizeParams(schema: Schema, params: unknown): CanonicalPa
     });
   }
   return { ok: true, params: normalized, canonical: canonicalJson(normalized) };
-}
-
-export function isJsonData(value: unknown): value is Json {
-  try {
-    canonicalJson(value);
-    return true;
-  } catch {
-    return false;
-  }
 }

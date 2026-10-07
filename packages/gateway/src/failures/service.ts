@@ -2,10 +2,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
-  canonicalJson, isJsonValue, isPlainObject, MAX_RECOVERY_CONTEXT_BYTES, policyFor, resolveSourcePolicy, StreamOtterError,
-  type ErrorCode, type FailureClass, type FailurePolicy, type GatewayLogger, type Json, type ProjectConfig,
-  type ResolvedSourcePolicy, type SourceRecord, type SourceRecoveryHandlers
+  canonicalJson, policyFor, resolveSourcePolicy, StreamOtterError, type ErrorCode, type FailureClass,
+  type FailurePolicy, type GatewayLogger, type Json, type ProjectConfig, type ResolvedSourcePolicy, type SourceRecord,
+  type SourceRecoveryHandlers
 } from "@streamotter/contracts";
+import { isJsonValue, isPlainObject, MAX_RECOVERY_CONTEXT_BYTES } from "@streamotter/contracts/internal";
 import { sourceRecordId } from "../runtime/identity.ts";
 import { describeError, invokeHandler, newId, nowIso, sha256Hex } from "../runtime/util.ts";
 import type { ProcessOutcome, SourceAdapter, SourceInput } from "../sources/types.ts";

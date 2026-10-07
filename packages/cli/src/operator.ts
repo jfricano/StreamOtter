@@ -1,10 +1,10 @@
 import { lstat, open, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-  operationExitCode, StreamOtterError, toStreamError, validateOperatorRequest,
-  type EvaluationResult, type IncidentDetail, type IncidentSummary, type OperationResult, type OperatorOperation, type OperatorStatus,
-  type Page, type RawEvidenceView, type ReproductionBundle
+  StreamOtterError, type EvaluationResult, type IncidentDetail, type IncidentSummary, type OperationResult,
+  type OperatorOperation, type OperatorStatus, type Page, type RawEvidenceView, type ReproductionBundle
 } from "@streamotter/contracts";
+import { operationExitCode, toStreamError, validateOperatorRequest } from "@streamotter/contracts/internal";
 import { callOperator } from "@streamotter/gateway/operator";
 import type { CliIO } from "./cli.ts";
 

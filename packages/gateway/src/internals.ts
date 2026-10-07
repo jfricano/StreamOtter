@@ -11,3 +11,4 @@ export { KafkaQuarantineReader, KafkaQuarantineWriter } from "./failures/quarant
 export type { QuarantineRead } from "./failures/quarantine.ts";
 export type { ResolvedKafkaConnection } from "./sources/kafka.ts";
 export { rebaselineSource } from "./failures/rebaseline.ts";
+export { startOperatorSocket, type OperatorSocket, type OperatorSocketOptions } from "./operator/ipc.ts";

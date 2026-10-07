@@ -4,9 +4,21 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 ## Unreleased
 
+### Removed from the public API
+
+Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages share is no longer exported from `streamotter/*` or the `@streamotter/contracts` root. Apps keep everything they use, and every name the specifications make normative stays. The full list and the reasoning are in [docs/releases/1.0.0/PUBLIC_API_TRIM.md](docs/releases/1.0.0/PUBLIC_API_TRIM.md). If you imported one of these, copy the value or helper into your own code.
+
+- **`streamotter/contracts` (and the type re-export in `streamotter/gateway`):** 50 internal timers, ports, validators, primitives, error-conversion helpers, operator socket framing and workbench internals moved to `@streamotter/contracts/internal`, which is not a stable API. Examples: `HELLO_TIMEOUT_MS`, `isPlainObject`, `utf8ByteLength`, `validateOperatorRequest`.
+- **Deleted, because nothing used them:** `isJsonData` and `DEFAULT_GATEWAY_PORT`.
+- **`streamotter/gateway/operator`:** `startOperatorSocket`, `OperatorSocket` and `OperatorSocketOptions` moved to `@streamotter/gateway/internals`. The gateway starts the socket itself when `operatorSocket: true` is set.
+- **`streamotter/gateway/management`:** no longer re-exports `GatewayInternals`.
+- **`streamotter/cli`:** no longer exports the code generator's internals (`renderType`, `streamotterModules`, `detectPackageStyle`, `typeNames`, `fingerprint`, `GENERATED_MARKER`).
+
 ### Added
 
 - React hooks (V1.3, shipping in 1.0.0): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
+- `streamotter/gateway/operator` exports the types that `callOperator`'s requests and results use (`OperatorOperation`, `OperatorRequests`, `IncidentProgress`, `Trace`, `Page` and others), so operator code no longer needs `streamotter/contracts`.
+- The docs site for docs.streamotter.dev (`apps/docs`): the guides, an API reference generated from the doc comments on every public export, and StreamOtter Under the Hood.
 
 ### Changed
 

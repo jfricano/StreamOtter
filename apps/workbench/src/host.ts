@@ -1,7 +1,8 @@
 import {
-  DEFAULT_SOCKET_PATH, DEFAULT_WORKBENCH_API_BASE, isPlainObject, validateWorkbenchHostConfig, WORKBENCH_BOOT_ELEMENT_ID,
-  type WorkbenchHostConfig, type WorkbenchHostConfigIssue
+  DEFAULT_SOCKET_PATH, validateWorkbenchHostConfig, WORKBENCH_BOOT_ELEMENT_ID, type WorkbenchHostConfig,
+  type WorkbenchHostConfigIssue
 } from "@streamotter/contracts";
+import { DEFAULT_WORKBENCH_API_BASE, isPlainObject } from "@streamotter/contracts/internal";
 
 /** The exact @streamotter/workbench version this bundle was built from (set by build.mjs). */
 export const WORKBENCH_VERSION: string = __STREAMOTTER_WORKBENCH_VERSION__;

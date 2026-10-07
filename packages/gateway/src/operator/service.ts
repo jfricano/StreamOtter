@@ -1,12 +1,14 @@
 import { randomBytes } from "node:crypto";
 import {
-  PLAN_TTL_MS, QUARANTINE_ELIGIBLE_CLASSES, StreamOtterError, validateOperatorRequest,
-  type EvaluateRequest, type EvaluationResult, type ExportFailureRequest, type FailureClass, type Gateway, type GatewayLogger,
-  type IncidentDetail, type IncidentNextAction, type IncidentSummary, type Json, type ListFailuresRequest, type OperationResult,
+  PLAN_TTL_MS, QUARANTINE_ELIGIBLE_CLASSES, StreamOtterError, type EvaluateRequest, type EvaluationResult,
+  type ExportFailureRequest, type FailureClass, type Gateway, type GatewayLogger, type IncidentDetail,
+  type IncidentNextAction, type IncidentSummary, type Json, type ListFailuresRequest, type OperationResult,
   type OperatorApi, type OperatorSourceStatus, type OperatorStatus, type Page, type ProjectConfig, type RawEvidenceView,
-  type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle, type ResolvedSourcePolicy,
-  type RetireBoundaryRequest, type RetryCurrentRequest, type ShowFailureRequest, type SourceRecord, type SourceStatus, type Trace
+  type ReassessRequest, type RedriveRequest, type ReopenCircuitRequest, type ReproductionBundle,
+  type ResolvedSourcePolicy, type RetireBoundaryRequest, type RetryCurrentRequest, type ShowFailureRequest,
+  type SourceRecord, type SourceStatus, type Trace
 } from "@streamotter/contracts";
+import { validateOperatorRequest } from "@streamotter/contracts/internal";
 import { evidenceHash } from "../failures/evidence.ts";
 import type { QuarantineReader, QuarantineTopicReport } from "../failures/quarantine.ts";
 import { gatewayVersion, type BoundaryInForce, type FailureService } from "../failures/service.ts";
@@ -15,7 +17,30 @@ import { getGatewayInternals, type OperatorPrepared, type RedriveOutcome } from 
 import type { TraceQuery } from "../runtime/traces.ts";
 import { nowIso, sha256Hex } from "../runtime/util.ts";
 
-/** The operator service of a running gateway with failure handling (ADR-15C §1). */
+/**
+ * Returns the in-process operator service of a gateway configured with `failureHandling`
+ * (ADR-15C §1).
+ *
+ * The service exists once {@link Gateway.start} has opened the incident store. A refused
+ * operation is a result with `result: "refused"`, not an exception; malformed input and unknown
+ * incidents reject with `INVALID_REQUEST`, and `evaluate` can reject with `OVERLOADED` or
+ * `SOURCE_UNAVAILABLE`. Raw evidence is available here and over the local socket, never through the
+ * management API.
+ *
+ * @param gateway - A gateway returned by `createGateway`.
+ * @returns The gateway's {@link OperatorApi}.
+ * @throws A StreamOtterError with code UNSUPPORTED_CAPABILITY when the project has no
+ * `failureHandling` or the gateway has not started, or INVALID_REQUEST when `gateway` was not
+ * created by `createGateway`.
+ *
+ * @example
+ * ```ts
+ * import { getGatewayOperator } from "@streamotter/gateway/operator";
+ *
+ * const operator = getGatewayOperator(gateway);
+ * const { sources } = await operator.status();
+ * ```
+ */
 export function getGatewayOperator(gateway: Gateway): OperatorApi {
   const operator = getGatewayInternals(gateway).operator();
   if (operator === null) {

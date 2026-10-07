@@ -1,5 +1,6 @@
 import type { Json, Revision } from "./types.ts";
 
+/** Maximum nesting depth of a schema and of a JSON value: 16 levels. */
 export const MAX_NESTING_DEPTH = 16;
 /**
  * Nesting allowed when a whole project configuration is canonicalized (fingerprints, export). Each
@@ -7,19 +8,28 @@ export const MAX_NESTING_DEPTH = 16;
  * MAX_NESTING_DEPTH sits about twice as deep in the configuration.
  */
 export const MAX_CONFIG_DEPTH = 2 * MAX_NESTING_DEPTH + 8;
+/**
+ * Pattern for project, source, channel, schema and connection-profile IDs: a letter followed by
+ * up to 63 letters, digits, `_` or `-`.
+ */
 export const IDENTIFIER_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+/** Pattern for a canonical {@link Revision}: an unsigned decimal integer of at most 39 digits, without leading zeros. */
 export const REVISION_PATTERN = /^(?:0|[1-9][0-9]{0,38})$/;
+/** Pattern for a UUID in 8-4-4-4-12 hexadecimal form, in either case. Version and variant digits are not checked. */
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RFC3339_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
 
+/** Returns true when `value` is a string matching {@link IDENTIFIER_PATTERN}. */
 export function isIdentifier(value: unknown): value is string {
   return typeof value === "string" && IDENTIFIER_PATTERN.test(value);
 }
 
+/** Returns true when `value` is a string matching {@link UUID_PATTERN}. */
 export function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_PATTERN.test(value);
 }
 
+/** Returns true when `value` is a canonical revision string matching {@link REVISION_PATTERN}. */
 export function isRevision(value: unknown): value is Revision {
   return typeof value === "string" && REVISION_PATTERN.test(value);
 }
@@ -37,6 +47,7 @@ export function parseUtcTimestamp(value: unknown): number {
   return Date.parse(value);
 }
 
+/** Returns true when `value` is a non-array object whose prototype is `Object.prototype` or `null`. */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value) as unknown;
@@ -58,6 +69,10 @@ export function utf8ByteLength(text: string): number {
   return bytes;
 }
 
+/**
+ * Number of Unicode code points in `text`: a surrogate pair counts once, and so does an unpaired
+ * surrogate. Schema `minLength` and `maxLength` are measured this way.
+ */
 export function codePointLength(text: string): number {
   let length = 0;
   for (let i = 0; i < text.length; i++) {

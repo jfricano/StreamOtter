@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { MAX_OPERATOR_REASON, StreamOtterError, type OperationResult, type ProjectConfig } from "@streamotter/contracts";
+import { StreamOtterError, type OperationResult, type ProjectConfig } from "@streamotter/contracts";
+import { MAX_OPERATOR_REASON } from "@streamotter/contracts/internal";
 import { openJournal } from "./journal.ts";
 
 /**
