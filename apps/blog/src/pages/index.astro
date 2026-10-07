@@ -1,0 +1,52 @@
+---
+/** Every published post, newest first: its title, date and one-sentence summary. */
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+import { displayDate, isoDate, postPath, selectPosts } from "../posts.ts";
+import { BLOG, SHOW_DRAFTS } from "../site.ts";
+
+const posts = selectPosts(await getCollection("blog"), { drafts: SHOW_DRAFTS });
+---
+<Base title={BLOG.title} description={BLOG.description}>
+  <div class="wrap page">
+    <header class="page-head">
+      <p class="eyebrow">StreamOtter</p>
+      <h1>Blog</h1>
+      <p class="lede">{BLOG.description}</p>
+    </header>
+    {posts.length === 0 ? (
+      <p class="muted">No posts yet.</p>
+    ) : (
+      <ol class="posts">
+        {posts.map(post => (
+          <li>
+            <article>
+              <p class="date muted">
+                <time datetime={isoDate(post.data.published)}>{displayDate(post.data.published)}</time>
+                {post.data.draft && <span class="badge-soon">Draft</span>}
+              </p>
+              <h2><a href={postPath(post)}>{post.data.title}</a></h2>
+              <p>{post.data.description}</p>
+            </article>
+          </li>
+        ))}
+      </ol>
+    )}
+    <p class="subscribe muted"><a href="/rss.xml">Follow with RSS</a></p>
+  </div>
+</Base>
+<style>
+.page { padding-block: 48px 80px; max-width: calc(78ch + 2 * var(--gutter)); }
+.page-head { display: grid; gap: 18px; margin-bottom: 40px; }
+.page-head h1 { font-size: clamp(2.5rem, 5vw, 4rem); }
+.posts { list-style: none; margin: 0; padding: 0; display: grid; }
+.posts li { padding-block: 24px; border-top: 1px solid var(--line); }
+.posts li:last-child { border-bottom: 1px solid var(--line); }
+.posts article { display: grid; gap: 8px; }
+.date { display: flex; align-items: center; gap: 10px; font: 500 .85rem/1.4 var(--mono); }
+.posts h2 { font-size: clamp(1.4rem, 3vw, 1.75rem); }
+.posts h2 a { color: var(--ink); text-decoration: none; }
+.posts h2 a:hover { color: var(--accent); text-decoration: underline; }
+.posts p:last-child { color: var(--ink-2); }
+.subscribe { margin-top: 32px; font-size: .93rem; }
+</style>

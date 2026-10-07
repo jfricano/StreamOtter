@@ -14,7 +14,7 @@ CLAUDE.md
 # StreamOtter failure journal (V1.1 spec §12): decision state, never committed
 journal.sqlite*
 journal.lock
-# Astro generated types (apps/docs)
+# Astro generated types (apps/docs, apps/blog)
 .astro/
 
 # Weekly launch metrics snapshot (docs/promotion/PLAN.md): kept local, never quoted publicly

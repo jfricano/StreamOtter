@@ -1,0 +1,20 @@
+---
+import Base from "../layouts/Base.astro";
+import { BLOG, LINKS } from "../site.ts";
+---
+<Base title={`Page not found · ${BLOG.title}`} description="That page isn't part of the StreamOtter blog." noindex>
+  <div class="wrap page">
+    <h1>Page not found</h1>
+    <p class="lede">That page isn't part of the StreamOtter blog.</p>
+    <ul>
+      <li><a href="/">All posts</a></li>
+      <li><a href={LINKS.docs}>StreamOtter docs</a></li>
+      <li><a href={LINKS.home}>streamotter.dev</a></li>
+    </ul>
+  </div>
+</Base>
+<style>
+.page { padding-block: 48px 80px; display: grid; gap: 18px; }
+.page h1 { font-size: clamp(2.5rem, 5vw, 4rem); }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; font-size: 1.1rem; }
+</style>

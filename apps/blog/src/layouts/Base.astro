@@ -1,0 +1,241 @@
+---
+/**
+ * Every blog.streamotter.dev page: the header, the page, and the footer. The palette, type and
+ * dark mode are the docs site's own global styles, imported read-only from apps/docs, so the two
+ * sites match; the header follows the docs site's pattern with a "Blog" tag in place of "Docs".
+ */
+// The fonts that apps/docs/src/layouts/Base.astro loads, for the families global.css names.
+import "@fontsource-variable/schibsted-grotesk";
+import "@fontsource-variable/source-sans-3";
+import "@fontsource-variable/source-sans-3/wght-italic.css";
+import "@fontsource-variable/jetbrains-mono";
+import "../../../docs/src/styles/global.css";
+import sourceSansLatin from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url";
+import LockupHorizontal from "../assets/brand/lockup-horizontal.svg";
+import { BLOG, LINKS } from "../site.ts";
+
+interface Props {
+  title: string;
+  /** The title on link cards, which name the site on their own; defaults to `title`. */
+  cardTitle?: string;
+  description: string;
+  /** Where the page canonically lives; defaults to its own URL. */
+  canonical?: string | undefined;
+  /** The link-card image: a path on this site or an absolute URL. */
+  image?: string | undefined;
+  /** A post's dates, for its link card. */
+  article?: { published: Date; updated?: Date | undefined } | undefined;
+  /** Keeps search engines away from the not-found page and draft previews. */
+  noindex?: boolean;
+}
+
+const { title, cardTitle = title, description, canonical: canonicalUrl, image, article, noindex = false } = Astro.props;
+const canonical = new URL(canonicalUrl ?? Astro.url.pathname, Astro.site);
+const imageUrl = image && new URL(image, Astro.site);
+const feed = new URL("/rss.xml", Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {!noindex && <link rel="canonical" href={canonical} />}
+    <link rel="alternate" type="application/rss+xml" title={BLOG.title} href={feed} />
+    <link rel="preload" href={sourceSansLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta property="og:site_name" content={BLOG.title} />
+    <meta property="og:title" content={cardTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={article ? "article" : "website"} />
+    {!noindex && <meta property="og:url" content={canonical} />}
+    {imageUrl && <meta property="og:image" content={imageUrl} />}
+    {article && <meta property="article:published_time" content={article.published.toISOString()} />}
+    {article?.updated && <meta property="article:modified_time" content={article.updated.toISOString()} />}
+    <meta name="twitter:card" content={imageUrl ? "summary_large_image" : "summary"} />
+    <meta name="twitter:title" content={cardTitle} />
+    <meta name="twitter:description" content={description} />
+    {imageUrl && <meta name="twitter:image" content={imageUrl} />}
+    <meta name="theme-color" content="#f3f7fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#030b1f" media="(prefers-color-scheme: dark)" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap bar">
+        <a class="lockup" href="/" aria-label="StreamOtter blog home">
+          <LockupHorizontal class="brand lockup-svg" aria-hidden="true" focusable="false" />
+        </a>
+        <a class="blog-chip" href="/">Blog</a>
+        <nav class="bar-end" aria-label="StreamOtter">
+          <a class="docs" href={LINKS.docs}>Docs</a>
+          <a class="home" href={LINKS.home}>streamotter.dev ↗</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap foot">
+        <nav class="foot-links" aria-label="StreamOtter elsewhere">
+          <a href={LINKS.home}>streamotter.dev</a>
+          <a href={LINKS.docs}>docs.streamotter.dev</a>
+          <a href={LINKS.github}>GitHub</a>
+          <a href="/rss.xml">RSS</a>
+        </nav>
+        <p class="muted">© 2026 Orca Solutions</p>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  /* The footer sits at the bottom of the window, even on a short page. */
+  body {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  main {
+    flex: 1;
+  }
+
+  .skip {
+    position: absolute;
+    left: -9999px;
+  }
+  .skip:focus {
+    left: var(--gutter);
+    top: 12px;
+    z-index: 100;
+    background: var(--surface);
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--ground) 82%, transparent);
+    backdrop-filter: saturate(1.4) blur(12px);
+    -webkit-backdrop-filter: saturate(1.4) blur(12px);
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    min-height: 64px;
+  }
+  .lockup {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding-block: 4px;
+  }
+  /* The lockup's viewBox is 1765.1 × 317.9; the ratio is set so the header never shifts. */
+  .lockup-svg {
+    display: block;
+    height: 32px;
+    width: auto;
+    aspect-ratio: 1765.1 / 317.9;
+  }
+  .blog-chip {
+    font: 600 0.78rem/1 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 5px 9px;
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .bar-end {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .docs {
+    color: var(--ink-2);
+    text-decoration: none;
+    font-family: var(--display);
+    font-size: 0.93rem;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+  .docs:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+  .home {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 0.93rem;
+    color: var(--ink);
+    text-decoration: none;
+    border: 1px solid var(--line-strong);
+    padding: 7px 12px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .home:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  /* Narrow screens drop the header's links, Docs first and then streamotter.dev at 420px; the
+     footer carries every link at any width. */
+  @media (max-width: 720px) {
+    .bar {
+      gap: 14px;
+    }
+    .lockup-svg {
+      height: 28px;
+    }
+    .docs {
+      display: none;
+    }
+  }
+  @media (max-width: 420px) {
+    .home {
+      display: none;
+    }
+  }
+
+  .site-footer {
+    border-top: 1px solid var(--line);
+    padding-block: 32px;
+    background: var(--surface);
+  }
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px 32px;
+    font-size: 0.93rem;
+  }
+  .foot-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+  }
+  .foot-links a {
+    color: var(--ink-2);
+    text-decoration: none;
+  }
+  .foot-links a:hover {
+    color: var(--accent);
+  }
+</style>

@@ -1,0 +1,83 @@
+---
+/**
+ * One post from src/content/blog/<slug>.md: its title, the byline with the author's bio under the
+ * name, its dates, the post, and the ways back to the index and the rest of StreamOtter.
+ */
+import { getCollection, render } from "astro:content";
+import Base from "../layouts/Base.astro";
+import { displayDate, isoDate, postPath, selectPosts } from "../posts.ts";
+import { AUTHOR, BLOG, LINKS, SHOW_DRAFTS } from "../site.ts";
+
+export async function getStaticPaths() {
+  return selectPosts(await getCollection("blog"), { drafts: SHOW_DRAFTS }).map(post => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const { title, description, published, updated, canonical, image, draft } = post.data;
+---
+<Base
+  title={`${title} · ${BLOG.title}`}
+  cardTitle={title}
+  description={description}
+  canonical={canonical ?? postPath(post)}
+  image={image}
+  article={{ published, updated }}
+  noindex={draft}
+>
+  <article class="wrap post">
+    <header class="post-head">
+      <h1>{title}</h1>
+      <div class="byline">
+        <p class="author">By {AUTHOR.name}</p>
+        {AUTHOR.bio && <p class="bio">{AUTHOR.bio}</p>}
+      </div>
+      <p class="dates muted">
+        <time datetime={isoDate(published)}>{displayDate(published)}</time>
+        {updated && <span>Updated <time datetime={isoDate(updated)}>{displayDate(updated)}</time></span>}
+        {draft && <span class="badge-soon">Draft</span>}
+      </p>
+    </header>
+    <div class="prose">
+      <Content />
+    </div>
+    <footer class="post-foot">
+      <a href="/">← All posts</a>
+      <p class="muted">
+        More from StreamOtter: <a href={LINKS.home}>streamotter.dev</a> · <a href={LINKS.docs}>Docs</a> · <a href={LINKS.github}>GitHub</a>
+      </p>
+    </footer>
+  </article>
+</Base>
+<style>
+.post { padding-block: 48px 80px; max-width: calc(72ch + 2 * var(--gutter)); }
+.post-head { display: grid; gap: 16px; margin-bottom: 36px; }
+.post-head h1 { font-size: clamp(2.2rem, 4.6vw, 3.2rem); line-height: 1.08; }
+.byline { display: grid; gap: 2px; }
+.author { font: 700 1rem/1.4 var(--display); }
+.bio { color: var(--ink-2); }
+.dates { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 500 .85rem/1.5 var(--mono); }
+/* A dot between the dates; the draft tag sits apart, so it wraps cleanly on a phone. */
+.dates > :not(:first-child, .badge-soon)::before { content: "·"; margin-right: 10px; }
+.post-foot { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+.post-foot > a { font-weight: 700; text-decoration: none; }
+.post-foot p { font-size: .93rem; }
+
+/* Markdown body: the docs site's guide styles, so a post reads like a guide. */
+.prose { min-width: 0; overflow-wrap: break-word; font-size: 17px; }
+.prose :global(h2) { font-size: clamp(1.6rem, 3vw, 2.1rem); margin-top: 48px; margin-bottom: 14px; }
+.prose :global(h3) { font-size: 1.2rem; margin-top: 32px; margin-bottom: 10px; }
+.prose :global(:is(p, ul, ol, pre, table, blockquote, figure)) { margin-block: 0 16px; }
+.prose :global(:is(ul, ol)) { padding-left: 1.4em; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.prose :global(li) { min-width: 0; }
+.prose :global(pre) { overflow-x: auto; padding: 16px 18px; border-radius: var(--radius); font-size: .86rem; line-height: 1.6; }
+.prose :global(pre code) { background: none; padding: 0; font-size: inherit; }
+.prose :global(:not(pre) > code) { overflow-wrap: anywhere; }
+.prose :global(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: .94rem; }
+.prose :global(:is(th, td)) { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.prose :global(th) { background: var(--surface-2); }
+.prose :global(blockquote) { margin-inline: 0; padding: 12px 18px; border-left: 4px solid var(--accent); background: var(--surface-2); border-radius: 0 var(--radius) var(--radius) 0; }
+.prose :global(blockquote p:last-child) { margin-bottom: 0; }
+.prose :global(img) { max-width: 100%; height: auto; border-radius: var(--radius); }
+.prose :global(hr) { border: 0; border-top: 1px solid var(--line); margin-block: 40px; }
+</style>
