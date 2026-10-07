@@ -22,7 +22,8 @@ interface Props {
 const { title, description, noindex = false } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const current = Astro.url.pathname;
-const isCurrent = (href: string) => (current.startsWith(href) ? "page" : undefined);
+/** The current page's own link is the page; a section's link is current on every page inside it. */
+const isCurrent = (href: string) => (current === href ? "page" : current.startsWith(href) ? "true" : undefined);
 ---
 
 <!doctype html>
@@ -296,6 +297,14 @@ const isCurrent = (href: string) => (current.startsWith(href) ? "page" : undefin
     }
     .menu {
       display: block;
+    }
+  }
+  @media (max-width: 380px) {
+    .bar {
+      gap: 12px;
+    }
+    .docs-chip {
+      display: none;
     }
   }
   @media (max-width: 720px) {

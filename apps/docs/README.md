@@ -17,6 +17,7 @@ pnpm --filter @streamotter/docs dev        # http://127.0.0.1:4322
 ```sh
 pnpm --filter @streamotter/docs test       # the reference builder and the guide links
 pnpm --filter @streamotter/docs build
+pnpm --filter @streamotter/docs exec tsc --noEmit -p .   # .ts and .mjs; .astro files aren't type-checked
 pnpm --filter @streamotter/docs check:links
 ```
 

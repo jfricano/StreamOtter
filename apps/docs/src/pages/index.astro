@@ -2,7 +2,10 @@
 import DocsPage from "../layouts/DocsPage.astro";
 import reference from "virtual:streamotter-docs/api-reference";
 import { GUIDES, HAS_UNDER_THE_HOOD, LINKS, RELEASE } from "../site.ts";
-const UNDER_THE_HOOD_PARTS = ["How it works", "How it's built", "Why it's built this way", "Guarantees and limits", "Using and running it"];
+const UNDER_THE_HOOD_PARTS = [
+  ["How it works", "1-how-it-works.html"], ["How it's built", "2-how-its-built.html"], ["Why it's built this way", "3-why-its-built-this-way.html"],
+  ["Guarantees and limits", "4-guarantees-and-limits.html"], ["Using and running it", "5-using-and-running-it.html"]
+] as const;
 ---
 <DocsPage title="Build with StreamOtter" description="Guides for getting things done, the API reference for exact signatures, and Under the Hood for how it all works.">
   <section class="doors" aria-label="Where to start">
@@ -22,7 +25,7 @@ const UNDER_THE_HOOD_PARTS = ["How it works", "How it's built", "Why it's built 
         <p class="ask">I want to understand how it works</p>
         <h2><a href="/under-the-hood/">Under the Hood</a></h2>
         <p>Five short guides that explain how StreamOtter works without reading every line of code: the architecture, the code, the design decisions, the guarantees and limits, and how to run it.</p>
-        <ol>{UNDER_THE_HOOD_PARTS.map(part => <li>{part}</li>)}</ol>
+        <ol>{UNDER_THE_HOOD_PARTS.map(([part, file]) => <li><a href={`/under-the-hood/${file}`}>{part}</a></li>)}</ol>
       </article>
     )}
   </section>
