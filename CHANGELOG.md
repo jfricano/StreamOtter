@@ -11,7 +11,6 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 ### Changed
 
 - The reference example's React page uses the new hooks in place of its hand-written provider and hook.
-
 - The package READMEs, and so the npm pages, show the flat brandmark lockup that the repository README uses, in place of the detailed logo.
 
 ## [0.2.0-rc.1] — 2026-10-04

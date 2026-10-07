@@ -182,13 +182,15 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     const tools = [
       `typescript@${rootManifest.devDependencies?.["typescript"]}`,
       `@types/node@${rootManifest.devDependencies?.["@types/node"]}`,
-      `esbuild@${workspaceManifests.get("@streamotter/workbench")!.devDependencies?.["esbuild"]}`,
-      // React for the V1.3 hooks (an optional peer dependency): the versions the client package develops against.
-      ...["react", "react-dom", "@types/react"].map(name => `${name}@${workspaceManifests.get("@streamotter/client")!.devDependencies?.[name]}`)
+      `esbuild@${workspaceManifests.get("@streamotter/workbench")!.devDependencies?.["esbuild"]}`
     ];
+    // React for the V1.3 hooks (an optional peer, `>=18`): this consumer gets the versions the client
+    // package develops against; the all-in-one consumer below gets the oldest supported major.
+    const reactLatest = ["react", "react-dom", "@types/react"].map(name => `${name}@${workspaceManifests.get("@streamotter/client")!.devDependencies?.[name]}`);
+    const reactOldest = ["react@18", "react-dom@18", "@types/react@18"];
     const spec = (name: string) => FROM_REGISTRY ? `${name}@${VERSION}` : tarballs.get(name)!.file;
     const freshness = FROM_REGISTRY ? "--prefer-online" : "--prefer-offline";
-    const installed = await run(NPM, ["install", "--no-audit", "--no-fund", freshness, ...SCOPED.map(pkg => spec(pkg.name)), ...tools], { cwd: consumer, timeoutMs: 300_000 });
+    const installed = await run(NPM, ["install", "--no-audit", "--no-fund", freshness, ...SCOPED.map(pkg => spec(pkg.name)), ...tools, ...reactLatest], { cwd: consumer, timeoutMs: 300_000 });
     assert.equal(installed.code, 0, `npm install failed:\n${installed.stdout}\n${installed.stderr}`);
 
     // Only `streamotter` is a dependency here. Before publishing, overrides resolve its @streamotter/*
@@ -199,7 +201,7 @@ describe(FROM_REGISTRY ? `published ${VERSION} installed from the npm registry` 
     await writeFile(join(umbrella, "package.json"), `${JSON.stringify({
       name: "streamotter-umbrella-check", version: "0.0.0", private: true, type: "module", ...(FROM_REGISTRY ? {} : { overrides })
     }, null, 2)}\n`);
-    const installedUmbrella = await run(NPM, ["install", "--no-audit", "--no-fund", freshness, spec("streamotter"), ...tools], { cwd: umbrella, timeoutMs: 300_000 });
+    const installedUmbrella = await run(NPM, ["install", "--no-audit", "--no-fund", freshness, spec("streamotter"), ...tools, ...reactOldest], { cwd: umbrella, timeoutMs: 300_000 });
     assert.equal(installedUmbrella.code, 0, `npm install streamotter failed:\n${installedUmbrella.stdout}\n${installedUmbrella.stderr}`);
   });
 
@@ -784,6 +786,8 @@ export function Job({ jobId }: { jobId: string | null }): ReactElement {
   useSubscription("jobProgress", { channelVersion: channelVersions.jobProgress, params: { orderId: "x" } });
   // @ts-expect-error: unknown channels are rejected
   useSubscription("unknownChannel", { channelVersion: 1, params: {} });
+  // @ts-expect-error: the channel version is the contract's
+  useSubscription("jobProgress", { channelVersion: 2, params: { jobId: "x" } });
   return createElement("p", { "data-state": job.state, "data-live": String(job.live) }, connection + " " + String(percent) + " " + (job.error?.code ?? ""));
 }
 

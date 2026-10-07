@@ -103,6 +103,7 @@ export const { useSubscription, useConnectionState } = createStreamOtterHooks<Ap
 
 // At the root. The provider creates the client after mounting and closes it on unmount.
 // A new key for a new signed-in user gives that user a new client.
+type Session = { userId: string; token(): Promise<string> };
 export function App({ session }: { session: Session }) {
   return (
     <StreamOtterProvider key={session.userId} options={{ getToken: () => session.token() }}>
@@ -132,7 +133,7 @@ function JobCard({ jobId }: { jobId: string }) {
 - **`useConnectionState()`** returns the client's connection state, and **`useClient()`** the client itself (for `reconnect()`), or `null` before the provider has one.
 - Hooks subscribe in effects, so nothing connects during server rendering, and React StrictMode's development double mount leaves exactly one subscription per component. The hooks add no caching or retries: two components that subscribe to the same channel and params are two subscriptions, as with `subscribe`.
 - Without the factory, `useSubscription`, `useConnectionState` and `useStreamOtterClient` are exported directly, typed against a generic channel map. `SubscriptionOptions<AppChannels, "jobProgress">` names the type of the options argument, for wrappers around `useSubscription`.
-- Hooks used outside a `StreamOtterProvider` throw a `StreamOtterError` with code `INVALID_REQUEST`.
+- Hooks used outside a `StreamOtterProvider` throw a `StreamOtterError` with code `INVALID_REQUEST`, as do `options` without a `getToken` function or without a numeric `channelVersion` and a params object. While the client is closed (for example, one your app closed before replacing it), a subscription hook renders `"idle"` rather than subscribing.
 
 The [reference application](https://github.com/jfricano/StreamOtter/tree/main/examples/order-dashboard) has a React page built on these hooks, including denied access.
 

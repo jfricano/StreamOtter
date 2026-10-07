@@ -4,7 +4,7 @@
 
 ## Why now
 
-Every React integrator today copies the [hook pattern](https://www.npmjs.com/package/@streamotter/client#react-hook-pattern) from the client README and the reference example's `react.tsx`. That pattern is right but easy to get subtly wrong (a client created in `useMemo` is closed by StrictMode's second effect run; a params object built during render resubscribes on every render). Shipping the hooks makes the supported path the easy path, and it needs nothing from V2.0 (retained history) or V2.1 (multiple gateways), so it doesn't have to wait for them.
+Every React integrator today copies the [hook pattern](https://www.npmjs.com/package/@streamotter/client/v/0.2.0-rc.1#react-hook-pattern) from the client README and the reference example's `react.tsx`. That pattern is right but easy to get subtly wrong (a client created in `useMemo` is closed by StrictMode's second effect run; a params object built during render resubscribes on every render). Shipping the hooks makes the supported path the easy path, and it needs nothing from V2.0 (retained history) or V2.1 (multiple gateways), so it doesn't have to wait for them.
 
 ## Scope
 
@@ -72,7 +72,7 @@ Suspense and `use()` integration, React Server Components, React Native, event c
 | Integration test | `tests/integration/react.test.ts`: components under StrictMode against the fixture gateway render the snapshot, a live update and a `FORBIDDEN` denial; `subscriptionCount()` stays 1; unmount brings it to 0 |
 | Reference example | `examples/order-dashboard/src/web/react.tsx` rewritten on the hooks; the Playwright order-dashboard check (`/react`: two live orders, one denial) keeps passing |
 | Install test | `tests/install/install.test.ts` adds a React consumer: bundles `@streamotter/client/react` and `streamotter/react` from the packed tarballs, type-checks against the published declarations, and confirms a non-React consumer's bundle contains no React |
-| Documentation | Client README "React hook pattern" becomes "React hooks"; the existing-app guide §6 and getting-started point at them; V1_API.md §13 records the addition; IMPLEMENTATION_STATUS.md lists the hooks and the tests that verify them; README.md and CHANGELOG.md; the roadmap's feature-allocation and increment tables (done in this plan's PR) |
+| Documentation | Client README "React hook pattern" becomes "React hooks"; the existing-app guide §6 points at them; V1_API.md §13 records the addition; IMPLEMENTATION_STATUS.md lists the hooks and the tests that verify them; CHANGELOG.md; the roadmap's feature-allocation and increment tables (done in this plan's PR). The root README and getting-started guide describe the published packages and change with the `1.1.0` release |
 
 The build started from the prototype written while planning ([prototype handoff](./PROTOTYPE_HANDOFF.md)).
 
@@ -92,11 +92,13 @@ The demo of the hooks is [Pup Patrol](./PUP_PATROL.md), a React game on the cree
 
 ## Acceptance
 
-- `pnpm verify`, `pnpm test:install` and `pnpm test:browser` green on Node 24 and 26, with the new tests listed above included.
-- The React consumer in the install test type-checks `useSubscription` against generated `AppChannels` and rejects a wrong channel name, version or params shape at compile time.
-- A non-React consumer's bundle size is unchanged from 1.0.0 (measured in the install test).
-- The client README's example is run as written in the reference example.
-- An independent review of the implementation before the PR opens, per the project's convention; the owner performs it.
+Status as of the [implementation log](./IMPLEMENTATION_LOG.md):
+
+- `pnpm verify`, `pnpm test:install` and `pnpm test:browser` green with the new tests included. **Met on Node 24** (the log has the counts); Node 26 runs in CI's extended workflow when the PR opens.
+- The React consumer in the install test type-checks `useSubscription` against generated `AppChannels` and rejects a wrong channel name, version or params shape at compile time. **Met**, on React 19 and React 18 type packages.
+- A non-React consumer bundles no React. **Met**: the install test checks the bundler's inputs for React, not a byte count; the plan's original "bundle size unchanged" wording claimed a measurement that no test makes.
+- The client README's example compiles against the published declarations. **Met by review**, not by a test: the reference example is a different page (orders, with denial), so the plan's original "run as written in the reference example" was not done.
+- An independent review of the implementation before the PR opens, per the project's convention. **Done**; findings and fixes are in the log.
 
 ## Open decisions
 

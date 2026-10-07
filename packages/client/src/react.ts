@@ -12,7 +12,7 @@
  * @example
  * ```tsx
  * import { createStreamOtterHooks, StreamOtterProvider } from "@streamotter/client/react";
- * import type { AppChannels } from "./generated/streamotter.ts";
+ * import type { AppChannels } from "./generated/streamotter.generated.js";
  *
  * export const { useSubscription, useConnectionState } = createStreamOtterHooks<AppChannels>();
  *
@@ -82,6 +82,8 @@ export type StreamOtterProviderProps = {
  * With `options`, the provider supplies `null` until its client exists: on the first client render
  * and throughout server rendering.
  *
+ * @throws {@link StreamOtterError} with code `INVALID_REQUEST` when `options` has no `getToken` function.
+ *
  * @example
  * ```tsx
  * // The provider owns the client; a new key closes it and creates one for the next user.
@@ -96,6 +98,9 @@ export type StreamOtterProviderProps = {
  * ```
  */
 export function StreamOtterProvider(props: StreamOtterProviderProps): ReactElement {
+  if (props.options !== undefined && typeof props.options.getToken !== "function") {
+    throw new StreamOtterError("INVALID_REQUEST", { message: "StreamOtterProvider options require a getToken function." });
+  }
   const owned = useOwnedClient(props.options);
   const value = props.options === undefined ? props.client ?? null : owned;
   return createElement(ClientContext.Provider, { value }, props.children);
@@ -228,16 +233,24 @@ interface View {
   error: StreamError | undefined;
 }
 
-/** Params in a canonical order, so a new object with the same values keeps the subscription. */
-function paramsKey(params: Params): string {
-  if (typeof params !== "object" || params === null) {
+/**
+ * The subscription's identity (S2): channel, version and params, the params in a canonical order
+ * so a new object with the same values keeps the subscription. Checks the shape at render time, so
+ * a programming error fails in the component rather than in the SDK's effect.
+ */
+function identityKey(channel: string, options: { channelVersion: number; params: Params }): string {
+  const { channelVersion, params } = options;
+  if (typeof channelVersion !== "number" || typeof params !== "object" || params === null) {
     throw new StreamOtterError("INVALID_REQUEST", { message: "useSubscription requires a channelVersion and params." });
   }
-  return JSON.stringify(Object.keys(params).sort().map(name => {
+  const canonical = Object.keys(params).sort().map(name => {
     const value = params[name];
     return [name, typeof value, String(value)];
-  }));
+  });
+  return `${channel}\u0000${String(channelVersion)}\u0000${JSON.stringify(canonical)}`;
 }
+
+const IDLE_VIEW: View = { client: null, key: null, data: undefined, revision: undefined, state: "idle", error: undefined };
 
 /**
  * Subscribes to one channel stream while the component is mounted, and renders its data and state.
@@ -264,22 +277,28 @@ function paramsKey(params: Params): string {
  * @typeParam K - The channel name.
  * @param channel - The channel to subscribe to.
  * @param options - The channel version and params, or `null` for no subscription.
+ * While the client is closed (an owned client between its replacement and the next render, or a
+ * supplied client the application closed) the hook subscribes to nothing and renders its
+ * no-subscription values (S9).
+ *
  * @throws {@link StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider}
- * (A1), or when `options` has no params object.
+ * (A1), or when `options` has no numeric `channelVersion` or no `params` object.
  */
 export function useSubscription<C extends ChannelMap = ChannelMap, K extends keyof C & string = keyof C & string>(
   channel: K,
   options: SubscriptionOptions<C, K> | null
 ): SubscriptionResult<C[K]["data"]> {
   const client = useStreamOtterClient<C>();
-  const key = options === null
-    ? null
-    : `${channel}\u0000${String(options.channelVersion)}\u0000${paramsKey(options.params)}`;
-  const [view, setView] = useState<View>(() => ({ client: null, key: null, data: undefined, revision: undefined, state: "idle", error: undefined }));
+  const key = options === null ? null : identityKey(channel, options);
+  const [view, setView] = useState<View>(IDLE_VIEW);
   const current = useRef<Subscription<C[K]["data"]> | null>(null);
 
   useEffect(() => {
     if (client === null || key === null || options === null) return;
+    // S9: React runs every cleanup before every mount effect in a commit, so when the provider replaces
+    // its client in the same commit as this effect, the context still holds the client it just closed.
+    // The provider's state update brings the new client on the next render.
+    if (client.state === "closed") return;
     // `options` is this render's; the key holds its values, so a later render with equal values keeps this subscription.
     const subscription = client.subscribe(channel, { channelVersion: options.channelVersion, params: options.params });
     current.current = subscription;
@@ -295,6 +314,9 @@ export function useSubscription<C extends ChannelMap = ChannelMap, K extends key
       offError();
       if (current.current === subscription) current.current = null;
       subscription.unsubscribe().catch(noop);
+      // Forget this subscription's view, so the same identity returning later (S3) starts from idle
+      // instead of showing the unsubscribed stream for a render. A no-op after unmount.
+      setView(previous => previous.client === owner && previous.key === key ? IDLE_VIEW : previous);
     };
     // The key stands for channel and options.
   }, [client, key]);
@@ -344,7 +366,7 @@ export interface StreamOtterHooks<C extends ChannelMap> {
  * ```ts
  * // src/streamotter.ts
  * import { createStreamOtterHooks } from "@streamotter/client/react";
- * import type { AppChannels } from "./generated/streamotter.ts";
+ * import type { AppChannels } from "./generated/streamotter.generated.js";
  *
  * export const { useSubscription, useClient, useConnectionState } = createStreamOtterHooks<AppChannels>();
  * ```

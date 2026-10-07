@@ -4,10 +4,10 @@
  * owned client asks the latest getToken. Test names start with clause IDs from docs/releases/v1.3/API.md.
  */
 import assert from "node:assert/strict";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, describe, it } from "node:test";
 import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import type { Client } from "@streamotter/client";
 import { createStreamOtterHooks, StreamOtterProvider, type SubscriptionResult } from "@streamotter/client/react";
 import { orderRecord, sleep, startHarness, waitFor, type Harness, type OrderState, type TestChannels } from "./harness.ts";
@@ -26,8 +26,20 @@ async function rendered(predicate: () => boolean, label: string): Promise<void> 
   }
 }
 
+/** The test's root, unmounted after each test so a failure in one cannot leave a subscription for the next. */
+let root: Root | null = null;
+function mount(): Root {
+  const element = window.document.body.appendChild(window.document.createElement("div"));
+  root = createRoot(element as unknown as Element);
+  return root;
+}
+
 describe("React hooks with a running gateway", () => {
   let h: Harness;
+  afterEach(async () => {
+    if (root !== null) await act(async () => root!.unmount());
+    root = null;
+  });
   before(async () => {
     h = await startHarness({ fixtures: [orderRecord("acme", "ord_1", 2, "processing", 40)] });
     h.app.put("acme", "alice", "ord_1", 1, "queued", 0);
@@ -35,7 +47,7 @@ describe("React hooks with a running gateway", () => {
   });
   after(() => h.close());
 
-  it("P1/S1/S4/S5/A3: renders the snapshot, live updates, and a denial; unmounting unsubscribes", async () => {
+  it("P1/S1/S4/S5/S6/A3: renders the snapshot, live updates, a resync and a denial; unmounting unsubscribes", async () => {
     const results = new Map<string, SubscriptionResult<OrderState>>();
     const connection: string[] = [];
     function Order({ orderId }: { orderId: string }): null {
@@ -46,8 +58,7 @@ describe("React hooks with a running gateway", () => {
       connection.push(useConnectionState());
       return null;
     }
-    const element = window.document.body.appendChild(window.document.createElement("div"));
-    const root = createRoot(element as unknown as Element);
+    const root = mount();
     const options = { origin: h.origin, getToken: () => "alice@acme" };
     await act(async () => root.render(createElement(StrictMode, null,
       createElement(StreamOtterProvider, { options },
@@ -66,6 +77,14 @@ describe("React hooks with a running gateway", () => {
     await rendered(() => results.get("ord_1")?.revision === "2", "the update");
     assert.deepEqual(results.get("ord_1")?.data, { orderId: "ord_1", status: "processing", progress: 40 });
 
+    // resync through the hook: the application's snapshot has caught up to revision 2, so the fresh
+    // snapshot carries it and the subscription is live again afterwards.
+    h.app.put("acme", "alice", "ord_1", 2, "processing", 40);
+    await act(async () => { await results.get("ord_1")!.resync(); });
+    await rendered(() => results.get("ord_1")?.live === true, "live after resync");
+    assert.equal(results.get("ord_1")?.revision, "2");
+    assert.equal(h.app.snapshotCalls, 2, "one snapshot at mount (ord_2 was denied before its snapshot), one for the resync");
+
     // StrictMode's double mount opened no extra subscription on the gateway.
     assert.equal(h.internals.subscriptionCount(), 1);
 
@@ -82,8 +101,7 @@ describe("React hooks with a running gateway", () => {
       live.push(useSubscription("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }).live);
       return null;
     }
-    const element = window.document.body.appendChild(window.document.createElement("div"));
-    const root = createRoot(element as unknown as Element);
+    const root = mount();
     const calls: string[] = [];
     const tree = (name: string) => createElement(StreamOtterProvider, {
       options: { origin: h.origin, getToken: () => { calls.push(name); return "alice@acme"; } }
