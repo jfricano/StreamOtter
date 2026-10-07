@@ -20,6 +20,8 @@ The creek is real. The pups' wandering and the trap's timing are not scripted by
 | Mount and unmount | A round mounts its subscriptions and the end screen unmounts them; the drawer's count goes to zero. StrictMode in development leaves exactly one per component. |
 | Hooks in an animation loop | A 60 fps canvas re-renders freely while three subscriptions stay put: params by value, no resubscribe. |
 
+**Tick rate and animation.** The field station publishes one tick every 2 seconds (`FIELD_TICK_MS`, default 2000; a tick is five simulated minutes). The channel sets targets, the browser animates between them: each `reach` and `den` update gives the pups and the trap a new target, and the canvas tweens toward it at 60 fps, so motion is smooth while `useSubscription` re-renders only on real updates. Pebble and the herding nudge are local and instant. A stale channel freezes the targets, not the frame, which is the "last known" the game shows; the fresh snapshot on reconnect snaps them. The production tick is not changed for the game, since it drives the whole creek; if finer motion is ever wanted, a game-only view can emit sub-steps.
+
 Everything is read-only: no new write anywhere, visitors send nothing to the broker, the fiction is labeled on the page, and when the demo backend is down the page shows a labeled recording of a round rather than a silent substitute, as streamotter.dev's home page does.
 
 ## Where it lives
