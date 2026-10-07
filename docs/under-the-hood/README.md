@@ -1,8 +1,8 @@
-# The StreamOtter volume
+# Under the Hood
 
 October 7, 2026 · Written from `main` at 1c75aaa (packages at `0.2.0-rc.1`) · Internal draft
 
-Five pages that explain StreamOtter without reading every line of code. They're a welcome kit for contributors and a reference for anyone evaluating the project. Each page is a self-contained HTML file: open it in a browser. The pages link to each other.
+Five guides that explain StreamOtter without reading every line of code, for engineers deciding whether to adopt it, would-be contributors, and curious readers. Start with the [introduction](./index.html), which says what each part covers and suggests a reading order for each kind of reader. Each page is a self-contained HTML file: open it in a browser. The pages link to each other.
 
 | Part | Page | What it covers |
 | --- | --- | --- |
@@ -14,4 +14,4 @@ Five pages that explain StreamOtter without reading every line of code. They're 
 
 **Reading order for contributors:** 1, then the first-run section of 5, then 2, 4, 3, and the rest of 5 as reference. Then [CONTRIBUTING](../../CONTRIBUTING.md).
 
-**Status.** These are drafts, checked against the code and docs at 1c75aaa but not yet independently reviewed. They cite files with line numbers, which go stale as the code changes. Each page ends with a list of the points that are interpretation rather than something read in the code. The [specification](../V1_API.md), the [guides](../guides/) and the code win wherever they disagree with these pages. Turning them into public docs (trimmed, reviewed, and published on streamotter.dev) is a planned follow-up.
+**Status.** These are drafts, checked against the code and docs at 1c75aaa but not yet independently reviewed. They cite files with line numbers, which go stale as the code changes. Each page ends with a list of the points that are interpretation rather than something read in the code. The [specification](../V1_API.md), the [guides](../guides/) and the code win wherever they disagree with these pages. Turning them into public docs (trimmed, reviewed, and published on streamotter.dev as an "Under the Hood" section) is a planned follow-up. The name is a working title.
