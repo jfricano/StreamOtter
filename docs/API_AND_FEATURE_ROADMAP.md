@@ -352,6 +352,14 @@ Commands target allowlisted server-side destinations. Validate and authorize eac
 
 The command handoff must account for crashes between idempotency storage and broker publication. Design an outbox or equivalent coordinated mechanism before shipping it. Backend handlers still need idempotent processing. StreamOtter does not own the application’s business transaction.
 
+### Candidate producer-side additions
+
+*Proposed October 7, 2026; not approved or scheduled.* These sit with commands because they are the other places StreamOtter could touch the producer side of Kafka.
+
+- **Outcome correlation in the SDK.** The backend's outcome event already carries `commandId` (above). The SDK could also offer a helper that resolves a pending command to `succeeded`, `failed` or `timed out` from that event, instead of each application wiring its own channel listener.
+- **A producer helper for backends.** A small server-side library that keys records and stamps canonical revisions the way state channels expect, so fewer records fail mapping and reach quarantine. It would not publish on the application's behalf; the application keeps its own producer.
+- **Publish a test record from the workbench.** In development only, send a record to an allowlisted dev topic and watch it travel end to end through real Kafka. Today the workbench only advances fixture sources (`POST /dev/fixtures/advance` never publishes to Kafka), so this needs its own safety review.
+
 ### Team and environment management
 
 Introduce workspaces, environment-scoped profiles, operator/viewer/deployer roles, shared revocation, and auditable configuration revisions. Versioned deployments refer to immutable artifacts and secret references. Reject concurrent writes using revision preconditions. Rollback creates a deployment of a previous compatible artifact; it does not undo Kafka records or reverse application side effects.
