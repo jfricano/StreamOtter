@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { extname, join, resolve as resolvePath, sep } from "node:path";
 import { isWorkbenchOperation, StreamOtterError, type Gateway, type WorkbenchOperation } from "@streamotter/contracts";
 import { DEFAULT_MANAGEMENT_PORT } from "@streamotter/contracts/internal";
-import { getGatewayInternals, type GatewayInternals } from "../runtime/gateway.ts";
+import { getGatewayInternals } from "../runtime/gateway.ts";
 import { newId, TokenBucket } from "../runtime/util.ts";
 import { createRouter, HttpError, IMPLEMENTED_OPERATIONS, MAX_MANAGEMENT_BODY_BYTES, sendError, sendResult } from "./router.ts";
 

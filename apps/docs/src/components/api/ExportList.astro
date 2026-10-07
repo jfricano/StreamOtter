@@ -1,19 +1,24 @@
 ---
-/** Exports grouped by kind, each with its one-line summary. `filterable` marks rows for the index's filter. */
+/**
+ * Exports with their one-line summaries, grouped by kind under headings, or with `byKind` false as
+ * one list that labels each row's kind. `filterable` marks rows for the index's filter.
+ */
 import type { ApiExport, ApiKind } from "../../api-reference/build.ts";
-import { KIND_GROUPS } from "../../api-reference/labels.ts";
-interface Props { exports: readonly (ApiExport & { importPaths?: readonly string[] })[]; headingLevel?: 2 | 3; filterable?: boolean }
-const { exports, headingLevel = 2, filterable = false } = Astro.props;
+import { KIND_GROUPS, KIND_LABELS } from "../../api-reference/labels.ts";
+interface Props { exports: readonly (ApiExport & { importPaths?: readonly string[] })[]; headingLevel?: 2 | 3; filterable?: boolean; byKind?: boolean }
+const { exports, headingLevel = 2, filterable = false, byKind = true } = Astro.props;
 const Heading = `h${headingLevel}`;
-const groups = KIND_GROUPS.map(group => ({ ...group, items: exports.filter(entry => group.kinds.includes(entry.kind as ApiKind)) })).filter(group => group.items.length > 0);
+const groups = byKind
+  ? KIND_GROUPS.map(group => ({ label: group.label, items: exports.filter(entry => group.kinds.includes(entry.kind as ApiKind)) })).filter(group => group.items.length > 0)
+  : [{ label: null, items: exports }];
 ---
 {groups.map(group => (
   <section class="api-group" data-api-group>
-    <Heading>{group.label}</Heading>
+    {group.label && <Heading>{group.label}</Heading>}
     <ul class="api-exports">
       {group.items.map(entry => (
         <li data-api-name={filterable ? `${entry.name} ${entry.summaryText}`.toLowerCase() : undefined}>
-          <div class="api-name"><a href={entry.href}><code>{entry.name}</code></a>{entry.reexport && <span class="api-badge">re-export</span>}</div>
+          <div class="api-name"><a href={entry.href}><code>{entry.name}</code></a>{!byKind && <span class="api-badge">{KIND_LABELS[entry.kind]}</span>}{entry.reexport && <span class="api-badge">re-export</span>}</div>
           <div class="api-desc">
             {entry.summaryHtml ? <p set:html={entry.summaryHtml} /> : <p class="muted">No description.</p>}
             {entry.importPaths && <p class="api-paths">{entry.importPaths.map(path => <code>{path}</code>)}</p>}

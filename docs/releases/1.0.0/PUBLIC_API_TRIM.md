@@ -80,14 +80,14 @@ The API reference loses 61 pages.
   - the contracts README's "What else is exported" table;
   - one sentence in V1_1_API §7 about the operator socket;
   - the CHANGELOG, with a "Removed from the public API" list.
-- **Guard:** `packages/streamotter/test/api-docs.test.ts` gains a check that none of the moved names can be imported from a `streamotter/*` entry point, so they can't come back by accident.
+- **Guard:** `packages/streamotter/test/public-api.test.ts` checks that none of the moved names can be imported from a `streamotter/*` entry point, so they can't come back by accident.
 - **Lontra Creek:** nothing breaks while it pins `0.2.0-rc.1`. When it upgrades, five sandbox files need small local helpers for `isPlainObject` and `utf8ByteLength`. That happens after the freeze.
 - **Release:** this ships in the next prerelease before `1.0.0`. The CHANGELOG lists it as a breaking change for anyone who imported plumbing.
 
-## Order of work
+## How it went
 
-1. jason reviews these lists. This document is the spec.
-2. Write the tests: the guard above, plus updated expectations in the existing tests.
-3. Write the code and docs, then run `pnpm verify` and the docs site build.
-4. Pause, and ask jason which model and effort the independent review should use.
-5. Review, fix, then push to PR #72.
+1. jason approved these lists on October 7, 2026. This document is the spec.
+2. The tests came first: the guard above, plus updated expectations in the existing tests.
+3. Then the code and docs; `pnpm verify` and the docs site build passed.
+4. jason chose the reviewers' model. The independent review found nothing blocking.
+5. It merged with PR #72. The review's smaller fixes, and grouping `streamotter/contracts` by audience in the docs (jason kept every remaining export public), followed in their own PR.

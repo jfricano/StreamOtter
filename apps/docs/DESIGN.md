@@ -54,11 +54,29 @@ streamotter.dev, GitHub, npm and the changelog.
    - links every type reference and `{@link}` to its page or member anchor;
    - renders comments as Markdown with raw HTML off, and escapes everything else;
    - gives names that differ only in case different URLs (`streamError-function`);
-   - points "View source" at `packages/<name>/src/` on GitHub at the release tag.
+   - points "View source" at `packages/<name>/src/` on GitHub at the release tag;
+   - lists the documented fields of a union or intersection type alias, shared fields first, then
+     one group per variant, labeled by its discriminant (`kind: "session"`) or the fields it requires;
+   - groups an entry point's exports into the `sections` its `API_MODULES` entry lists (see below).
 4. The pages in `src/pages/api/` place that data. They hold no logic beyond layout.
 
 The builder is pure, so `test/api-reference.test.ts` feeds it small models. It also checks the real
 package, making sure every internal link resolves and every exported path is documented.
+
+### Sections
+
+`streamotter/contracts` has 146 exports for several audiences, so its page groups them by job
+instead of one flat list: five sections most apps use (configuration, gateway and handlers, browser
+client, channels and values, errors), then six for specific jobs (source failure handling, operator
+types, diagnostics, wire protocol, workbench hosting, helpers). jason kept every one of them public
+(2026-10-07); the grouping only changes how the page reads.
+
+- The sections live in `src/api-reference/modules.ts`. The build fails unless each export is in
+  exactly one section and every listed name is exported, so a new export has to be placed.
+- An entry point that re-exports sectioned names (`streamotter/gateway`, `streamotter/client`,
+  `streamotter/gateway/operator`) lists its own exports first, then the re-exports in their home
+  sections.
+- The page opens with a list of its sections, and the sidebar groups its exports the same way.
 
 ## Guides
 
@@ -73,22 +91,23 @@ Heading anchors follow GitHub's rules, so anchors written for GitHub keep workin
 ## Keeping it complete
 
 - **Doc comments:** `packages/streamotter/test/api-docs.test.ts` fails when a public export, or a
-  member of an exported interface, class, or object type, has no doc comment.
+  member of an exported interface, class, or object type, has no doc comment. A `?: never` member,
+  which only makes a union's variants exclusive, needs none.
 - **Entry points:** both that test and `apps/docs/test/api-reference.test.ts` read the package's
   `exports`; the docs build fails when it exports an entry point `API_MODULES` doesn't describe.
 - **Links:** `scripts/check-links.mjs` fails on any same-site link, asset, or anchor that doesn't
   resolve in the built site.
 - **CI:** the "Docs site" job in `.github/workflows/ci.yml` runs all of the above on every push.
 
-## Adding an entry point (for example `streamotter/react`)
+## Adding an entry point
 
 1. Add the export to `packages/streamotter/package.json` and its `src/<entry>.ts`. Both
    `packages/streamotter/test/*.test.ts` and the docs build read the entry points from those
    `exports`, so there is no second list to update.
 2. Add an entry to `API_MODULES` in `apps/docs/src/api-reference/modules.ts`, with its slug,
-   title, and one-line description. The order there is the order on the site. The build fails on
-   an exported path that `API_MODULES` doesn't describe, and skips a described path the package
-   doesn't export, so `react` is already described for when the hooks land.
+   title, and one-line description, plus `sections` if its exports serve several audiences. The
+   order there is the order on the site. The build fails on an exported path that `API_MODULES`
+   doesn't describe.
 3. Doc-comment every new export and member. The tests above fail until steps 2 and 3 are done.
 
 ## Publishing (not set up yet)
