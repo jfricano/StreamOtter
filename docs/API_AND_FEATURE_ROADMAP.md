@@ -354,7 +354,7 @@ The command handoff must account for crashes between idempotency storage and bro
 
 ### Candidate producer-side additions
 
-*Proposed October 7, 2026; not approved or scheduled.* These sit with commands because they are the other places StreamOtter could touch the producer side of Kafka.
+*Proposed October 7, 2026; rough notes, not approved or scheduled. To refine after October 9, 2026.* These sit with commands because they are the other places StreamOtter could touch the producer side of Kafka.
 
 - **Outcome correlation in the SDK.** The backend's outcome event already carries `commandId` (above). The SDK could also offer a helper that resolves a pending command to `succeeded`, `failed` or `timed out` from that event, instead of each application wiring its own channel listener.
 - **A producer helper for backends.** A small server-side library that keys records and stamps canonical revisions the way state channels expect, so fewer records fail mapping and reach quarantine. It would not publish on the application's behalf; the application keeps its own producer.
