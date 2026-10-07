@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/linkedin-post.png">
+<meta name="size" content="1200x627">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<script src="social-motifs.js"></script>
+<style>
+  .copy { left: 64px; top: 70px; width: 560px; height: 400px; display: flex; flex-direction: column; justify-content: center; }
+  .head { font-size: 56px; margin-top: 20px; }
+  .cmd { margin-top: 30px; --cmd: 23px; align-self: flex-start; }
+  .eyebrow { --eb: 18px; }
+  .logo-full { left: 630px; top: 110px; width: 520px; }
+</style></head>
+<body><div class="stage dark">
+  <svg class="art" id="art"></svg>
+  <div class="layer copy">
+    <div class="eyebrow">Open source · streamotter.dev</div>
+    <div class="head">Live state from Kafka to the browser. <em>Never silently wrong.</em></div>
+    <div class="cmd"><b>$</b>npm install streamotter</div>
+  </div>
+  <img class="layer logo-full" src="../../streamotter-logo-dark.png" alt="StreamOtter">
+</div>
+<script>
+  const W = 1200, H = 627;
+  const c = SO.creek(W, H, { top: 556, rise: 30, seed: 17, scale: 0.85, streams: 2, phase: 2.2, dropRange: [0, 600] });
+  SO.paint(document.getElementById("art"),
+    SO.texture(W, H, { rows: 7, y0: 20, y1: 480, opacity: 0.045 }) + c.svg);
+</script>
+</body></html>

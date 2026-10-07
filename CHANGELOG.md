@@ -16,19 +16,25 @@ Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages sha
 
 ### Added
 
+- React hooks (V1.3, shipping in 1.0.0): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
 - `streamotter/gateway/operator` exports the types that `callOperator`'s requests and results use (`OperatorOperation`, `OperatorRequests`, `IncidentProgress`, `Trace`, `Page` and others), so operator code no longer needs `streamotter/contracts`.
 - The docs site for docs.streamotter.dev (`apps/docs`): the guides, an API reference generated from the doc comments on every public export, and StreamOtter Under the Hood.
 
 ### Changed
 
+- The reference example's React page uses the new hooks in place of its hand-written provider and hook.
 - The package READMEs, and so the npm pages, show the flat brandmark lockup that the repository README uses, in place of the detailed logo.
+
+### Fixed
+
+- The gateway's "Source paused" log line no longer quotes record data. Its `reason` is now the same sanitized diagnosis an incident shows: a `map` error is named by its type and code, never its message (which used to be logged up to 200 characters, and can quote the record, as a `JSON.parse` error does), and an unexpected output field or a payload property the schema doesn't allow is no longer named. This applies with or without `failureHandling`, so logs are metadata only, as the V1.1 specification requires.
 
 ## [0.2.0-rc.1] — 2026-10-04
 
 Published to npm on `latest` with provenance, from the `v0.2.0-rc.1` tag ([GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1)). One release carrying three internal milestones:
 
 - V1.1: source-failure handling and the workbench host contract ([docs/releases/v1.1](docs/releases/v1.1/README.md)).
-- V1.2: an independent quality review of V1 and V1.1 together ([docs/releases/v1.2](docs/releases/v1.2/README.md)).
+- V1.2: a quality review of V1 and V1.1 together ([docs/releases/v1.2](docs/releases/v1.2/README.md)).
 - V1.2.1: fixes for the minor findings V1.2 deferred ([docs/releases/v1.2.1](docs/releases/v1.2.1/README.md)).
 
 Milestone labels are not package versions. Configurations without `failureHandling` behave as in `0.1.0-rc.3`, apart from the changes and fixes below. Two of those changes can refuse a configuration or a request that `0.1.0-rc.3` accepted: the `maxControlFrameBytes` minimum, and production answers to invalid subscribe parameters.
@@ -65,7 +71,7 @@ Milestone labels are not package versions. Configurations without `failureHandli
   - The refusal for a `generation` changed while incidents are open now names `streamotter sources rebaseline`.
   - The order-dashboard example's orders source has an outbox-based recovery guard and snapshot acknowledgment (`decideRecovery`, `acknowledgeRecovery`), with a `quarantine-resync` configuration (`streamotter.kafka-resync.json`, `pnpm dev:kafka-resync`).
   - New guide: [Handle bad records](docs/guides/source-failures.md), the source-failure policies and operator runbook. The Kafka, deployment and troubleshooting guides and the package READMEs cover failure handling.
-- V1.1 hardening from its [independent review](docs/releases/v1.1/REVIEW.md):
+- V1.1 hardening from its [code review](docs/releases/v1.1/REVIEW.md):
   - Startup replaces a stale `journal.lock` left by a dead process on the same host, including one naming the new process's own pid (a container restarted in place), once SQLite confirms nothing holds the journal. Lock files are written atomically.
   - An incident left `guard-pending` by a crash returns to `recovery: held` at startup.
   - The operator socket's `close()` (the first step of `gateway.stop()`) answers requests already running for up to 5 seconds. `callOperator` errors raised after a request was sent carry `details.reason: "no-answer"`.

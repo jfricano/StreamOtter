@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../social/linkedin-banner.png">
+<meta name="size" content="1584x396">
+<!-- The avatar covers roughly the left 400px of the lower half: keep copy right of x=520. -->
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="launch-motifs.css">
+<script src="social-motifs.js"></script>
+<style>
+  .lockup { left: 560px; top: 56px; width: 320px; }
+  .copy { left: 560px; top: 140px; width: 900px; }
+  .head { font-size: 48px; }
+</style></head>
+<body><div class="stage dark">
+  <svg class="art" id="art"></svg>
+  <img class="layer lockup logo" src="../../streamotter-lockup-horizontal-dark.svg" alt="StreamOtter">
+  <div class="layer copy">
+    <div class="head">Live state from Kafka to the browser.<br><em>Never silently wrong.</em></div>
+  </div>
+</div>
+<script>
+  const W = 1584, H = 396;
+  const c = SO.creek(W, H, { top: 352, rise: 70, seed: 12, scale: 0.8, streams: 1, phase: 0.8,
+    ticksAt: [1170, 1260, 1350], tickSize: 15, chipState: "live", chipSize: 15, dropRange: [0, 1100] });
+  SO.paint(document.getElementById("art"),
+    SO.texture(W, H, { rows: 5, y0: 20, y1: 290, opacity: 0.045 }) + c.svg);
+</script>
+</body></html>

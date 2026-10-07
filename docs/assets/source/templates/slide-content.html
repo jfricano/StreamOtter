@@ -1,0 +1,63 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/slides/slide-content.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<link rel="stylesheet" href="slide-common.css">
+<style>
+  .head { position: absolute; left: 120px; top: 110px; }
+  h1 { font-size: 76px; font-weight: 800; letter-spacing: -.025em; line-height: 1.02; margin-top: 18px; }
+  .body { position: absolute; left: 120px; top: 360px; width: 880px; display: flex; flex-direction: column; gap: 34px; }
+  .pt { display: grid; grid-template-columns: 36px 1fr; gap: 18px; }
+  .pt i { display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--azure); margin-top: 14px; }
+  .pt h3 { font-size: 34px; font-weight: 700; letter-spacing: -.01em; }
+  .pt p { font-size: 27px; line-height: 1.45; color: #1D3358; margin-top: 6px; }
+  .pt code { font-family: var(--mono); font-size: .88em; font-weight: 600; }
+  .live-t { color: var(--live-on-light); } .stale-t { color: var(--stale-on-light); }
+  .panel { position: absolute; left: 1080px; top: 360px; width: 720px; height: 440px; border-radius: 24px; background: var(--azure-wash); padding: 40px 44px; }
+  .panel .cap { font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--azure-text); }
+  .flow { margin-top: 30px; position: relative; height: 270px; }
+  .row { display: flex; align-items: center; gap: 16px; }
+  .chip { position: absolute; height: 58px; font-family: var(--mono); font-size: 24px; font-weight: 600; padding: 0 22px; border-radius: 99px; background: #fff; border: 2px solid #C9D7EA; color: var(--ink); display: inline-flex; align-items: center; gap: 12px; }
+  .chip b { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .arr { width: 42px; height: 2px; background: #5D6F91; position: relative; }
+  .arr::after { content: ""; position: absolute; right: -2px; top: -5px; border: 6px solid transparent; border-left: 9px solid #5D6F91; border-right: 0; }
+  .note { font-size: 22px; line-height: 1.45; color: #1D3358; margin-top: 10px; }
+  .corner { position: absolute; right: 120px; bottom: 70px; }
+  .pg { position: absolute; left: 120px; bottom: 82px; font-family: var(--mono); font-size: 18px; color: #5D6F91; }
+</style></head>
+<body class="light">
+<div class="head">
+  <div class="slide-eyebrow">What V1 does</div>
+  <h1>State channels, not raw topics.</h1>
+</div>
+<div class="body">
+  <div class="pt"><i></i><div><h3>Snapshot first, then updates</h3><p>Each subscription receives an authoritative snapshot, then full-state updates ordered by a domain revision.</p></div></div>
+  <div class="pt"><i></i><div><h3>Explicit delivery states</h3><p>A disconnected or superseded view is never reported as <code class="live-t">live</code>. After a connection loss it shows <code class="stale-t">stale</code> while it recovers.</p></div></div>
+  <div class="pt"><i></i><div><h3>Application-owned access</h3><p>Your handlers decide identity, audience, public payload and authoritative state.</p></div></div>
+</div>
+<div class="panel">
+  <div class="cap">Subscription states</div>
+  <div class="flow">
+    <svg width="632" height="300" viewBox="0 0 632 300" style="position:absolute;left:0;top:0">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5D6F91"/></marker></defs>
+      <g fill="none" stroke="#5D6F91" stroke-width="2.5">
+        <path d="M70 58V100" marker-end="url(#ah)"/><path d="M70 158V200" marker-end="url(#ah)"/>
+        <path d="M150 229H318" marker-end="url(#ah)"/>
+        <path d="M400 200V44Q400 29 385 29H214" marker-end="url(#ah)" stroke-dasharray="7 7"/>
+      </g>
+      <text x="234" y="214" text-anchor="middle" font-family="JetBrains Mono" font-size="17" fill="#5D6F91">connection loss</text>
+      <text x="418" y="120" font-family="JetBrains Mono" font-size="17" fill="#5D6F91">recovers</text>
+      <text x="418" y="142" font-family="JetBrains Mono" font-size="17" fill="#5D6F91">automatically</text>
+    </svg>
+    <span class="chip" style="left:0;top:0">authorizing</span>
+    <span class="chip" style="left:0;top:100px">synchronizing</span>
+    <span class="chip" style="left:0;top:200px"><b style="background:var(--live-on-light)"></b><span class="live-t">live</span></span>
+    <span class="chip" style="left:322px;top:200px"><b style="background:var(--stale-on-light)"></b><span class="stale-t">stale</span></span>
+  </div>
+  <div class="note">Treat every state other than <code class="live-t" style="font-family:var(--mono);font-weight:600">live</code> as “may be stale”.</div>
+</div>
+<div class="pg">03 · streamotter.dev</div>
+<div class="corner"><img src="../../streamotter-lockup-horizontal.svg" style="width:220px;display:block"></div>
+</body></html>

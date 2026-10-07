@@ -1,11 +1,11 @@
 # StreamOtter V1.1 — Acceptance packet
 
-**Status:** For the owner's review, October 4, 2026; updated the same day after the independent review and its fixes ([REVIEW.md](./REVIEW.md)). This is the final acceptance packet the [implementation handoff](./V1_1_IMPLEMENTATION_HANDOFF.md) §7 asks for. It summarizes; the evidence itself is in the [evidence matrix](./EVIDENCE.md) and the [implementation log](./IMPLEMENTATION_LOG.md), which keeps the failed runs.
+**Status:** For the owner's review, October 4, 2026; updated the same day after the code review and its fixes ([REVIEW.md](./REVIEW.md)). This is the final acceptance packet the [implementation handoff](./V1_1_IMPLEMENTATION_HANDOFF.md) §7 asks for. It summarizes; the evidence itself is in the [evidence matrix](./EVIDENCE.md) and the [implementation log](./IMPLEMENTATION_LOG.md), which keeps the failed runs.
 
 Three words are used strictly here:
 
 - **Implemented:** code and tests are on the V1.1 branches, and the tests passed in a recorded run in this build environment.
-- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. When this packet was written, nothing in V1.1 was independently verified and CI had not run the extended tiers on it. *Update, October 5:* V1.1 is on `main`, and on the release commit `fc7f47c` CI ran `pnpm verify` and the [extended tiers](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser, deploy, replicated Kafka) green; the evidence matrix rows have not been re-marked against those runs. The [independent review](./REVIEW.md) was a code review by reviewers who did not write the code, run in the same build environment; it found and fixed defects, but it is not an independent run of the evidence.
+- **Independently verified:** a run by someone other than the builder, or on CI, of the same commit. When this packet was written, nothing in V1.1 was independently verified and CI had not run the extended tiers on it. *Update, October 5:* V1.1 is on `main`, and on the release commit `fc7f47c` CI ran `pnpm verify` and the [extended tiers](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser, deploy, replicated Kafka) green; the evidence matrix rows have not been re-marked against those runs. The [code review](./REVIEW.md) was done by reviewers who did not write the code, run in the same build environment; it found and fixed defects, but it is not an independent run of the evidence.
 - **Published:** on npm. V1.1 is published in `0.2.0-rc.1` on npm `latest` (October 5, [GitHub release](https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1)).
 
 ## 1. The product question
@@ -36,7 +36,7 @@ Baseline: `main` at `b0109ba` (`0.1.0-rc.3` plus docs). Release candidate: #55 (
 | #18 | `feat/v1.1-operations-release` | Slice E: health listener, downgrade refusal, `sources rebaseline`, reference guard, runbook and guides, crash tests, replicated-broker test, this packet |
 | #19 | `feat/v1.1-review-fixes` | Fixes for every review finding except J7 (fixture evidence is never deleted), one commit per finding and a regression test for every code fix; see [REVIEW.md](./REVIEW.md) |
 | #55 | `review/v1.1` | The whole V1.1 stack, #12 to #19, as one PR to `main` |
-| #20 | `feat/v1.2-quality-fixes` | [V1.2](../v1.2/README.md): an independent review of V1 and V1.1 together, with fixes for its 15 major and 25 of its minor findings |
+| #20 | `feat/v1.2-quality-fixes` | [V1.2](../v1.2/README.md): a review of V1 and V1.1 together, with fixes for its 15 major and 25 of its minor findings |
 | #56 | `feat/v1.2.1-minor-fixes` | [V1.2.1](../v1.2.1/README.md): fixes for the minor findings V1.2 deferred and this review's J7 (issues #21 to #54) |
 
 Overall against `main`: about 120 files and 20,000 lines added, about half of them in `packages/` and most of the rest tests and docs. The [CHANGELOG](../../../CHANGELOG.md) lists every user-visible change under Unreleased.

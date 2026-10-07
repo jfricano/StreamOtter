@@ -1,0 +1,34 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="output" content="../../press/slides/slide-closing.png">
+<meta name="size" content="1920x1080">
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="press-common.css">
+<link rel="stylesheet" href="slide-common.css">
+<style>
+  .lock { position: absolute; left: 120px; top: 120px; }
+  .tag { position: absolute; left: 120px; top: 520px; width: 820px; font-size: 46px; font-weight: 700; line-height: 1.2; letter-spacing: -.015em; }
+  .tag span { color: var(--splash); }
+  .links { position: absolute; left: 1000px; top: 150px; width: 800px; display: flex; flex-direction: column; gap: 22px; }
+  .lk { border-radius: 20px; background: rgba(4, 24, 63, .72); border: 2px solid var(--ink-line); padding: 24px 32px; display: grid; grid-template-columns: 64px 1fr; gap: 22px; align-items: center; }
+  .lk .ic { width: 64px; height: 64px; border-radius: 16px; background: var(--ink-raised); display: grid; place-items: center; }
+  .lk .l { font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--splash); }
+  .lk .v { font-family: var(--mono); font-size: 34px; font-weight: 600; color: var(--light-ink); margin-top: 6px; letter-spacing: -.01em; }
+  .lk .v .p { color: var(--whisker); font-weight: 400; }
+  .lk .d { font-size: 21px; color: var(--whisker); margin-top: 4px; }
+</style></head>
+<body class="dark">
+<div class="lock"><img src="../../streamotter-lockup-stacked-dark.svg" style="width:400px;display:block"></div>
+<div class="tag">Make live data straightforward to build with, <span>and understandable when it breaks.</span></div>
+<div class="links">
+  <div class="lk"><div class="ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#04BDFD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-11 5.5"/></svg></div>
+    <div><div class="l">Source · MIT</div><div class="v">github.com/jfricano/StreamOtter</div></div></div>
+  <div class="lk"><div class="ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#04BDFD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l6 6-6 6M12 18h8"/></svg></div>
+    <div><div class="l">Install</div><div class="v"><span class="p">$</span> npm install streamotter</div></div></div>
+  <div class="lk"><div class="ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#04BDFD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18"/></svg></div>
+    <div><div class="l">Demo site · Lontra Creek</div><div class="v">streamotter.dev</div></div></div>
+</div>
+<div class="flair" id="flair" style="top:760px"></div>
+<script src="slide-common.js"></script>
+<script>flair(document.getElementById("flair"), { h: 320, tone: "dark", ticks: ["r41", "r42", "r43", "r44"], tickX0: 1340, tickGap: 120, seed: 3 });</script>
+</body></html>

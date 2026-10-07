@@ -4,7 +4,7 @@ V1.2.1 fixes the minor findings deferred from the V1.2 quality review (issues #2
 
 ## 1. Resume here
 
-**Current state (October 4, 2026):** all 34 issues addressed and every tier green ([FIXES.md](./FIXES.md) has each one). The independent review is done and its 19 minor findings are fixed ([REVIEW.md](./REVIEW.md)). V1.2.1 ships in `0.2.0-rc.1` with V1.1 and V1.2 (owner's decision, October 4, 2026). Next: the owner merges #56 into the V1.2 branch after #20; publishing waits on the owner's go. Work is on `feat/v1.2.1-minor-fixes`, stacked on `feat/v1.2-quality-fixes` (PR #20). One PR targets that branch; each fixed issue is referenced with "Fixes #N". Nothing merges to `main` without the owner. Release-level docs (CHANGELOG, release notes, acceptance packet, roadmap) stay owned by the V1.2 PR and changes to them are sent there, not edited here.
+**Current state (October 4, 2026):** all 34 issues addressed and every tier green ([FIXES.md](./FIXES.md) has each one). The review of the fixes is done and its 19 minor findings are fixed ([REVIEW.md](./REVIEW.md)). V1.2.1 ships in `0.2.0-rc.1` with V1.1 and V1.2 (owner's decision, October 4, 2026). Next: the owner merges #56 into the V1.2 branch after #20; publishing waits on the owner's go. Work is on `feat/v1.2.1-minor-fixes`, stacked on `feat/v1.2-quality-fixes` (PR #20). One PR targets that branch; each fixed issue is referenced with "Fixes #N". Nothing merges to `main` without the owner. Release-level docs (CHANGELOG, release notes, acceptance packet, roadmap) stay owned by the V1.2 PR and changes to them are sent there, not edited here.
 
 **Environment notes:** same as V1.1 and V1.2 (see `docs/releases/v1.1/IMPLEMENTATION_LOG.md` §1). Node 24.21.0. Commits are authored and committed as Jason Fricano `<44284799+jfricano@users.noreply.github.com>`, unsigned, with no tool trailers. If #19 or #20 move, merge their branch in; never rebase them.
 
@@ -37,7 +37,7 @@ Every tier runs before the PR is marked ready: `verify`, `test:load`, `test:kafk
 - The reviewer's itemized lists for W-17 and W-19 were never written into the repo (PHASE_A_FINDINGS.md names six of W-19's twelve behaviors). Both were rebuilt from an audit of the tests against `docs/V1_API.md`.
 - Release-level wording (CHANGELOG, the J7 limitation in `docs/releases/v1.1/REVIEW.md`) was sent to the V1.2 PR's owner, not edited here.
 
-### October 4, 2026 — independent review
+### October 4, 2026 — review of the fixes
 
 - At the owner's request, three reviewers who hadn't written the fixes reviewed the whole diff before the PR: 19 minor findings, no majors ([REVIEW.md](./REVIEW.md)). Three workers fixed them in their own worktrees; each fix has a test where testable.
 - The V1.2 branch moved (docs only, `6fa29a9`) and was merged in.

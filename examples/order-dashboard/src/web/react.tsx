@@ -1,72 +1,32 @@
 /**
- * React usage example. One client per application scope (created and closed by the same
- * effect, so it survives StrictMode's double run); one subscription per mounted component, unsubscribed on unmount.
+ * React usage example with the SDK's hooks (`@streamotter/client/react`). The provider creates one
+ * client per signed-in session and closes it on unmount; each card subscribes while mounted.
  */
-import { StrictMode, createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createClient, type Client, type StreamError, type SubscriptionState } from "@streamotter/client";
-import { channelVersions, type AppChannels, type OrderState } from "../generated/streamotter.generated.ts";
+import { createStreamOtterHooks, StreamOtterProvider } from "@streamotter/client/react";
+import { channelVersions, type AppChannels } from "../generated/streamotter.generated.ts";
 import { currentToken, gatewayOrigin, signIn, type Session } from "./session.ts";
 
-const ClientContext = createContext<Client<AppChannels> | null>(null);
-
-function StreamOtterProvider({ session, children }: { session: Session; children: ReactNode }) {
-  // Created in the effect that closes it: close() is permanent, and StrictMode runs effects twice in
-  // development, so a client made in useMemo would be closed and then reused.
-  const [client, setClient] = useState<Client<AppChannels> | null>(null);
-  useEffect(() => {
-    const created = createClient<AppChannels>({ origin: gatewayOrigin(), getToken: () => currentToken(session) });
-    setClient(created);
-    return () => {
-      setClient(null);
-      void created.close();
-    };
-  }, [session]);
-  return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
-}
-
-/** Live order state plus the delivery state that says whether it is current. */
-function useOrderStatus(orderId: string): { order: OrderState | null; revision: string | null; state: SubscriptionState; error: StreamError | null } {
-  const client = useContext(ClientContext);
-  const [value, setValue] = useState<{ order: OrderState | null; revision: string | null }>({ order: null, revision: null });
-  const [state, setState] = useState<SubscriptionState>("idle");
-  const [error, setError] = useState<StreamError | null>(null);
-  useEffect(() => {
-    if (client === null) return;
-    setValue({ order: null, revision: null });
-    setState("idle");
-    setError(null);
-    const subscription = client.subscribe("orderStatus", { channelVersion: channelVersions.orderStatus, params: { orderId } });
-    const offData = subscription.on("data", event => setValue({ order: event.data, revision: event.revision }));
-    const offState = subscription.on("state", change => setState(change.state));
-    const offError = subscription.on("error", setError);
-    return () => {
-      offData();
-      offState();
-      offError();
-      void subscription.unsubscribe();
-    };
-  }, [client, orderId]);
-  return { ...value, state, error };
-}
+const { useSubscription } = createStreamOtterHooks<AppChannels>();
 
 function OrderCard({ orderId }: { orderId: string }) {
-  const { order, revision, state, error } = useOrderStatus(orderId);
-  const live = state === "live";
+  // Live order state plus the delivery state that says whether it is current.
+  const { data: order, revision, state, live, error } = useSubscription("orderStatus", { channelVersion: channelVersions.orderStatus, params: { orderId } });
   return (
     <section className={`panel${live ? "" : " stale"}`} aria-live="polite">
       <div className="row">
         <h2>Order {orderId}</h2>
         <span className={`badge ${live ? "ok" : state === "failed" || state === "resync-required" ? "bad" : "warn"}`}>{live ? "Live" : state}</span>
       </div>
-      {order === null ? <p className="muted">{error === null ? "Loading…" : ""}</p> : (
+      {order === undefined ? <p className="muted">{error === undefined ? "Loading…" : ""}</p> : (
         <div className="order-body">
           <div className="status-title">{order.status}</div>
           <p>{order.note}</p>
           <p className="muted small">{order.progress}% · revision {revision}</p>
         </div>
       )}
-      {error !== null && <div className="notice bad" role="alert">{error.code === "FORBIDDEN" ? "You don't have access to this order." : error.message}</div>}
+      {error !== undefined && <div className="notice bad" role="alert">{error.code === "FORBIDDEN" ? "You don't have access to this order." : error.message}</div>}
     </section>
   );
 }
@@ -76,7 +36,8 @@ function App() {
   useEffect(() => { void signIn("alice").then(setSession); }, []);
   if (session === null) return <main><p className="muted">Signing in as Alice (development demo)…</p></main>;
   return (
-    <StreamOtterProvider session={session}>
+    // A new session gets a new client: the key remounts the provider.
+    <StreamOtterProvider key={session.user} options={{ origin: gatewayOrigin(), getToken: () => currentToken(session) }}>
       <header><h1>Order status · React</h1><span className="spacer" /><span className="muted small">{session.name}</span></header>
       <main>
         <OrderCard orderId="ord_1001" />

@@ -1,0 +1,9 @@
+/* Shared by slide-*.html (1920 x 1080). Tokens come from ../brand.css and press-common.css. */
+body { width: 1920px; height: 1080px; position: relative; overflow: hidden; }
+.dark { background: var(--creek); color: var(--light-ink); }
+.light { background: #FFFFFF; color: var(--ink); }
+.flair { position: absolute; left: 0; width: 1920px; pointer-events: none; }
+.slide-eyebrow { font-family: var(--mono); font-size: 22px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--azure-text); }
+.dark .slide-eyebrow { color: var(--splash); }
+.slide-foot { position: absolute; left: 120px; right: 120px; bottom: 54px; display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 18px; color: #5D6F91; }
+.dark .slide-foot { color: var(--whisker); }

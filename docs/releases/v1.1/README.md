@@ -18,7 +18,7 @@
 | [EVIDENCE.md](./EVIDENCE.md) | Requirement-to-evidence matrix for F01–F48 |
 | [IMPLEMENTATION_LOG.md](./IMPLEMENTATION_LOG.md) | Working record and handoff: current state, decisions, runs and failures |
 | [ACCEPTANCE_PACKET.md](./ACCEPTANCE_PACKET.md) | The final acceptance packet (handoff §7): what is implemented, verified and published, limitations, and the recommended release status |
-| [REVIEW.md](./REVIEW.md) | The independent review of #12–#18 and the second review of its fixes: every finding, the PR it corrects, its fix commit and its regression test |
+| [REVIEW.md](./REVIEW.md) | The code review of #12–#18 and the second review of its fixes: every finding, the PR it corrects, its fix commit and its regression test |
 
 The V1 specification still governs shipped behavior. This specification governs V1.1 work; the ADRs refine it where they say so.
 

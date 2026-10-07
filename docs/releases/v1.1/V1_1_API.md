@@ -251,7 +251,7 @@ export interface IncidentEvent {
 }
 ```
 
-`diagnosis.message` (and the evaluation and redrive messages built from the same text) never quotes record data: a `map` error is named by its `name` and, when it has one, its `code`, never its message (a `JSON.parse` error quotes its input), and a schema issue about a property the schema doesn't allow leaves the property's name out. The V1 "Source paused" log line keeps its full reason.
+`diagnosis.message` (and the evaluation and redrive messages built from the same text) never quotes record data: a `map` error is named by its `name` and, when it has one, its `code`, never its message (a `JSON.parse` error quotes its input), and a schema issue about a property the schema doesn't allow leaves the property's name out. The V1 "Source paused" log line carries the same text as its `reason` (changed after 0.2.0-rc.1; it used to include up to 200 characters of a `map` error's message).
 
 The `event` names are spec §11.2's structured lifecycle events. They are emitted to the gateway logger as `{ failureId, sourceId, event }` with metadata only.
 

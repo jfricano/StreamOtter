@@ -1,0 +1,67 @@
+/* Shared styles for the launch visuals (social-*, article-* templates).
+   Tokens come from ../brand.css; the values below are derived tints of the palette (see ../../README.md#colors).
+   Background art is drawn by social-motifs.js into an <svg class="art"> layer. */
+:root {
+  /* Derived ink tints for water layers and panels on the creek gradient */
+  --water-1: #0B2453;   /* back water */
+  --water-2: #0E2A5C;   /* mid water, also panel fill (shared with illustrator) */
+  --water-3: #1B3D78;   /* front water edge (shared with illustrator) */
+  --panel-line: #1B2F5A;/* hairlines on dark, same as streamotter.dev --line */
+  /* Light variant */
+  --paper: #F6F9FD;     /* light-ink tinted white ground */
+  --sky-1: #DCEBFB;     /* back water on light */
+  --sky-2: #C4DDF8;     /* mid water on light */
+  --sky-3: #A6CBF3;     /* front water on light */
+  --ink-2-light: #41506B; /* secondary text on light, from streamotter.dev */
+  /* View-state chip grounds, from streamotter.dev */
+  --live-bg: #062F3D;   --live-bg-light: #D6F5FB;
+  --stale-bg: #33260B;  --stale-bg-light: #FAE9C6;
+}
+
+.stage { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.stage.dark { background: var(--creek); color: var(--light-ink); }
+.stage.light { background: var(--paper); color: var(--ink); }
+.art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.layer { position: absolute; }
+
+.eyebrow {
+  font: 600 var(--eb, 22px)/1 var(--mono);
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--splash);
+}
+.light .eyebrow { color: var(--azure-text); }
+.head {
+  font-family: var(--display); font-weight: 800;
+  letter-spacing: -0.02em; line-height: 1.04;
+  text-wrap: balance;
+}
+.head em { font-style: normal; color: var(--splash); }
+.light .head em { color: var(--azure-text); }
+.sub { font-family: var(--display); font-weight: 500; color: var(--whisker); line-height: 1.3; }
+.light .sub { color: var(--ink-2-light); }
+
+.cmd {
+  display: inline-flex; align-items: center; gap: 0.6em;
+  font: 500 var(--cmd, 26px)/1 var(--mono);
+  color: var(--light-ink);
+  background: rgba(2, 10, 28, 0.55);
+  border: 1.5px solid var(--panel-line);
+  border-radius: 0.5em; padding: 0.55em 0.8em;
+}
+.cmd b { color: var(--splash); font-weight: 600; }
+.light .cmd { color: var(--ink); background: #fff; border-color: var(--sky-2); }
+.light .cmd b { color: var(--azure-text); }
+
+/* View-state chip, matching streamotter.dev's .chip */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.45em;
+  font: 600 var(--chip, 20px)/1 var(--mono); letter-spacing: 0.04em;
+  border-radius: 999px; padding: 0.42em 0.75em 0.42em 0.65em; white-space: nowrap;
+}
+.chip::before { content: ""; width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; }
+.chip.live { color: var(--live); background: var(--live-bg); }
+.chip.stale { color: var(--stale); background: var(--stale-bg); }
+.light .chip.live { color: var(--live-on-light); background: var(--live-bg-light); }
+.light .chip.stale { color: var(--stale-on-light); background: var(--stale-bg-light); }
+
+.logo { display: block; }
