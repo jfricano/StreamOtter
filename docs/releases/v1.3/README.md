@@ -1,6 +1,6 @@
 # V1.3 — React hooks
 
-**Status: planned, not built.** A single-feature release that brings the React hooks forward from V2.2. Decided by the owner on October 6, 2026. This document is the plan; nothing here is installable yet.
+**Status: plan approved by the owner on October 6, 2026 (Pacific); not built.** A single-feature release that brings the React hooks forward from V2.2. This document is the approved plan; nothing here is installable yet.
 
 ## Why now
 
