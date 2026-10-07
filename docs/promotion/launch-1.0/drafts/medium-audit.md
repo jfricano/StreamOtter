@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass:** **one Medium plan** (FIX_DECISIONS §4; PUBLIC_LAUNCH.md §4.6 and D7). The old options list (keep the story, import the 1.0 article as a new Medium story 2–3 days later, "move the canonical home: no") is gone, because it would have created the duplicate the plan avoids (accuracy S5). Medium's AI policy is now quoted from its help page, not "2024 reports" (S6). The "Hook" finding is corrected: the body already opens with the problem, and the product-definition line looks like the SEO description (S7). The interim fix now includes "I" for "we", the AI sentence from `ai-disclosure.md` word for word, and the getting-started link in place of the placeholder.
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** none. One check in the editor is marked *(check in editor)*.
 
@@ -20,10 +20,10 @@ October 5, 2026 · Prepared for Jason Fricano · Nothing has been edited or post
 | When | What | Time |
 | --- | --- | --- |
 | **Now** (independent of launch) | Fix the story in place: the AI sentence and drafting line in the first two paragraphs; the placeholder → the Getting started link; "we" → "I" where it describes your work; the title, subtitle and SEO description below. Optional: the live → stale → live GIF once it exists (`hero-demo-script.md`, part A). | About 20 minutes |
-| **T-1, after the go/no-go** | Publish the 1.0 article (`launch-article.md`) on streamotter.dev/blog (a launch gate since D2). | About 20 minutes |
+| **T-1, after the go/no-go** | Publish the 1.0 article (`launch-article.md`) on blog.streamotter.dev (a launch gate since D2). | About 20 minutes |
 | **T-1 evening** | **Edit this same Medium story in place** to the 1.0 text, and set its canonical link to the blog post: Edit story → ⋯ → More settings → Advanced Settings → "This story was originally published elsewhere" → Save canonical link → Publish ([Medium help](https://help.medium.com/hc/en-us/articles/360033930293-Set-a-canonical-link)). | About 15 minutes |
 | **In the updated story** | The first line of the updated story reads: *"Updated for 1.0.0 on <date>; first published September 26, 2026 for 0.1.0-rc.3."* Keep the AI sentence and the drafting line. Header image: `article-1-0-launch.png` from the launch visuals in PR #65 (it shows "1.0", so only once `1.0.0` is out). | — |
-| **T+7, "Making it lie"** | On `/blog`, with a link to it added to this Medium story. | 5 minutes |
+| **T+7, "Making it lie"** | On `blog.streamotter.dev`, with a link to it added to this Medium story. | 5 minutes |
 
 **Never a second, duplicate Medium story.** Not for the 1.0 article and not for "Making it lie". dev.to imports with its canonical link pointing at the blog post, on the AI-Assisted tier.
 

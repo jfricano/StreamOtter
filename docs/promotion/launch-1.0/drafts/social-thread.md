@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass:** the AI sentence from `ai-disclosure.md` is now **post 2**, word for word, part of the thread (it was an optional reply, and the header wrongly said posts 1 and 6 carried the disclosure). Post 1 leads with the drop-connection moment; the "Can you make it lie?" invitation has its own post. "Verifiably" is gone. The Failure Lab post is replaced by the home page and the local paths; the hosted Lab is a swap-in only if it's on (accuracy S11, S12, N11) (superseded Oct 7: D2 is no). Bad-record handling is labeled opt-in, so nothing implies every bad record is quarantined by default. Seven posts now.
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL; recount post 5 once it's filled). Resolve the **[update at 1.0]** marker before posting.
 

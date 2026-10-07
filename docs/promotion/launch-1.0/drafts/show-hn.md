@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass:** the comment outline is cut from 10 points to **5**, with **"Can you make it lie?" as point 2** (FIX_DECISIONS §2). Architecture, failure-class detail and test tiers moved to `hn-faq.md` for replies. The AI sentence from `ai-disclosure.md` is a **must-say** (point 3), with the "if they were AI agents" hedge removed (FACTS confirms they were). b/kafka-websocket is out of the comment (it's an `hn-faq.md` answer to "how is this different", not a demand signal). Added a **Plan B** if your HN account can't submit (D8). The demo-status, capacity and cross-reference lines are corrected (accuracy S11, S13, S14, N11). Titles are inputs; you write the final one.
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** `{{LAUNCH_DATE}}` (no date set) · `{{YOUR_MOMENT}}` (your own story; only you can write it) · `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{MAKE_IT_LIE_LOCAL_LINK}}` (the published no-Kafka recipe, from `drafts/make-it-lie-local.md`)
 >

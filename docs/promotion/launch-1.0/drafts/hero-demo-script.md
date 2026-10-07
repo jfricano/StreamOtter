@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass:** **one plan** (FIX_DECISIONS §6; PUBLIC_LAUNCH.md §2 "Recording"). **(a)** a 10–15 s GIF of "Drop my connection" on the streamotter.dev home page, `live` → `stale` → `live`, recordable now; **(b)** a 60–90 s recording: S01 "Fouled sensor" (hosted if the Lab is on, otherwise local), then S02 "Garbled reading" on a local Lab stack, labeled "local stack" (superseded Oct 7: D2 is no). The old Version A (S03 with an S04 redrive tag) and Version B are gone (accuracy S2, S3, S4). The end card no longer points to `streamotter.dev/lab`, which may be off (superseded Oct 7: D2 is no). Every label below is a real UI string from the live home page, the lontra-creek source or the preview screenshots, or is marked **[#42: confirm]**. The main cut stops at "held, stale, nothing skipped"; recovery stays out of it. The brand title, end and caption cards are referenced.
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed. Both segments are now recorded on the hosted Lab ("hosted"), with a local Lab stack ("local stack") as the fallback if no bench is free.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed. Both segments are now recorded on the hosted Lab ("hosted"), with a local Lab stack ("local stack") as the fallback if no bench is free.
 >
 > **Placeholders in this file:** `<date>` and `<exact version>` on every label and card (the brand cards `recording-title.png` and `gif-caption.png` still read `2026-10-XX` and `X.Y.Z` and must be re-rendered).
 

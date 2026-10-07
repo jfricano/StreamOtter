@@ -9,13 +9,13 @@ Changed in the Oct 5 fix pass:
 - Removed: "A gap that has been open for a decade" heading, b/kafka-websocket as a demand signal (it lives in hn-faq.md's "how is this different" now), "on and off since OSLabs" (KafkaSocks' last commit was June 2021), the full evaluate/redrive command block, "verifiably".
 - Added: the AI sentence from ai-disclosure.md (identical, required) plus the drafting line; the alternatives paragraph naming Centrifugo, Zilla, Ably and Lightstreamer; the invitation as the closing.
 - Fixed: "stop dev and watch the preview go stale" → Preview's disconnect (accuracy N14); no quarantine exercise is promised on the hosted Lab at launch (accuracy B3; superseded: D2 was answered no on Oct 7, so the hosted Lab runs S01–S06 at launch); one Medium plan (accuracy S5, FIX_DECISIONS §4).
-Changed Oct 7 (D2 answered no): hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+Changed Oct 7 (D2 answered no): hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 
 Placeholders: {{PUBLICATION_DATE}} (the 1.0.0 date; none set) · {{MAKE_IT_LIE_LINK}} (the pinned Discussion's URL; Discussions are off today) · {{MAKE_IT_LIE_LOCAL_LINK}} (the published no-Kafka recipe; its source is drafts/make-it-lie-local.md, verified 2026-10-05 on 0.2.0-rc.1 with Node 24.21; the browser view going `stale` was not checked in that run, so this article doesn't claim it) · [jason: …] slots for your own sentences.
 Markers: [update at 1.0] = recheck against the 1.0.0 tag and the live site on launch day. [confirm at launch] = check on launch day before publishing.
 
-Where it goes (FIX_DECISIONS §4, one Medium plan; streamotter.dev/blog is a launch gate since D2):
-- Publish on streamotter.dev/blog first (canonical), on T-1, after the go/no-go (PUBLIC_LAUNCH.md §4.6). Then, in the evening, edit the existing September Medium story IN PLACE to this text, with the update line "Updated for 1.0.0 on <date>; first published September 26, 2026 for 0.1.0-rc.3." and its canonical link set to the blog post.
+Where it goes (FIX_DECISIONS §4, one Medium plan; blog.streamotter.dev is a launch gate since D2):
+- Publish on blog.streamotter.dev first (canonical), on T-1, after the go/no-go (PUBLIC_LAUNCH.md §4.6). Then, in the evening, edit the existing September Medium story IN PLACE to this text, with the update line "Updated for 1.0.0 on <date>; first published September 26, 2026 for 0.1.0-rc.3." and its canonical link set to the blog post.
 - Never a second, duplicate Medium story. dev.to (week 1): import with canonical_url set to the blog post, AI-Assisted tier.
 Release gate: describes npm 1.0.0. Don't publish before 1.0.0 is on npm `latest`. Re-check every limit against docs/IMPLEMENTATION_STATUS.md at the 1.0.0 tag.
 Code blocks: copied byte for byte from the repo (main at 1c75aaa, Oct 5); the source is in the comment above each. Re-diff them against the 1.0.0 tag.

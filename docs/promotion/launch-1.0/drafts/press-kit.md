@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass:** the press kit is **for the site, not the README**: it's the source for a press page on streamotter.dev and for anyone who asks (FIX_DECISIONS §12, accuracy S18). The bare "Built with Claude Code" is replaced by the AI sentence from `ai-disclosure.md`. **No hosted workbench claim** (S19). The Lab paragraph and Lab screenshots are conditional on the hosted Lab being on (D2), and quarantine is never shown as a hosted exercise (B3, S11, S12). "Kafka state in the browser" and "verifiably" are gone (N19); quarantine is labeled opt-in. The b/kafka-websocket star count is out of "Origins", which now uses the brand framing ("Kafka to the browser · open-source work along the way", "OSLabs", no "each built on the last"). The launch visuals are listed.
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** `{{LAUNCH_DATE}}` (the 1.0.0 release and launch date; none set) · `{{RC1_DATE}}` (when `1.0.0-rc.1` is published, planned for T-14; `1.0.0` at T-5, D3) · `{{MAINTAINER_BIO}}` (2–3 sentences only you can write) · `{{CONTACT}}` (your preferred press contact, or "open an issue on GitHub")
 

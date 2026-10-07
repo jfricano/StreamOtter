@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass:** every variant now carries the **AI sentence** from `ai-disclosure.md`, word for word (strategy review: none did). The **"Can you make it lie?"** invitation and the break-it paths (the home page's "Drop my connection", the local fixture, `npm run dev:lab` in the public lontra-creek repo) are in r/apachekafka, r/node and the standard wording. r/apachekafka has a shorter title and is the **T-0 Plan B** if HN won't take the submission. r/typescript, r/javascript and r/webdev moved to a "later, optional" appendix. Hosted-Lab lines follow D2 (the hosted Lab only if it's on, S01 and S06 only, no hosted quarantine exercises at launch), not #42 alone (superseded Oct 7: D2 is no), and the "wasn't answering" line is corrected (accuracy B3, S11, S12, N11).
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{MAKE_IT_LIE_LOCAL_LINK}}` (the published no-Kafka recipe, from `drafts/make-it-lie-local.md`). Before posting, also resolve every **[update at 1.0]** and **[confirm at launch]** marker.
 

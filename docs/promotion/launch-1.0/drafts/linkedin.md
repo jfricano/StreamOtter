@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass:** no longer opens with "StreamOtter 1.0 is out". It leads with the drop-connection moment and the "Can you make it lie?" challenge (FIX_DECISIONS §2). The AI sentence from `ai-disclosure.md` is **required**, word for word (it was "optional"). The OSLabs and kafka-penguin lines are cut to one clause, because the origin story is its own LinkedIn post at T+3 (`origin-story.md`). "Verifiably" is gone. The Failure Lab line is conditional on the hosted Lab being on, and the "LinkedIn has no AI-text ban" claim is replaced (accuracy S11, S12, N11, N13).
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL). Resolve the **[update at 1.0]** marker before posting.
 

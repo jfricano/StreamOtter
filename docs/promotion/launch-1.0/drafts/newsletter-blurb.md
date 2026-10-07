@@ -2,7 +2,7 @@
 >
 > **Changed in the Oct 5 fix pass** (FIX_DECISIONS §5; PUBLIC_LAUNCH.md D3): **Console.dev goes to Betas at `1.0.0-rc.1`** (the one exception to the quiet rc), not as a general tool at T+1 (accuracy S8). **T+1 is:** one Cooperpress email (Node Weekly + JavaScript Weekly), **Data Engineering Weekly** via a PR to its repo, and **Changelog News only if it's still publishing**. **Removed:** the Confluent newsletter email (no submission route; it's a Confluent Community Forum post in week 1–2 instead, accuracy S9) and Get Kafka-Nated (no route found, S10). The blurb now leads with the break-it moment, drops "verifiably", and labels quarantine opt-in. **Every hosted-Lab mention is conditional** (B4). Each email carries the AI sentence from `ai-disclosure.md`. "Kafka state in the browser" is out of the titles (N19).
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** none. Resolve every **[update at 1.0]** and **[confirm at launch]** marker before sending.
 
@@ -69,7 +69,7 @@ StreamOtter (MIT) is a Node.js gateway and TypeScript SDK for live, Kafka-backed
 
 ## T+1: Data Engineering Weekly (a PR to its repo)
 
-- **What to submit:** the 1.0 article's canonical URL on streamotter.dev/blog, not the repo. The newsletter is vendor-neutral and asks authors to "avoid overt product promotion", so if you'd rather wait for a more technical piece (for example the snapshot-versus-update race), that's fine too.
+- **What to submit:** the 1.0 article's canonical URL on blog.streamotter.dev, not the repo. The newsletter is vendor-neutral and asks authors to "avoid overt product promotion", so if you'd rather wait for a more technical piece (for example the snapshot-versus-update race), that's fine too.
 - **How:** open a pull request to https://github.com/ananthdurai/dataengineeringweekly adding the article title and link under the `weekly/` folder, following the latest file's format. Check the repo's README first: whether this route is still used wasn't verified.
 - **PR description (your words):**
   > I wrote this. It's about keeping Kafka-backed web views honest after disconnects, restarts and bad records, with the open-source library I maintain as the worked example. I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.

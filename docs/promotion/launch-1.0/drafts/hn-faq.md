@@ -4,7 +4,7 @@
 >
 > **Changed in the Oct 5 architecture check:** a new **"Architecture"** section (commit point and crash windows, whole-state frames, backpressure, tenant isolation, where state lives, throughput, one gateway and V2, the six packages), each point citing repo paths at 1c75aaa; the old deltas one-liner now points there. Fixed: "slow clients disconnected" (an overflowing subscription re-snapshots; only a missing receipt disconnects), durable incidents need a state directory, and the load-test quote is now exact. See `REVIEW.md`.
 >
-> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{MAKE_IT_LIE_LOCAL_LINK}}` (the published no-Kafka recipe, from `drafts/make-it-lie-local.md`). Answers that depend on the 1.0 gate are marked **[update at 1.0]**; open checks are **[confirm V1.2]** and **[jason: your words]**.
 
