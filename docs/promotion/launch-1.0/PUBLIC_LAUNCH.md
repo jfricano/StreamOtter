@@ -35,7 +35,7 @@ October 5, 2026 · Prepared for Jason Fricano · **Status: draft, revised after 
 | D4 | Use the one AI sentence on every outward-facing surface (Show HN comment, articles, Reddit, LinkedIn, social, Medium), never optional? | **Yes** (Oct 7), with Codex named next to Claude Code (`drafts/ai-disclosure.md`) | Said first, it reads as confidence; found later, it reads as hiding |
 | D5 | Also put it (one line) in the README, which is the Show HN URL? Release notes and the Discussion can link to it | **No, for now** (Oct 7) | HN readers land on the README first. If no, the HN comment carries it |
 | D6 | Reword "independent review" in the repo docs to "review by separate AI agent sessions that didn't write the code", before `1.0.0-rc.1`? | **Open.** With D5 no, the proposal is neutral wording instead: "a separate review pass" | "Independent" reads as outside people; HN will read those docs, and the 1.0 npm pages should carry the corrected text |
-| D7 | Two articles (1.0 at T-0; your short "Making it lie" at T+7), the origin story as a LinkedIn post, and one Medium story updated in place? | **Open:** you asked about a LinkedIn page for the project. Recommendation: no page (the Sept "no brand accounts" decision stands); post from your own profile | Half the writing, and each piece has a reason to exist |
+| D7 | Two articles (1.0 at T-0; your short "Making it lie" at T+7), the origin story as a LinkedIn post, and one Medium story updated in place? | **Yes** (Oct 7): no LinkedIn page for the project; post from your own profile (Orca Solutions may reshare); nothing to do on npm (`@streamotter` org exists) | Half the writing, and each piece has a reason to exist |
 | D8 | HN Plan B: if your account can't submit by T-7, lead with r/apachekafka on T-0 and do Show HN later, once the account qualifies? | **Yes** (Oct 7) | Never a friend's account, never a repost; the rest of the plan doesn't depend on HN |
 | D9 | No bots that post, reply, vote or DM anywhere; instead a read-only weekly listening digest (Reddit, Stack Overflow, HN, GitHub, dev.to), from which you pick at most two threads and reply by hand with disclosure? | **Yes** (Oct 7) | Every platform's rules ban promotional bots, and it would undercut the launch's honesty. About 15 min a week, replacing the optional Stack Overflow item. See `briefs/listening.md` |
 
@@ -205,7 +205,7 @@ All must be true. If any fails, move the day; a week costs nothing.
 | Item | Jason | Prepared |
 | --- | --- | --- |
 | The five things (top of page) | 75 min | Medium replacement sentences; GIF shot list |
-| Answer D1–D9 (done Oct 7, except D4, D6, D7) | 15 min | Drafts updated to match |
+| Answer D1–D9 (all answered Oct 7) | 15 min | Drafts updated to match |
 | Ask an integrator for G1.4 (by Oct 16) | 10 min | The runbook walk-through checklist |
 | G1 engineering | Review in the release work (not counted in §5) | The work, status-doc updates, the public gate issue |
 | G2 front door and §10 follow-ups (one branch) | 45 min review, plus GitHub settings | README, make-it-lie docs, wording fixes, community files, social preview |
