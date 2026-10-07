@@ -23,8 +23,8 @@ const UNDER_THE_HOOD_PARTS = [
     {HAS_UNDER_THE_HOOD && (
       <article class="door">
         <p class="ask">I want to understand how it works</p>
-        <h2><a href="/under-the-hood/">Under the Hood</a></h2>
-        <p>Five short guides that explain how StreamOtter works without reading every line of code: the architecture, the code, the design decisions, the guarantees and limits, and how to run it.</p>
+        <h2><a href="/under-the-hood/">StreamOtter Under the Hood</a></h2>
+        <p>Five short parts that explain how StreamOtter works without reading every line of code: the architecture, the code, the design decisions, the guarantees and limits, and how to run it.</p>
         <ol>{UNDER_THE_HOOD_PARTS.map(([part, file]) => <li><a href={`/under-the-hood/${file}`}>{part}</a></li>)}</ol>
       </article>
     )}

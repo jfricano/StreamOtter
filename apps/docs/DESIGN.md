@@ -22,6 +22,7 @@ the commands.
 | API reference | TypeDoc 0.28 JSON model, rendered by our own pages | TypeDoc reads the types correctly. Rendering them ourselves keeps the pages in the site's design, with no TypeDoc theme to maintain. |
 | Guides | Astro content collection over `docs/guides/*.md` | They stay ordinary Markdown that also reads well on GitHub. |
 | Under the Hood | Served as is from `docs/under-the-hood/` | Its pages are self-contained HTML with their own type, which jason chose to keep. |
+| Naming | "Guides" means only `docs/guides/`; the five-part series is "StreamOtter Under the Hood" ("Under the Hood" where space is tight) and its pages are "parts" | jason, so the series isn't confused with the guides in the header and footer. |
 
 ## Routes
 
