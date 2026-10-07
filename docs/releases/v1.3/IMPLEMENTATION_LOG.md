@@ -20,7 +20,7 @@ The plan's open decisions were taken as recommended: the factory and the direct 
 
 | Tier | Result |
 | --- | --- |
-| `pnpm verify` (typecheck, contracts, unit and integration) | 460 passed, 0 failed, 0 skipped (444 before V1.3 at 0.2.0-rc.1, plus the 13 hooks tests and three later additions on `main`) |
+| `pnpm verify` (typecheck, contracts, unit and integration) | 460 passed, 0 failed, 0 skipped, including the 13 new hooks tests |
 | `pnpm test:install` | 23 passed, 1 skipped (the TLS Kafka check: no local broker in this environment), 0 failed; includes the three new React checks |
 | `pnpm test:browser` | 59 passed, 0 failed, including the order-dashboard React page (two live orders, one denial) on the hooks |
 
