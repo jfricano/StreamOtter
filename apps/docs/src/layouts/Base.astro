@@ -55,9 +55,11 @@ const isCurrent = (href: string) => (current.startsWith(href) ? "page" : undefin
         </a>
         <a class="docs-chip" href="/">Docs</a>
         <nav class="nav" aria-label="Docs">
+          <a href="/" aria-current={current === "/" ? "page" : undefined}>Overview</a>
           {SECTIONS.map(section => <a href={section.href} aria-current={isCurrent(section.href)}>{section.label}</a>)}
         </nav>
         <div class="bar-end">
+          <span class="version" title={`Documents streamotter@${RELEASE}`}>v{RELEASE}</span>
           <a class="home" href={LINKS.home}>streamotter.dev ↗</a>
           <a class="gh" href={LINKS.github}>GitHub</a>
           <details class="menu" data-menu>
@@ -185,9 +187,10 @@ const isCurrent = (href: string) => (current.startsWith(href) ? "page" : undefin
     display: flex;
     gap: 2px;
     flex: 1;
-    flex-wrap: wrap;
+    min-width: 0;
   }
   .nav a {
+    white-space: nowrap;
     color: var(--ink-2);
     text-decoration: none;
     font-size: 0.93rem;
@@ -219,12 +222,25 @@ const isCurrent = (href: string) => (current.startsWith(href) ? "page" : undefin
     padding: 7px 12px;
     border-radius: 10px;
   }
-  .home {
+  .version {
+    font: 600 0.78rem/1 var(--mono);
     color: var(--ink-2);
+    background: var(--surface-2);
+    border-radius: 999px;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .home {
+    font-weight: 600;
     font-size: 0.93rem;
+    color: var(--ink);
     text-decoration: none;
+    border: 1px solid var(--line-strong);
+    padding: 7px 12px;
+    border-radius: 10px;
   }
   .home:hover {
+    border-color: var(--accent);
     color: var(--accent);
   }
   .gh:hover {
@@ -271,10 +287,11 @@ const isCurrent = (href: string) => (current.startsWith(href) ? "page" : undefin
   .menu nav a[aria-current="page"] {
     box-shadow: inset 3px 0 var(--azure);
   }
-  @media (max-width: 860px) {
+  @media (max-width: 1180px) {
     .nav,
     .gh,
-    .home {
+    .home,
+    .version {
       display: none;
     }
     .menu {

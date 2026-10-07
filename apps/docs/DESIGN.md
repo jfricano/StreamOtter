@@ -32,8 +32,13 @@ the commands.
 | `/api/` | Every import path, plus a filterable list of every export |
 | `/api/<path>/` | One import path's exports (`client`, `gateway`, `contracts`, `operator`, `management`, `cli`) |
 | `/api/<path>/<name>/` | One export, on the page of the import path that declares it |
-| `/under-the-hood/` | `docs/under-the-hood/*.html`, only when that folder exists |
+| `/under-the-hood/`, `/under-the-hood/<n>-<part>.html` | `docs/under-the-hood/*.html` under their own file names, so their relative links keep working; only when that folder exists |
 | `/sitemap.xml`, `/404.html` | Generated |
+
+The header follows the design thread's layout: the logo and a "Docs" tag on the left, then
+Overview, Guides, API reference and Under the Hood, then the version, a "streamotter.dev ↗" button
+(the way back to the demo) and GitHub. Below 1180px it collapses into a menu. The footer links
+streamotter.dev, GitHub, npm and the changelog.
 
 ## How the API reference is generated
 
@@ -95,8 +100,9 @@ Heading anchors follow GitHub's rules, so anchors written for GitHub keep workin
 
 ## Open items
 
-- A design pass on the docs-site chrome, and on Under the Hood's place in it: whether it gets the
-  site header and cross-links between API pages and the parts that explain them.
+- Under the Hood inside the site: the docs header around its reading column, clean URLs
+  (`/under-the-hood/how-it-works/`), and links both ways between API pages and the parts that
+  explain them. This waits for PR #69 and the design pass.
 - Search beyond the export filter.
 - Older releases: today each build is one release. A version switcher can come later, if it's
   needed.
