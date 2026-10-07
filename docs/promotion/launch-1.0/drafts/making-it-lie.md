@@ -1,8 +1,10 @@
 > **New in the Oct 5 fix pass** (FIX_DECISIONS §3). Talking points, not prose, for the short piece **you write yourself** at about T+7: "Making it lie: what the pre-1.0 reviews and launch week broke". It replaces the planned reveals 2–4. Nothing here is a draft to publish as is.
 >
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+>
 > **Placeholders in this file:** `{{INVITATION_RESULTS}}` (what outside people reported, filled at T+6/T+7) · `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{ONE_DEFECT_IN_YOUR_WORDS}}` (the defect you found most instructive, in your own words)
 
-> **Where and when:** about T+7 (PUBLIC_LAUNCH.md D7). On streamotter.dev/blog if it exists; otherwise on dev.to (AI-Assisted tier only if the text was AI-drafted), with a link to it added to the Medium story. Never a second Medium story. Then LinkedIn (a short post linking it), and r/node in the following days if it's mostly about the Node-side fixes.
+> **Where and when:** about T+7 (PUBLIC_LAUNCH.md D7). On streamotter.dev/blog (canonical; /blog with RSS is a launch gate since D2), with a link to it added to the Medium story. Never a second Medium story. If you import it to dev.to, set canonical_url to the blog post (AI-Assisted tier only if the text was AI-drafted). Then LinkedIn (a short post linking it), and r/node in the following days if it's mostly about the Node-side fixes.
 >
 > **Rules:**
 > - **Write it yourself, and keep it short** (about 600–900 words). It's the most distinctive story in the kit: concrete defects that AI review found in AI-written code, plus whatever strangers found. It only works in your voice.
@@ -25,7 +27,7 @@ Header image: `article-making-it-lie.png` from the launch visuals in PR #65 (lin
 
 Fill from the Discussion and issues labeled `make-it-lie` ({{MAKE_IT_LIE_LINK}}). For each report:
 
-- what they did (one line), on which path: the home page's "Drop my connection", the local fixture, the local Lab (`npm run dev:lab`), their own Kafka, or the hosted Lab if it was on;
+- what they did (one line), on which path: the home page's "Drop my connection", the local fixture, the local Lab (`npm run dev:lab`), their own Kafka, or a hosted Lab bench;
 - whether it reproduced, and the issue link;
 - whether it was a real break of the rule, a documented limit (one gateway, no replay), or a docs gap;
 - the fix and its release (for example `1.0.1`), or "open";

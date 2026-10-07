@@ -38,9 +38,8 @@ Use it on the 1.0 article (blog, Medium, dev.to) and on the Medium story's rewri
 | "Making it lie" (T+7) | `making-it-lie.md` | Near the top | The piece is about what AI review found in AI-written code, so the sentence is part of the story. |
 | Recording and GIF | `hero-demo-script.md` | Not in the captions | The video shows the demo, not the code. The page or post it's embedded in carries the sentence. |
 
-## GitHub-bound text is your call (D5)
+## GitHub-bound text (D5)
 
-For text published on GitHub (the README, the pinned "Can you make it lie?" Discussion, release notes), whether this sentence appears is **your decision**: D5 in PUBLIC_LAUNCH.md recommends one line in the README, with release notes and the Discussion linking to it. No draft here is meant to be published on GitHub as written. Two points to weigh:
+For text published on GitHub (the README, the pinned "Can you make it lie?" Discussion, release notes), this sentence does not appear. D5 is no (Oct 7): no AI line in the README, release notes, issues or the Discussion; the HN comment carries it. No draft here is meant to be published on GitHub as written.
 
-- The Show HN URL is the README. A Show HN reader who sees the sentence in your comment and finds no word of it in the README may ask about it.
-- Whatever you decide, the Discussion says "I'll reproduce each report", which is true either way.
+- The Discussion says "I'll reproduce each report".

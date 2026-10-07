@@ -2,9 +2,11 @@
 >
 > **Changed in the Oct 5 fix pass:** the comment outline is cut from 10 points to **5**, with **"Can you make it lie?" as point 2** (FIX_DECISIONS §2). Architecture, failure-class detail and test tiers moved to `hn-faq.md` for replies. The AI sentence from `ai-disclosure.md` is a **must-say** (point 3), with the "if they were AI agents" hedge removed (FACTS confirms they were). b/kafka-websocket is out of the comment (it's an `hn-faq.md` answer to "how is this different", not a demand signal). Added a **Plan B** if your HN account can't submit (D8). The demo-status, capacity and cross-reference lines are corrected (accuracy S11, S13, S14, N11). Titles are inputs; you write the final one.
 >
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+>
 > **Placeholders in this file:** `{{LAUNCH_DATE}}` (no date set) · `{{YOUR_MOMENT}}` (your own story; only you can write it) · `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{MAKE_IT_LIE_LOCAL_LINK}}` (the published no-Kafka recipe, from `drafts/make-it-lie-local.md`)
 >
-> **Markers:** **[update at 1.0]** means the 1.0 gate (an ACL-enabled broker, Firefox and WebKit, the proxy deployment with failure handling on, one integrator walking the runbook) or the release itself may change the line. Recheck at T-7. **[HOSTED LAB]** means keep only if the hosted Lab is on (D2 in PUBLIC_LAUNCH.md) and you leased a bench yourself that morning.
+> **Markers:** **[update at 1.0]** means the 1.0 gate (an ACL-enabled broker, Firefox and WebKit, the proxy deployment with failure handling on, one integrator walking the runbook) or the release itself may change the line. Recheck at T-7. **[confirm at launch]** means check it yourself that morning (for the hosted Lab: that you leased a bench).
 
 > **Where and when:** news.ycombinator.com/submit on `{{LAUNCH_DATE}}` (a Tuesday or Wednesday, about 8:00 a.m. ET), only after the go/no-go in PUBLIC_LAUNCH.md passes **and `1.0.0` is on npm `latest`.** Never submit on `1.0.0-rc.1`: you get one real Show HN, and a version bump doesn't qualify for a second.
 >
@@ -38,7 +40,7 @@ No version number in the title. A plain hyphen can replace the en dash; recount 
 
 ## URL (Sept decision; unchanged)
 
-- Submit `https://github.com/jfricano/StreamOtter`. The README has no capacity limit. The hosted demo is set to 300 gateway connections, and, if the hosted Lab is on (D2), three Lab benches at the contract defaults (confirm both at T-7).
+- Submit `https://github.com/jfricano/StreamOtter`. The README has no capacity limit. The hosted demo is set to 300 gateway connections and three Lab benches at the contract defaults (confirm both at T-7).
 - Leave the text field empty. Post your comment within about a minute, with `https://streamotter.dev` in its first lines.
 
 ## Your first comment: five points, as facts
@@ -56,8 +58,8 @@ About 200–300 words, your own voice, no marketing adjectives. In this order.
    - How to try, quickest first:
      - **streamotter.dev home page:** press "Drop my connection", watch every view say `stale`, press "Restore it", watch them come back `live` from fresh snapshots. **[update at 1.0]** Check in a browser that morning that the panel answers on 1.0.0.
      - **Locally, no Kafka:** the scaffold's fixture source takes a record with raw text (`{ key, raw: "{not json" }`); give the source a `quarantine-hold` policy and advance the fixture. The source pauses at that record, the incident is quarantine-held with local evidence, and nothing after it is delivered. The challenge: get the preview to say `live` while it's missing the later revisions. Recipe: {{MAKE_IT_LIE_LOCAL_LINK}} (from `drafts/make-it-lie-local.md`, verified Oct 5 on 0.2.0-rc.1; it didn't check the browser view, so don't claim the preview turns `stale` unless you've seen it).
-     - **Locally, real Kafka:** `npm run dev:lab` in the public `jfricano/lontra-creek` repo (Docker, Compose 2.24.4+) runs the whole demo stack with three Lab benches at `https://localhost:8443/lab/`. **[update at 1.0]** Mention the source-failure exercises only if Lontra Creek #42 has merged and you've run them locally on 1.0.0.
-     - **[HOSTED LAB]** a Failure Lab bench on streamotter.dev ("Fouled sensor"; "Calibration lookup blip"). No quarantine exercise there at launch: the hosted Lab runs only S01 and S06 until a hosting configuration change lands (D2).
+     - **Locally, real Kafka:** `npm run dev:lab` in the public `jfricano/lontra-creek` repo (Docker, Compose 2.24.4+) runs the whole demo stack with three Lab benches at `https://localhost:8443/lab/`. **[update at 1.0]** Mention the source-failure exercises only once you've run them locally on 1.0.0 (Lontra Creek #42 is merged (6cb47e9); re-pin and deploy pending).
+     - **[confirm at launch]** **Hosted, queued:** a Failure Lab bench at streamotter.dev/lab/, where the Source failures exercises S01–S06 run (for example "Fouled sensor" and "Garbled reading"). Say plainly that people may wait for a bench.
    - Reports go to {{MAKE_IT_LIE_LINK}}; found-by credit in the changelog if they want it. You'll reproduce each one.
 
 3. **How you built it** (must-say; same words as everywhere else):
@@ -89,7 +91,7 @@ About 200–300 words, your own voice, no marketing adjectives. In this order.
 - **The reviews:** V1.1 was reviewed by six fresh AI agent sessions that hadn't written the code, plus a seventh that reviewed the fixes; no person reviewed it line by line. **[confirm V1.2]** who ran V1.2 before describing it separately. The repo docs still say "independent review" until you reword them (D6 in PUBLIC_LAUNCH.md); if asked, say what it meant.
 - **KafkaSocks:** you're one of its four GitHub contributors and one of the three npm maintainers of `kafka-socks` (rechecked October 5). Short form: "the successor to KafkaSocks, from one of its original authors."
 - **kafka-penguin:** `oslabs-beta/kafka-penguin`, strategies "FailFast", "Ignore" and "Dead Letter Queue" (rechecked October 5). An inspiration, not a dependency.
-- **The demo today:** streamotter.dev is up but serves the `0.1.0-rc.3` site (four Lab exercises, no Source failures track). Whether its live demo answers couldn't be confirmed from the static page (the page's no-JavaScript fallback says it isn't answering); check in a browser. The hosted Lab is off until you approve `lab.enabled`.
+- **The demo today:** streamotter.dev is up but serves the `0.1.0-rc.3` site (four Lab exercises, no Source failures track). Whether its live demo answers couldn't be confirmed from the static page (the page's no-JavaScript fallback says it isn't answering); check in a browser. The hosted Lab is off today; since D2 it's a launch gate, on at launch with S01–S06.
 - **Don't say:** "Kafka in the browser"; exactly-once, guaranteed delivery or "never miss an update"; scalable, production-proven, "in 5 minutes", "verifiably"; "dead-letter queue" as a description of StreamOtter (it's a quarantine topic, and the source holds by default); "skips bad records"; "independent review".
 - **Load test:** quote numbers only with "single-process loopback, not a capacity claim."
 - **Links:**

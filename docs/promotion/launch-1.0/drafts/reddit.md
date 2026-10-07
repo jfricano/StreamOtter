@@ -1,8 +1,10 @@
 > **Changed since Sept 27:** all five drafts describe `1.0.0` and link `https://streamotter.dev`. r/apachekafka is rebuilt around 1.0's failure handling; r/node adds the `node:sqlite` journal lesson; r/typescript drops "pre-1.0, this is the moment to change names". The lineage and Jason's pitch appear where they fit.
 >
-> **Changed in the Oct 5 fix pass:** every variant now carries the **AI sentence** from `ai-disclosure.md`, word for word (strategy review: none did). The **"Can you make it lie?"** invitation and the break-it paths (the home page's "Drop my connection", the local fixture, `npm run dev:lab` in the public lontra-creek repo) are in r/apachekafka, r/node and the standard wording. r/apachekafka has a shorter title and is the **T-0 Plan B** if HN won't take the submission. r/typescript, r/javascript and r/webdev moved to a "later, optional" appendix. Hosted-Lab lines follow D2 (the hosted Lab only if it's on, S01 and S06 only, no hosted quarantine exercises at launch), not #42 alone, and the "wasn't answering" line is corrected (accuracy B3, S11, S12, N11).
+> **Changed in the Oct 5 fix pass:** every variant now carries the **AI sentence** from `ai-disclosure.md`, word for word (strategy review: none did). The **"Can you make it lie?"** invitation and the break-it paths (the home page's "Drop my connection", the local fixture, `npm run dev:lab` in the public lontra-creek repo) are in r/apachekafka, r/node and the standard wording. r/apachekafka has a shorter title and is the **T-0 Plan B** if HN won't take the submission. r/typescript, r/javascript and r/webdev moved to a "later, optional" appendix. Hosted-Lab lines follow D2 (the hosted Lab only if it's on, S01 and S06 only, no hosted quarantine exercises at launch), not #42 alone (superseded Oct 7: D2 is no), and the "wasn't answering" line is corrected (accuracy B3, S11, S12, N11).
 >
-> **Placeholders in this file:** `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{MAKE_IT_LIE_LOCAL_LINK}}` (the published no-Kafka recipe, from `drafts/make-it-lie-local.md`). Before posting, also resolve every **[update at 1.0]** and **[HOSTED LAB]** marker.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+>
+> **Placeholders in this file:** `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{MAKE_IT_LIE_LOCAL_LINK}}` (the published no-Kafka recipe, from `drafts/make-it-lie-local.md`). Before posting, also resolve every **[update at 1.0]** and **[confirm at launch]** marker.
 
 > **Where and when:** separate text posts, one subreddit at a time, after launch day. Two are core (r/apachekafka, r/node). The other three are later and optional, outside the launch plan (appendix). Decisions are in PUBLIC_LAUNCH.md (D1–D8).
 >
@@ -32,12 +34,12 @@ Post Tuesday–Thursday mornings US time (a heuristic), except r/webdev.
 - **Limits:** "one gateway per project; no replay of missed updates (a fresh snapshot instead); Chromium is the only browser tested automatically **[update at 1.0]**; managed Kafka services are unverified; KafkaJS 2.2.4 is pinned behind an internal adapter."
 - **The pitch, accurately:** "you define the state shape and one mapping function, plus the snapshot and access checks your app already has; StreamOtter does the rest."
 - **The invitation:** "Can you make it lie? Get a view to say `live` while it shows something other than the newest state its snapshot and the topic's revisions imply, or get a bad record skipped silently. Reports: {{MAKE_IT_LIE_LINK}}."
-- **Ways to break it:** "Drop my connection" on the streamotter.dev home page **[update at 1.0: check it answers on 1.0.0]**; locally with no Kafka, a fixture record with raw text (`{ key, raw: "{not json" }`) and a `quarantine-hold` policy: the source pauses at it and the incident is quarantine-held with local evidence (recipe: {{MAKE_IT_LIE_LOCAL_LINK}}, verified Oct 5 on 0.2.0-rc.1; it didn't check the browser view); locally on real Kafka, `npm run dev:lab` in https://github.com/jfricano/lontra-creek (Docker and Compose 2.24.4+; public, checked Oct 5).
+- **Ways to break it:** "Drop my connection" on the streamotter.dev home page **[update at 1.0: check it answers on 1.0.0]**; locally with no Kafka, a fixture record with raw text (`{ key, raw: "{not json" }`) and a `quarantine-hold` policy: the source pauses at it and the incident is quarantine-held with local evidence (recipe: {{MAKE_IT_LIE_LOCAL_LINK}}, verified Oct 5 on 0.2.0-rc.1; it didn't check the browser view); locally on real Kafka, `npm run dev:lab` in https://github.com/jfricano/lontra-creek (Docker and Compose 2.24.4+; public, checked Oct 5); and a hosted Failure Lab bench at https://streamotter.dev/lab/ (Source failures S01–S06 and the connection exercises; there are only a few benches, so you may wait in a queue) **[confirm at launch: you leased one yourself]**.
 - **AI sentence (word for word, every post):** "I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code."
 
 Links used below:
 - GitHub: https://github.com/jfricano/StreamOtter
-- Demo: https://streamotter.dev (Failure Lab: https://streamotter.dev/lab/ **[HOSTED LAB]** link it only if the hosted Lab is on)
+- Demo: https://streamotter.dev (Failure Lab: https://streamotter.dev/lab/; benches are queued, so never promise one)
 - Demo source and local Lab: https://github.com/jfricano/lontra-creek
 - Kafka guide: https://github.com/jfricano/StreamOtter/blob/main/docs/guides/kafka.md
 - Bad-records runbook: https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md
@@ -76,11 +78,11 @@ Questions:
 3. Per-record commits: a problem at your topic rates? (Throughput isn't measured.)
 4. Which managed Kafka should I verify first?
 
-If you want to break it: with no Kafka, the scaffold's fixture source takes a record with raw text (`{ key, raw: "{not json" }`), so you can watch `quarantine-hold` pause the source at that record and hold the incident with local evidence, then try to get the preview to say `live` while it's missing the later revisions (recipe: {{MAKE_IT_LIE_LOCAL_LINK}}). On real Kafka, `npm run dev:lab` in the demo's public repo (https://github.com/jfricano/lontra-creek; Docker, Compose 2.24.4+) runs the whole stack with three Lab benches locally, including a "Fouled sensor" exercise where you trigger the pause yourself. **[update at 1.0: add "and the quarantine exercises, such as Garbled reading" only once Lontra Creek #42 has merged and you've run them locally.]** If you can make a view say `live` while it's wrong, or get a bad record skipped silently, I want to know: {{MAKE_IT_LIE_LINK}}
+If you want to break it: with no Kafka, the scaffold's fixture source takes a record with raw text (`{ key, raw: "{not json" }`), so you can watch `quarantine-hold` pause the source at that record and hold the incident with local evidence, then try to get the preview to say `live` while it's missing the later revisions (recipe: {{MAKE_IT_LIE_LOCAL_LINK}}). On real Kafka, `npm run dev:lab` in the demo's public repo (https://github.com/jfricano/lontra-creek; Docker, Compose 2.24.4+) runs the whole stack with three Lab benches locally, including a "Fouled sensor" exercise where you trigger the pause yourself. **[update at 1.0: add "and the quarantine exercises, such as Garbled reading" once you've run them locally; Lontra Creek #42 is merged (6cb47e9); re-pin and deploy pending.]** If you can make a view say `live` while it's wrong, or get a bad record skipped silently, I want to know: {{MAKE_IT_LIE_LINK}}
 
 I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
 
-Code and the runbook: https://github.com/jfricano/StreamOtter **[HOSTED LAB]** Add the hosted Lab link (https://streamotter.dev/lab/) only if the hosted Lab is on (D2) and you leased a bench that day. Don't mention quarantine exercises there: the hosted Lab runs only S01 and S06 at launch (D2).
+Code and the runbook: https://github.com/jfricano/StreamOtter · Failure Lab: https://streamotter.dev/lab/ (the Source failures exercises S01–S06 run there, quarantine included; you may wait for a bench) **[confirm at launch: you leased a bench that day]**
 
 ---
 
@@ -187,7 +189,7 @@ Live demo: press "Drop my connection" on https://streamotter.dev and watch every
 
 > **Rule check:** post **only on a Saturday**, with the Showoff Saturday flair if offered; "project, not product." Rankhog, Sept 15, 2026; RedditGrowthDB, July 13, 2026. **Before posting,** open https://streamotter.dev in a browser and confirm the site shows `1.0.0` and the home page's live panel answers. As of October 5 it showed `v0.1.0-rc.3`, and whether its live demo answers couldn't be confirmed from the static page (the page's no-JavaScript fallback says it isn't answering); check in a browser.
 >
-> **Two versions of the body.** Use **(a)** if the hosted Lab is off (the default today). Use **(b)** only if the hosted Lab benches are on (D2) and you leased one on the day you post.
+> **Hosted Lab [confirm at launch]:** the hosted Lab is on at launch (D2). Lease a bench yourself the day you post, and don't promise one: benches are few and queued.
 
 **Title:** [Showoff Saturday] A live demo where you break a Kafka-to-browser pipeline on purpose and watch the page stay honest
 
@@ -195,15 +197,18 @@ Live demo: press "Drop my connection" on https://streamotter.dev and watch every
 
 I built StreamOtter, an open-source (MIT) Node.js gateway and TypeScript browser SDK for live views backed by Kafka. The part I most wanted to show is the demo, Lontra Creek: a made-up river-otter study whose data flows through real Kafka, a production-mode gateway, and the real SDK.
 
-**(a) Hosted Lab off:** On the home page, press "Drop my connection": the creek keeps moving without you, and every view says `stale` until you press "Restore it" and fresh snapshots arrive. For the full Failure Lab (three isolated benches where you foul a sensor, cut a bench's Kafka relay, stall a client or restart the gateway), clone the demo's public repo (https://github.com/jfricano/lontra-creek) and run `npm run dev:lab` (Docker, Compose 2.24.4+).
+On the home page, press "Drop my connection": the creek keeps moving without you, and every view says `stale` until you press "Restore it" and fresh snapshots arrive.
 
-**(b) Hosted Lab on [HOSTED LAB]:** In its Failure Lab you borrow an isolated bench for five minutes and can:
+In the Failure Lab (https://streamotter.dev/lab/) you borrow an isolated bench for five minutes. There are only a few, so you may wait in a queue for one. On a bench you can:
 - **foul a sensor:** the map handler fails on a reading, the source pauses at that record, views go `stale`, and the feed shows where; restore it and the same record is retried, nothing skipped;
 - **take out the relay** (the bench's Kafka path): stale, then live again after it's restored;
 - **simulate a laptop on a satellite link** that stops acknowledging: that client is disconnected while your view keeps flowing;
-- **restart the gateway:** reconnect, fresh snapshot, live.
-- **calibration lookup blip** (S06), if it's offered on the hosted Lab that day: a trusted, explicitly transient mapper error gets a bounded retry.
-- Don't describe the quarantine exercises ("Garbled reading" and others) as runnable on streamotter.dev: until a hosting configuration change lands, they're local only (`npm run dev:lab`, once Lontra Creek #42 has merged; D2). Describe only exercises that work on the live site.
+- **restart the gateway:** reconnect, fresh snapshot, live;
+- **send a garbled reading** (S02): a record that isn't JSON at all is copied byte for byte to a quarantine topic, and the source holds;
+- **calibration lookup blip** (S06): a trusted, explicitly transient mapper error gets a bounded retry;
+- the rest of the Source failures track (S03–S05).
+
+The whole Lab also runs on your machine: clone the demo's public repo (https://github.com/jfricano/lontra-creek) and run `npm run dev:lab` (Docker, Compose 2.24.4+).
 
 Technical bits: the UI state comes straight from the SDK (`authorizing → synchronizing → live`, or `stale`/`resync-required`); every update is a full state with a revision; the static pages stay up if the demo host is down.
 
@@ -212,3 +217,5 @@ Limits: one gateway per project, no replay of missed updates, Chromium-only brow
 I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
 
 Demo: https://streamotter.dev · Code: https://github.com/jfricano/StreamOtter
+
+> **Note:** S07–S09 are local and CI only; don't describe them as runnable on streamotter.dev.

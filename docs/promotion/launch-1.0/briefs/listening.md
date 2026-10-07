@@ -128,7 +128,7 @@ https://hnrss.org/newcomments?q=kafka+dashboard+realtime
 | Stack Overflow | "Disclosure: I made StreamOtter." at the start of the StreamOtter part (the Sept plan's line). Required by the promotion rule. | The answer must be complete without the link ("Don't include links except to *support* what you've written") |
 | Reddit | "I'm the author of StreamOtter, so weigh this accordingly." | The AI sentence from `drafts/ai-disclosure.md` whenever the reply recommends StreamOtter (D4) |
 | Hacker News | Say you're the author, in your own words, in the same comment | The AI sentence word for word when asked, as `hn-faq.md` plans |
-| GitHub (your own repo's Discussions and issues; elsewhere only when asked) | "I maintain StreamOtter." | No AI line unless D5 is yes; the README carries it if so |
+| GitHub (your own repo's Discussions and issues; elsewhere only when asked) | "I maintain StreamOtter." | No AI line (D5 is no). |
 | dev.to, Confluent forum | "Disclosure: I made StreamOtter." | The AI sentence when recommending it (D4) |
 | Discord, Slack (communities you're already in) | "Disclosure: I made StreamOtter." | Only where the server's rules allow tool mentions |
 

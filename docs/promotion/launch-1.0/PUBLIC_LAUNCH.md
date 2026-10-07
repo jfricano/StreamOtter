@@ -1,6 +1,6 @@
 # StreamOtter 1.0.0: public launch playbook
 
-October 5, 2026 · Prepared for Jason Fricano · **Status: draft for your decisions, revised after two review passes (see `REVIEW.md`).** Nothing has been posted, submitted, emailed or changed anywhere. This builds on the Sept 27 plan (`docs/promotion/PLAN.md`); Sept decisions stand unless §8 says otherwise. Ground truth: `FACTS.md`.
+October 5, 2026 · Prepared for Jason Fricano · **Status: draft, revised after two review passes (see `REVIEW.md`). Updated Oct 7 with your answers: D2 is no, so the hosted Lab, the hosting configuration change and `/blog` are launch gates.** Nothing has been posted, submitted, emailed or changed anywhere. This builds on the Sept 27 plan (`docs/promotion/PLAN.md`); Sept decisions stand unless §8 says otherwise. Ground truth: `FACTS.md`.
 
 ---
 
@@ -8,8 +8,8 @@ October 5, 2026 · Prepared for Jason Fricano · **Status: draft for your decisi
 
 **The concept in three lines**
 1. The launch is a question: **"Can you make it lie?"** StreamOtter's one promise is that a view never says `live` while it's wrong, and a bad record is never skipped silently.
-2. Anyone can test that today: press **"Drop my connection"** on the streamotter.dev home page and watch `live` → `stale` → `live`. Then break it locally (no Kafka, about two minutes; or real Kafka with Docker). The hosted Failure Lab is extra when it's on.
-3. One Show HN in your words, one 1.0 article, your own short "Making it lie" piece a week later. Built with Claude Code, said in one identical sentence everywhere.
+2. Anyone can test that today: press **"Drop my connection"** on the streamotter.dev home page and watch `live` → `stale` → `live`. Then borrow a bench in the hosted Failure Lab (S01–S06), or break it locally (no Kafka, about two minutes; or real Kafka with Docker).
+3. One Show HN in your words, one 1.0 article, your own short "Making it lie" piece a week later. Built with Claude Code, said in one identical sentence everywhere (the wording is D4, still open).
 
 **Do these five things now** (about 75 minutes; none of them waits on 1.0)
 
@@ -21,25 +21,25 @@ October 5, 2026 · Prepared for Jason Fricano · **Status: draft for your decisi
 | 4 | **Contact the KafkaSocks co-authors and the kafka-penguin team before launch** (notes kept privately) | 25 min | Appendix A |
 | 5 | **Record the "Drop my connection" GIF** (10–15 s, live → stale → live) on the home page. It doubles as the browser check of whether the live demo answers, which the static page couldn't confirm | 20 min | `drafts/hero-demo-script.md` |
 
-**The minimum launch.** T-0 happens when these are true, and only these:
+**The launch gates.** T-0 happens when these are true (D2 answered no, Oct 7: the launch waits for all of them):
 - **Gates:** `1.0.0` on npm (via a quiet `1.0.0-rc.1` that passed the four roadmap §8 checks); streamotter.dev re-pinned to `1.0.0` with "Drop my connection" working and the "why this matters" annotations shipped ([site-annotations.md](site-annotations.md)); the local "make it lie" path documented in the repo; the labeled recording and GIF ready; your HN account able to submit Show HN (or Plan B).
-- **Bonuses, not gates:** the hosted Lab benches (`lab.enabled`), the hosting configuration change for exercises S02–S05, and streamotter.dev/blog. Whatever is ready by T-7 gets used; none of them moves the date.
+- **Also gates since Oct 7:** the hosted Lab benches on (`lab.enabled`), the hosting configuration change so the Lab runs S01–S06 (S07–S09 stay local and CI only, by design), and streamotter.dev/blog with RSS and the 1.0 article ([briefs/blog.md](briefs/blog.md)).
 
-**Decisions for you** (yes/no; the drafts get updated to match)
+**Decisions** (your answers of Oct 7 in bold; the drafts get updated to match)
 
-| # | Decision | Rec. | Why |
+| # | Decision | Answer | Why |
 | --- | --- | --- | --- |
-| D1 | Make "Can you make it lie?" the launch, led by "Drop my connection", with the two local tiers and the hosted Lab as extra? | **Yes** | The product's promise turned into something a stranger can test, and it works without the hosted Lab |
-| D2 | Launch without the hosted benches, the hosting configuration change and `/blog` if they aren't ready by T-7? (If the Lab is ready, switch it on for S01 and S06 only; the hosting configuration change waits until after launch) | **Yes** | None of them is in your hands, and none should push the launch into January |
-| D3 | Release path: integrator named by **Fri Oct 16** and runbook walk done by **Fri Oct 30** (if nobody, you decide, e.g. walk it yourself on a clean machine and say so in the gate issue); `1.0.0-rc.1` quiet at T-14 apart from a Console.dev Betas email; `1.0.0` at T-5? | **Yes** (dates are proposals) | Timeboxes the one gate with no owner; Betas only takes pre-1.0 versions |
-| D4 | Use the one AI sentence on every outward-facing surface (Show HN comment, articles, Reddit, LinkedIn, social, Medium), never optional? | **Yes** | Said first, it reads as confidence; found later, it reads as hiding |
-| D5 | Also put it (one line) in the README, which is the Show HN URL? Release notes and the Discussion can link to it | **Yes**, your call | HN readers land on the README first. If no, the HN comment carries it |
-| D6 | Reword "independent review" in the repo docs to "review by separate AI agent sessions that didn't write the code", before `1.0.0-rc.1`? | **Yes** | It's what happened; HN will read those docs, and the 1.0 npm pages should carry the corrected text |
-| D7 | Two articles (1.0 at T-0; your short "Making it lie" at T+7), the origin story as a LinkedIn post, and one Medium story updated in place? | **Yes** | Half the writing, and each piece has a reason to exist |
-| D8 | HN Plan B: if your account can't submit by T-7, lead with r/apachekafka on T-0 and do Show HN later, once the account qualifies? | **Yes** | Never a friend's account, never a repost; the rest of the plan doesn't depend on HN |
-| D9 | No bots that post, reply, vote or DM anywhere; instead a read-only weekly listening digest (Reddit, Stack Overflow, HN, GitHub, dev.to), from which you pick at most two threads and reply by hand with disclosure? | **Yes** | Every platform's rules ban promotional bots, and it would undercut the launch's honesty. About 15 min a week, replacing the optional Stack Overflow item. See `briefs/listening.md` |
+| D1 | Make "Can you make it lie?" the launch, led by "Drop my connection", with the hosted Lab and the two local tiers? | **Yes** (Oct 7) | The product's promise turned into something a stranger can test, with three ways in |
+| D2 | Launch without the hosted benches, the hosting configuration change and `/blog` if they aren't ready by T-7? | **No** (Oct 7: "we can hold launch for these") | All three are gates. The launch date is set by the slowest of them and G1 |
+| D3 | Release path: integrator named by **Fri Oct 16** and runbook walk done by **Fri Oct 30** (if nobody, you decide, e.g. walk it yourself on a clean machine and say so in the gate issue); `1.0.0-rc.1` quiet at T-14 apart from a Console.dev Betas email; `1.0.0` at T-5? | **An integrator is lined up, pending confirmation** (Oct 7); dates are proposals | Timeboxes the one gate with no owner; Betas only takes pre-1.0 versions |
+| D4 | Use the one AI sentence on every outward-facing surface (Show HN comment, articles, Reddit, LinkedIn, social, Medium), never optional? | **Open:** wording under review (`drafts/ai-disclosure.md`) | Said first, it reads as confidence; found later, it reads as hiding |
+| D5 | Also put it (one line) in the README, which is the Show HN URL? Release notes and the Discussion can link to it | **No, for now** (Oct 7) | HN readers land on the README first. If no, the HN comment carries it |
+| D6 | Reword "independent review" in the repo docs to "review by separate AI agent sessions that didn't write the code", before `1.0.0-rc.1`? | **Open.** With D5 no, the proposal is neutral wording instead: "a separate review pass" | "Independent" reads as outside people; HN will read those docs, and the 1.0 npm pages should carry the corrected text |
+| D7 | Two articles (1.0 at T-0; your short "Making it lie" at T+7), the origin story as a LinkedIn post, and one Medium story updated in place? | **Open:** you asked about a LinkedIn page for the project. Recommendation: no page (the Sept "no brand accounts" decision stands); post from your own profile | Half the writing, and each piece has a reason to exist |
+| D8 | HN Plan B: if your account can't submit by T-7, lead with r/apachekafka on T-0 and do Show HN later, once the account qualifies? | **Yes** (Oct 7) | Never a friend's account, never a repost; the rest of the plan doesn't depend on HN |
+| D9 | No bots that post, reply, vote or DM anywhere; instead a read-only weekly listening digest (Reddit, Stack Overflow, HN, GitHub, dev.to), from which you pick at most two threads and reply by hand with disclosure? | **Yes** (Oct 7) | Every platform's rules ban promotional bots, and it would undercut the launch's honesty. About 15 min a week, replacing the optional Stack Overflow item. See `briefs/listening.md` |
 
-**Your time:** about 15 hours from today to T+14, counting the decisions, approvals and your own writing; about 13 in the lean version (§5). Not counted: publishing rc.1 and 1.0.0, and the engineering approvals in the release and site work.
+**Your time:** about 16.5 hours from today to T+14, counting the decisions, approvals and your own writing; about 14.5 in the lean version (§5). Not counted: publishing rc.1 and 1.0.0, and the engineering approvals in the release and site work.
 
 **Launch visuals** are ready (repo copies in StreamOtter PR #65, launch visuals); the list and caveats are in §9.
 
@@ -74,7 +74,7 @@ October 5, 2026 · Prepared for Jason Fricano · **Status: draft for your decisi
 | No failure story | **V1.1 failure handling is the headline:** by default (`pause`) a bad record holds its source; with `failureHandling` on, per-source policies can also quarantine a byte-for-byte copy, each failure is a journaled incident, and recovery is under operator control. Never skipped silently |
 | Nothing for people who can't reach the demo | **"Drop my connection"** first (per visitor, no bench), then the local tiers, and a labeled GIF and recording for everyone |
 | "We" | **"I"**, with the lineage in one short paragraph |
-| Medium, unlabeled | **One Medium story, labeled, updated in place** (canonical to `/blog` only if the blog exists) |
+| Medium, unlabeled | **One Medium story, labeled, updated in place**, canonical to the post on `/blog` |
 
 ---
 
@@ -86,8 +86,8 @@ A subscribed view must never report `live` while it shows something other than t
 ### Ways to break it (lead with the first)
 1. **On streamotter.dev, today:** press "Drop my connection" on the home page. Every view says `stale` until fresh snapshots arrive, then `live` again. Per visitor, no bench. (Confirm in a browser: five-things #5.)
 2. **Local tier (a), no Kafka, about two minutes:** `npx streamotter init .` in a new folder, add one fixture record `{ key, raw: "{not json" }` and a `quarantine-hold` policy for the scaffold's source (`docs/guides/source-failures.md` §2.5), run `streamotter dev`, advance the fixture, and watch the source hold at the bad record and the workbench Failures tab fill. Recipe verified in a clean folder on `0.2.0-rc.1` (Oct 5): `drafts/make-it-lie-local.md`. Re-run it on each rc.
-3. **Local tier (b), real Kafka:** `npm run dev:lab` in the lontra-creek repo (Docker and Docker Compose 2.24.4 or later; three Lab benches at `https://localhost:8443/lab/`). lontra-creek appears to be public (its README loads without sign-in, Oct 5). The source-failure exercises arrive with phase two (#42, not yet merged). All 8 new ones passed real-Kafka tests locally on `0.2.0-rc.1` with ACLs.
-4. **Hosted Lab, if it's on (bonus):** until a hosting configuration change lands, only S01 `fouled-sensor` and S06 `calibration-blip` run there. S02–S05 need that change; S07–S09 are local and CI only by design. Once phase one deploys without `lab.enabled`, `/lab` reads "The Lab is unavailable", so no copy may send people to `/lab` unless the Lab is on.
+3. **Local tier (b), real Kafka:** `npm run dev:lab` in the lontra-creek repo (Docker and Docker Compose 2.24.4 or later; three Lab benches at `https://localhost:8443/lab/`). lontra-creek is public (Oct 7). The source-failure exercises are on its main since #42 merged. All 8 new ones passed real-Kafka tests locally on `0.2.0-rc.1` with ACLs.
+4. **Hosted Lab (a launch gate since Oct 7):** with the hosting configuration change in place, S01–S06 run there, plus the three Connections exercises; S07–S09 are local and CI only by design. Benches are scarce (contract defaults: 3 benches, 5-minute leases, a queue of 50), so copy offers a bench without promising one, and "Drop my connection" stays first. Until the Lab is on, `/lab` reads "The Lab is unavailable".
 
 What each exercise shows: **Fouled sensor (S01)** is a mapper error under the `retry` profile. The source holds at that record, the view goes `stale`, nothing is skipped, and once the calibration is restored the same record is retried and the view is `live` again. **Garbled reading (S02)** is the quarantine case (the `quarantine` profile, with a `quarantine-hold` policy; the default `pause` copies nothing). The original bytes are copied byte for byte to the quarantine topic, and the source stays held until an operator retries it (`retry-current`); the recovery guard and `reassess` apply only under `quarantine-resync`. No single run shows both.
 
@@ -97,7 +97,7 @@ Optional, not promised: a small script that prints `LIED` or `HONEST` from the a
 Discussions turn on, as Sept decided. Draft:
 
 > **Can you make it lie?** StreamOtter promises that a view never says `live` while it's showing something other than the newest state, and that a bad record is never skipped silently. If you turn on quarantine, the copy must be byte for byte. If you can break any of that, I want to know.
-> - **Try:** "Drop my connection" on streamotter.dev; the no-Kafka fixture recipe [link]; the local Lab with real Kafka [link]; your own Kafka.
+> - **Try:** "Drop my connection" on streamotter.dev; a Failure Lab bench on streamotter.dev/lab (you may wait in a queue); the no-Kafka fixture recipe [link]; the local Lab with real Kafka [link]; your own Kafka.
 > - **Out of scope:** load or attacks against streamotter.dev or its server, anything that affects other visitors, and the documented limits (one gateway per project, no replay of missed updates). Security problems go privately through `SECURITY.md`, never here.
 > - **What you get:** a "found by" credit in `CHANGELOG.md` and the release notes, if you want one. No money, no swag.
 > - I'll reproduce each report and reply here.
@@ -106,21 +106,21 @@ Discussions turn on, as Sept decided. Draft:
 Internal notes (not for the Discussion):
 - Your cost: about 15 minutes a day of triage in launch week.
 - The invitation scope is agreed for the hosting setup at T-7.
-- **The first eight entries** (all real): from `CHANGELOG.md` [0.2.0-rc.1] Fixed, defects present in the published `0.1.0-rc` releases: a client that stopped reading could grow gateway memory without limit; a record slower than the session timeout could be reprocessed forever; with `startFrom: "latest"`, a restart before the first record could skip records; `stop()` could hang on a handler module that never loaded; generated code didn't escape U+2028/U+2029. From the V1.1 review (`docs/releases/v1.1/REVIEW.md` §2, caught before release): R1, a record with two problems labeled with the milder one and skipped past an integrity failure; J2, a restarted container reading its own leftover lock as live; J1, the journal filling after about 2,700 automatic advances. Label them "found in pre-1.0 review". The V1.1 review was six fresh AI agent sessions plus a seventh on the fixes, with no line-by-line human review. Who ran V1.2 is unconfirmed (its plan mentions "a second agent").
+- **The first eight entries** (all real): from `CHANGELOG.md` [0.2.0-rc.1] Fixed, defects present in the published `0.1.0-rc` releases: a client that stopped reading could grow gateway memory without limit; a record slower than the session timeout could be reprocessed forever; with `startFrom: "latest"`, a restart before the first record could skip records; `stop()` could hang on a handler module that never loaded; generated code didn't escape U+2028/U+2029. From the V1.1 review (`docs/releases/v1.1/REVIEW.md` §2, caught before release): R1, a record with two problems labeled with the milder one and skipped past an integrity failure; J2, a restarted container reading its own leftover lock as live; J1, the journal filling after about 2,700 automatic advances. Label them "found in pre-1.0 review". D6 decides the wording GitHub text uses for the reviews. The V1.1 review was six fresh AI agent sessions plus a seventh on the fixes, with no line-by-line human review. Who ran V1.2 is unconfirmed (its plan mentions "a second agent").
 
 ### Content: two articles, one origin post
 
 | When | Piece | Home | Travels to |
 | --- | --- | --- | --- |
-| T-0 | **The 1.0 article** (`drafts/launch-article.md`; title per that file): problem → code → break it yourself, within the first third → short lineage → alternatives named, with a pointer to when to use them → limits | `/blog` if it exists, with the Medium story updated in place and canonical to it; otherwise the Medium story, updated in place, stays canonical (§4.6) | Show HN comment, LinkedIn, README |
+| T-0 | **The 1.0 article** (`drafts/launch-article.md`; title per that file): problem → code → break it yourself, within the first third → short lineage → alternatives named, with a pointer to when to use them → limits | `/blog`, with the Medium story updated in place and canonical to it (§4.6) | Show HN comment, LinkedIn, README |
 | T+3 | **Origin story** as a LinkedIn post (`drafts/origin-story.md`; two required slots are yours) | LinkedIn | OSLabs alumni; the KafkaSocks co-authors (ask before tagging) |
-| T+7 | **"Making it lie"**, short and **written by you** (`drafts/making-it-lie.md` holds talking points): what strangers found, or, as the fallback, the pre-1.0 defects above | Wherever the 1.0 article lives: `/blog` if it exists; otherwise dev.to, linked from the Medium story (no second Medium story) | LinkedIn, the Discussion |
+| T+7 | **"Making it lie"**, short and **written by you** (`drafts/making-it-lie.md` holds talking points): what strangers found, or, as the fallback, the pre-1.0 defects above | `/blog`, linked from the Medium story (no second Medium story); dev.to copy canonical to the blog | LinkedIn, the Discussion |
 
 The bad-records and history material lives in the 1.0 article and `drafts/hn-faq.md`. b/kafka-websocket is a "how is this different" FAQ answer, not a demand signal. Lineage wording: KafkaSocks co-author (OSLabs, 2021; its last commit was June 2021), and V1.1's strategies inspired by kafka-penguin. No "ten-year thread", no "on and off for years". Alternatives exist (Centrifugo, Zilla, Ably, Lightstreamer; `docs/promotion/briefs/product-marketing.md` §3); never say nobody has solved this.
 
 ### Recording: one plan (`drafts/hero-demo-script.md`)
 - **(a) GIF, 10–15 s:** "Drop my connection" on the home page, `live` → `stale` → `live`. Recordable now; re-record on `1.0.0` at T-4. For the README first screen, the Medium fix and social posts.
-- **(b) Recording, 60–90 s:** S01 `fouled-sensor` (hosted if the Lab is on, otherwise local), then S02 `garbled-reading` on a local Lab stack, labeled "local stack". Each segment carries where it was recorded: "Recording · <date> · streamotter@<exact version> · <hosted | local stack> · Lontra Creek is fictional; the Kafka pipeline is real."
+- **(b) Recording, 60–90 s:** S01 `fouled-sensor`, then S02 `garbled-reading`, both on the hosted Lab and labeled "hosted" (a local Lab stack, labeled "local stack", is the fallback if no bench is free while recording). Each segment carries where it was recorded: "Recording · <date> · streamotter@<exact version> · <hosted | local stack> · Lontra Creek is fictional; the Kafka pipeline is real."
 - You record both with the OS screen recorder from the shot list (about 30 minutes). No Playwright recording of the hosted Lab is planned.
 - Where it goes: the README (GitHub renders an uploaded mp4), the site's "demo is full" state, the 1.0 article, LinkedIn. No YouTube channel or brand account.
 
@@ -154,19 +154,19 @@ G3 site ────────┘   (Console.dev only)                        
 4. One integrator walks the source-failure runbook end to end: someone outside the build loop (a KafkaSocks co-author or a colleague who runs Kafka), with notes in the public gate issue, never quoted without their written OK. **Deadline per D3.**
 
 **G2, the front door (before rc.1), one branch you approve:**
-- README first screen: the one-liner, the GIF, a "Break it" block (drop your connection; the tier (a) recipe; the Discussion), "Try it without Kafka" in place of "Try it in five minutes", the 1.0 status line, and the AI line if D5 is yes.
-- The local "make it lie" path documented: tier (a) run in a clean folder; tier (b) linked once #42 is on lontra-creek main.
+- README first screen: the one-liner, the GIF, a "Break it" block (drop your connection; the tier (a) recipe; the Discussion), "Try it without Kafka" in place of "Try it in five minutes", and the 1.0 status line. No AI line (D5 no, Oct 7).
+- The local "make it lie" path documented: tier (a) run in a clean folder; tier (b) linked (#42 is on lontra-creek main).
 - The repo follow-ups in §10, so the 1.0 npm pages carry the corrected wording.
 - Community files, Discussions on, social preview. The homepage field changes to streamotter.dev at T-0.
 
 **G3, the site** (the Lontra Creek project and its hosting setup):
 - **Gate:** backend re-pinned to `1.0.0` (staging on `1.0.0-rc.1` first); the home page live panel and "Drop my connection" / "Restore it" work on `1.0.0` under the 300-connection cap; the `OVERLOADED` "demo is full" state shows the recording; copy fixes (the "streamotter.app" leftovers, "Five minutes, no Kafka needed", the "Planned for V1.1" blocks, the `/releases` versioning note); the five "why this matters" demo annotations in [site-annotations.md](site-annotations.md) (Jason, 2026-10-06: ship before launch).
-- **Gate for tier (b) and the S02 recording:** #42 merged on lontra-creek main and re-pinned. Deploying it to the host is separate.
-- **Bonus:** `lab.enabled`, after your approval and its own acceptance (S01 and S06 only). Contract defaults, not measured capacity (lontra `docs/contracts/lab-api.md` §2): 3 benches, 300 s max lease, 30 s claim, 30 s idle, a queue of 50, 2 per IP, 20 concurrent and 3/s per IP. Real values get recorded on the host before launch.
-- **After launch:** the hosting configuration change for S02–S05.
-- **Bonus:** `/blog` with RSS (not planned anywhere in Lontra yet).
+- **Gate for tier (b) and the S02 recording:** #42 is merged on lontra-creek main (`6cb47e9`); re-pinning and deploying it to the host are pending.
+- **Gate (D2 no):** `lab.enabled`, after your approval and its own acceptance. Contract defaults, not measured capacity (lontra `docs/contracts/lab-api.md` §2): 3 benches, 300 s max lease, 30 s claim, 30 s idle, a queue of 50, 2 per IP, 20 concurrent and 3/s per IP. Real values get recorded on the host before launch.
+- **Gate (D2 no):** the hosting configuration change, so S02–S05 run alongside S01 and S06. Sequenced after the site's current release: Lab on first, then the change.
+- **Gate (D2 no):** `/blog` with RSS and the 1.0 article, one Lontra Creek site change ([briefs/blog.md](briefs/blog.md)).
 
-**G4, the rehearsal (T-7, staging, `1.0.0-rc.1`):** over-limit visitors see "full"; static pages survive the demo host stopping; "Drop my connection" works. If the hosted Lab will be on: the queue shows the wait, and S01 and S06 pass on staging (S02–S05 only if the hosting configuration change is done). All 8 new exercises pass on the local Lab and in CI. The invitation scope and a T-0 morning on-call for the hosting setup are agreed.
+**G4, the rehearsal (T-7, staging, `1.0.0-rc.1`):** over-limit visitors see "full"; static pages survive the demo host stopping; "Drop my connection" works. The Lab queue shows the wait, and S01–S06 pass on the hosted Lab with the hosting configuration change in place. `/blog` and its RSS feed render on the preview. All 8 new exercises pass on the local Lab and in CI. The invitation scope and a T-0 morning on-call for the hosting setup are agreed.
 
 **Considerations, not commitments yet** (Jason, 2026-10-06; details and open questions in [ideas-public-architecture-and-landing.md](ideas-public-architecture-and-landing.md)):
 - Public architecture docs: the internal "How it works" page (part 1 of Under the Hood) as `docs/ARCHITECTURE.md` with its two diagrams as SVGs, after a trim and one accuracy review. Would sit with G2.
@@ -179,7 +179,7 @@ G3 site ────────┘   (Console.dev only)                        
 
 ### Go/no-go (T-1, and again 30 minutes before T-0's first post)
 All must be true. If any fails, move the day; a week costs nothing.
-1. The home page live panel and "Drop my connection" work on `1.0.0`, and the "full" state worked in rehearsal. If the hosted Lab is on, its exercises pass; if it's off, nothing anywhere promises a bench.
+1. The home page live panel and "Drop my connection" work on `1.0.0`, and the "full" state worked in rehearsal. The hosted Lab is on and you leased a bench and ran S01 and S02 yourself; `/blog` has the 1.0 article and a valid RSS feed.
 2. Every public link returns 200. No placeholder or unresolved **[update at 1.0]** marker is visible anywhere.
 3. The registry install test passes for `1.0.0`, and the no-Kafka commands and the tier (a) recipe work in a clean folder.
 4. The README, `IMPLEMENTATION_STATUS.md`, `/releases`, the article and every draft name `1.0.0` and use the same limits sentence.
@@ -191,7 +191,8 @@ All must be true. If any fails, move the day; a week costs nothing.
 ### When T-0 can fall
 - **The first Tuesday at least 14 days after `1.0.0-rc.1`**, 8:00 a.m. ET. (Sept allowed Tuesday or Wednesday; this calendar assumes Tuesday.)
 - **Avoid** Nov 23–27 (US Thanksgiving week) and Dec 21–Jan 1. If T-0 can't land by Wed Dec 16, the next window opens Tue Jan 5, 2027.
-- **Check-in on Tue Nov 10:** if G1 isn't done, choose December or January. No date is set, and nothing here commits one.
+- **The date is set by the slowest gate:** G1 (the integrator walk), the hosted Lab and the hosting configuration change, and the blog.
+- **Check-in on Tue Nov 10:** if G1 or the Lab steps aren't done, choose December or January. No date is set, and nothing here commits one.
 
 ---
 
@@ -204,10 +205,11 @@ All must be true. If any fails, move the day; a week costs nothing.
 | Item | Jason | Prepared |
 | --- | --- | --- |
 | The five things (top of page) | 75 min | Medium replacement sentences; GIF shot list |
-| Answer D1–D8 | 15 min | Drafts updated to match |
+| Answer D1–D9 (done Oct 7, except D4, D6, D7) | 15 min | Drafts updated to match |
 | Ask an integrator for G1.4 (by Oct 16) | 10 min | The runbook walk-through checklist |
 | G1 engineering | Review in the release work (not counted in §5) | The work, status-doc updates, the public gate issue |
 | G2 front door and §10 follow-ups (one branch) | 45 min review, plus GitHub settings | README, make-it-lie docs, wording fixes, community files, social preview |
+| Blog: byline and one-line bio; review the blog PR | 15 min | The blog PR (`briefs/blog.md`) |
 | G3 hand-offs | — | Checklist for the Lontra Creek project and its hosting setup |
 
 ### 4.2 Quiet pre-launch, T-14 to T-1
@@ -220,12 +222,12 @@ All must be true. If any fails, move the day; a week costs nothing.
 | T-11 Fri | — | 1.0 article and Discussion text updated to rc.1 | — |
 | T-10 Sat, T-9 Sun | — | — | — |
 | T-8 Mon | 45 min: read the 1.0 article, write your own paragraphs, approve | `hn-faq.md` refreshed (talking points) | — |
-| **T-7 Tue** | 30 min: **lock T-0** (or move it); approve the invitation scope; hosted Lab on or off (D2); last HN account check, else Plan B | Bench numbers confirmed on the host, not guessed | **G4 rehearsal**; scope sign-off; on-call agreed |
+| **T-7 Tue** | 30 min: **lock T-0** (or move it); approve the invitation scope; confirm the hosted Lab and the hosting configuration change are in place (D2: gates); last HN account check, else Plan B | Bench numbers confirmed on the host, not guessed | **G4 rehearsal**; scope sign-off; on-call agreed |
 | T-6 Wed | 45 min: **write your Show HN comment and title yourself** (title inputs in `drafts/show-hn.md`); save them locally | rc soak report | — |
 | **T-5 Thu** | **Publish `1.0.0`** (release work) | Registry check; README, `IMPLEMENTATION_STATUS.md` and drafts moved to `1.0.0` | Production re-pinned to `1.0.0`; checks rerun |
 | T-4 Fri | 30 min: record the 60–90 s recording and re-record the GIF on `1.0.0` | Captions and labels; launch-day card (title, URL, comment note, six hardest questions, the "demo is full" reply) | — |
 | T-3 Sat, T-2 Sun | — | — | — |
-| **T-1 Mon** | 30 min: review LinkedIn and the Medium 1.0 text; sign in to HN, Reddit and LinkedIn; **go/no-go**. Evening, 25 min: publish the 1.0 article on `/blog` if it exists; update the Medium story in place (§4.6); finalize the `1.0.0` GitHub release notes; pin the Discussion | A report on each go/no-go item; final link and install checks | Confirms on-call |
+| **T-1 Mon** | 30 min: review LinkedIn and the Medium 1.0 text; sign in to HN, Reddit and LinkedIn; **go/no-go**. Then, about 20 min: merge the 1.0 article's post PR and run the site deploy (preview, then production) so it's on `/blog`. Evening, 25 min: update the Medium story in place (§4.6); finalize the `1.0.0` GitHub release notes; pin the Discussion | A report on each go/no-go item; final link and install checks | Confirms on-call |
 
 ### 4.3 Launch week, T-0 to T+7
 
@@ -258,8 +260,8 @@ If your account can't submit Show HN by T-7 (or you're unsure and hn@ycombinator
 
 ### 4.6 Medium: one plan
 - **Now:** fix the story in place (five-things #2).
-- **T-1 evening:** if `/blog` exists, publish the 1.0 article there and update the existing Medium story in place to that text, with its canonical link set to the blog (Edit story → ⋯ → More settings → Advanced Settings → "This story was originally published elsewhere" → Save canonical link → Publish; [Medium help](https://help.medium.com/hc/en-us/articles/360033930293-Set-a-canonical-link)). If not, update the Medium story in place to the 1.0 text, and it stays canonical.
-- Either way, its first line reads: "Updated for 1.0.0 on <date>; first published September 26, 2026 for 0.1.0-rc.3." Keep the AI sentence. **Never a second, duplicate Medium story.** Check that the old URL still resolves after a title change (Medium URLs end in a story ID, so it should; unverified).
+- **T-1:** publish the 1.0 article on `/blog`; in the evening, update the existing Medium story in place to that text, with its canonical link set to the blog (Edit story → ⋯ → More settings → Advanced Settings → "This story was originally published elsewhere" → Save canonical link → Publish; [Medium help](https://help.medium.com/hc/en-us/articles/360033930293-Set-a-canonical-link)).
+- The updated story's first line reads: "Updated for 1.0.0 on <date>; first published September 26, 2026 for 0.1.0-rc.3." Keep the AI sentence. **Never a second, duplicate Medium story.** Check that the old URL still resolves after a title change (Medium URLs end in a story ID, so it should; unverified).
 
 ---
 
@@ -267,16 +269,16 @@ If your account can't submit Show HN by T-7 (or you're unsure and hn@ycombinator
 
 | Block | Items (minutes) | Hours |
 | --- | --- | --- |
-| Now | Five things (75), decisions (15), front-door review and settings (45), integrator ask (10) | ~2.4 |
-| T-14 to T-1 | Console.dev (5), rc.1 note (10), article paragraphs (45), T-7 calls (30), HN comment (45), recording (30), T-1 (55) | ~3.7 |
+| Now | Five things (75), decisions (15), front-door review and settings (45), integrator ask (10), blog byline and PR review (15) | ~2.7 |
+| T-14 to T-1 | Console.dev (5), rc.1 note (10), article paragraphs (45), T-7 calls (30), HN comment (45), recording (30), T-1 (75) | ~4.0 |
 | T-0 | Submit, comment, replies, LinkedIn, check-ins | ~4.5 |
 | T+1 to T+7 | Newsletters (60), r/apachekafka (60), origin post (45), triage (30), "Making it lie" (90) | ~4.75 |
 | T+14 | Retrospective | 0.5 |
-| **Core** | About 28 separate sittings, most of them 10–45 min | **~15** |
-| **Lean** | "Making it lie" as a short Discussion and LinkedIn update instead of an article (saves ~1 h); the origin post after T+14 (saves ~45 min) | **~13** |
+| **Core** | About 30 separate sittings, most of them 10–45 min | **~16.5** |
+| **Lean** | "Making it lie" as a short Discussion and LinkedIn update instead of an article (saves ~1 h); the origin post after T+14 (saves ~45 min) | **~14.5** |
 | Optional, week two | r/node, Confluent forum, HN thanks, awesome list | +1.5 |
 
-Not counted: publishing `1.0.0-rc.1` and `1.0.0` (30–60 min each), the G1 engineering reviews, and the #42 and `lab.enabled` approvals, tracked separately. For comparison, the Sept plan was about 3 h before launch, about 4 h on launch day, then about 1.5 h a week.
+Not counted: publishing `1.0.0-rc.1` and `1.0.0` (30–60 min each), the G1 engineering reviews, and the site release, `lab.enabled` and hosting configuration sessions, tracked separately. For comparison, the Sept plan was about 3 h before launch, about 4 h on launch day, then about 1.5 h a week.
 
 ---
 
@@ -300,14 +302,14 @@ Not counted: publishing `1.0.0-rc.1` and `1.0.0` (30–60 min each), the G1 engi
 
 ## 7. Decisions: what each answer changes
 - **D1, no:** fall back to a plain 1.0 announcement; the Discussion and the T+7 piece go.
-- **D2, no:** T-0 waits for the hosted Lab, the hosting configuration change and `/blog`. Expect January.
+- **D2, answered no (Oct 7):** T-0 waits for the hosted Lab, the hosting configuration change and `/blog`. January is possible if the Lab steps slip past the Nov 10 check-in.
 - **D3:** change the dates freely. If nobody is named by Oct 16, you choose between walking the runbook yourself (and saying so) and waiting.
-- **D4 and D5:** the sentence lives in `drafts/ai-disclosure.md`, and every draft points to it. If D5 is no, the README, release notes, issues and the Discussion carry no AI line.
+- **D4 and D5:** the sentence lives in `drafts/ai-disclosure.md`, and every draft points to it. D5 is no (Oct 7), so the README, release notes, issues and the Discussion carry no AI line.
 - **D6:** one small docs PR (§10) before rc.1.
-- **D7, no:** the Medium story stays as it is, and the 1.0 article goes only on `/blog` or dev.to.
+- **D7, no:** the Medium story stays as it is, and the 1.0 article goes only on `/blog`.
 - **D8, no:** T-0 waits until HN works.
 
-**Old numbers some drafts still use:** "decision 15" (switch the hosted Lab on) and "decision 16" (the hosting configuration change for S02–S05) are both D2 now: the Lab goes on only if it's ready by T-7, for S01 and S06, and the hosting configuration change waits until after launch. "Decision 17" (how to describe the reviews) is D4–D6.
+**Old numbers some drafts still use:** "decision 15" (switch the hosted Lab on) and "decision 16" (the hosting configuration change for S02–S05) are both D2 now, answered no: both are launch gates. "Decision 17" (how to describe the reviews) is D4–D6.
 
 **Sept decisions that stand:** the Show HN URL is the GitHub repo, with the demo in your first comment; the Show HN comment and replies are in your words; Reddit is rewritten by you; no Stack Overflow drafts; "I" everywhere; the Orca Solutions answer; no brand accounts; Discussions with Q&A, Ideas, and Show and tell; the response aims; the KafkaSocks plan and wording; listings by star threshold; a steady state of 1–2 h a week; npm trusted publishing after launch; all Sept guardrails.
 
@@ -320,13 +322,13 @@ Not counted: publishing `1.0.0-rc.1` and `1.0.0` (30–60 min each), the G1 engi
 | Launch on `0.1.0` or the rc | **`1.0.0`, via a quiet `1.0.0-rc.1`** | Your Oct 5 version decision (roadmap §8) |
 | streamotter.app (and `conduct@streamotter.app`) | **streamotter.dev** (`conduct@streamotter.dev`) | The site's `astro.config`; the preview `/releases` page still says .app |
 | Firefox/WebKit if ready by T-7, otherwise a starter issue | **A hard gate before rc.1** | Roadmap §8; acceptance packet §10 |
-| Trigger: the site and Failure Lab live | **The minimum launch** (top of page); the hosted Lab is a bonus | The hosted Lab is off pending you, and the host can't run the quarantine exercises until a hosting configuration change lands |
-| Nov 10: launch on GitHub alone, or wait | **A check-in on Nov 10** (December or January) | The minimum launch already covers the no-Lab case |
-| Medium stays put; `/blog` after launch | **One Medium story, updated in place to 1.0**; canonical to `/blog` only if it exists | One URL, no duplicate |
+| Trigger: the site and Failure Lab live | **Same trigger, with the hosting configuration change** so the Lab runs S01–S06 (D2 no, Oct 7) | You chose to hold the launch for the hosted Lab (S07–S09 stay local by design) |
+| Nov 10: launch on GitHub alone, or wait | **A check-in on Nov 10** (December or January) | Launching without the Lab is off the table (D2 no) |
+| Medium stays put; `/blog` after launch | **`/blog` before launch; one Medium story, updated in place to 1.0**, canonical to `/blog` | One URL, no duplicate |
 | No video | **A GIF and one labeled 60–90 s recording** | §2 |
 | No talks | **Not in this plan; revisit after T+14** | It doesn't affect the launch |
 | Show HN title decided | **The Sept title is an input; you write the final one** | HN's rules cover generated text in posts, and "Kafka state in the browser" sits one word from a banned phrase |
-| "Did you build this with AI?": a sentence of your own | **One identical approved sentence everywhere, never optional**; the reviews described as AI agent sessions | Consistency is what makes it credible (D4–D6) |
+| "Did you build this with AI?": a sentence of your own | **One identical approved sentence everywhere, never optional** (D4 open); review wording per D6 (open; proposal: "a separate review pass" on GitHub) | Consistency is what makes it credible (D4–D6) |
 | Four newsletter submissions the next day | **Console.dev at rc.1; at T+1, Cooperpress (one email), Data Engineering Weekly, and Changelog News only if it's publishing** | Console.dev takes pre-1.0 only; no Confluent or Get Kafka-Nated route found |
 | Limits sentence ends with "pre-1.0" | **The compatibility promise instead** | 1.0.0 |
 | About 3 h before launch, 4 h on the day, 1.5 h a week | **About 15 h from today to T+14 (lean: about 13)** | The invitation and your own writing |
@@ -364,7 +366,6 @@ Not done in this kit. Each was checked in the repo clone on Oct 5.
 - **Your HN username, karma and account age:** not recorded; check them privately (five-things #1) and don't record them in this repo.
 - **Whether the live demo answers:** the static HTML is only the no-JavaScript fallback. The GIF (five-things #5) settles it.
 - **Measured bench and connection capacity on the host** (only the contract defaults are known), and whether phase one is deployed: to confirm on the host.
-- **Whether lontra-creek is public:** its README loads without sign-in, but it is unconfirmed by the GitHub API. Confirm.
 - **Who ran the V1.2 review:** unconfirmed; assume AI agent sessions until checked.
 - **Medium:** whether a title change keeps the old URL; whether Medium actually limited this story (the policy is verified, but the story's classification isn't visible).
 - **Changelog News** still publishing; the Data Engineering Weekly PR route; r/apachekafka's rules (unverified).

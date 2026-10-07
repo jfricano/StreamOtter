@@ -2,7 +2,9 @@
 >
 > **Changed in the Oct 5 fix pass** (FIX_DECISIONS §5; PUBLIC_LAUNCH.md D3): **Console.dev goes to Betas at `1.0.0-rc.1`** (the one exception to the quiet rc), not as a general tool at T+1 (accuracy S8). **T+1 is:** one Cooperpress email (Node Weekly + JavaScript Weekly), **Data Engineering Weekly** via a PR to its repo, and **Changelog News only if it's still publishing**. **Removed:** the Confluent newsletter email (no submission route; it's a Confluent Community Forum post in week 1–2 instead, accuracy S9) and Get Kafka-Nated (no route found, S10). The blurb now leads with the break-it moment, drops "verifiably", and labels quarantine opt-in. **Every hosted-Lab mention is conditional** (B4). Each email carries the AI sentence from `ai-disclosure.md`. "Kafka state in the browser" is out of the titles (N19).
 >
-> **Placeholders in this file:** none. Resolve every **[update at 1.0]** and **[HOSTED LAB]** marker, including the Lab markers, before sending.
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
+>
+> **Placeholders in this file:** none. Resolve every **[update at 1.0]** and **[confirm at launch]** marker before sending.
 
 > **Where and when:** Console.dev at `1.0.0-rc.1` (T-14). Everything else on T+1, the day after launch, once each. Decisions are in PUBLIC_LAUNCH.md.
 >
@@ -67,7 +69,7 @@ StreamOtter (MIT) is a Node.js gateway and TypeScript SDK for live, Kafka-backed
 
 ## T+1: Data Engineering Weekly (a PR to its repo)
 
-- **What to submit:** the 1.0 article's URL (wherever it's canonical: the blog, or the Medium story), not the repo. The newsletter is vendor-neutral and asks authors to "avoid overt product promotion", so if you'd rather wait for a more technical piece (for example the snapshot-versus-update race), that's fine too.
+- **What to submit:** the 1.0 article's canonical URL on streamotter.dev/blog, not the repo. The newsletter is vendor-neutral and asks authors to "avoid overt product promotion", so if you'd rather wait for a more technical piece (for example the snapshot-versus-update race), that's fine too.
 - **How:** open a pull request to https://github.com/ananthdurai/dataengineeringweekly adding the article title and link under the `weekly/` folder, following the latest file's format. Check the repo's README first: whether this route is still used wasn't verified.
 - **PR description (your words):**
   > I wrote this. It's about keeping Kafka-backed web views honest after disconnects, restarts and bad records, with the open-source library I maintain as the worked example. I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
@@ -79,9 +81,9 @@ Check first: is there a News issue or episode after April 29, 2026? If not, skip
 - **URL:** https://github.com/jfricano/StreamOtter
 - **Title:** StreamOtter 1.0: live Kafka-backed web pages that say when they're stale
 - **What's interesting about it?**
-  > I built this, so I'm biased. Wiring Kafka to a browser is easy; the hard part comes after: after a disconnect, a restart, or one bad record, is the screen still right? StreamOtter gives each view an authoritative snapshot, then full-state updates in revision order, and an explicit `live` or `stale` state, with access decided by your own handlers. A record the gateway can't process holds its source rather than being skipped; new in 1.0, opt-in failure handling can copy it byte for byte to a quarantine topic with a durable incident, and continue past it only when the application's recovery guard proves its snapshots already cover it. Try it: "Drop my connection" on https://streamotter.dev, or run the whole demo on real Kafka with `npm run dev:lab` from github.com/jfricano/lontra-creek. MIT; one gateway per project, and no replay yet. I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
+  > I built this, so I'm biased. Wiring Kafka to a browser is easy; the hard part comes after: after a disconnect, a restart, or one bad record, is the screen still right? StreamOtter gives each view an authoritative snapshot, then full-state updates in revision order, and an explicit `live` or `stale` state, with access decided by your own handlers. A record the gateway can't process holds its source rather than being skipped; new in 1.0, opt-in failure handling can copy it byte for byte to a quarantine topic with a durable incident, and continue past it only when the application's recovery guard proves its snapshots already cover it. Try it: "Drop my connection" on https://streamotter.dev, or run the whole demo on real Kafka with `npm run dev:lab` from github.com/jfricano/lontra-creek. The site also has a Failure Lab where you borrow an isolated bench to break on purpose, though you may wait in a queue for one. MIT; one gateway per project, and no replay yet. I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
   >
-  > **[HOSTED LAB]** Add "and a Failure Lab where you break an isolated bench on purpose" only if the hosted Lab benches are on (D2) and you leased one yourself that day.
+  > **[confirm at launch]** Keep the Failure Lab sentence once you've leased a bench yourself that day. Don't promise a bench.
 
 ## Week 1–2, instead of the Confluent newsletter: Confluent Community Forum, Tools category
 

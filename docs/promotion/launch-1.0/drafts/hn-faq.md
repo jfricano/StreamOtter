@@ -1,8 +1,10 @@
 > **Changed since Sept 27:** version is `1.0.0` (after `1.0.0-rc.1`), so the "pre-1.0, is it production-ready?" entry is rewritten around 1.0's compatibility promise. Domain is `streamotter.dev`. The bad-record entry covers 1.0's failure handling; "No production health endpoint" is gone (opt-in `/health/live` and `/health/ready`). New entries then: why 1.0 so fast; how this differs; poison records; KafkaJS; why no "ignore"; disk and SQLite.
 >
-> **Changed in the Oct 5 fix pass:** a **launch-day card** at the top. **New entries:** "Did you read every line?", "Your tests and reviewers are AI too", "Someone made it lie", "Can you make it lie? What counts?", "Kafka 4.4?", "Is letting strangers break benches on your server a risk?". "Did you build this with AI?" now gives the one sentence from `ai-disclosure.md` and the confirmed review facts, with the "if they were AI agents" hedge removed (accuracy S14). b/kafka-websocket appears only in "how is this different", without a star count, never as a demand signal (FIX_DECISIONS §10). The hosted-Lab pointers now follow D2 in PUBLIC_LAUNCH.md (the hosted Lab only if it's on, for S01 and S06; no hosted quarantine exercises at launch) instead of depending on #42 alone (accuracy B3, S12, S13). The KafkaJS #1603 quote is completed (N12). The bad-records and history material from the dropped reveals is folded in here and in the 1.0 article.
+> **Changed in the Oct 5 fix pass:** a **launch-day card** at the top. **New entries:** "Did you read every line?", "Your tests and reviewers are AI too", "Someone made it lie", "Can you make it lie? What counts?", "Kafka 4.4?", "Is letting strangers break benches on your server a risk?". "Did you build this with AI?" now gives the one sentence from `ai-disclosure.md` and the confirmed review facts, with the "if they were AI agents" hedge removed (accuracy S14). b/kafka-websocket appears only in "how is this different", without a star count, never as a demand signal (FIX_DECISIONS §10). The hosted-Lab pointers now follow D2 in PUBLIC_LAUNCH.md (the hosted Lab only if it's on, for S01 and S06; no hosted quarantine exercises at launch) instead of depending on #42 alone (accuracy B3, S12, S13) (superseded Oct 7: D2 is no). The KafkaJS #1603 quote is completed (N12). The bad-records and history material from the dropped reveals is folded in here and in the 1.0 article.
 >
 > **Changed in the Oct 5 architecture check:** a new **"Architecture"** section (commit point and crash windows, whole-state frames, backpressure, tenant isolation, where state lives, throughput, one gateway and V2, the six packages), each point citing repo paths at 1c75aaa; the old deltas one-liner now points there. Fixed: "slow clients disconnected" (an overflowing subscription re-snapshots; only a missing receipt disconnects), durable incidents need a state directory, and the load-test quote is now exact. See `REVIEW.md`.
+>
+> **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and /blog are launch gates; conditionals removed.
 >
 > **Placeholders in this file:** `{{MAKE_IT_LIE_LINK}}` (the pinned Discussion's URL) · `{{MAKE_IT_LIE_LOCAL_LINK}}` (the published no-Kafka recipe, from `drafts/make-it-lie-local.md`). Answers that depend on the 1.0 gate are marked **[update at 1.0]**; open checks are **[confirm V1.2]** and **[jason: your words]**.
 
@@ -67,7 +69,7 @@
 - Never skipped: mapper errors and timeouts, routing failures, revision conflicts, tombstones and oversize records always pause.
 - Lineage, if it fits: the design was inspired by kafka-penguin (another OSLabs project; strategies FailFast, Ignore, Dead Letter Queue). Hold is the fail-fast idea, quarantine is the DLQ idea, and StreamOtter adds the browser side (views go `stale`), the recovery guard, the incident journal, operator retry and reassess for held records, and redrive for records already moved past.
 - What's not tested yet: a broker with ACLs enabled, network partitions, disk loss, managed Kafka, a crash during a downgrade **[update at 1.0]**.
-- Point to: `docs/guides/source-failures.md` (the runbook), and the two local ways to see it: the scaffold's fixture with a `{ key, raw }` malformed record (§2.5; recipe {{MAKE_IT_LIE_LOCAL_LINK}}, verified Oct 5 on 0.2.0-rc.1: the source pauses and the incident is quarantine-held with local evidence), or `npm run dev:lab` in the public `jfricano/lontra-creek` repo (Docker; the source-failure exercises arrive with Lontra Creek #42 **[update at 1.0: only if #42 has merged]**). On the hosted Lab, point to "Fouled sensor" only if the hosted Lab is on (D2) and you leased a bench that day. Don't point to quarantine exercises on streamotter.dev: until a hosting configuration change lands, it runs only S01 and S06, and that change waits until after launch (D2).
+- Point to: `docs/guides/source-failures.md` (the runbook), and the two local ways to see it: the scaffold's fixture with a `{ key, raw }` malformed record (§2.5; recipe {{MAKE_IT_LIE_LOCAL_LINK}}, verified Oct 5 on 0.2.0-rc.1: the source pauses and the incident is quarantine-held with local evidence), or `npm run dev:lab` in the public `jfricano/lontra-creek` repo (Docker; the source-failure exercises come with Lontra Creek #42, merged (6cb47e9); re-pin and deploy pending). On streamotter.dev/lab/, the hosted Lab runs S01–S06, including the quarantine exercises such as "Garbled reading"; say a visitor may wait for a bench **[confirm at launch: you leased one yourself that day]**. S07–S09 are local and CI only, by design.
 
 **"Why no 'ignore' or skip policy?"** *(new)*
 - Deliberate. For a state view, a silently skipped record means a screen that looks `live` but is missing a change, which is the one thing the project promises not to do.
@@ -112,7 +114,7 @@
 
 **"Can you make it lie? What counts?"** *(new)*
 - The rule: make a subscribed view report `live` while it shows something other than the newest state its snapshot and the topic's revisions imply, or get a bad record skipped silently, or get a quarantine copy that isn't byte for byte.
-- Where: the home page's "Drop my connection"; the scaffold's fixture locally (no Kafka; {{MAKE_IT_LIE_LOCAL_LINK}}); `npm run dev:lab` in `jfricano/lontra-creek` (real Kafka in Docker); your own Kafka; a hosted Lab bench only if the hosted Lab is on.
+- Where: the home page's "Drop my connection"; the scaffold's fixture locally (no Kafka; {{MAKE_IT_LIE_LOCAL_LINK}}); `npm run dev:lab` in `jfricano/lontra-creek` (real Kafka in Docker); your own Kafka; a hosted Lab bench at streamotter.dev/lab/ (S01–S06; they may wait in the queue for one).
 - Out of scope: load or attacks on streamotter.dev or its server, anything affecting other visitors, and the documented limits (one gateway, no replay of missed updates). Security problems go privately through `SECURITY.md`.
 - What they get: found-by credit in the changelog and release notes, if they want it. No bounty.
 
@@ -296,15 +298,15 @@
 
 **The demo is down or full.**
 - Reply once, in your own words, near the top of the thread:
-  - the demo runs on one shared server with deliberate limits (300 gateway connections, and, if the hosted Lab is on (D2), three Lab benches at the contract defaults; confirm both at T-7), since one gateway is the supported topology;
+  - the demo runs on one demo server with deliberate limits (300 gateway connections, and three Lab benches at the contract defaults; confirm both at T-7), since one gateway is the supported topology;
   - when it's full, the gateway reports `OVERLOADED`, which is StreamOtter enforcing its limits;
   - the same thing runs locally: four commands and no Kafka for StreamOtter itself, or `npm run dev:lab` in `jfricano/lontra-creek` for the whole demo on real Kafka (Docker).
 - Don't change the submission URL, and don't apologize at length.
 
-**"Is letting strangers break benches on your server a security risk?"** *(new; only if the hosted Lab is on)*
+**"Is letting strangers break benches on your server a security risk?"** *(new)*
 - Each visitor gets an isolated bench with its own gateway and Kafka path; actions affect only the leased bench. The Lab's contract limits are defaults, not measured capacity: 3 benches, a 300 s maximum lease, 2 per IP, a queue of 50 (lontra-creek `docs/contracts/lab-api.md` §2).
 - The demo server is hosted separately from the library; load or attacks against it are out of scope for the invitation, and security reports go through `SECURITY.md`.
-- If the hosted Lab is off, the answer is simpler: it's off; the Lab runs locally with `npm run dev:lab`.
+- If no bench is free, visitors wait in the queue (up to 50 at the contract defaults), and the same Lab runs locally with `npm run dev:lab`.
 
 **Someone finds a real bug.** Thank them, confirm what you can reproduce, open an issue and link it. If the docs were wrong, fix them and say so.
 

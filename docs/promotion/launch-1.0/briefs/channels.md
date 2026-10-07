@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | **streamotter.dev is publicly live** | The home page, Field station, Failure Lab (`/lab/`, 4 exercises: Fouled sensor, relay cut, slow client, gateway restart; bench "Not leased"), Playground, Workbench, When it breaks, Docs, Releases and GitHub all load. | The Sept plan's "launch when the site is live" trigger has already fired for V1. Any channel post would now land on a working demo. |
 | **The site shows `v0.1.0-rc.3`** | Header: "v0.1.0-rc.3 · MIT". `/releases` lists only `0.1.0-rc.3`, "The API may change before 0.1.0". | npm `latest` is `0.2.0-rc.1` (FACTS.md). Every channel ends at a page whose version disagrees with npm. Fix this before any submission (hand-off for the site and its hosting setup). |
-| `streamotter.dev/blog` | 404 | The canonical-move option below needs a blog page first. |
+| `streamotter.dev/blog` | 404 | The canonical move below needs a blog page first. Since D2 (Jason, 2026-10-07), `/blog` with an RSS feed is a launch gate: the launch date waits for it. |
 | **Medium article** ([link](https://kaleidoscopesharts.medium.com/introducing-streamotter-07b26a132f81)) | Dated Sept 26, 2026. **It still contains "[DEMO URL, added at launch]".** I found **no AI-assistance sentence**. I could not detect the `zsession` typo (it may be fixed). No link to streamotter.dev. | Medium gives undisclosed AI-assisted writing "Network Only" distribution (see Medium below). This is the Sept plan's item #1, still open. |
 | GitHub repo | 0 stars, homepage still points to the npm org page, last push 2026-10-05 (`gh api`). | Awesome lists that set star floors are still months away. |
 
@@ -155,8 +155,9 @@ None of the Kafka lists includes a Kafka-to-browser-state tool today. Unmet-dema
   - "AI-generated writing (disclosed as such or not) is not allowed to be paywalled as part of our Partner Program."
   - The live article has no such sentence today, so it is likely capped at followers.
 - **Moving the article's home (canonical link)** ([Medium help](https://help.medium.com/hc/en-us/articles/360033930293-Set-a-canonical-link)):
-  1. Publish the piece first on the site, e.g. `streamotter.dev/blog/introducing-streamotter`. `/blog` is a 404 today, so this needs a site change first.
-  2. On Medium: story → ⋯ → **Edit story** → ⋯ → **More settings** → **Advanced Settings** → "**This story was originally published elsewhere**" → enter the URL → **Save canonical link** → **Publish**.
+  1. Publish the 1.0 article first on the site, e.g. `streamotter.dev/blog/introducing-streamotter`, on T-1, after the go/no-go. `/blog` is a 404 today. Since D2 (2026-10-07) it is a launch gate.
+  2. Then edit the September Medium story in place to the 1.0 text. Never post a second Medium story.
+  3. On Medium: story → ⋯ → **Edit story** → ⋯ → **More settings** → **Advanced Settings** → "**This story was originally published elsewhere**" → enter the URL → **Save canonical link** → **Publish**.
 
   Only the author can set it. Gotcha: the setting is worded for content "originally published elsewhere". Here the Medium copy came first, so the site version should keep its Sept 26, 2026 original date. Search engines treat canonical as a hint. dev.to and Hashnode then point their canonical at the same site URL.
 - **Publications** (for later articles, not the announcement):
@@ -177,7 +178,7 @@ None of the Kafka lists includes a Kafka-to-browser-state tool today. Unmet-dema
 
 | Phase | Channels |
 | --- | --- |
-| **Now, before `1.0.0-rc.1`** | Fix the site's version (rc.3 vs `0.2.0-rc.1`) and the Medium placeholder and AI sentence. Jason checks his HN account and takes part on HN in his own words. KafkaSocks co-author note (Sept plan). Decide whether `/blog` exists for the canonical move. |
+| **Now, before `1.0.0-rc.1`** | Fix the site's version (rc.3 vs `0.2.0-rc.1`) and the Medium placeholder and AI sentence. Jason checks his HN account and takes part on HN in his own words. KafkaSocks co-author note (Sept plan). `/blog` with RSS is a launch gate (D2, 2026-10-07), so the canonical move happens at launch. |
 | `1.0.0-rc.1` | Console.dev Betas (the label qualifies). No Show HN yet, unless the rc *is* the launch. |
 | **T-0 (1.0 launch)** | Show HN; LinkedIn (mention the OSLabs lineage). |
 | T+1 | Cooperpress email; Changelog News if the submit page works. |
