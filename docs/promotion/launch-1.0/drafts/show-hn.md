@@ -63,7 +63,7 @@ About 200–300 words, your own voice, no marketing adjectives. In this order.
    - Reports go to {{MAKE_IT_LIE_LINK}}; found-by credit in the changelog if they want it. You'll reproduce each one.
 
 3. **How you built it** (must-say; same words as everywhere else):
-   - Type this sentence yourself, word for word from `ai-disclosure.md`: "I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews."
+   - Type this sentence yourself, word for word from `ai-disclosure.md`: "I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code."
    - Then, briefly, the checks that don't come from the model: tests against real Apache Kafka 4.1.2 (TLS, SASL PLAIN and SCRAM, plus a three-broker cluster for the quarantine path), browser tests, installs from the registry, a deployment behind a proxy. And point 2: anyone can try to break it.
    - Expect "why 1.0 so fast?" (repo created September 25) and "did you read every line?". Both are prepared in `hn-faq.md`.
 

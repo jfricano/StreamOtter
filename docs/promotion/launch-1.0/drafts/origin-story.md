@@ -33,7 +33,7 @@ StreamOtter, which reached 1.0 this week, starts from the question KafkaSocks sk
 
 If you used KafkaSocks: a migration guide is planned for StreamOtter 1.x. Tell me what you'd need from it.
 
-I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
+I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
 
 [jason, optional: a thank-you to the KafkaSocks co-authors or to OSLabs.]
 

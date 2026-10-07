@@ -30,7 +30,7 @@ Suggested description (<= 155 chars): "An open-source Node.js gateway and TypeSc
 
 *{{PUBLICATION_DATE}} · Jason Fricano*
 
-*I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.* *This article was drafted with AI assistance and edited by me.*
+*I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.* *This article was drafted with AI assistance and edited by me.*
 
 <!-- The two italic lines above are required (ai-disclosure.md). Keep them within the first two paragraphs: Medium asks for that. -->
 

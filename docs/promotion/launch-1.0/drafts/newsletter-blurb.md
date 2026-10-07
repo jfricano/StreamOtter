@@ -42,7 +42,7 @@ StreamOtter (MIT) is a Node.js gateway and TypeScript SDK for live, Kafka-backed
 >
 > It's self-service and free: `npm install streamotter`, then a CLI that scaffolds a project and runs a local gateway with a workbench, no Kafka needed to start. The docs, including what's verified and what isn't, are in the repository. I maintain it on my own.
 >
-> I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
+> I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
 >
 > GitHub: https://github.com/jfricano/StreamOtter · npm: https://www.npmjs.com/package/streamotter
 >
@@ -58,7 +58,7 @@ StreamOtter (MIT) is a Node.js gateway and TypeScript SDK for live, Kafka-backed
 >
 > [2–3 sentence blurb]
 >
-> I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
+> I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
 >
 > GitHub: https://github.com/jfricano/StreamOtter
 > Live demo: https://streamotter.dev **[update at 1.0: only if the home page's live panel answers that day]**
@@ -72,7 +72,7 @@ StreamOtter (MIT) is a Node.js gateway and TypeScript SDK for live, Kafka-backed
 - **What to submit:** the 1.0 article's canonical URL on streamotter.dev/blog, not the repo. The newsletter is vendor-neutral and asks authors to "avoid overt product promotion", so if you'd rather wait for a more technical piece (for example the snapshot-versus-update race), that's fine too.
 - **How:** open a pull request to https://github.com/ananthdurai/dataengineeringweekly adding the article title and link under the `weekly/` folder, following the latest file's format. Check the repo's README first: whether this route is still used wasn't verified.
 - **PR description (your words):**
-  > I wrote this. It's about keeping Kafka-backed web views honest after disconnects, restarts and bad records, with the open-source library I maintain as the worked example. I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
+  > I wrote this. It's about keeping Kafka-backed web views honest after disconnects, restarts and bad records, with the open-source library I maintain as the worked example. I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
 
 ## T+1, only if it's still publishing: Changelog News (changelog.com/news/submit; sign-in required)
 
@@ -81,7 +81,7 @@ Check first: is there a News issue or episode after April 29, 2026? If not, skip
 - **URL:** https://github.com/jfricano/StreamOtter
 - **Title:** StreamOtter 1.0: live Kafka-backed web pages that say when they're stale
 - **What's interesting about it?**
-  > I built this, so I'm biased. Wiring Kafka to a browser is easy; the hard part comes after: after a disconnect, a restart, or one bad record, is the screen still right? StreamOtter gives each view an authoritative snapshot, then full-state updates in revision order, and an explicit `live` or `stale` state, with access decided by your own handlers. A record the gateway can't process holds its source rather than being skipped; new in 1.0, opt-in failure handling can copy it byte for byte to a quarantine topic with a durable incident, and continue past it only when the application's recovery guard proves its snapshots already cover it. Try it: "Drop my connection" on https://streamotter.dev, or run the whole demo on real Kafka with `npm run dev:lab` from github.com/jfricano/lontra-creek. The site also has a Failure Lab where you borrow an isolated bench to break on purpose, though you may wait in a queue for one. MIT; one gateway per project, and no replay yet. I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
+  > I built this, so I'm biased. Wiring Kafka to a browser is easy; the hard part comes after: after a disconnect, a restart, or one bad record, is the screen still right? StreamOtter gives each view an authoritative snapshot, then full-state updates in revision order, and an explicit `live` or `stale` state, with access decided by your own handlers. A record the gateway can't process holds its source rather than being skipped; new in 1.0, opt-in failure handling can copy it byte for byte to a quarantine topic with a durable incident, and continue past it only when the application's recovery guard proves its snapshots already cover it. Try it: "Drop my connection" on https://streamotter.dev, or run the whole demo on real Kafka with `npm run dev:lab` from github.com/jfricano/lontra-creek. The site also has a Failure Lab where you borrow an isolated bench to break on purpose, though you may wait in a queue for one. MIT; one gateway per project, and no replay yet. I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
   >
   > **[confirm at launch]** Keep the Failure Lab sentence once you've leased a bench yourself that day. Don't promise a bench.
 
@@ -97,7 +97,7 @@ Post once, in your own words; the forum's etiquette asks for no cross-posting. h
 >
 > Would you ever let a guard move a consumer past a record, or always hold for a human?
 >
-> I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
+> I built StreamOtter with Claude Code and Codex: I set the direction, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
 >
 > GitHub: https://github.com/jfricano/StreamOtter · Runbook: https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md
 
