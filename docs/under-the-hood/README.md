@@ -2,7 +2,7 @@
 
 October 7, 2026 · Written from `main` at 1c75aaa (packages at `0.2.0-rc.1`) · Reviewed for publication
 
-Five guides that explain StreamOtter without reading every line of code, for engineers deciding whether to adopt it, would-be contributors, and curious readers. Start with the [introduction](./index.html), which says what each part covers and suggests a reading order for each kind of reader. Each page is a self-contained HTML file: open it in a browser. The pages link to each other.
+Five short parts that explain StreamOtter without reading every line of code, for engineers deciding whether to adopt it, would-be contributors, and curious readers. Start with the [introduction](./index.html), which says what each part covers and suggests a reading order for each kind of reader. Each page is a self-contained HTML file: open it in a browser. The pages link to each other.
 
 | Part | Page | What it covers |
 | --- | --- | --- |
