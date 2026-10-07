@@ -4,10 +4,12 @@
  * The palette, type and header follow streamotter.dev, so the two read as one site, and the
  * header links back to it.
  */
-import "@fontsource-variable/figtree";
+import "@fontsource-variable/schibsted-grotesk";
+import "@fontsource-variable/source-sans-3";
+import "@fontsource-variable/source-sans-3/wght-italic.css";
 import "@fontsource-variable/jetbrains-mono";
 import "../styles/global.css";
-import figtreeLatin from "@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2?url";
+import sourceSansLatin from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url";
 import LockupHorizontal from "../assets/brand/lockup-horizontal.svg";
 import LockupStacked from "../assets/brand/lockup-stacked.svg";
 import { GUIDES, LINKS, RELEASE, SECTIONS } from "../site.ts";
@@ -34,7 +36,7 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
     <title>{title}</title>
     <meta name="description" content={description} />
     {!noindex && <link rel="canonical" href={canonical} />}
-    <link rel="preload" href={figtreeLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={sourceSansLatin} as="font" type="font/woff2" crossorigin />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -194,8 +196,9 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
     white-space: nowrap;
     color: var(--ink-2);
     text-decoration: none;
+    font-family: var(--display);
     font-size: 0.93rem;
-    font-weight: 500;
+    font-weight: 700;
     padding: 8px 10px;
     border-radius: 8px;
   }
@@ -215,7 +218,8 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
     gap: 12px;
   }
   .gh {
-    font-weight: 600;
+    font-family: var(--display);
+    font-weight: 500;
     font-size: 0.93rem;
     color: var(--ink);
     text-decoration: none;
@@ -232,7 +236,8 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
     white-space: nowrap;
   }
   .home {
-    font-weight: 600;
+    font-family: var(--display);
+    font-weight: 500;
     font-size: 0.93rem;
     color: var(--ink);
     text-decoration: none;
@@ -255,7 +260,8 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
   .menu summary {
     list-style: none;
     cursor: pointer;
-    font-weight: 600;
+    font-family: var(--display);
+    font-weight: 500;
     font-size: 0.93rem;
     border: 1px solid var(--line-strong);
     padding: 7px 12px;

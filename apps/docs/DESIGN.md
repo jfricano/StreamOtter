@@ -18,10 +18,11 @@ the commands.
 | --- | --- | --- |
 | Address | docs.streamotter.dev | A subdomain keeps the docs separate from the demo and needs no new domain. |
 | Repository | StreamOtter, `apps/docs` | The guides, Under the Hood, and the doc comments already live here; a change to an export and its docs lands in one PR. |
-| Framework | Astro 7, static output | It's the same framework as the demo site, so both look alike and share tokens, and it produces plain files that any static host serves. |
+| Framework | Astro 7, static output | It's the same framework as the demo site, so both share colors and components, and it produces plain files that any static host serves. |
 | API reference | TypeDoc 0.28 JSON model, rendered by our own pages | TypeDoc reads the types correctly. Rendering them ourselves keeps the pages in the site's design, with no TypeDoc theme to maintain. |
 | Guides | Astro content collection over `docs/guides/*.md` | They stay ordinary Markdown that also reads well on GitHub. |
 | Under the Hood | Served as is from `docs/under-the-hood/` | Its pages are self-contained HTML with their own type, which jason chose to keep. |
+| Type | Docs: Schibsted Grotesk (headings, labels) + Source Sans 3 (body; 17px for guides and doc comments) + JetBrains Mono (code). Demo site: Figtree + JetBrains Mono. Self-hosted with Fontsource. | jason, 2026-10-07: the docs read as one with Under the Hood, which already uses this pair. |
 | Naming | "Guides" means only `docs/guides/`; the five-part series is "StreamOtter Under the Hood" ("Under the Hood" where space is tight) and its pages are "parts" | jason, so the series isn't confused with the guides in the header and footer. |
 
 ## Routes
