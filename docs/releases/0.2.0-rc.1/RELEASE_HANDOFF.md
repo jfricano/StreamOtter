@@ -4,7 +4,7 @@ October 4, 2026; updated after publication ([verified publication](#verified-pub
 
 ## What ships
 
-One published npm release, `0.2.0-rc.1`, carrying three internal milestones: V1.1 (source-failure handling, workbench host contract), V1.2 (independent quality review fixes) and V1.2.1 (the deferred minor fixes). The user-facing story is the `0.2.0-rc.1` entry in [CHANGELOG.md](../../../CHANGELOG.md), dated October 4.
+One published npm release, `0.2.0-rc.1`, carrying three internal milestones: V1.1 (source-failure handling, workbench host contract), V1.2 (quality review fixes) and V1.2.1 (the deferred minor fixes). The user-facing story is the `0.2.0-rc.1` entry in [CHANGELOG.md](../../../CHANGELOG.md), dated October 4.
 
 All six packages are published at `0.2.0-rc.1` on npm `latest`: `streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli` and `@streamotter/workbench`. Their exact registry tarballs and provenance match the owner-approved source and original publication artifacts below.
 

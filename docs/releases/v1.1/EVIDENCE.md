@@ -57,7 +57,7 @@ Tiers: **fixture** (in-process, `pnpm test`), **kafka** (local single broker, `p
 
 ## Review fixes (October 4, 2026)
 
-The [independent review](./REVIEW.md) found defects behind rows already marked implemented. Their fixes, and the second review's follow-ups (REVIEW.md §5 and §6), added regression tests to these rows. No row's status changed: each was already implemented, and none is verified until an independent run.
+The [code review](./REVIEW.md) found defects behind rows already marked implemented. Their fixes, and the second review's follow-ups (REVIEW.md §5 and §6), added regression tests to these rows. No row's status changed: each was already implemented, and none is verified until an independent run.
 
 | Row | Finding | Added evidence |
 | --- | --- | --- |
