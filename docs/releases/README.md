@@ -5,7 +5,7 @@ This directory owns native package behavior, APIs/configuration, CLI/workbench t
 - [V1.1 — Contain, explain, recover](v1.1/README.md): the approved source-failure increment, renamed from V1.5, plus the published workbench host contract (WHC-1). Shipped in `0.2.0-rc.1`.
 - [V1.2 — Quality review](v1.2/README.md): an independent review of V1 and V1.1 together, and its fixes.
 - [V1.2.1 — Deferred minor fixes](v1.2.1/README.md): fixes for the 33 minor findings V1.2 deferred and the V1.1 review's J7 (issues #21 to #54).
-- [V1.3 — React hooks](v1.3/README.md): planned, not built. A provider and typed hooks on a `./react` subpath of the client package, shipping as `1.1.0` after the public launch; brought forward from V2.2 on October 6, 2026.
+- [V1.3 — React hooks](v1.3/README.md): planned, not built. A provider and typed hooks on a `./react` subpath of the client package, shipping as `1.1.0` after the public launch; brought forward from V2.2 on October 6, 2026. Its demo, [Pup Patrol](v1.3/PUP_PATROL.md), is a React game planned for its own repository and domain.
 - **Current release:** V1.1, V1.2 and V1.2.1 shipped together as `0.2.0-rc.1`, published to npm `latest` on October 5, 2026, with one CHANGELOG entry. The milestone folders keep each increment's plan, evidence and log.
 - **Next:** fixes ship as `0.2.0-rc.N`; `1.0.0` is the V1 public launch, with later milestones as `1.x` minors ([npm versions](../API_AND_FEATURE_ROADMAP.md#npm-versions)).
 - [0.2.0-rc.1 release handoff](0.2.0-rc.1/RELEASE_HANDOFF.md): PRs and merge order, the verified publication, remaining limitations, acceptance checks and rollback.

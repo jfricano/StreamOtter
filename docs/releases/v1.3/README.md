@@ -86,7 +86,7 @@ Per the roadmap's [npm versions](../../API_AND_FEATURE_ROADMAP.md#npm-versions),
 
 So V1.3 adds nothing to the 1.0.0 launch gate (the V1.1 acceptance-packet checks), and the launch's documentation keeps pointing at the copyable hook pattern until 1.1.0 exists. Because `react` is an optional peer and the SDK's existing surface is unchanged, 1.1.0 is a plain minor for every current user. All six packages move to 1.1.0 together, as usual.
 
-Lontra Creek's demo of the hooks (a React game on the creek's public channels) is planned in the Lontra Creek repository under `docs/releases/v1.3/`; it installs `streamotter@1.1.0` from npm once published and never links this repository, per its ground rules.
+The demo of the hooks is [Pup Patrol](./PUP_PATROL.md), a React game on the creek's public channels, in its own repository under the orca-solutions organization on lontracreek.dev; it installs `streamotter@1.1.0` from npm once published and never links this repository. The plan lives here until that repository exists.
 
 ## Acceptance
 
