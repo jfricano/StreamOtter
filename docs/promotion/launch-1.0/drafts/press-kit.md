@@ -42,7 +42,7 @@ Image: `lineage-strip.png` from the launch visuals in PR #65 (also `-dark`, `-sq
 
 ## About the maintainer
 
-`{{MAINTAINER_BIO}}` — in your words, for example: your role or background; that you co-wrote KafkaSocks at OSLabs; that you maintain StreamOtter on your own. Then the AI sentence from `ai-disclosure.md`, word for word: "I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code." Optional: https://github.com/jfricano.
+`{{MAINTAINER_BIO}}` — in your words, for example: your role or background; that you co-wrote KafkaSocks at OSLabs; that you maintain StreamOtter on your own. Then the AI sentence from `ai-disclosure.md`, word for word: "I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews." Optional: https://github.com/jfricano.
 
 ## Key links
 
@@ -66,7 +66,7 @@ Image: `lineage-strip.png` from the launch visuals in PR #65 (also `-dark`, `-sq
 | Current version | `1.0.0`, released `{{LAUNCH_DATE}}` after `1.0.0-rc.1` (`{{RC1_DATE}}`). From 1.0.0, every public operation keeps working until a new major version (roadmap §8). |
 | Earlier releases | `0.1.0-rc.1` to `rc.3` (V1, September 25, 2026); `0.2.0-rc.1` (V1 plus source-failure handling and two review-and-fix milestones, October 2026) |
 | License | MIT, © 2026 Orca Solutions |
-| Maintainer | Jason Fricano (GitHub `jfricano`), solo. In his words: "I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code." |
+| Maintainer | Jason Fricano (GitHub `jfricano`), solo. In his words: "I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews." |
 | Packages | `streamotter` (everything in one install), `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, `@streamotter/contracts`, `@streamotter/workbench`, released together with one version, with npm provenance |
 | Runtime | Node.js 24 or later for the gateway and CLI (24.15 or later where the failure-handling journal runs); current evergreen browsers for the SDK |
 | Built on | KafkaJS 2.2.4 (pinned behind an internal adapter); Socket.IO 4.8.3, WebSocket only; Node's built-in SQLite for the incident journal |

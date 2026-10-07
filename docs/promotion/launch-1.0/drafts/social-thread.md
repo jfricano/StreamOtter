@@ -20,7 +20,7 @@
 I built StreamOtter: open source (MIT), Kafka-backed live views for web apps. 1.0.0 is out today. Try it: press "Drop my connection" on https://streamotter.dev. Every view says stale, then comes back live from a fresh snapshot. A short thread:
 
 **2/**
-I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
+I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
 
 **3/**
 The problem: after a dropped connection, a restart, or one bad record, a live page can keep showing old numbers with nothing to say so. StreamOtter makes the state explicit: authorizing → synchronizing → live, or stale until it has resynchronized.
@@ -41,7 +41,7 @@ Locally, no Kafka needed: npm install streamotter, then npx streamotter init . L
 
 **Notes**
 
-- Character counts (URLs in full; X shortens links to 23 characters): 1: 243 · 2: 270 · 3: 247 · 4: 255 · 5: 138 plus the link · 6: 250 · 7: 227. Recount after any edit.
+- Character counts (URLs in full; X shortens links to 23 characters): 1: 243 · 2: 274 · 3: 247 · 4: 255 · 5: 138 plus the link · 6: 250 · 7: 227. Recount after any edit.
 - **Post 1 [update at 1.0]:** on launch morning, check in a browser that the home page's live panel answers and shows 1.0.0. On October 5 it showed `v0.1.0-rc.3`, and whether its live demo answers couldn't be confirmed from the static page (the page's no-JavaScript fallback says it isn't answering). If it isn't answering, replace the "Try it" sentence with "Every view is either live or says it's stale."
 - **Post 2** must match `ai-disclosure.md` word for word.
 - **Post 6 accuracy:** quarantine is opt-in and applies to invalid JSON and payload-schema failures; the default `pause` policy copies nothing (with `failureHandling` on it still records an incident; without `failureHandling` there's no journal at all). Other failure classes always pause. "Held until someone decides" is `quarantine-hold`. If someone asks, the runbook is https://github.com/jfricano/StreamOtter/blob/main/docs/guides/source-failures.md. On Mastodon or Bluesky you can link kafka-penguin (`github.com/oslabs-beta/kafka-penguin`).

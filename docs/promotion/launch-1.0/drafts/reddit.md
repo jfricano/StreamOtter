@@ -35,7 +35,7 @@ Post Tuesday–Thursday mornings US time (a heuristic), except r/webdev.
 - **The pitch, accurately:** "you define the state shape and one mapping function, plus the snapshot and access checks your app already has; StreamOtter does the rest."
 - **The invitation:** "Can you make it lie? Get a view to say `live` while it shows something other than the newest state its snapshot and the topic's revisions imply, or get a bad record skipped silently. Reports: {{MAKE_IT_LIE_LINK}}."
 - **Ways to break it:** "Drop my connection" on the streamotter.dev home page **[update at 1.0: check it answers on 1.0.0]**; locally with no Kafka, a fixture record with raw text (`{ key, raw: "{not json" }`) and a `quarantine-hold` policy: the source pauses at it and the incident is quarantine-held with local evidence (recipe: {{MAKE_IT_LIE_LOCAL_LINK}}, verified Oct 5 on 0.2.0-rc.1; it didn't check the browser view); locally on real Kafka, `npm run dev:lab` in https://github.com/jfricano/lontra-creek (Docker and Compose 2.24.4+; public, checked Oct 5); and a hosted Failure Lab bench at https://streamotter.dev/lab/ (Source failures S01–S06 and the connection exercises; there are only a few benches, so you may wait in a queue) **[confirm at launch: you leased one yourself]**.
-- **AI sentence (word for word, every post):** "I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code."
+- **AI sentence (word for word, every post):** "I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews."
 
 Links used below:
 - GitHub: https://github.com/jfricano/StreamOtter
@@ -80,7 +80,7 @@ Questions:
 
 If you want to break it: with no Kafka, the scaffold's fixture source takes a record with raw text (`{ key, raw: "{not json" }`), so you can watch `quarantine-hold` pause the source at that record and hold the incident with local evidence, then try to get the preview to say `live` while it's missing the later revisions (recipe: {{MAKE_IT_LIE_LOCAL_LINK}}). On real Kafka, `npm run dev:lab` in the demo's public repo (https://github.com/jfricano/lontra-creek; Docker, Compose 2.24.4+) runs the whole stack with three Lab benches locally, including a "Fouled sensor" exercise where you trigger the pause yourself. **[update at 1.0: add "and the quarantine exercises, such as Garbled reading" once you've run them locally; Lontra Creek #42 is merged (6cb47e9); re-pin and deploy pending.]** If you can make a view say `live` while it's wrong, or get a bad record skipped silently, I want to know: {{MAKE_IT_LIE_LINK}}
 
-I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
+I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
 
 Code and the runbook: https://github.com/jfricano/StreamOtter · Failure Lab: https://streamotter.dev/lab/ (the Source failures exercises S01–S06 run there, quarantine included; you may wait for a bench) **[confirm at launch: you leased a bench that day]**
 
@@ -108,7 +108,7 @@ Node 24+, tested on 24 and 26. Limits: one gateway per project, no replay of mis
 
 Has anyone moved a production service off KafkaJS? What did you pick, and what bit you?
 
-I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
+I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
 
 If you can get a view to say `live` while it's wrong, I want to know: {{MAKE_IT_LIE_LINK}}. The quickest try is "Drop my connection" on the demo's home page.
 
@@ -149,7 +149,7 @@ Try it without Kafka: `npm install streamotter`, `npx streamotter init .`, `npx 
 
 Limits: one gateway per project, no replay of missed updates, Chromium-only browser tests **[update at 1.0]**, managed Kafka unverified.
 
-I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
+I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
 
 Repo: https://github.com/jfricano/StreamOtter · Demo: https://streamotter.dev
 
@@ -179,7 +179,7 @@ Four commands, no Kafka needed: `npm init -y`, `npm install streamotter`, `npx s
 
 Limits: one gateway per project, no replay (after a gap you get a fresh snapshot), Chromium-only browser tests **[update at 1.0]**, managed Kafka unverified.
 
-I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
+I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
 
 Live demo: press "Drop my connection" on https://streamotter.dev and watch every view say `stale` until fresh snapshots arrive · Code: https://github.com/jfricano/StreamOtter
 
@@ -214,7 +214,7 @@ Technical bits: the UI state comes straight from the SDK (`authorizing → synch
 
 Limits: one gateway per project, no replay of missed updates, Chromium-only browser tests **[update at 1.0]**. The creek is fiction; the pipeline is real.
 
-I built StreamOtter with Claude Code: I set the direction and the spec, made the decisions and reviewed the work, and the test suites, including real Kafka, are how I checked it. The pre-1.0 code reviews were done by fresh AI agent sessions that hadn't written the code.
+I built StreamOtter with Codex and Claude Code. Codex designed almost all of the spec and built much of 1.0; I set the direction, made the decisions and reviewed the work. Real-Kafka test suites are how I checked it, and fresh AI agent sessions did the pre-1.0 code reviews.
 
 Demo: https://streamotter.dev · Code: https://github.com/jfricano/StreamOtter
 
