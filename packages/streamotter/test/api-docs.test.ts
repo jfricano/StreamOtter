@@ -48,6 +48,13 @@ function members(symbol: ts.Symbol, checker: ts.TypeChecker): { name: string; sy
 }
 
 describe("API documentation", () => {
+  it("checks every entry point the package exports", async () => {
+    const manifest = (await import("../package.json", { with: { type: "json" } })).default as { exports: Record<string, unknown> };
+    const exported = Object.keys(manifest.exports).filter(path => path !== "./package.json")
+      .map(path => (manifest.exports[path] as Record<string, string>)["streamotter-source"]!.replace(/^\.\/src\/|\.ts$/g, ""));
+    assert.deepEqual([...exported].sort(), [...ENTRIES].sort(), "add the new entry point to ENTRIES here and to apps/docs/src/api-reference/modules.ts");
+  });
+
   it("every public export of the streamotter entry points has a doc comment, and so does each member", () => {
     const built = program();
     const checker = built.getTypeChecker();

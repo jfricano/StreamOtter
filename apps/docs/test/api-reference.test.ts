@@ -132,6 +132,12 @@ describe("the reference for the workspace's streamotter package", () => {
   let reference: ApiReference;
   before(async () => { reference = await loadApiReference(); });
 
+  test("documents every entry point the package exports", async () => {
+    const manifest = (await import("streamotter/package.json", { with: { type: "json" } })).default as { exports: Record<string, unknown> };
+    const exported = Object.keys(manifest.exports).filter(path => path !== "./package.json").map(path => `streamotter${path.slice(1)}`);
+    assert.deepEqual([...exported].sort(), API_MODULES.map(module => module.importPath).sort(), "add the new entry point to src/api-reference/modules.ts");
+  });
+
   test("describes the package version the site documents", () => {
     assert.equal(reference.release, RELEASE);
   });
