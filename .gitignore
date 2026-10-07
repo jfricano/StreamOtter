@@ -10,9 +10,10 @@ coverage/
 tests/.generated-contracts/
 # Local instructions for Claude Code; not part of the published repository.
 CLAUDE.md
-# Private promotion planning; not part of the published repository.
-docs/promotion/
 
 # StreamOtter failure journal (V1.1 spec §12): decision state, never committed
 journal.sqlite*
 journal.lock
+
+# Weekly launch metrics snapshot (docs/promotion/PLAN.md): kept local, never quoted publicly
+docs/promotion/metrics.csv
