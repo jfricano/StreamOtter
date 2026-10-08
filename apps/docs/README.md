@@ -26,6 +26,8 @@ member, so the reference has no blank entries.
 
 ## Publish
 
-Build from a release tag, so every page describes that release: its guides, its declarations,
-and source links to that tag. The output is static files in `apps/docs/dist/`. Hosting and DNS
-for docs.streamotter.dev are not set up yet.
+A build is a preview unless `DOCS_CHANNEL=release`: every page carries the unreleased-preview
+banner and `noindex`, and repository links open on main. docs.streamotter.dev is built only from
+a release tag, with `DOCS_CHANNEL=release`, and the build fails anywhere else. DESIGN.md's
+"Publishing" section has the policy and the build steps. The output is static files in
+`apps/docs/dist/`. Hosting and DNS for docs.streamotter.dev are not set up yet.

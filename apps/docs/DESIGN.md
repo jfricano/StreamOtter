@@ -8,7 +8,8 @@ the commands.
 - One place for everything a developer reads: the guides, the API reference, and Under the Hood.
 - No second copy. Every page is built from files that already exist in this repository, so the
   docs change in the same pull request as the code they describe.
-- Each published build describes exactly one release.
+- docs.streamotter.dev describes exactly one release, the one npm installs. A preview of
+  unreleased work says so on every page and stays out of search engines.
 - Kept apart from the demo site (streamotter.dev, in the lontra-creek repository). The demo site
   links here once ("Docs and API"), and its old `/docs/` address redirects here.
 
@@ -23,6 +24,7 @@ the commands.
 | Guides | Astro content collection over `docs/guides/*.md` | They stay ordinary Markdown that also reads well on GitHub. |
 | Under the Hood | Served as is from `docs/under-the-hood/` | Its pages are self-contained HTML with their own type, which jason chose to keep. |
 | Type | Docs: Schibsted Grotesk (headings, labels) + Source Sans 3 (body; 17px for guides and doc comments) + JetBrains Mono (code). Demo site: Figtree + JetBrains Mono. Self-hosted with Fontsource. | jason, 2026-10-07: the docs read as one with Under the Hood, which already uses this pair. |
+| Releases | Production builds only from a release tag (`DOCS_CHANNEL=release`); any other build is a preview with a banner and `noindex` | jason, 2026-10-08: main documents 1.0 while npm `latest` is 0.2.0-rc.1. See "Publishing". |
 | Naming | "Guides" means only `docs/guides/`; the five-part series is "StreamOtter Under the Hood" ("Under the Hood" where space is tight) and its pages are "parts" | jason, so the series isn't confused with the guides in the header and footer. |
 
 ## Routes
@@ -112,11 +114,74 @@ Heading anchors follow GitHub's rules, so anchors written for GitHub keep workin
 
 ## Publishing (not set up yet)
 
-- Build from a release tag:
-  `pnpm install --frozen-lockfile && pnpm build && pnpm --filter @streamotter/docs build`.
-- Serve `apps/docs/dist/` from any static host (for example Cloudflare Pages, like the demo
-  site) at docs.streamotter.dev.
-- On the demo site:
+### Release policy
+
+jason set this on 2026-10-08. Main documents the 1.0 API (the trimmed exports and the React
+hooks), but npm `latest` is still 0.2.0-rc.1, so a reader who followed main's docs would reach
+for exports that aren't published.
+
+- **Production (docs.streamotter.dev)** is built only from a release tag, starting with
+  `v1.0.0`, and deployed when that version is published to npm. Until 1.0.0 is published,
+  production stays dark: no deploy and no DNS record.
+- **Before 1.0**, the only deploy is a preview, at a preview address such as Cloudflare Pages'
+  `*.pages.dev`, never at docs.streamotter.dev. Every page of a preview carries a banner reading
+  "Unreleased 1.0 preview, npm latest is 0.2.0-rc.1." and a robots `noindex`.
+- Each later release works the same way: production rebuilds from the new tag once npm has
+  it, and previews show main in between.
+
+### The DOCS_CHANNEL switch
+
+`integrations/release-channel.mjs` reads `DOCS_CHANNEL` when the site is built.
+
+| | `DOCS_CHANNEL=release` | Unset or `preview` (the default) |
+| --- | --- | --- |
+| For | docs.streamotter.dev | A preview address |
+| Builds from | The release tag, checked out with its tags | Main |
+| Banner | None | "Unreleased 1.0 preview, npm latest is \<version\>." above the header on every page, and in Under the Hood's top bar |
+| Search engines | Indexed: canonical links, robots.txt and the sitemap | `<meta name="robots" content="noindex">` on every page, no canonical links, and a `_headers` file sending `X-Robots-Tag: noindex` for every path |
+| Version shown | `v1.0.0` | `1.0 preview` |
+| Repository and source links | Open at the tag | Open at main |
+
+A release build fails before it builds anything unless both of these hold:
+
+- `packages/streamotter/package.json` has a released version, with no `-rc` or other
+  prerelease part;
+- the checkout's HEAD carries that version's tag (`git tag --points-at HEAD`), such as
+  `v1.0.0` for 1.0.0.
+
+The default is preview so that a host nobody configured can't publish a build without the
+banner. The banner's version is the workspace's, which is npm's latest until the release commit
+raises it. Its "1.0" is `UPCOMING` in `src/site.ts`; raise it after each release.
+
+### Build steps (for whoever sets up hosting)
+
+Both builds need Node 24 and pnpm (the version `packageManager` in the root `package.json`
+pins), and both serve the static files in `apps/docs/dist/`. There is no server, no
+environment at run time, and no secret.
+
+Preview, from main:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build                                  # the packages' declarations, which /api/ reads
+pnpm --filter @streamotter/docs build       # DOCS_CHANNEL unset: a preview
+```
+
+Production, from the release tag:
+
+```sh
+git fetch --tags origin
+git checkout v1.0.0                         # HEAD must carry the tag
+pnpm install --frozen-lockfile
+pnpm build
+DOCS_CHANNEL=release pnpm --filter @streamotter/docs build
+```
+
+- For a host that builds from git (Cloudflare Pages, for example), production's build must
+  start from the tag, with tags fetched: on GitHub Actions, `actions/checkout` with
+  `ref: v1.0.0` does both. A shallow clone of a branch fails the tag check, which is the point.
+- Set `DOCS_CHANNEL=release` only on the production project. A preview project leaves it unset.
+- The demo site, once production is live:
   - replace the Docs page with a "Docs and API" link;
   - redirect `/docs/` and `/docs/*` to `https://docs.streamotter.dev/`.
 - Nothing is deployed and no DNS exists yet; jason decides when.

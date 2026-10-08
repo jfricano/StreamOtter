@@ -1,11 +1,12 @@
 ---
 /**
  * One guide from docs/guides/, rendered from the repository's Markdown. Its own first heading is
- * the page's h1; its links to other repository files open on GitHub at this release's tag.
+ * the page's h1; its links to other repository files open on GitHub at the build's ref
+ * (the release tag, or main in a preview).
  */
 import { getCollection, render } from "astro:content";
 import Base from "../../layouts/Base.astro";
-import { GUIDES, LINKS, RELEASE } from "../../site.ts";
+import { GUIDES, LINKS, REF, VERSION_LABEL } from "../../site.ts";
 
 export async function getStaticPaths() {
   const entries = await getCollection("guides");
@@ -25,7 +26,7 @@ const sections = headings.filter(heading => heading.depth === 2);
 <Base title={`${title} · StreamOtter Docs`} description={guide.summary}>
   <div class="wrap guide-layout">
     <nav class="guide-side" aria-labelledby="guide-list">
-      <p class="eyebrow" id="guide-list">Guides <span>· v{RELEASE}</span></p>
+      <p class="eyebrow" id="guide-list">Guides <span>· {VERSION_LABEL}</span></p>
       <ol>{GUIDES.map(item => <li><a href={`/guides/${item.slug}/`} aria-current={item.slug === guide.slug ? "page" : undefined}>{item.label}</a></li>)}</ol>
       {sections.length > 0 && (
         <>
@@ -40,7 +41,7 @@ const sections = headings.filter(heading => heading.depth === 2);
         {previous ? <a href={`/guides/${previous.slug}/`}><span>Previous</span>{previous.label}</a> : <span />}
         {next && <a class="next" href={`/guides/${next.slug}/`}><span>Next</span>{next.label}</a>}
       </nav>
-      <p class="source muted"><a href={`${LINKS.github}/blob/v${RELEASE}/docs/guides/${guide.slug}.md`}>This guide on GitHub ↗</a></p>
+      <p class="source muted"><a href={`${LINKS.github}/blob/${REF}/docs/guides/${guide.slug}.md`}>This guide on GitHub ↗</a></p>
     </article>
   </div>
 </Base>

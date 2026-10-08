@@ -18,7 +18,7 @@ Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages sha
 
 - React hooks (V1.3, shipping in 1.0.0): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
 - `streamotter/gateway/operator` exports the types that `callOperator`'s requests and results use (`OperatorOperation`, `OperatorRequests`, `IncidentProgress`, `Trace`, `Page` and others), so operator code no longer needs `streamotter/contracts`.
-- The docs site for docs.streamotter.dev (`apps/docs`): the guides, an API reference generated from the doc comments on every public export, and StreamOtter Under the Hood.
+- The docs site for docs.streamotter.dev (`apps/docs`): the guides, an API reference generated from the doc comments on every public export, and StreamOtter Under the Hood. A build is an unreleased preview, with a banner and `noindex`, unless `DOCS_CHANNEL=release`, which builds only from a release tag.
 
 ### Changed
 

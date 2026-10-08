@@ -2,7 +2,7 @@
 import reference from "virtual:streamotter-docs/api-reference";
 import ApiPage from "../../layouts/ApiPage.astro";
 import ExportList from "../../components/api/ExportList.astro";
-import { LINKS } from "../../site.ts";
+import { LINKS, PREVIEW, REF, UPCOMING } from "../../site.ts";
 
 // Every documented symbol once, under its own name, with every path that exports it.
 const all = reference.symbols.map(symbol => ({
@@ -11,7 +11,7 @@ const all = reference.symbols.map(symbol => ({
 })).sort((a, b) => a.name.localeCompare(b.name, "en"));
 const stable = reference.release.includes("-") ? null : reference.release;
 ---
-<ApiPage title="API reference" eyebrow="StreamOtter API" description={`Every export of streamotter@${reference.release}, generated from the type declarations and doc comments the package ships with.`}>
+<ApiPage title="API reference" eyebrow="StreamOtter API" description={PREVIEW ? `Every export of the unreleased StreamOtter ${UPCOMING}, generated from the type declarations and doc comments on the main branch.` : `Every export of streamotter@${reference.release}, generated from the type declarations and doc comments the package ships with.`}>
   <section aria-labelledby="paths">
     <h2 id="paths">Import paths</h2>
     <p class="api-intro">Install <code>streamotter</code> and import from its entry points. Each is also published on its own, as the scoped package shown, for an app that needs only that part, such as a frontend that installs only <code>@streamotter/client</code>.</p>
@@ -37,7 +37,7 @@ const stable = reference.release.includes("-") ? null : reference.release;
   </section>
   <section aria-labelledby="about">
     <h2 id="about">About this reference</h2>
-    <p class="api-intro">This reference describes streamotter@{reference.release}{stable === null ? ", a release candidate whose API may still change" : ""}. It is generated when the site is built, from the declarations and doc comments the package publishes, so it can't drift from the code. Behavior that types can't express, such as ordering, recovery, and the wire protocol, is specified in the <a href={`${LINKS.github}/blob/v${reference.release}/docs/V1_API.md`}>V1 API specification</a>.</p>
+    <p class="api-intro">{PREVIEW ? <>This reference previews the unreleased StreamOtter {UPCOMING} API from the main branch; npm's latest release is streamotter@{reference.release}, which may not have every export here.</> : <>This reference describes streamotter@{reference.release}{stable === null ? ", a release candidate whose API may still change" : ""}.</>} It is generated when the site is built, from the declarations and doc comments the package publishes, so it can't drift from the code. Behavior that types can't express, such as ordering, recovery, and the wire protocol, is specified in the <a href={`${LINKS.github}/blob/${REF}/docs/V1_API.md`}>V1 API specification</a>.</p>
   </section>
 </ApiPage>
 <script>

@@ -2,7 +2,8 @@
 /**
  * Every docs.streamotter.dev page: the header with the docs sections, the page, and the footer.
  * The palette and header follow streamotter.dev, and the header links back to it. The type follows
- * Under the Hood: Schibsted Grotesk and Source Sans 3 (the demo site keeps Figtree).
+ * Under the Hood: Schibsted Grotesk and Source Sans 3 (the demo site keeps Figtree). A preview
+ * build adds the unreleased-preview banner above the header and keeps every page out of search.
  */
 import "@fontsource-variable/schibsted-grotesk";
 import "@fontsource-variable/source-sans-3";
@@ -13,16 +14,17 @@ import schibstedLatin from "@fontsource-variable/schibsted-grotesk/files/schibst
 import sourceSansLatin from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url";
 import LockupHorizontal from "../assets/brand/lockup-horizontal.svg";
 import LockupStacked from "../assets/brand/lockup-stacked.svg";
-import { GUIDES, LINKS, RELEASE, SECTIONS } from "../site.ts";
+import { GUIDES, LINKS, PREVIEW, PREVIEW_BANNER, RELEASE, SECTIONS, UPCOMING, VERSION_LABEL } from "../site.ts";
 
 interface Props {
   title: string;
   description: string;
-  /** Keeps search engines away from the not-found page. */
+  /** Keeps search engines away from the page; every page of a preview build has it. */
   noindex?: boolean;
 }
 
-const { title, description, noindex = false } = Astro.props;
+const { title, description } = Astro.props;
+const noindex = PREVIEW || Astro.props.noindex === true;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const current = Astro.url.pathname;
 /** The current page's own link is the page; a section's link is current on every page inside it. */
@@ -53,6 +55,11 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
+    {PREVIEW && (
+      <aside class="preview-banner" aria-label="Unreleased preview">
+        <p class="wrap"><strong>{PREVIEW_BANNER.title}</strong> {PREVIEW_BANNER.detail}</p>
+      </aside>
+    )}
     <header class="site-header">
       <div class="wrap bar">
         <a class="lockup" href="/" aria-label="StreamOtter docs home">
@@ -64,7 +71,7 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
           {SECTIONS.map(section => <a href={section.href} aria-current={isCurrent(section.href)}>{section.label}</a>)}
         </nav>
         <div class="bar-end">
-          <span class="version" title={`Documents streamotter@${RELEASE}`}>v{RELEASE}</span>
+          <span class="version" title={PREVIEW ? PREVIEW_BANNER.title : `Documents streamotter@${RELEASE}`}>{VERSION_LABEL}</span>
           <a class="home" href={LINKS.home}>streamotter.dev ↗</a>
           <a class="gh" href={LINKS.github}>GitHub</a>
           <details class="menu" data-menu>
@@ -90,7 +97,7 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
           <a class="foot-lockup" href={LINKS.home} aria-label="streamotter.dev">
             <LockupStacked class="brand foot-svg" aria-hidden="true" focusable="false" />
           </a>
-          <p class="muted">Documentation for StreamOtter <code>{RELEASE}</code>, MIT licensed.</p>
+          <p class="muted">{PREVIEW ? <>An unreleased preview of the StreamOtter {UPCOMING} docs, MIT licensed.</> : <>Documentation for StreamOtter <code>{RELEASE}</code>, MIT licensed.</>}</p>
           <p class="muted">Maintained by Jason Fricano · Orca Solutions</p>
         </div>
         <nav class="foot-links" aria-labelledby="foot-guides">
@@ -147,6 +154,17 @@ const isCurrent = (href: string) => (current === href ? "page" : current.startsW
     background: var(--surface);
     padding: 8px 12px;
     border-radius: 8px;
+  }
+
+  .preview-banner {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--line-strong);
+    color: var(--ink);
+    font-size: 0.93rem;
+  }
+  .preview-banner p {
+    margin: 0;
+    padding-block: 8px;
   }
 
   .site-header {
