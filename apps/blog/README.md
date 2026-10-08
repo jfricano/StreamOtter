@@ -106,3 +106,7 @@ Nothing is deployed and no DNS exists yet. Publishing will need:
 - **A deploy step** like the one the docs site plans in `apps/docs/DESIGN.md`: build from main with
   `pnpm install --frozen-lockfile && pnpm --filter @streamotter/blog build`, then upload `dist/`.
   The blog doesn't describe a release, so it doesn't need a release tag.
+
+## Deployment preparation
+
+Manual preview/production workflow proposal, source constraints and owner setup: [deployment runbook](../../docs/SITES_DEPLOYMENT.md). Hosting/domain creation and production remain owner checkpoints; this preparation does not make the site live.

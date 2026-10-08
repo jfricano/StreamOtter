@@ -29,3 +29,7 @@ member, so the reference has no blank entries.
 Build from a release tag, so every page describes that release: its guides, its declarations,
 and source links to that tag. The output is static files in `apps/docs/dist/`. Hosting and DNS
 for docs.streamotter.dev are not set up yet.
+
+## Deployment preparation
+
+Manual preview/production workflow proposal, source constraints and owner setup: [deployment runbook](../../docs/SITES_DEPLOYMENT.md). Hosting/domain creation and production remain owner checkpoints; this preparation does not make the site live.
