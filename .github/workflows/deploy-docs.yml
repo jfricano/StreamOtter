@@ -14,9 +14,9 @@ on:
         type: string
         required: true
       release_tag:
-        description: Existing release tag containing apps/docs, matching source_sha and package version
+        description: Stable release tag matching source_sha/version; optional for unreleased preview
         type: string
-        required: true
+        required: false
 permissions:
   contents: read
   actions: read
@@ -52,8 +52,15 @@ jobs:
         run: node scripts/sites/select.mjs
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ steps.select.outputs.sha }}
+          ref: ${{ steps.select.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
+      - name: Verify selected checkout and set docs channel
+        env:
+          DOCS_CHANNEL: ${{ steps.select.outputs.docs_channel }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          printf 'DOCS_CHANNEL=%s\n' "$DOCS_CHANNEL" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -74,7 +81,7 @@ jobs:
             Content-Security-Policy: frame-ancestors 'none'
             Referrer-Policy: strict-origin-when-cross-origin
           HEADERS
-          if [ "$DESTINATION" = preview ]; then
+          if [ "$DESTINATION" = preview ] && ! grep -Eiq '^[[:space:]]*X-Robots-Tag:[[:space:]]*noindex([[:space:],]|$)' apps/docs/dist/_headers; then
             printf '\n/*\n  X-Robots-Tag: noindex\n' >> apps/docs/dist/_headers
           fi
           node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("apps/docs/dist/deployment.json", JSON.stringify({ app: process.env.SITE_APP, source: process.env.SOURCE_SHA, tag: process.env.RELEASE_TAG, destination: process.env.DESTINATION, run: process.env.GITHUB_RUN_ID }, null, 2));'

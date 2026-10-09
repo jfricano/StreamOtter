@@ -1,13 +1,13 @@
 ---
 /** A plain docs page: an eyebrow, a heading and lede, then the page's sections. */
 import Base from "./Base.astro";
-import { RELEASE } from "../site.ts";
+import { VERSION_LABEL } from "../site.ts";
 interface Props { title: string; description: string; eyebrow?: string; noindex?: boolean }
 const { title, description, eyebrow = "StreamOtter docs", noindex = false } = Astro.props;
 ---
 <Base title={`${title} · StreamOtter Docs`} description={description} noindex={noindex}>
   <div class="wrap page">
-    <header class="page-head"><p class="eyebrow">{eyebrow} <span>· v{RELEASE}</span></p><h1>{title}</h1><p class="lede">{description}</p></header>
+    <header class="page-head"><p class="eyebrow">{eyebrow} <span>· {VERSION_LABEL}</span></p><h1>{title}</h1><p class="lede">{description}</p></header>
     <slot />
   </div>
 </Base>

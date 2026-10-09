@@ -19,27 +19,39 @@ export function protectedEnvironment(env, policies, name) {
   assert.deepEqual(env.deployment_branch_policy, { protected_branches: false, custom_branch_policies: true });
   assert.deepEqual(policies.branch_policies.map(p => [p.type, p.name]), [['branch', 'main']]);
 }
-export function select(app, sha, tag, exec = run) {
+export function select(app, destination, sha, tag, exec = run) {
   assert.ok(['docs', 'blog'].includes(app));
+  assert.ok(['preview', 'production'].includes(destination));
   assert.match(sha ?? '', /^[a-f0-9]{40}$/, 'approved source must be a full SHA');
   exec('git', ['merge-base', '--is-ancestor', sha, 'origin/main']);
+  let ref = sha;
+  let docsChannel = '';
   if (app === 'docs') {
-    assert.match(tag ?? '', /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:alpha|beta|rc)\.(0|[1-9]\d*))?$/);
-    assert.equal(exec('git', ['rev-parse', `refs/tags/${tag}^{commit}`]), sha, 'tag moved or differs from approved source');
-    const pkg = JSON.parse(exec('git', ['show', `${sha}:packages/streamotter/package.json`]));
-    assert.equal(`v${pkg.version}`, tag, 'release label must match the source version');
+    assert.ok(tag || destination === 'preview', 'docs production requires a stable release tag');
+    docsChannel = tag ? 'release' : 'preview';
+    if (!tag) {
+      // Earlier main sources cannot honor the approved unreleased-preview policy.
+      exec('git', ['show', `${sha}:apps/docs/integrations/release-channel.mjs`]);
+    }
+    if (tag) {
+      assert.match(tag, /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, 'docs release builds require a stable tag');
+      ref = `refs/tags/${tag}`;
+      assert.equal(exec('git', ['rev-parse', `${ref}^{commit}`]), sha, 'tag moved or differs from approved source');
+      const pkg = JSON.parse(exec('git', ['show', `${sha}:packages/streamotter/package.json`]));
+      assert.equal(`v${pkg.version}`, tag, 'release label must match the source version');
+    }
   } else {
     assert.equal(tag, '', 'blog selects a main SHA, not a release tag');
   }
   exec('git', ['show', `${sha}:apps/${app}/package.json`]); // Existing release tags without the app fail here.
-  return sha;
+  return { sha, ref, docsChannel };
 }
 export function preflight(app, destination, sha, tag, exec = run) {
   assert.equal(process.env.GITHUB_REPOSITORY, REPO);
   assert.equal(process.env.GITHUB_REF, 'refs/heads/main');
   assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch');
   assert.ok(['preview', 'production'].includes(destination));
-  select(app, sha, tag, exec);
+  const source = select(app, destination, sha, tag, exec);
   const name = `${app}-${destination}`;
   const api = path => JSON.parse(exec('gh', ['api', `repos/${REPO}/${path}`]));
   protectedEnvironment(api(`environments/${name}`), api(`environments/${name}/deployment-branch-policies`), name);
@@ -53,9 +65,9 @@ export function preflight(app, destination, sha, tag, exec = run) {
   for (const required of ['Verify (Node 24)', 'Verify (Node 26)', app === 'docs' ? 'Docs site' : 'Blog site']) {
     assert.ok(checks.some(c => c.name === required && c.head_sha === sha && c.app?.slug === 'github-actions' && c.status === 'completed' && c.conclusion === 'success'), `missing green ${required}`);
   }
-  return sha;
+  return source;
 }
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const sha = preflight(process.env.SITE_APP, process.env.DESTINATION, process.env.SOURCE_SHA, process.env.RELEASE_TAG ?? '');
-  appendFileSync(process.env.GITHUB_OUTPUT, `sha=${sha}\n`);
+  const source = preflight(process.env.SITE_APP, process.env.DESTINATION, process.env.SOURCE_SHA, process.env.RELEASE_TAG ?? '');
+  appendFileSync(process.env.GITHUB_OUTPUT, `sha=${source.sha}\nref=${source.ref}\ndocs_channel=${source.docsChannel}\n`);
 }

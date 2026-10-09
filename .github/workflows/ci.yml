@@ -54,7 +54,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node --test scripts/sites/select.test.mjs
+      - run: node --test scripts/sites/*.test.mjs
       # The API reference reads the packages' built declarations.
       - run: pnpm build
       - run: pnpm --filter @streamotter/docs test
