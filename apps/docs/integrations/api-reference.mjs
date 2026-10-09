@@ -1,7 +1,7 @@
 /**
  * Builds the site's API reference (/api/) from the workspace's `streamotter` package, as built by
  * `pnpm build`: the same declarations npm publishes, so the reference can't drift from the code.
- * Deploys build from a release tag. TypeDoc reads the type declarations, comments included, once
+ * A release build is built from its tag (release-channel.mjs). TypeDoc reads the type declarations, comments included, once
  * per dev server or build, and
  * src/api-reference/build.ts turns its model into the pages' data. The pages import it from
  * `virtual:streamotter-docs/api-reference`. A declaration TypeDoc can't read fails the build.
@@ -13,6 +13,7 @@ import { dirname, join, sep } from "node:path";
 import { Application, LogLevel } from "typedoc";
 import { buildApiReference } from "../src/api-reference/build.ts";
 import { API_MODULES } from "../src/api-reference/modules.ts";
+import { docsChannel, repositoryRef } from "./release-channel.mjs";
 
 const VIRTUAL = "virtual:streamotter-docs/api-reference";
 const REPOSITORY = "https://github.com/jfricano/StreamOtter";
@@ -38,15 +39,15 @@ export function documentedModules(installed = installedStreamotter()) {
 }
 
 /**
- * A declaration's file on GitHub at the release's tag. TypeDoc names files by their path from the
+ * A declaration's file on GitHub at `ref`, the release tag or `main` (release-channel.mjs). TypeDoc names files by their path from the
  * streamotter package (`../contracts/dist/types.d.ts` in the workspace, or
  * `@streamotter/contracts/dist/types.d.ts` when installed); each is emitted from the same path
  * under `packages/<name>/src/`, so the link opens the source, not the declaration.
  */
-export function sourceUrlFor(version) {
+export function sourceUrlFor(ref) {
   return fileName => {
     const match = /(?:^|\/)(?:@streamotter|packages|\.\.)\/([\w-]+)\/dist\/(.+)\.d\.ts$/.exec(fileName.split(sep).join("/"));
-    return match ? `${REPOSITORY}/blob/v${version}/packages/${match[1]}/src/${match[2]}.ts` : null;
+    return match ? `${REPOSITORY}/blob/${ref}/packages/${match[1]}/src/${match[2]}.ts` : null;
   };
 }
 
@@ -85,7 +86,7 @@ export async function readStreamotterModel(installed = installedStreamotter()) {
 /** The reference's data for the installed release. */
 export async function loadApiReference(installed = installedStreamotter()) {
   const model = await readStreamotterModel(installed);
-  return buildApiReference(model, { release: installed.version, modules: documentedModules(installed), sourceUrl: sourceUrlFor(installed.version) });
+  return buildApiReference(model, { release: installed.version, modules: documentedModules(installed), sourceUrl: sourceUrlFor(repositoryRef(docsChannel(), installed.version)) });
 }
 
 /** The Astro integration: builds the reference once and serves it as a virtual module. */

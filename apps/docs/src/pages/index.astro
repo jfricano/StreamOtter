@@ -1,7 +1,7 @@
 ---
 import DocsPage from "../layouts/DocsPage.astro";
 import reference from "virtual:streamotter-docs/api-reference";
-import { GUIDES, HAS_UNDER_THE_HOOD, LINKS, RELEASE } from "../site.ts";
+import { GUIDES, HAS_UNDER_THE_HOOD, LINKS, PREVIEW, RELEASE } from "../site.ts";
 const UNDER_THE_HOOD_PARTS = [
   ["How it works", "1-how-it-works.html"], ["How it's built", "2-how-its-built.html"], ["Why it's built this way", "3-why-its-built-this-way.html"],
   ["Guarantees and limits", "4-guarantees-and-limits.html"], ["Using and running it", "5-using-and-running-it.html"]
@@ -38,9 +38,9 @@ const UNDER_THE_HOOD_PARTS = [
       <li><a href={LINKS.deployment}>Deployment guide</a></li>
       <li><a href={LINKS.status}>Implementation status and verified support matrix</a></li>
       <li><a href={LINKS.changelog}>Changelog</a></li>
-      <li><a href={LINKS.release}>streamotter@{RELEASE} on npm</a></li>
+      <li><a href={LINKS.release}>streamotter@{RELEASE} on npm</a>{PREVIEW && ", the latest published release"}</li>
     </ul>
-    <p class="muted">The specifications open on GitHub, pinned to this release. To see StreamOtter running, visit <a href={LINKS.home}>streamotter.dev</a>.</p>
+    <p class="muted">The specifications open on GitHub, {PREVIEW ? "on the main branch" : "pinned to this release"}. To see StreamOtter running, visit <a href={LINKS.home}>streamotter.dev</a>.</p>
   </section>
 </DocsPage>
 <style>

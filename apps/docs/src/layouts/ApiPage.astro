@@ -7,6 +7,7 @@
 import Base from "./Base.astro";
 import reference from "virtual:streamotter-docs/api-reference";
 import { API_ROOT } from "../api-reference/modules.ts";
+import { VERSION_LABEL } from "../site.ts";
 interface Props {
   title: string;
   description: string;
@@ -29,7 +30,7 @@ const here = (href: string) => (href === current || href === Astro.url.pathname 
     <div class="api-layout">
       <article class="api-main">
         <header class="api-head">
-          <p class="eyebrow">{eyebrow} <span>· v{reference.release}</span></p>
+          <p class="eyebrow">{eyebrow} <span>· {VERSION_LABEL}</span></p>
           <h1>{title}</h1>
           {ledeHtml ? <p class="lede" set:html={ledeHtml} /> : <p class="lede">{description}</p>}
         </header>

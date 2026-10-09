@@ -79,8 +79,8 @@ describe("buildApiReference", () => {
     assert.throws(() => buildApiReference({ children: [] }, { release: "1.2.3" }), /no client entry point for streamotter\/client/);
   });
 
-  test("source links open the release's source file, not its declaration file", () => {
-    const url = sourceUrlFor("1.2.3");
+  test("source links open the source file at the build's ref, not its declaration file", () => {
+    const url = sourceUrlFor("v1.2.3");
     const types = "https://github.com/jfricano/StreamOtter/blob/v1.2.3/packages/contracts/src/types.ts";
     assert.equal(url("../contracts/dist/types.d.ts"), types);
     assert.equal(url("@streamotter/contracts/dist/types.d.ts"), types);
