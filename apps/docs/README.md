@@ -31,3 +31,7 @@ banner and `noindex`, and repository links open on main. docs.streamotter.dev is
 a release tag, with `DOCS_CHANNEL=release`, and the build fails anywhere else. DESIGN.md's
 "Publishing" section has the policy and the build steps. The output is static files in
 `apps/docs/dist/`. Hosting and DNS for docs.streamotter.dev are not set up yet.
+
+## Deployment preparation
+
+Manual preview/production workflow proposal, source constraints and owner setup: [deployment runbook](../../docs/SITES_DEPLOYMENT.md). Hosting/domain creation and production remain owner checkpoints; this preparation does not make the site live.

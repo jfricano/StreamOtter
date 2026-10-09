@@ -1,0 +1,110 @@
+# Manual owner-reviewed deployment only. Setup: docs/SITES_DEPLOYMENT.md.
+name: Deploy blog site
+run-name: blog ${{ inputs.destination }} from ${{ inputs.source_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      destination:
+        type: choice
+        options: [preview, production]
+        default: preview
+        required: true
+      source_sha:
+        description: Full approved source SHA on main (must have green main CI)
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+  checks: read
+concurrency:
+  group: streamotter-blog-${{ inputs.destination }}
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'jfricano/StreamOtter' && github.ref == 'refs/heads/main' && vars.STREAMOTTER_SITES_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      sha: ${{ steps.select.outputs.sha }}
+    env:
+      SITE_APP: blog
+      DESTINATION: ${{ inputs.destination }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_TAG: ''
+      BLOG_DRAFTS: '0'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - name: Validate source, exact CI and owner environment protection
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/sites/select.mjs
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ steps.select.outputs.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @streamotter/blog test
+      - run: pnpm --filter @streamotter/blog build
+      - run: pnpm --filter @streamotter/blog exec tsc --noEmit -p .
+      - run: pnpm --filter @streamotter/blog check:links
+      - name: Add response policy and safe source receipt
+        run: |
+          cat >> apps/blog/dist/_headers <<'HEADERS'
+          /*
+            X-Content-Type-Options: nosniff
+            X-Frame-Options: DENY
+            Content-Security-Policy: frame-ancestors 'none'
+            Referrer-Policy: strict-origin-when-cross-origin
+          HEADERS
+          if [ "$DESTINATION" = preview ]; then
+            printf '\n/*\n  X-Robots-Tag: noindex\n' >> apps/blog/dist/_headers
+          fi
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("apps/blog/dist/deployment.json", JSON.stringify({ app: process.env.SITE_APP, source: process.env.SOURCE_SHA, tag: process.env.RELEASE_TAG, destination: process.env.DESTINATION, run: process.env.GITHUB_RUN_ID }, null, 2));'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: blog-${{ steps.select.outputs.sha }}-${{ inputs.destination }}
+          path: apps/blog/dist
+          if-no-files-found: error
+          retention-days: 14
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: blog-${{ inputs.destination }}
+      url: ${{ steps.upload.outputs.deployment-url }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: blog-${{ needs.build.outputs.sha }}-${{ inputs.destination }}
+          path: site-dist
+      - name: Validate fixed deployment destination
+        env:
+          ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.STREAMOTTER_BLOG_PAGES_PROJECT }}
+        run: |
+          test "$ACCOUNT_ID" = '10a1430d3ed1c6f0b8bafcd1170c3778'
+          test "$PROJECT" = 'streamotter-blog'
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - name: Upload approved artifact to existing project
+        id: upload
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site-dist --project-name=streamotter-blog --branch=${{ inputs.destination == 'production' && 'main' || 'staging' }}
