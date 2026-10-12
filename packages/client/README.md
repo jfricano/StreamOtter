@@ -92,6 +92,8 @@ Unsubscribe when a view unmounts. Close a shared client only when its owning app
 
 ## React hooks
 
+These V1.3 hooks are implemented on main for **1.0.0 (unreleased)**. They are not included in the published `0.2.0-rc.1` package; use the core SDK above with that release.
+
 `@streamotter/client/react` (or `streamotter/react`) has a provider and hooks for React 18 or later. React is an optional peer dependency: apps that don't import this subpath don't load it.
 
 ```tsx
