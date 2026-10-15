@@ -289,7 +289,9 @@ async function commandInit(positionals: string[], io: CliIO): Promise<number> {
     throw new CliError(EXIT.invalid, `Could not create the project in ${directory}, and removed the files it had written: ${(error as Error).message}`);
   }
   for (const file of files) io.out(`  created ${join(directory, file.path)}`);
-  io.out(`\nNext:\n  cd ${directory}\n  streamotter dev --config streamotter.json --handlers server/handlers.mjs`);
+  // The scaffold's commands run from the project directory, through the locally installed package.
+  const cd = target === resolve(".") ? "" : `\n  cd ${directory}`;
+  io.out(`\nNext:${cd}\n  npx streamotter dev --config streamotter.json --handlers server/handlers.mjs`);
   return EXIT.ok;
 }
 

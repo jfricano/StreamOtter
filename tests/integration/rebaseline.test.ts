@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -163,6 +164,29 @@ describe("sources rebaseline", { skip: !nodeSupportsJournal() && "the journal ne
     assert.equal(store.get("f1:payments")?.state, "resolved");
     assert.equal(store.get("f1:refunds")?.state, "open", "a removed source is the gateway's startup check to refuse, not rebaseline's");
     store.close();
+  });
+
+  it("a closed incident's progress never reads as still being worked on: retrying ends held, an unconfirmed advance uncertain", () => {
+    const state = mkdtempSync(join(tmpdir(), "so-rebaseline-"));
+    const stored = [{ sourceId: "orders", generation: "g1", kind: "kafka" as const }];
+    initJournal(state, "p", stored);
+    let store = openJournal(state, { projectId: "p" });
+    store.claim("p", stored);
+    const retrying = store.observe(openIncident("f1:retrying", "orders")).record;
+    store.update(retrying.failureId, retrying.revision, { progress: "retrying" }, { event: "retrying", detail: "operator retry", operationId: null });
+    const pending = store.observe({ ...openIncident("f1:pending", "orders"), position: { kind: "kafka", topic: "orders", partition: 1, offset: "7" } }).record;
+    store.update(pending.failureId, pending.revision, { progress: "advance-pending" }, { event: "advance-pending", detail: null, operationId: null });
+    store.close();
+
+    const config = { projectId: "p", sources: { orders: { kind: "kafka", generation: "g2" } } } as unknown as ProjectConfig;
+    const result = rebaselineSource({ stateDirectory: state, config, sourceId: "orders", reason: "orders topic re-created" });
+    assert.equal(result.result, "completed", result.message);
+    store = openJournal(state, { projectId: "p" });
+    try {
+      assert.deepEqual([store.get("f1:retrying"), store.get("f1:pending")].map(item => [item?.state, item?.progress]), [["resolved", "held"], ["resolved", "uncertain"]]);
+    } finally {
+      store.close();
+    }
   });
 });
 

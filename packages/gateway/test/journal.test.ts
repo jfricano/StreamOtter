@@ -202,6 +202,45 @@ function conformance(name: string, create: (limits?: JournalLimits) => IncidentS
       store.close();
     });
 
+    it("a re-observation applies the policy configured now, and its detected event records the change (runbook §6.5)", () => {
+      const store = create();
+      store.observe(observation("f1:a", { policy: "quarantine-hold" }));
+      const switched = store.observe(observation("f1:a", { observedAt: "2026-10-03T00:00:01.000Z", policy: "quarantine-resync" }));
+      assert.equal(switched.record.policy, "quarantine-resync");
+      assert.equal(store.get("f1:a")?.policy, "quarantine-resync");
+      const same = store.observe(observation("f1:a", { observedAt: "2026-10-03T00:00:02.000Z", policy: "quarantine-resync" }));
+      assert.equal(same.record.policy, "quarantine-resync");
+      // A conflicting observation is a different record: it changes nothing about the incident, its policy included.
+      const conflicting = store.observe(observation("f1:a", {
+        observedAt: "2026-10-03T00:00:03.000Z", policy: "pause",
+        evidence: { location: "local", completeness: "complete", valueBytes: 4, keyBytes: null, headerCount: 0, hash: "sha256:bb" }
+      }));
+      assert.equal(conflicting.conflict, true);
+      assert.equal(conflicting.record.policy, "quarantine-resync");
+      assert.deepEqual(store.events("f1:a").map(event => event.detail), [
+        "invalid-json",
+        "invalid-json; policy changed from quarantine-hold to quarantine-resync in the configuration",
+        "invalid-json",
+        "evidence-conflict"
+      ]);
+      store.close();
+    });
+
+    it("a switch to a policy without a recovery guard makes a denied recovery held, and the detected event says so", () => {
+      const store = create();
+      const first = store.observe(observation("f1:a", { policy: "quarantine-resync" }));
+      store.update("f1:a", first.record.revision, { recovery: "denied" }, { event: "held", detail: "the recovery guard answered hold", operationId: null });
+      const switched = store.observe(observation("f1:a", { observedAt: "2026-10-03T00:00:01.000Z", policy: "quarantine-hold" }));
+      assert.equal(switched.record.policy, "quarantine-hold");
+      assert.equal(switched.record.recovery, "held", "no guard runs under quarantine-hold, so nothing denied it there");
+      assert.equal(store.get("f1:a")?.recovery, "held");
+      assert.equal(store.events("f1:a").at(-1)?.detail,
+        "invalid-json; policy changed from quarantine-resync to quarantine-hold in the configuration; recovery denied under quarantine-resync is now held, because no recovery guard runs under quarantine-hold");
+      // Back to quarantine-resync: the guard runs again when the record is redelivered, so held stays held.
+      assert.equal(store.observe(observation("f1:a", { observedAt: "2026-10-03T00:00:02.000Z", policy: "quarantine-resync" })).record.recovery, "held");
+      store.close();
+    });
+
     it("applies transitions only at the expected revision", () => {
       const store = create();
       store.observe(observation("f1:a"));

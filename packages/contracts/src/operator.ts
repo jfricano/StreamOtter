@@ -27,7 +27,8 @@ export type IncidentProgress = "held" | "retrying" | "advance-pending" | "advanc
  *
  * - `not-applicable`: no quarantine or recovery applies, for example under the `pause` policy.
  * - `guard-pending`: the recovery guard is running.
- * - `held`: the record stays held without an approval, for example under `quarantine-hold`, with an open circuit, or after the guard threw, timed out or gave an invalid answer.
+ * - `held`: the record stays held without an approval to move past it. This is not a guard decision: under `quarantine-hold` no guard runs at all; under
+ *   `quarantine-resync` the circuit was open, the quarantine write did not succeed, or the guard threw, timed out or gave an invalid answer.
  * - `boundary-in-force`: the guard approved and this incident's advance installed a recovery boundary.
  * - `denied`: the guard answered `hold`.
  */
@@ -45,9 +46,13 @@ export type IncidentQuarantine = "not-required" | "pending" | "unknown" | "ackno
 /**
  * The supported next step for an incident, also explained in words in {@link IncidentDetail}'s `explanation`:
  *
- * - `repair-and-retry`: repair the cause, then retry the held record with {@link OperatorApi.retryCurrent}.
+ * - `repair-and-retry`: the record is held and needs a person to repair the cause. The explanation says which repair
+ *   applies: often a fix followed by {@link OperatorApi.retryCurrent}, but for a record that can't be processed at its
+ *   position (bytes that can't be repaired, a record gone from the topic, another cluster, different bytes at the same
+ *   position) a policy switch or a rebaseline, because a retry would hold again.
  * - `reassess`: correct what made the recovery guard hold, then run it again with {@link OperatorApi.reassess}.
  * - `evaluate`: the record was advanced past and may be redriven; {@link OperatorApi.evaluate} checks it against the current mapping.
+ *   Not offered for `invalid-json`, whose bytes never decode.
  * - `reopen-circuit`: the source's automatic-continuation circuit is open; find the cause, then {@link OperatorApi.reopenCircuit} and reassess.
  * - `none`: nothing to do. The incident is resolved, or the gateway is still working on it or checks it again at the next start.
  */
@@ -99,7 +104,11 @@ export interface IncidentSummary {
   channel: string | null;
   /** V1.1 never narrows impact (spec §7.1). */
   impact: "source-wide";
-  /** The failure policy that applied to this record's class when the incident was first observed. */
+  /**
+   * The failure policy configured for this record's class when the record was last observed failing. A policy changed
+   * in the configuration applies from the next observation (the redelivery after a restart), and that observation's
+   * `detected` event in the history says it changed.
+   */
   policy: FailurePolicy;
   /**
    * `open` while the incident still needs something; `resolved` once the record processed, was advanced past, or the
@@ -138,7 +147,7 @@ export interface IncidentSummary {
   quarantine: IncidentQuarantine;
   /** What happened to the source position at the record. */
   progress: IncidentProgress;
-  /** What the recovery guard decided. */
+  /** Whether moving past the record was approved: `held` means no approval (no guard decided, or it failed), `denied` that the guard answered hold. */
   recovery: IncidentRecovery;
   /** The supported next step. */
   nextAction: IncidentNextAction;

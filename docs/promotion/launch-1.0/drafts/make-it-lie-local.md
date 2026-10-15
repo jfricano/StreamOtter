@@ -1,6 +1,6 @@
 # "Can you make it lie?": local tier (a), no Kafka
 
-**Verified on 2026-10-05** with `streamotter@0.2.0-rc.1` and Node 24.21, in a clean folder. Re-run it on `1.0.0-rc.1` and `1.0.0` before publishing. It needs Node 24.15 or later, because failure handling requires it.
+**Verified on 2026-10-15** with `streamotter@0.2.0-rc.1` and Node 24.22 in a clean container. Incidents are kept in a local journal, so they survive the restart that the recovery needs. Re-run it on `1.0.0-rc.1` and `1.0.0` before publishing. It needs Node 24.15 or later, because failure handling requires it.
 
 ```bash
 mkdir make-it-lie && cd make-it-lie
@@ -23,20 +23,30 @@ Two edits to the scaffold:
 { key: "job_1", raw: "{not json" },
 ```
 
-Then:
+Create a local failure journal, so the incident survives a restart, then start the gateway with it. `validate` may note that the file isn't in canonical form after your edit; that's only key order and changes nothing.
 
 ```bash
+npx streamotter init --failures --config streamotter.json --state-dir ./state
 npx streamotter validate --config streamotter.json
-npx streamotter dev --config streamotter.json --handlers server/handlers.mjs
+npx streamotter dev --config streamotter.json --handlers server/handlers.mjs --state-dir ./state --operator-socket
 ```
 
-Open the workbench, preview `jobProgress`, and advance the fixture one record at a time.
+Open the workbench (the address and token are in the banner), preview `jobProgress`, and advance the `jobs` fixture one record at a time in the Connect tab. Or, from a second terminal, with the token `dev` printed:
 
-What the run showed through the management API and the gateway log (the browser view wasn't checked in this run):
-- After the malformed record, the gateway logged "Source paused on an unprocessable record; it will not be committed or skipped" (`failureClass: invalid-json`). Then came the incident events `detected` → `captured` (local evidence) → `quarantined` ("stored as local fixture evidence, not Kafka").
-- Further advances moved nothing (`advanced: 0`), so the records after it weren't delivered.
-- The incident read `policy: quarantine-hold`, `quarantine: acknowledged`, `progress: held` and `nextAction: repair-and-retry`, with a hash of the 9-byte value as evidence. The operator status showed the source as `paused`, with one held incident.
+```bash
+curl -X POST http://127.0.0.1:7401/management/v1/dev/fixtures/advance -H "authorization: Bearer <token>" -H "content-type: application/json" -d '{"sourceId": "jobs", "count": 1}'
+```
 
-The challenge from here: make the previewed view report `live` while it's missing revision 4 or 5, or get the record skipped silently. The way back is to correct the record and retry it (`retry-current`, or the supported action in the workbench Failures tab).
+What happens at the malformed record:
+- The advance that reaches it returns `advanced: 0`, and the gateway logs "Source paused on an unprocessable record; it will not be committed or skipped" (`failureClass: invalid-json`). Further advances are refused while the source is paused, so revisions 4 and 5 are never delivered.
+- The preview stays `stale`; it never reports `live` while revisions are missing.
+- In a second terminal, `npx streamotter status --state-dir ./state` shows `jobs  paused (INVALID_PAYLOAD), 1 open incident`, and `npx streamotter failures list --state-dir ./state` shows the incident: `invalid-json`, `held`, next `repair-and-retry`. The workbench Failures tab shows the same incident.
 
-The incident store is in memory here; the log warns that setting `stateDirectory` would keep it across restarts. That's fine for a two-minute rehearsal.
+The challenge from here: make the previewed view report `live` while it's missing revision 4 or 5, or get the record skipped silently.
+
+The way back: stop `dev` (Ctrl+C), delete the malformed line from `server/handlers.mjs`, and start `dev` again with the same command. Fixture records are read at startup, so the corrected file takes effect on restart, and the journal still remembers the incident. Advance four times: revisions 2 and 3 are delivered again (the fixture starts over), then 4 and 5 arrive, and `npx streamotter failures list --state-dir ./state --state all` shows the incident `resolved`, `processed`. Reload the page after the restart (the scaffold's in-memory data starts over).
+
+Notes:
+- On `0.2.0-rc.1` the resolved incident's history says "the original record processed successfully". The next release resolves it as "a corrected record at the same position processed", its history says "a different record at this fixture position processed successfully; the original record did not, and its evidence is kept", and the original evidence stays; quote whatever the published release prints.
+- `retry-current` doesn't help here: it re-reads the same in-memory bytes and holds again. It's for causes outside the record, such as a mapper bug fixed in a redeploy or a guard decision.
+- To start over completely, stop `dev` and delete `./state`.

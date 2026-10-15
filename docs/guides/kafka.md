@@ -66,11 +66,13 @@ The gateway commits a record's offset only after it has fully processed it: vali
 
 Invalid JSON, a tombstone, a record over `limits.maxSourceRecordBytes` (1 MiB by default), a `map` handler that throws or returns invalid data, and a conflicting duplicate revision all **pause the source at that record**. Nothing at or after it is committed, and nothing is skipped. Every subscription on the source goes `stale`, and the gateway logs a diagnostic without the payload: the error code, failure class, source position and channel, and for a `map` error its type and code but never its message. To see the record, read it at the logged position with your Kafka tooling. If you want the error text in your own logs, catch and log it inside `map`, keeping record contents out of what you log.
 
-To recover, fix the cause (usually your `map` handler: correct it, or have it return `[]` for records it should ignore), then retry the same record:
+To recover from a `map` problem (it threw, timed out, or returned invalid data), fix the handler (correct it, or have it return `[]` for records it should ignore), then retry the same record:
 
 - in development, press **Resume** in the workbench's Connect tab;
 - from code, call `gateway.resumeSource("orders")`;
 - with `streamotter start`, deploy the fix and restart the gateway. It resumes from the last committed offset, which is the paused record.
+
+Invalid JSON, a tombstone and an oversized record never reach `map`, so no handler change gets past them, and retrying fails the same way. Without failure handling, the only way past such a record is to stop the gateway and move the consumer group past it with Kafka's own tools (for example `kafka-consumer-groups.sh --bootstrap-server <broker> --group <consumerGroup> --topic <topic>:<partition> --reset-offsets --to-offset <offset + 1> --execute`), after checking that your application's state doesn't need what the record carried. That is a skip you decide on, outside StreamOtter. With V1.1 failure handling, invalid JSON can instead be quarantined and moved past under a recovery guard, and any record can be closed by a recorded rebaseline; see [Handle bad records](./source-failures.md#65-repair-a-poison-record).
 
 A conflicting duplicate revision is different: when the source paused, its views went `stale` and the state the record conflicted with was discarded, so a resume compares the record only with current state and usually admits it. Decide which data is correct before resuming; the gateway logs a warning when it resumes after a revision conflict.
 
@@ -99,7 +101,7 @@ kafka-topics.sh --bootstrap-server kafka-1.example.com:9093 --command-config adm
 
 **Source retention matters too.** A held record is never committed, so set the source topics' retention well above how long a hold may last. If retention deletes a held record, the gateway holds the source rather than jumping past it.
 
-**A changed cluster is an integrity failure.** Each incident records the Kafka cluster ID it was captured on. If the source's connection profile now reaches another cluster, or the startup check can't read the cluster ID, the same position may name a different record, so the incident holds: it is never quarantined or advanced, and no record of that source can be redriven until it is resolved. If the source really moved, change its `generation` and rebaseline; see [the runbook](./source-failures.md#64-topic-retention-and-expired-evidence).
+**A changed cluster is an integrity failure.** Each incident of a quarantining source records the Kafka cluster ID it was captured on. If the source's connection profile now reaches another cluster, the same position may name a different record, so the incident holds with "Kafka cluster mismatch": the gateway checks at startup and before each record, so nothing from the other cluster is processed while the incident is open, it is never quarantined or advanced, and no record of that source can be redriven until it is resolved. If the source really moved, change its `generation` and rebaseline; see [the runbook](./source-failures.md#64-topic-retention-and-expired-evidence).
 
 ## Restarts and crashes
 
@@ -146,4 +148,16 @@ V1.1 failure handling (new in 0.2.0-rc.1), against the same single local broker:
 
 ## A local broker
 
-Any Apache Kafka broker works for development. The StreamOtter repository's test setup (`pnpm kafka:setup && pnpm kafka:start`, described in [CONTRIBUTING.md](../../CONTRIBUTING.md)) runs Kafka 4.1.2 with plaintext, TLS, and SASL listeners and a throwaway CA. It's intended for working on StreamOtter itself, but it is also a convenient way to try a Kafka source.
+Any Apache Kafka broker works for development. With Docker, the official image runs a single-node broker (KRaft, plaintext, no authentication) on `localhost:9092`:
+
+```bash
+docker run -d --name streamotter-kafka -p 9092:9092 apache/kafka:4.1.2
+docker exec streamotter-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic orders.status --partitions 1
+echo 'ord_1001:{"accountId":"acme","version":7,"order":{"orderId":"ord_1001","status":"processing","progress":40}}' \
+  | docker exec -i streamotter-kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orders.status \
+      --property parse.key=true --property key.separator=:
+```
+
+The producer sends one record per line, `key:value`. Point a connection profile at the broker with `{ "brokers": ["localhost:9092"], "tls": false }`, which `streamotter dev` accepts and `streamotter start` refuses (production requires TLS). Its first connection may log a few KafkaJS warnings while the broker creates its internal topics; they clear within seconds. `docker rm -f streamotter-kafka` removes it and its data. Every container started this way has the same cluster ID, so two of them look like one cluster to the [cluster check](#the-quarantine-topic-v11).
+
+The StreamOtter repository's test setup (`pnpm kafka:setup && pnpm kafka:start`, described in [CONTRIBUTING.md](../../CONTRIBUTING.md)) runs Kafka 4.1.2 with plaintext, TLS, and SASL listeners and a throwaway CA. It's intended for working on StreamOtter itself, but it is also a convenient way to try a Kafka source.

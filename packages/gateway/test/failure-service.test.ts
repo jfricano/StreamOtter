@@ -433,3 +433,212 @@ describe("FailureService superseded changes", () => {
     assert.deepEqual(incident?.quarantineCoordinates, { partition: 3, offset: "17" });
   });
 });
+
+describe("FailureService a held record that is gone (runbook §6.4)", () => {
+  it("a retry of a record retention removed is held again with the moved diagnosis, and can be retried again", async () => {
+    const store = claimed();
+    const { failures, source } = resync(store, { policy: "quarantine-hold", adapter: null, guard: null });
+    await failures.held(source, plain, pause);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await failures.beforeRetry("orders", "operator retry");
+      assert.equal(store.open("orders")[0]?.progress, "retrying");
+      // The redelivered position is past the held offset: the record at 41 is gone.
+      assert.match(failures.positionProblem("orders", at(0, "45")) ?? "", /past the held record at offset 41/);
+      const [incident] = store.open("orders");
+      assert.equal(incident?.progress, "held", `attempt ${attempt}: held again, never left retrying`);
+      assert.match(incident?.diagnosis ?? "", /^Source progress moved: partition orders\/0 is at offset 45/);
+    }
+    const moved = store.events(store.open("orders")[0]?.failureId as string).filter(event => event.detail === "position-moved");
+    assert.equal(moved.length, 2, "each settled retry is recorded");
+  });
+
+  it("a retry that pauses again at one held record returns every other retried incident of the source to held", async () => {
+    const store = claimed();
+    const { failures, source } = resync(store, { policy: "quarantine-hold", adapter: null, guard: null });
+    const other: SourceInput = { ...plain, key: "ord_2", keyBytes: Buffer.from("ord_2"), position: at(1, "7") };
+    await failures.held(source, plain, pause);
+    await failures.held(source, other, pause);
+    // The resume redelivers from every held partition, so both are retried.
+    await failures.beforeRetry("orders", "operator retry");
+    assert.deepEqual(store.open("orders").map(incident => incident.progress), ["retrying", "retrying"]);
+
+    // Partition 1 is redelivered first and fails again: the source pauses, and partition 0 is never redelivered.
+    failures.sourceHeld("orders", other.position);
+    const byPartition = (partition: number) => store.open("orders").find(incident => incident.position.kind === "kafka" && incident.position.partition === partition);
+    assert.equal(byPartition(0)?.progress, "held", "not stranded in retrying");
+    assert.match(store.events(byPartition(0)?.failureId as string).at(-1)?.detail ?? "", /^the source paused again at orders\/1 offset 7; no retry is redelivering this record now; retry it again if it is still held$/);
+    assert.equal(byPartition(1)?.progress, "retrying", "the record paused at settles through its own disposition");
+    await failures.held(source, other, pause);
+    assert.equal(byPartition(1)?.progress, "held");
+    assert.match(store.events(byPartition(1)?.failureId as string).at(-1)?.detail ?? "", /failed again/);
+
+    // Both can be retried again.
+    await failures.beforeRetry("orders", "operator retry");
+    assert.deepEqual(store.open("orders").map(incident => incident.progress), ["retrying", "retrying"]);
+  });
+
+  it("an incident persisted as retrying is held again at startup, because no retry runs in a new process", async () => {
+    const store = claimed();
+    const first = resync(store, { policy: "quarantine-hold", adapter: null, guard: null });
+    await first.failures.held(first.source, plain, pause);
+    await first.failures.beforeRetry("orders", "operator retry");
+    assert.equal(store.open("orders")[0]?.progress, "retrying");
+
+    const second = resync(store, { policy: "quarantine-hold", adapter: null, guard: null });
+    await second.failures.start([second.source], async () => "-1");
+    const [incident] = store.open("orders");
+    assert.equal(incident?.progress, "held");
+    assert.match(store.events(incident?.failureId as string).at(-1)?.detail ?? "", /restarted during a retry/);
+  });
+});
+
+describe("FailureService a different record at a held position (runbook §6.5)", () => {
+  const corrected: SourceInput = { ...plain, bytes: Buffer.from(JSON.stringify({ tenantId: "acme", revision: "2", order: { orderId: "ord_1", status: "done", progress: 100 } })) };
+
+  it("Kafka: a record whose bytes differ is held as an evidence conflict before it is processed, and never resolves the incident", async () => {
+    const store = claimed();
+    const { failures, source } = resync(store, { policy: "quarantine-hold", adapter: null, guard: null });
+    await failures.held(source, plain, pause);
+    const [held] = store.open("orders");
+    assert.equal(failures.positionProblem("orders", plain.position, plain), null, "the same bytes are the held record");
+
+    assert.match(failures.positionProblem("orders", corrected.position, corrected) ?? "", /different bytes than the evidence .*evidence-conflict/);
+    let [incident] = store.open("orders");
+    assert.match(incident?.diagnosis ?? "", /^The redelivered record's bytes differ from the evidence captured/);
+    assert.equal(incident?.evidence.hash, held?.evidence.hash, "the original evidence is kept");
+    assert.equal(store.events(held?.failureId as string).at(-1)?.detail, "evidence-conflict");
+    // Even a commit reported at the position (which the hold prevents) never resolves it as the original record.
+    failures.committed("orders", corrected.position);
+    [incident] = store.open("orders");
+    assert.equal(incident?.state, "open");
+
+    // A retry that meets the conflicting record again settles as held, not retrying.
+    await failures.beforeRetry("orders", "operator retry");
+    assert.notEqual(failures.positionProblem("orders", corrected.position, corrected), null);
+    assert.equal(store.open("orders")[0]?.progress, "held");
+  });
+
+  it("fixture: a corrected record at the held position resolves as a corrected record, keeping the original evidence", async () => {
+    const store = new MemoryIncidentStore();
+    store.claim("order-dashboard", [{ sourceId: "orders", generation: "orders-1", kind: "fixture" }]);
+    const fixtureConfig = { ...configFor("quarantine-hold"), sources: { orders: { kind: "fixture", generation: "orders-1", fixtureRef: "orders" } } } as unknown as ProjectConfig;
+    const failures = new FailureService({
+      config: fixtureConfig, store, logger: silent, quarantine: null, configFingerprint: "c".repeat(64), handlerBuildId: "build-7", maxSourceRecordBytes: 1_048_576
+    });
+    const fixture: FailureSource = { id: "orders", config: fixtureConfig.sources["orders"] as FailureSource["config"], adapter: null };
+    const bad: SourceInput = { key: "ord_1", bytes: Buffer.from("{not json"), keyBytes: Buffer.from("ord_1"), headers: [], timestamp: null, position: { kind: "fixture", index: "2" } };
+    await failures.held(fixture, bad, pause);
+    const [held] = store.open("orders");
+    assert.equal(held?.evidence.location, "local");
+
+    const { bytes: _bytes, ...rest } = bad;
+    const fixed: SourceInput = { ...rest, value: { tenantId: "acme", revision: "3", order: { orderId: "ord_1", status: "done", progress: 100 } } };
+    assert.equal(failures.positionProblem("orders", fixed.position, fixed), null, "the corrected fixture record is processed");
+    failures.committed("orders", fixed.position);
+    const [resolved] = store.list({ state: "all" }).items;
+    assert.equal(resolved?.state, "resolved");
+    assert.equal(resolved?.progress, "processed");
+    assert.equal(resolved?.resolution, "a corrected record at the same position processed");
+    assert.match(store.events(held?.failureId as string).at(-1)?.detail ?? "", /different record .* the original record did not/);
+    assert.equal(resolved?.evidence.hash, held?.evidence.hash);
+    assert.equal(Buffer.from(store.getEvidence(held?.failureId as string)?.value as Uint8Array).toString(), "{not json", "the original evidence is kept");
+  });
+
+  it("fixture: the unchanged record that processes resolves as the original", async () => {
+    const store = new MemoryIncidentStore();
+    store.claim("order-dashboard", [{ sourceId: "orders", generation: "orders-1", kind: "fixture" }]);
+    const fixtureConfig = { ...configFor("pause"), sources: { orders: { kind: "fixture", generation: "orders-1", fixtureRef: "orders" } } } as unknown as ProjectConfig;
+    const failures = new FailureService({
+      config: fixtureConfig, store, logger: silent, quarantine: null, configFingerprint: "c".repeat(64), handlerBuildId: "build-7", maxSourceRecordBytes: 1_048_576
+    });
+    const fixture: FailureSource = { id: "orders", config: fixtureConfig.sources["orders"] as FailureSource["config"], adapter: null };
+    const record: SourceInput = { key: "ord_1", value: { a: 1 }, keyBytes: Buffer.from("ord_1"), headers: [], timestamp: null, position: { kind: "fixture", index: "0" } };
+    await failures.held(fixture, record, { ...pause, code: "HANDLER_FAILED", failureClass: "mapper-error", stage: "map" });
+    assert.equal(failures.positionProblem("orders", record.position, { ...record, value: { a: 1 } }), null);
+    failures.committed("orders", record.position);
+    assert.equal(store.list({ state: "all" }).items[0]?.resolution, "processed after retry");
+  });
+});
+
+describe("FailureService an incident from another Kafka cluster (runbook §6.4)", () => {
+  it("holds at startup with the cluster-mismatch diagnosis, and nothing from the other cluster is processed or resolves it", async () => {
+    const store = claimed();
+    const first = resync(store, { policy: "quarantine-hold", guard: null, clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    const [held] = store.open("orders");
+
+    const second = resync(store, { policy: "quarantine-hold", guard: null, adapter: null, clusterId: "cluster-b" });
+    assert.deepEqual([...await second.failures.start([second.source], async () => "-1")], ["orders"], "reported to hold from startup, before any record");
+    let [incident] = store.open("orders");
+    assert.match(incident?.diagnosis ?? "", /^Kafka cluster mismatch: the incident was captured on cluster cluster-a, but the source now reads cluster cluster-b/);
+    assert.equal(store.events(held?.failureId as string).at(-1)?.detail, "cluster-mismatch at startup");
+
+    // Every record of the source holds: below the held offset, at it (even a record that would process), past it, and on other partitions.
+    for (const position of [at(0, "40"), at(0, "41"), at(0, "42"), at(3, "0")]) {
+      assert.match(second.failures.positionProblem("orders", position, { ...plain, position, bytes: Buffer.from("{}") }) ?? "", /captured on Kafka cluster cluster-a, but the source now reads cluster cluster-b/);
+    }
+    second.failures.committed("orders", plain.position);
+    [incident] = store.open("orders");
+    assert.equal(incident?.state, "open", "a commit on the other cluster never resolves it");
+    assert.match(incident?.diagnosis ?? "", /^Kafka cluster mismatch/, "not reported as position-moved");
+
+    // A retry could never settle here, because nothing from this cluster is processed: it is refused, and the incident stays held.
+    await assert.rejects(second.failures.beforeRetry("orders", "operator retry"),
+      (error: { details?: Record<string, unknown> }) => error.details?.["reason"] === "cluster-mismatch");
+    assert.equal(store.open("orders")[0]?.progress, "held");
+
+    // Back on the original cluster, the record processes and resolves the incident.
+    const third = resync(store, { policy: "quarantine-hold", guard: null, adapter: null, clusterId: "cluster-a" });
+    assert.equal((await third.failures.start([third.source], async () => "-1")).size, 0, "not held from startup on the original cluster");
+    assert.equal(third.failures.positionProblem("orders", plain.position, plain), null);
+    third.failures.committed("orders", plain.position);
+    assert.equal(store.list({ state: "all" }).items[0]?.state, "resolved");
+  });
+
+  it("an unresolved advance from another cluster is refused for its cluster, and one that can't be confirmed doesn't promise a restart will settle it", async () => {
+    const store = claimed();
+    const first = resync(store, { policy: "quarantine-hold", guard: null, clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    const [held] = store.open("orders");
+    store.update(held!.failureId, held!.revision, { progress: "advance-pending" }, { event: "advance-pending", detail: "prepared", operationId: null });
+
+    const other = resync(store, { policy: "quarantine-hold", guard: null, adapter: null, clusterId: "cluster-b" });
+    assert.deepEqual([...await other.failures.start([other.source], async () => "42")], ["orders"]);
+    assert.equal(store.open("orders")[0]?.progress, "uncertain");
+    await assert.rejects(other.failures.beforeRetry("orders", "operator retry"),
+      (error: { details?: Record<string, unknown> }) => error.details?.["reason"] === "cluster-mismatch", "the cluster, not a restart, is what must change");
+
+    const unknown = resync(store, { policy: "pause", guard: null, adapter: null, clusterId: null });
+    await unknown.failures.start([unknown.source], async () => "42");
+    await assert.rejects(unknown.failures.beforeRetry("orders", "operator retry"), (error: { message: string; details?: Record<string, unknown> }) =>
+      error.details?.["reason"] === "advance-unresolved" && /reconciles it only once the source is confirmed to read the cluster it was captured on/.test(error.message));
+  });
+
+  it("an unreadable committed offset at startup says so, and a stale cluster diagnosis doesn't hold the source from startup on the right cluster", async () => {
+    const store = claimed();
+    const first = resync(store, { policy: "quarantine-hold", guard: null, clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    const [held] = store.open("orders");
+    // Left uncertain by an earlier start on another cluster.
+    store.update(held!.failureId, held!.revision, { progress: "uncertain", diagnosis: "Kafka cluster mismatch: the incident was captured on cluster cluster-a, but the source now reads cluster cluster-b." },
+      { event: "held", detail: "cluster-mismatch at startup", operationId: null });
+
+    const back = resync(store, { policy: "quarantine-hold", guard: null, adapter: null, clusterId: "cluster-a" });
+    const holding = await back.failures.start([back.source], async () => { throw new Error("broker unavailable"); });
+    assert.equal(holding.size, 0, "not held from startup as if it read another cluster");
+    const [incident] = store.open("orders");
+    assert.equal(incident?.progress, "uncertain");
+    assert.match(incident?.diagnosis ?? "", /^The group's committed offset could not be read at startup \(Error\), so the advance past orders\/0 offset 41 is not confirmed/);
+  });
+
+  it("an unknown current cluster (a source that no longer quarantines) is not by itself a reason to hold", async () => {
+    const store = claimed();
+    const first = resync(store, { policy: "quarantine-hold", guard: null, clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    const second = resync(store, { policy: "pause", guard: null, adapter: null, clusterId: null });
+    assert.equal((await second.failures.start([second.source], async () => "-1")).size, 0);
+    assert.equal(second.failures.positionProblem("orders", plain.position, plain), null);
+    second.failures.committed("orders", plain.position);
+    assert.equal(store.list({ state: "all" }).items[0]?.progress, "processed");
+  });
+});

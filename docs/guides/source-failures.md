@@ -1,6 +1,6 @@
 # Handle bad records: source-failure policies and the operator runbook
 
-October 2026 · Applies to the V1.1 source-failure features, which are not yet in a published release.
+October 2026 · Applies to the V1.1 source-failure features, published since `0.2.0-rc.1`. Changes made since that release are marked *unreleased*.
 
 A Kafka record your gateway can't process stops its source. That was true in V1 and it stays the default. V1.1 adds three things you can turn on:
 
@@ -124,7 +124,7 @@ Which class can take which policy:
 | `mapper-transient` | `map` threw a `TransientMappingError` on every allowed attempt | Bounded retry, then pause |
 | `mapper-error`, `mapper-timeout` | `map` threw, or exceeded `handlerTimeoutMs` | Pause |
 | `routing-invalid` | `map` returned a bad tenant, params, revision, shape or count | Pause; never skipped |
-| `revision-conflict` | The same revision maps to different data | Pause; never skipped |
+| `revision-conflict` | The same revision maps to different data than an open subscription already holds | Pause. Detected only against the state open subscriptions hold; see [§6.5](#65-repair-a-poison-record) |
 | `tombstone`, `oversize` | A null value, or a record over `maxSourceRecordBytes` | Pause |
 
 A record can have more than one problem, for example one output that fails the payload schema and another with an empty tenant. The record is classified by the most serious one: any class other than `invalid-json` or `payload-schema` wins, so a quarantine policy never skips a record that also has a mapping or integrity problem. To find it, StreamOtter still runs every channel's `map` for the record, as it would for a valid one.
@@ -203,14 +203,14 @@ async snapshot({ principal, params, recovery, signal }) {
   const result = { revision: String(row.version), data: row.order };
   if (recovery === undefined) return result;
   const required = (recovery.context as { outboxSeq: number }).outboxSeq;
-  // Behind the boundary: don't acknowledge. The attempt is retried with backoff and the view stays stale.
+  // Behind the boundary: don't acknowledge. The attempt is retried with backoff while the view stays stale.
   return appliedSeq >= required ? { ...result, recoveryBoundaryId: recovery.boundaryId } : result;
 }
 ```
 
 - **Make the watermark contiguous.** `appliedSeq` must mean "every outbox row up to here has been processed", never merely the highest row seen. A replica fed from several partitions can apply row 9 before row 7; reporting 9 would acknowledge a boundary at 8 without row 7's change.
 - **Return the ID only when `recovery` is present.** An ID returned when no boundary is in force is `INVALID_PAYLOAD`.
-- **When your read is behind, omit the ID; don't throw.** An omitted or different ID is a retryable `SOURCE_UNAVAILABLE` attempt: the view stays `stale` and the SDK's normal backoff applies. A thrown error fails the subscription with `HANDLER_FAILED`.
+- **When your read is behind, omit the ID; don't throw.** An omitted or different ID is a retryable `SOURCE_UNAVAILABLE` attempt: the view stays `stale` and is retried after one and then two seconds, as for any retryable attempt. If the third attempt still doesn't acknowledge, the subscription enters `resync-required` and the application resynchronizes it (`resync()`, or a page reload) once the read has caught up. The reason, "Snapshot did not acknowledge the source's recovery boundary", is in the gateway log; the subscription only sees `SOURCE_UNAVAILABLE`. A thrown error fails the subscription with `HANDLER_FAILED`.
 - The boundary is checked again after the pre-delivery authorization, so a snapshot that started under an older boundary doesn't count.
 
 The gateway checks the identity and lifecycle of the boundary. It can't check that your database really contains the change. That claim is yours, as V1's snapshot consistency already is.
@@ -242,18 +242,18 @@ A generation change always retires the boundary, whatever the mode. No mode reti
 | What happened to one record, and what can I do? | `streamotter failures show --state-dir <dir> --failure <failureId>` |
 | A file to attach to a bug report | `streamotter failures export --state-dir <dir> --failure <failureId> --out incident.json` |
 
-Every command takes `--json` for scripts. With `--json`, every error, usage errors included, goes to stderr as one line `{"error": StreamError}`, stdout stays empty, and the exit code is the same as without it. The CLI talks to the gateway serving `<dir>/run/operator.sock`, so that gateway must run with `--operator-socket`, and you must run the CLI as the gateway's user.
+Every command takes `--json` for scripts. With `--json`, a result goes to stdout as one JSON value, and that includes an operation's `refused` or `failed` result (exit 3 or 1), which is an answer, not an error. An error (a usage error, an unreachable gateway, `INVALID_REQUEST`) goes to stderr as one line `{"error": StreamError}` with nothing on stdout. The exit code is the same as without `--json`. The CLI talks to the gateway serving `<dir>/run/operator.sock`, so that gateway must run with `--operator-socket`, and you must run the CLI as the gateway's user.
 
 `failures show` keeps separate facts separate. Read them separately:
 
 | Field | Values | Means |
 | --- | --- | --- |
 | `state` | `open`, `resolved` | Whether the incident still needs anything |
-| `progress` | `held`, `retrying`, `advance-pending`, `advanced`, `processed`, `uncertain` | What happened to the source position. `processed` means the record went through on a retry; `advanced` means the source moved past it under a boundary. |
+| `progress` | `held`, `retrying`, `advance-pending`, `advanced`, `processed`, `uncertain` | What happened to the source position. `processed` means the record went through when it was redelivered, after a retry or a restart; `advanced` means the source moved past it under a boundary. |
 | `quarantine` | `not-required`, `pending`, `unknown`, `acknowledged`, `failed` | Whether a copy is in the quarantine topic. `unknown` is never treated as success. |
-| `recovery` | `not-applicable`, `guard-pending`, `held`, `boundary-in-force`, `denied` | What the recovery guard decided |
+| `recovery` | `not-applicable`, `guard-pending`, `held`, `boundary-in-force`, `denied` | Whether moving past the record was approved. `held` is not a guard decision: it means no approval, because no guard runs (`quarantine-hold`) or, under `quarantine-resync`, the circuit was open, the quarantine write did not succeed, or the guard threw or timed out (`guard` says which). `denied` means the guard answered `hold`. |
 | `evidence.completeness` | `complete`, `incomplete`, `unavailable`, `expired` | Whether the original bytes can be read back |
-| `nextAction` | `repair-and-retry`, `reassess`, `evaluate`, `reopen-circuit`, `none` | The supported next step, also explained in plain words |
+| `nextAction` | `repair-and-retry`, `reassess`, `evaluate`, `reopen-circuit`, `none` | The supported next step, also explained in plain words. For `repair-and-retry` the explanation says which repair applies: a fix and a retry, or, for a record that can't be processed at its position (bytes that can't be repaired, a record gone from the topic, another cluster, different bytes at the same offset), a policy switch or a rebaseline, because a retry would hold again. |
 
 None of these says a browser shows correct data. That is still each subscription's `live` state.
 
@@ -265,8 +265,8 @@ Every action names the incident (or circuit, or boundary) and the revision you s
 
 | Situation | Command | What it does |
 | --- | --- | --- |
-| You fixed the cause (publisher, mapping, schema) | `sources retry-current --source <id> --failure <fid> --expected-revision <n>` | Resumes the source at the held record, which is processed again. Never skips it. Waits up to 15 s and reports `retried` (processed), `advanced`, `held` (failed again, with the reason) or `retrying` (not settled yet). |
-| The guard held, and you fixed what it checks | `sources reassess --source <id> --failure <fid> --expected-revision <n>` | Like retry, for an eligible `quarantine-resync` incident whose recovery is `held` or `denied`: a fresh quarantine copy, the circuit, then the guard again. Never overrides an integrity failure. |
+| You fixed the cause (publisher, mapping, schema) | `sources retry-current --source <id> --failure <fid> --expected-revision <n>` | Resumes the source at the held record, which is processed again. Never skips it. Waits up to 15 s and reports `retried` (processed), `advanced`, `held` (held again, with the reason: it failed again, or, for a record gone from its position, the source position moved) or `retrying` (not settled yet). |
+| The guard held, and you fixed what it checks | `sources reassess --source <id> --failure <fid> --expected-revision <n>` | Like retry, for an eligible `quarantine-resync` incident whose recovery is `held` or `denied`: a fresh quarantine copy, the circuit, then the guard again. Never overrides an integrity failure. After you switch a class to `quarantine-resync` and restart, the redelivered record takes the new policy, so its incident can be reassessed. |
 | The circuit breaker opened | `sources reopen-circuit --source <id> --expected-circuit-revision <n> --reason "<what you fixed>"` | Closes the circuit and clears its window. Approves no record; follow with `reassess` or `retry-current`. |
 | A record was advanced past, and you want its state delivered now that the mapping works | `failures evaluate --failure <fid> --expected-revision <n>`, then `failures redrive --failure <fid> --plan <planId> --plan-fingerprint <fp> --expected-revision <n>` | Evaluate reads the original back, runs the current mapping without delivering, tracing or committing, and issues a five-minute single-use plan when redrive is allowed. Redrive checks everything again and admits the outputs through the normal revision filter: `reprocessed` if a subscription took a frame, `superseded` if current state was already newer. Nothing is published to Kafka and no offset moves. |
 | Retire a boundary by hand (`boundaryRetirement: "operator"` only) | `sources retire-boundary --source <id> --boundary <bid> --expected-revision <n> --reason "<what you verified>" --confirm <bid>` | See the warning in [§4.3](#43-retiring-a-boundary). The CLI prints it and sends nothing unless `--confirm` repeats the boundary ID. |
@@ -292,8 +292,9 @@ Refusals carry an `outcome` you can act on:
 | `stale-revision` | Read the current revision with `failures show` or `status`, check what changed, and decide again. |
 | `not-held`, `advance-unresolved`, `in-progress` | The record isn't waiting on you right now. Check `status`; an unresolved advance is reconciled at the next start. |
 | `circuit-closed` | `reopen-circuit` found the circuit already closed. Nothing to do. |
+| `cluster-mismatch` | The source reads another Kafka cluster than an open incident was captured on, so no retry can settle. Point the connection profile back and restart, or change the generation and rebaseline ([§6.4](#64-topic-retention-and-expired-evidence)). *Unreleased.* |
 | `circuit-open` | Fix the cause, then `reopen-circuit`. While the circuit of a `quarantine-resync` source is open, every retry is refused, `gateway.resumeSource` included. |
-| `integrity-class`, `policy-not-resync` | The class or policy can't be reassessed or redriven. Repair and `retry-current`. |
+| `integrity-class`, `policy-not-resync` | The class or policy can't be reassessed or redriven. Follow the incident's next action. An incident takes the configured policy each time its record is observed, so after a switch to `quarantine-resync` it is reassessable once the record has been redelivered (the restart does that). |
 | `plan-expired`, `plan-unknown`, `fingerprint-changed` | Evaluate again; see [§6.6](#66-stale-or-expired-plans). |
 | `plan-mismatch` | The plan was issued for a different incident. Use the plan `evaluate` gave for this one. |
 | `evidence-expired`, `evidence-unavailable` | See [§6.4](#64-topic-retention-and-expired-evidence) and [§6.1](#61-credentials-and-acls). |
@@ -304,11 +305,26 @@ Refusals carry an `outcome` you can act on:
 | `nothing-to-rebaseline` | `sources rebaseline` found nothing from an earlier generation; see [§6.10](#610-rebaseline-a-source). |
 | `journal-unavailable` | The operation couldn't be recorded, so nothing was done; see [§6.3](#63-full-disk-or-full-journal). |
 
+`failures evaluate` is a read, not an operation: it reports why no plan was issued, including `stale-revision`, as `Eligible no (<reason>)` (`ineligibleReason` with `--json`) and exits 0.
+
 The full list is in [API §6](../releases/v1.1/V1_1_API.md#6-operator-service-slices-c-d).
 
 ### 5.4 In the workbench (development)
 
 Under `streamotter dev` with a `failureHandling` section, the workbench shows a **Failures** tab. It lists incidents with evidence, quarantine, source position and recovery kept apart, explains each one, and offers retry, reassess, reopen-circuit, evaluate, redrive and a metadata-only export. Each action sends the revision on screen and shows the result as returned. It never shows raw record bytes, and it has no retire-boundary action.
+
+The tab is built on the development management API, which you can call yourself with the token `dev` prints (the routes exist only when `failureHandling` is configured):
+
+```bash
+TOKEN=<token from dev>
+curl -s http://127.0.0.1:7401/management/v1/operator/status -H "authorization: Bearer $TOKEN"
+curl -s "http://127.0.0.1:7401/management/v1/failures?state=open" -H "authorization: Bearer $TOKEN"
+curl -s "http://127.0.0.1:7401/management/v1/failures/<failureId, URL-encoded>" -H "authorization: Bearer $TOKEN"
+curl -s -X POST http://127.0.0.1:7401/management/v1/sources/retry-current -H "authorization: Bearer $TOKEN" \
+  -H "content-type: application/json" -d '{"sourceId": "orders", "failureId": "<failureId>", "expectedRevision": 3}'
+```
+
+Each answer is `{"ok": true, "requestId": …, "data": …}`, with the same shapes as the operator API: `status()`, a page of `IncidentSummary`, an `IncidentDetail`, and an `OperationResult` (a refusal is a normal 200 answer with `result: "refused"`). `GET /failures` takes `sourceId`, `state` (`open`, `resolved` or `all`), `limit` and `cursor`. The other routes are `POST /failures/export`, `/failures/evaluate`, `/failures/redrive`, `/sources/reassess` and `/sources/reopen-circuit`; the full table is in [API §9](../releases/v1.1/V1_1_API.md#9-development-management-routes-and-workbench-slice-d). No route returns raw bytes, and none retires a boundary.
 
 The workbench is development tooling. It never connects to a production gateway or its operator socket. In production, use the CLI or `getGatewayOperator`.
 
@@ -395,9 +411,11 @@ Two topics have retention that matters.
 
 **The quarantine topic.** Its retention decides how long evidence can be read back. A reference policy is 7 days. When a copy has been removed, `failures show --raw` shows no bytes and `evaluate` reports `evidence-expired` (naming the earliest retained offset) and issues no plan. The incident and any boundary stay in the journal; expired evidence never clears a recovery requirement. `quarantine-resync` writes a fresh copy before every advance, so an expired older copy never authorizes one. If you need the bytes longer, export them first: `failures export --include-raw --out <file>`.
 
-**The source topic.** A held record is uncommitted, so retention can delete it while you work on the fix. The gateway then sees the group's position past the held record without a recorded advance. It holds the source ("Source progress moved past a held record without a recorded advance; the source is held") instead of treating that as progress. Retries hold again, because the record is gone. The way out is a rebaseline ([§6.10](#610-rebaseline-a-source)). Prevent it: keep source retention well above how long a hold may last, and alert on readiness. The same applies when someone resets the group's offsets by hand or another consumer commits on the group.
+**The source topic.** A held record is uncommitted, so retention can delete it while you work on the fix. The gateway then sees the group's position past the held record without a recorded advance. It holds the source ("Source progress moved past a held record without a recorded advance; the source is held") instead of treating that as progress. A `retry-current` reports `held` with the incident's "Source progress moved" diagnosis, because the record is gone, and the incident stays `held` with `nextAction` `repair-and-retry`, whose explanation points here. (In `0.2.0-rc.1` the retry reported `retrying` and the incident stayed `retrying` with next action `none`; that is fixed, *unreleased*, and a restart puts such an incident back to `held`.) The way out is a rebaseline ([§6.10](#610-rebaseline-a-source)). Prevent it: keep source retention well above how long a hold may last, and alert on readiness. The same applies when someone resets the group's offsets by hand or another consumer commits on the group.
 
-**Another cluster.** An incident records the Kafka cluster ID it was captured on. If the connection profile now reaches a different cluster (or the quarantine check can't name one), the incident holds with "Kafka cluster mismatch": the record at the same position may be a different record there, so it is never quarantined or advanced and counts as a source-integrity fault that blocks redrive on the source, and an advance that was pending at the restart stays `uncertain` instead of being confirmed from the other cluster's offsets. Point the profile back at the original cluster, or, if the source really moved, change its `generation` and rebaseline ([§6.10](#610-rebaseline-a-source)).
+**Another cluster.** An incident records the Kafka cluster ID it was captured on (for a source that quarantines; the quarantine check at startup reads it). If the connection profile now reaches a different cluster, the incident holds with "Kafka cluster mismatch": the record at the same position may be a different record there. The gateway checks this at startup, before any record is read, and again before each record is processed, so nothing from the other cluster is processed while the incident is open, on any partition and at any offset, and a record there never resolves the incident. The source is held (`paused`, `SOURCE_UNAVAILABLE`, readiness `source-held`) from startup, even when the other cluster has nothing to read, and `retry-current` is refused with `cluster-mismatch`, because no retry can settle there. It is never quarantined or advanced and counts as a source-integrity fault that blocks redrive on the source, and an advance that was pending at the restart stays `uncertain` instead of being confirmed from the other cluster's offsets. (In `0.2.0-rc.1` the check ran only when the held record failed again, so a held source pointed at another cluster reported a moved position; that is fixed, *unreleased*.) Point the profile back at the original cluster, or, if the source really moved, change its `generation` and rebaseline ([§6.10](#610-rebaseline-a-source)).
+
+The gateway reads the cluster ID only while some class on the source uses a quarantine policy (`quarantine-hold` or `quarantine-resync`), so the startup and per-record cluster check runs only then. Switching every class on the source to `pause` turns it off: a held incident is then no longer checked against the cluster, although the evidence-conflict check ([§6.5](#65-repair-a-poison-record)) still holds a different record at the held offset. An advance that was pending stays conservative: without the cluster ID it can't be confirmed, so it becomes `uncertain` with the diagnosis "the source now reads a cluster whose ID is unknown". If the source still reads the same cluster, restore a quarantining policy and restart, so the ID is read and the advance is reconciled; otherwise rebaseline.
 
 ### 6.5 Repair a poison record
 
@@ -407,11 +425,13 @@ Two topics have retention that matters.
 | --- | --- |
 | Your mapping is wrong (`mapper-error`, `mapper-timeout`, `routing-invalid`, `payload-schema` from a mapping bug) | Fix `map` or the schema, deploy with a new `--handler-build-id`, and restart. The held record is redelivered first. If it processes, the incident resolves as `processed`; nothing was skipped. When the cause was outside your code (data your mapper reads, a configuration service), fix it and `retry-current` without restarting. |
 | A dependency was down (`mapper-transient`) | When it's back, `retry-current`. |
-| The record itself is bad: `invalid-json`, or a value your schema rightly rejects (`payload-schema`) | The bytes in Kafka can't be repaired, and a retry fails the same way. Either let the guard decide: switch that class to `quarantine-resync`, add an honest guard and snapshot acknowledgment ([§4](#4-write-an-honest-recovery-guard)), and restart; the redelivered record follows the new policy. Or rebaseline past it ([§6.10](#610-rebaseline-a-source)). |
+| The record itself is bad: `invalid-json`, or a value your schema rightly rejects (`payload-schema`) | The bytes in Kafka can't be repaired, and a retry fails the same way. Either let the guard decide: switch that class to `quarantine-resync`, add an honest guard and snapshot acknowledgment ([§4](#4-write-an-honest-recovery-guard)), and restart; the redelivered record follows the new policy, the incident's `policy` changes with it (its history records the switch), and if the guard holds, `reassess` runs it again. Or rebaseline past it ([§6.10](#610-rebaseline-a-source)). |
 | `tombstone`, `oversize` | Never skipped, and never reach `map`, so no handler change helps. Fix the publisher, then rebaseline past the record ([§6.10](#610-rebaseline-a-source)). |
-| `revision-conflict` | Never skipped. If your mapping produced the conflicting revision, fix it and restart. If the publisher did, fix the publisher; the record already in the topic then needs a rebaseline ([§6.10](#610-rebaseline-a-source)). |
+| `revision-conflict` | Detected only against the state open subscriptions hold: a duplicate revision with different data is committed like any record when no subscription holds that revision, and pausing discards the state it conflicted with, so a `retry-current` compares it only with state resynchronized since and usually admits it (the gateway logs a warning). If your mapping produced the conflicting revision, fix it and restart. If the publisher did, fix the publisher, and decide which data is correct before you retry; to keep the record from ever being delivered, rebaseline past it instead ([§6.10](#610-rebaseline-a-source)). |
 
-A record whose redelivered bytes differ from the evidence captured for the same position is an integrity failure ("evidence-conflict"): the source stays held. Find out why the topic changed under the same offset (a re-created topic without a `generation` change is the usual reason).
+A record whose redelivered bytes differ from the evidence captured for the same position is an integrity failure ("evidence-conflict"): the source stays held, whether that record would fail or process. The gateway compares a Kafka record at a held offset with the evidence before processing it, so a different record that would process never resolves the incident as the original (in `0.2.0-rc.1` it did; fixed, *unreleased*). Find out why the topic changed under the same offset (a re-created topic without a `generation` change is the usual reason), then change the `generation` and rebaseline ([§6.10](#610-rebaseline-a-source)).
+
+**Fixture sources are the exception, by design.** Correcting a fixture record in the handlers file and restarting `streamotter dev` with the same `--state-dir` is the local recovery path. When the corrected record at the held position processes, the incident resolves with resolution "a corrected record at the same position processed", not as the original, and keeps the original evidence. A corrected record that still fails is held as an evidence conflict; change the fixture source's `generation` when you replace its records wholesale. Without `--state-dir` the incident store is in memory and a restart starts the fixture and its incidents over.
 
 After a repair, subscriptions resynchronize from fresh snapshots as in V1.
 
@@ -521,7 +541,7 @@ The reasons map to the procedures above: `source-held` to [§6.5](#65-repair-a-p
    - `generation` (the default): only a generation change ends it, and that is a rebaseline ([§6.10](#610-rebaseline-a-source)). If you don't intend one, switch the source to `"operator"`, restart, verify, and retire it by hand.
 
    The mode in the running configuration decides, not the mode the boundary was created under.
-3. **Stop the gateway, remove `failureHandling`, and start it again.** If `--state-dir` still points at a journal with an open incident or a boundary in force for a configured source, startup refuses with `CONFIG_INVALID`, `details.reason: "failure-handling-removed"`, naming the sources (`openIncidentSources`, `boundarySources`). A boundary from an earlier source generation doesn't count: changing the generation retires it, so you can change the generation and remove `failureHandling` in the same restart. A journal with nothing outstanding is left untouched.
+3. **Stop the gateway, remove `failureHandling`, and start it again.** Remove what only failure handling uses at the same time: `handlers.sources[id].recover` and `retire` (validation refuses `handlers.sources` without a `quarantine-resync` policy) and the `--operator-socket` flag or `operatorSocket` option (refused without `failureHandling`). If `--state-dir` still points at a journal with an open incident or a boundary in force for a configured source, startup refuses with `CONFIG_INVALID`, `details.reason: "failure-handling-removed"`, naming the sources (`openIncidentSources`, `boundarySources`). A boundary from an earlier source generation doesn't count: changing the generation retires it, so you can change the generation and remove `failureHandling` in the same restart. A journal with nothing outstanding is left untouched.
 4. **Make snapshots return only `revision` and `data`** when no `recovery` is given. Written as in [§4.2](#42-acknowledge-the-boundary-in-every-snapshot), they already do. The V1 runtime rejects a snapshot with an extra `recoveryBoundaryId` field as `INVALID_PAYLOAD`.
 5. **To go back to a V1 release** (`0.1.0-rc.3` or earlier), finish steps 1–4 first, then install the older version. It refuses any configuration that still contains `failureHandling` (`streamotter validate` prints `/failureHandling  UNKNOWN_KEY` and exits 2), rejects the new CLI flags, and never reads the journal. A gateway started without `--state-dir` can't see the journal either, so the startup check in step 3 only protects you while the state directory is passed.
 6. **Keep the same consumer group and `generation`,** unless you are deliberately rebaselining. Renaming them is not a way around a held incident.

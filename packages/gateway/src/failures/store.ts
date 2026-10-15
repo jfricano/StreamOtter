@@ -591,6 +591,26 @@ export function storeFull(message: string): StreamOtterError {
   return new StreamOtterError("OVERLOADED", { message, details: { reason: "journal-full" } });
 }
 
+/**
+ * Applies the policy configured now to an incident observed again, and returns
+ * the detected event's note about the change ("" when there is none). A guard
+ * decision is a fact about quarantine-resync: under a policy without a guard, a
+ * denied recovery becomes held (nothing approves moving past the record), and
+ * the last guard result stays as history. (A guard-pending recovery never
+ * reaches a re-observation: startup makes it held first.)
+ */
+export function applyPolicy(record: IncidentRecord, policy: FailurePolicy): string {
+  if (record.policy === policy) return "";
+  const from = record.policy;
+  record.policy = policy;
+  let note = `; policy changed from ${from} to ${policy} in the configuration`;
+  if (policy !== "quarantine-resync" && record.recovery === "denied") {
+    note += `; recovery ${record.recovery} under ${from} is now held, because no recovery guard runs under ${policy}`;
+    record.recovery = "held";
+  }
+  return note;
+}
+
 export function evidenceBytes(evidence: RawEvidence): number {
   return (evidence.key?.byteLength ?? 0) + (evidence.value?.byteLength ?? 0)
     + evidence.headers.reduce((sum, header) => sum + Buffer.byteLength(header.name) + header.value.byteLength, 0);
@@ -705,6 +725,9 @@ export class MemoryIncidentStore implements IncidentStore {
       existing.resolution = null;
       existing.progress = "held";
     }
+    // The record is the same, so its class and the policy configured for it now apply (a policy switched since the
+    // last observation takes effect here, and the detected event records the change).
+    const policyChange = conflict ? "" : applyPolicy(existing, fields.policy);
     if (!conflict) {
       existing.failureClass = fields.failureClass;
       existing.stage = fields.stage;
@@ -712,7 +735,7 @@ export class MemoryIncidentStore implements IncidentStore {
       existing.channel = fields.channel;
       existing.diagnosis = fields.diagnosis;
     }
-    this.#addEvent(existing.failureId, { at: observedAt, event: "detected", detail: conflict ? "evidence-conflict" : fields.failureClass, operationId: null });
+    this.#addEvent(existing.failureId, { at: observedAt, event: "detected", detail: conflict ? "evidence-conflict" : `${fields.failureClass}${policyChange}`, operationId: null });
     return { record: structuredClone(existing), created: false, conflict };
   }
 

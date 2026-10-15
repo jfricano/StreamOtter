@@ -42,7 +42,7 @@ describe("V1.1: failure handling checks at gateway construction", () => {
     const { config } = setup({ sources: { orders: { invalidJson: "quarantine-hold" } } });
     assert.deepEqual(failureOptionIssues(config, { mode: "development" }), []);
     assert.deepEqual(failureOptionIssues(config, { mode: "production" }), [
-      "source orders uses a quarantine policy, which requires stateDirectory in production so incidents survive a restart"
+      "source orders uses a quarantine policy, which requires stateDirectory (--state-dir) in production so incidents survive a restart"
     ]);
     assert.deepEqual(failureOptionIssues(config, { mode: "production", stateDirectory: "/var/lib/streamotter" }), []);
     assert.deepEqual(failureOptionIssues(config, { mode: "development", stateDirectory: "", handlerBuildId: "x".repeat(129) }), [
@@ -53,7 +53,7 @@ describe("V1.1: failure handling checks at gateway construction", () => {
       "the failure journal needs Node 24.15.0 or later; this is Node 24.14.0"
     ]);
     assert.deepEqual(failureOptionIssues(config, { mode: "development", operatorSocket: true }), [
-      "operatorSocket requires stateDirectory and failureHandling: the socket lives in the state directory and serves the failure operator API"
+      "operatorSocket (--operator-socket) requires stateDirectory (--state-dir) and failureHandling: the socket lives in the state directory and serves the failure operator API"
     ]);
     assert.deepEqual(failureOptionIssues(config, { mode: "development", operatorSocket: "yes" }), ["operatorSocket must be true or false"]);
     assert.deepEqual(failureOptionIssues(config, { mode: "production", stateDirectory: "/var/lib/streamotter", operatorSocket: true }), []);

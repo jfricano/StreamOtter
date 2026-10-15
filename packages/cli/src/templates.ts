@@ -1,3 +1,4 @@
+import { canonicalJsonPretty } from "@streamotter/contracts";
 import { streamotterModules, type PackageStyle } from "./generate.ts";
 
 /**
@@ -46,7 +47,7 @@ export function scaffoldFiles(projectId: string, options: { packages?: PackageSt
   const handlers = `// @ts-check
 /**
  * Trusted server handlers for StreamOtter, loaded by:
- *   streamotter dev --config streamotter.json --handlers server/handlers.mjs
+ *   npx streamotter dev --config streamotter.json --handlers server/handlers.mjs
  *
  * StreamOtter loads compiled JavaScript. If you write handlers in TypeScript,
  * compile them first and point --handlers at the output.
@@ -115,12 +116,13 @@ export const development = {
 import { channelVersions, type AppChannels } from "../generated/streamotter.generated.js";
 
 /**
- * Renders one job's live progress. Run \`streamotter generate --config streamotter.json --out generated\`
+ * Renders one job's live progress. Run \`npx streamotter generate --config streamotter.json --out generated\`
  * first. getToken must return your application's session token (or, during local development,
  * a preview token from the workbench).
  */
 export async function watchJob(jobId: string, getToken: () => Promise<string>, element: HTMLElement): Promise<() => Promise<void>> {
   const client = createClient<AppChannels>({ origin: "http://localhost:7400", getToken: () => getToken() });
+  client.on("error", error => console.warn(\`[\${error.code}] \${error.message}\`)); // connection errors, such as a refused origin
   const job = client.subscribe("jobProgress", { channelVersion: channelVersions.jobProgress, params: { jobId } });
   job.on("data", ({ data, revision }) => {
     element.textContent = \`\${data.state} — \${data.percent}% (revision \${revision})\`;
@@ -145,8 +147,8 @@ so no Kafka broker is needed to start.
 ## Run locally
 
 \`\`\`bash
-streamotter validate --config streamotter.json
-streamotter dev --config streamotter.json --handlers server/handlers.mjs
+npx streamotter validate --config streamotter.json
+npx streamotter dev --config streamotter.json --handlers server/handlers.mjs
 \`\`\`
 
 \`dev\` prints the workbench URL and a one-time management token. In the workbench, create a
@@ -156,7 +158,7 @@ and advance the \`jobs\` fixture to watch revisions arrive.
 ## Integrate
 
 \`\`\`bash
-streamotter generate --config streamotter.json --out generated
+npx streamotter generate --config streamotter.json --out generated
 \`\`\`
 
 \`generated/streamotter.generated.ts\` contains \`AppChannels\`; \`web/example.ts\` shows a subscription
@@ -170,7 +172,7 @@ with cleanup and error handling.
 `;
 
   return [
-    { path: "streamotter.json", content: `${JSON.stringify(config, null, 2)}\n` },
+    { path: "streamotter.json", content: canonicalJsonPretty(config) },
     { path: "server/handlers.mjs", content: handlers },
     { path: "web/example.ts", content: example },
     { path: "README.md", content: readme }
