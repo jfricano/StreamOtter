@@ -30,6 +30,19 @@ export interface AdvanceHooks {
   afterAdvance?: (failureId: string) => Promise<void>;
 }
 
+/**
+ * How a diagnosis names the source-integrity holds the operator service explains
+ * (position moved, another cluster, different bytes at the held position). Each
+ * diagnosis starts with one of these.
+ */
+export const POSITION_MOVED_DIAGNOSIS = "Source progress moved";
+export const CLUSTER_MISMATCH_DIAGNOSIS = "Kafka cluster mismatch";
+export const EVIDENCE_CONFLICT_DIAGNOSIS = "The redelivered record's bytes differ from the evidence captured for the same position.";
+/** The resolution of a fixture incident whose record was replaced at the same position and then processed (runbook §6.5). */
+export const CORRECTED_RECORD_RESOLUTION = "a corrected record at the same position processed";
+
+const EVIDENCE_CONFLICT_MESSAGE = `${EVIDENCE_CONFLICT_DIAGNOSIS} This is an integrity failure: the source stays held and is never quarantined or skipped.`;
+
 /** Progress states that mean the record is still held at its position, or that its advance is unresolved. */
 const WATCHED_PROGRESS = new Set<IncidentRecord["progress"]>(["held", "retrying", "advance-pending", "uncertain"]);
 
@@ -81,6 +94,13 @@ export class FailureService {
   /** Sources with an incident that a later successful commit could resolve; keeps the commit path cheap. */
   readonly #watched = new Set<string>();
   readonly #clusterIds = new Map<string, string>();
+  /**
+   * Held positions where the record last checked has different bytes than the
+   * captured evidence. A fixture record there was corrected and restarted, so
+   * its commit resolves the incident as a corrected record; a Kafka record
+   * there is held (evidence-conflict) and its commit never resolves the incident.
+   */
+  readonly #corrected = new Set<string>();
   /** Set when a journal write failed; readiness reports it until a later write succeeds. */
   #journalError: string | null = null;
   readonly #guards: Readonly<Record<string, SourceRecoveryHandlers>>;
@@ -166,9 +186,21 @@ export class FailureService {
       for (const incident of open) {
         if (incident.progress === "advance-pending" || incident.progress === "uncertain") await this.#reconcile(source, incident, committedOffset);
         // No guard runs in a new process: a guard the last process was still waiting on is over.
-        const current = this.store.get(incident.failureId);
+        let current = this.store.get(incident.failureId);
         if (current !== null && current.state === "open" && current.recovery === "guard-pending") {
-          this.#update(current, { recovery: "held" }, "held", "the gateway restarted while the recovery guard was running");
+          current = this.#update(current, { recovery: "held" }, "held", "the gateway restarted while the recovery guard was running");
+        }
+        // Nor does a retry: the record is redelivered and evaluated again, so it is held until then (it never stays "retrying").
+        if (current !== null && current.state === "open" && current.progress === "retrying") {
+          current = this.#update(current, { progress: "held" }, "held", "the gateway restarted during a retry; the record is evaluated again when it is redelivered");
+        }
+        // An incident from another Kafka cluster holds before any record of this one is read (ADR-15A §3).
+        if (current !== null && current.state === "open" && (current.progress === "held" || current.progress === "retrying")) {
+          const mismatch = this.#knownClusterMismatch(source.id, current);
+          if (mismatch !== null && current.diagnosis !== mismatch) {
+            this.#logger.error("An open incident was captured on another Kafka cluster; the source stays held and nothing from this cluster is processed", { failureId: current.failureId, sourceId: source.id });
+            this.#update(current, { diagnosis: mismatch }, "held", "cluster-mismatch at startup");
+          }
         }
       }
       if (this.store.open(source.id).some(incident => WATCHED_PROGRESS.has(incident.progress))) this.#watched.add(source.id);
@@ -270,10 +302,23 @@ export class FailureService {
     } catch {
       return;
     }
+    const key = positionKey(sourceId, position);
+    const corrected = this.#corrected.delete(key);
     let remaining = 0;
     for (const incident of open) {
-      if ((incident.progress === "held" || incident.progress === "retrying") && samePosition(incident.position, position)) {
-        this.#update(incident, { progress: "processed", state: "resolved", resolution: "processed after retry" }, "resolved", "the original record processed successfully");
+      if ((incident.progress === "held" || incident.progress === "retrying") && samePosition(incident.position, position)
+        && this.#knownClusterMismatch(sourceId, incident) === null) {
+        if (!corrected) {
+          this.#update(incident, { progress: "processed", state: "resolved", resolution: "processed after retry" }, "resolved", "the original record processed successfully");
+        } else if (position.kind === "fixture") {
+          // The fixture's record at this position was replaced (corrected and restarted, the local recovery path). The original
+          // never processed; its evidence stays with the incident.
+          this.#update(incident, { progress: "processed", state: "resolved", resolution: CORRECTED_RECORD_RESOLUTION }, "resolved",
+            "a different record at this fixture position processed successfully; the original record did not, and its evidence is kept");
+        } else {
+          // positionProblem holds a Kafka record whose bytes differ before it is processed; a commit there never resolves the incident.
+          remaining++;
+        }
       } else {
         remaining++;
       }
@@ -282,34 +327,81 @@ export class FailureService {
   }
 
   /**
-   * Checks a record about to be processed against open incidents. Reading a
-   * later offset on the partition of a held record means the group position
-   * moved without an advance this gateway recorded (retention removed the held
-   * record, an offset reset, or another consumer committed): the source holds
-   * instead of silently treating the gap as progress (F27, F30). An uncertain
-   * advance (unconfirmed, or unexplained at startup) holds every record of the
-   * source until a restart reconciles it (spec §6). Returns why, or null.
+   * Checks a record about to be processed against open incidents, and returns
+   * why the source must hold instead, or null:
+   *
+   * - An incident captured on another Kafka cluster than the source now reads
+   *   holds every record of the source: the same coordinates may name different
+   *   records there (ADR-15A §3).
+   * - An uncertain advance (unconfirmed, or unexplained at startup) holds every
+   *   record of the source until a restart reconciles it (spec §6).
+   * - A Kafka record at a held position whose bytes differ from the incident's
+   *   evidence is not the held record: it holds as an evidence conflict (runbook
+   *   §6.5) instead of resolving the incident. A fixture record that differs is
+   *   the local recovery path (the fixture was corrected and restarted): it is
+   *   processed, and a commit resolves the incident as a corrected record.
+   * - Reading a later offset on the partition of a held record means the group
+   *   position moved without an advance this gateway recorded (retention removed
+   *   the held record, an offset reset, or another consumer committed): the
+   *   source holds instead of treating the gap as progress (F27, F30).
+   *
+   * A held incident that a retry had marked retrying is put back to held.
+   * `input` is the record itself, for the evidence comparison.
    */
-  positionProblem(sourceId: string, position: SourceRecord["position"]): string | null {
-    if (!this.#watched.has(sourceId) || position.kind !== "kafka") return null;
+  positionProblem(sourceId: string, position: SourceRecord["position"], input?: SourceInput): string | null {
+    if (!this.#watched.has(sourceId)) return null;
     let open: IncidentRecord[];
     try {
       open = this.store.open(sourceId);
     } catch (error) {
       return `the failure journal could not be read: ${(error as Error).message.slice(0, 200)}`;
     }
-    const uncertain = open.find(incident => incident.progress === "uncertain");
-    if (uncertain !== undefined) {
-      return `incident ${uncertain.failureId} has an unresolved advance (uncertain); the source stays held until a restart reconciles it from the group's committed offset`;
+    for (const incident of open) {
+      if (!WATCHED_PROGRESS.has(incident.progress)) continue;
+      const mismatch = this.#knownClusterMismatch(sourceId, incident);
+      if (mismatch === null) continue;
+      if (incident.diagnosis !== mismatch || incident.progress === "retrying") {
+        this.#logger.error("An open incident was captured on another Kafka cluster; the source stays held and nothing from this cluster is processed", { failureId: incident.failureId, sourceId });
+        this.#update(incident, { diagnosis: mismatch, ...(incident.progress === "retrying" ? { progress: "held" as const } : {}) }, "held", "cluster-mismatch");
+      }
+      return `incident ${incident.failureId} was captured on Kafka cluster ${incident.clusterId ?? "(unknown)"}, but the source now reads cluster ${this.#clusterIds.get(sourceId) ?? "(unknown)"}; nothing from this cluster is processed`;
     }
+    if (position.kind === "kafka") {
+      const uncertain = open.find(incident => incident.progress === "uncertain");
+      if (uncertain !== undefined) {
+        return `incident ${uncertain.failureId} has an unresolved advance (uncertain); the source stays held until a restart reconciles it from the group's committed offset`;
+      }
+    }
+    for (const incident of open) {
+      if ((incident.progress !== "held" && incident.progress !== "retrying") || !samePosition(incident.position, position)) continue;
+      const key = positionKey(sourceId, position);
+      const raw = input === undefined ? null : rawEvidence(input);
+      if (raw === null || incident.evidence.hash === "" || evidenceHash(raw) === incident.evidence.hash) {
+        this.#corrected.delete(key);
+        continue;
+      }
+      this.#corrected.add(key);
+      if (position.kind === "fixture") continue;
+      if (incident.diagnosis !== EVIDENCE_CONFLICT_MESSAGE || incident.progress === "retrying") {
+        this.#logger.error("The record at a held position is not the held record: its bytes differ from the captured evidence; the source stays held", { failureId: incident.failureId, sourceId });
+        this.#update(incident, { diagnosis: EVIDENCE_CONFLICT_MESSAGE, ...(incident.progress === "retrying" ? { progress: "held" as const } : {}) }, "held", "evidence-conflict");
+      }
+      return `the record at ${describePosition(position)} has different bytes than the evidence captured for incident ${incident.failureId}; it is not the held record (evidence-conflict)`;
+    }
+    if (position.kind !== "kafka") return null;
     for (const incident of open) {
       const held = incident.position;
       if (held.kind !== "kafka" || held.topic !== position.topic || held.partition !== position.partition) continue;
       if (!WATCHED_PROGRESS.has(incident.progress)) continue;
       if (BigInt(position.offset) <= BigInt(held.offset)) continue;
       const reason = `partition ${held.topic}/${held.partition} is at offset ${position.offset}, past the held record at offset ${held.offset}, with no recorded advance`;
-      if (!incident.diagnosis.startsWith("Source progress moved")) {
-        this.#update(incident, { diagnosis: `Source progress moved: ${reason}. The record may have expired or the group offset was changed outside StreamOtter.` }, "held", "position-moved");
+      // A retry of a record that is gone settles here: it is held again, with the moved diagnosis, not left "retrying" (runbook §6.4).
+      const moved = incident.diagnosis.startsWith(POSITION_MOVED_DIAGNOSIS);
+      if (!moved || incident.progress === "retrying") {
+        this.#update(incident, {
+          ...(moved ? {} : { diagnosis: `${POSITION_MOVED_DIAGNOSIS}: ${reason}. The record may have expired or the group offset was changed outside StreamOtter.` }),
+          ...(incident.progress === "retrying" ? { progress: "held" as const } : {})
+        }, "held", "position-moved");
       }
       return reason;
     }
@@ -362,6 +454,7 @@ export class FailureService {
     const key = positionKey(source.id, input.position);
     const processed = this.#queued.get(key) === true;
     this.#queued.delete(key);
+    this.#corrected.delete(key);
     if (processed) {
       // A retry processed and committed the record before this disposition ran: the source is no longer paused at it.
       this.#logger.info("A held record processed before its failure was recorded; no incident is opened", { sourceId: source.id, failureClass: outcome.failureClass });
@@ -397,7 +490,7 @@ export class FailureService {
       this.#watched.add(source.id);
       this.#emit(record, "detected", failureClass);
       if (result.conflict) {
-        this.#update(record, { diagnosis: "The redelivered record's bytes differ from the evidence captured for the same position. This is an integrity failure: the source stays held and is never quarantined or skipped." }, "held", "evidence-conflict");
+        this.#update(record, { diagnosis: EVIDENCE_CONFLICT_MESSAGE }, "held", "evidence-conflict");
         return;
       }
       if (record.progress === "retrying") record = this.#update(record, { progress: "held" }, "held", "the retried record failed again");
@@ -642,7 +735,19 @@ export class FailureService {
     if (source.config.kind !== "kafka" || incident.clusterId === null) return null;
     const current = this.#clusterIds.get(source.id) ?? null;
     if (current === incident.clusterId) return null;
-    return `Kafka cluster mismatch: the incident was captured on cluster ${incident.clusterId}, but the source now reads ${current === null ? "a cluster whose ID is unknown" : `cluster ${current}`}. The same position may name a different record, so this is an integrity failure: the source stays held and is never advanced. If the source moved to another cluster, change its generation and rebaseline.`;
+    return clusterMismatchDiagnosis(incident.clusterId, current);
+  }
+
+  /**
+   * The cluster-mismatch diagnosis when the cluster the source reads now is
+   * known (a source that quarantines) and differs from the incident's; else
+   * null. Used before records are read, where an unknown cluster ID (a source
+   * whose policy no longer quarantines) is not by itself a reason to hold.
+   */
+  #knownClusterMismatch(sourceId: string, incident: IncidentRecord): string | null {
+    const current = this.#clusterIds.get(sourceId);
+    if (incident.position.kind !== "kafka" || incident.clusterId === null || current === undefined || current === incident.clusterId) return null;
+    return clusterMismatchDiagnosis(incident.clusterId, current);
   }
 
   /** Holds the incident with the cluster-mismatch diagnosis when there is one; true when it did. */
@@ -805,6 +910,14 @@ export class FailureService {
   #emit(record: IncidentRecord, event: IncidentEventName, detail: string): void {
     this.#logger.info("Source failure", { failureId: record.failureId, sourceId: record.sourceId, event, detail: detail.slice(0, 200), revision: record.revision });
   }
+}
+
+function clusterMismatchDiagnosis(captured: string, current: string | null): string {
+  return `${CLUSTER_MISMATCH_DIAGNOSIS}: the incident was captured on cluster ${captured}, but the source now reads ${current === null ? "a cluster whose ID is unknown" : `cluster ${current}`}. The same position may name a different record, so this is an integrity failure: the source stays held and is never advanced. If the source moved to another cluster, change its generation and rebaseline.`;
+}
+
+function describePosition(position: SourceRecord["position"]): string {
+  return position.kind === "kafka" ? `${position.topic}/${position.partition} offset ${position.offset}` : `fixture record ${position.index}`;
 }
 
 function isValidateClass(failureClass: FailureClass): boolean {

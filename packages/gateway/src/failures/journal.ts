@@ -5,7 +5,7 @@ import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { StreamOtterError, type ErrorCode, type Json, type Page } from "@streamotter/contracts";
 import {
   abandonedOperation, advancedIncident, capAdvances, checkAdvanceState, checkCircuit, checkOperationResult, checkPrepareAdvance, checkRetirement,
-  clampLimit, defaultCircuit, endBoundary, evidenceBytes, finishedOperation, generationRetirement, JOURNAL_LIMIT_BYTES, MAX_EVENTS_PER_INCIDENT,
+  clampLimit, defaultCircuit, endBoundary, evidenceBytes, finishedOperation, generationRetirement, policyChanged, JOURNAL_LIMIT_BYTES, MAX_EVENTS_PER_INCIDENT,
   MAX_OPERATIONS, newOperation, nextBoundary, operationsToPrune, SPOOL_LIMIT_BYTES, StaleRevisionError, storeFull, unknownIncident,
   type CircuitState, type HeaderBytes, type IncidentEvent, type IncidentPatch, type IncidentQuery, type IncidentRecord, type IncidentStore,
   type NewObservation, type ObservationResult, type PrepareAdvance, type RawEvidence, type SourceIdentity, type StoreUsage, type StoredBoundary,
@@ -850,17 +850,21 @@ export class SqliteIncidentStore implements IncidentStore {
         existing.resolution = null;
         existing.progress = "held";
       }
+      // The record is the same, so its class and the policy configured for it now apply (a policy switched since the
+      // last observation takes effect here, and the detected event records the change).
+      const policyChange = !conflict && existing.policy !== fields.policy ? policyChanged(existing.policy, fields.policy) : "";
       if (!conflict) {
         existing.failureClass = fields.failureClass;
         existing.stage = fields.stage;
         existing.errorCode = fields.errorCode;
         existing.channel = fields.channel;
         existing.diagnosis = fields.diagnosis;
+        existing.policy = fields.policy;
       }
       const json = JSON.stringify(existing);
       this.#admit(ROW_OVERHEAD_BYTES + Math.max(0, Buffer.byteLength(json) - Buffer.byteLength(row.record)), "record another observation");
       this.#replace(existing, json);
-      this.#addEvent(existing.failureId, { at: observedAt, event: "detected", detail: conflict ? "evidence-conflict" : fields.failureClass, operationId: null });
+      this.#addEvent(existing.failureId, { at: observedAt, event: "detected", detail: conflict ? "evidence-conflict" : `${fields.failureClass}${policyChange}`, operationId: null });
       return { record: existing, created: false, conflict };
     });
   }

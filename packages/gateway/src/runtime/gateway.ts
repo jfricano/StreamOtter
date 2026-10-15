@@ -687,10 +687,12 @@ export class GatewayRuntime implements SessionOwner {
     };
     trace("source", "ok");
 
-    const moved = this.#failures?.positionProblem(source.id, input.position) ?? null;
+    const moved = this.#failures?.positionProblem(source.id, input.position, input) ?? null;
     if (moved !== null) {
       trace("source", "rejected", { errorCode: "SOURCE_UNAVAILABLE" });
-      this.core.logger.error("Source progress moved past a held record without a recorded advance; the source is held", {
+      this.core.logger.error(moved.startsWith("partition ")
+        ? "Source progress moved past a held record without a recorded advance; the source is held"
+        : "The next record can't be processed while an open incident says the source must hold; the source is held", {
         sourceId: source.id, position: input.position as unknown as Json, reason: moved
       });
       this.#setSourceStatus(source, "paused", "SOURCE_UNAVAILABLE");
@@ -976,7 +978,7 @@ export class GatewayRuntime implements SessionOwner {
       throw error;
     }
     if (store.kind === "memory") {
-      this.core.logger.warn("Source-failure incidents are kept in memory only; set stateDirectory to keep them across restarts", {});
+      this.core.logger.warn("Source-failure incidents are kept in memory only; set stateDirectory (--state-dir in the CLI) to keep them across restarts", {});
     }
     let quarantine: KafkaQuarantineWriter | null = null;
     try {

@@ -49,7 +49,10 @@ export function rebaselineSource(options: {
         };
       }
       for (const incident of stale) {
-        store.update(incident.failureId, incident.revision, { state: "resolved", resolution: `rebaselined to generation ${generation}` }, {
+        // The record was neither processed nor advanced past: a retry in flight ends as held, and an advance that was never
+        // confirmed stays unconfirmed (uncertain), so a resolved incident never reads as still being worked on.
+        const progress = incident.progress === "retrying" ? "held" : incident.progress === "advance-pending" ? "uncertain" : incident.progress;
+        store.update(incident.failureId, incident.revision, { state: "resolved", resolution: `rebaselined to generation ${generation}`, progress }, {
           at, event: "operator", detail: `rebaseline from generation ${incident.generation}: ${reason}`, operationId
         });
       }

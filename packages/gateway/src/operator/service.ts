@@ -11,7 +11,10 @@ import {
 import { validateOperatorRequest } from "@streamotter/contracts/internal";
 import { evidenceHash } from "../failures/evidence.ts";
 import type { QuarantineReader, QuarantineTopicReport } from "../failures/quarantine.ts";
-import { gatewayVersion, type BoundaryInForce, type FailureService } from "../failures/service.ts";
+import {
+  CLUSTER_MISMATCH_DIAGNOSIS, CORRECTED_RECORD_RESOLUTION, EVIDENCE_CONFLICT_DIAGNOSIS, gatewayVersion, POSITION_MOVED_DIAGNOSIS,
+  type BoundaryInForce, type FailureService
+} from "../failures/service.ts";
 import { LOCAL_EVIDENCE_RETENTION_MS, StaleRevisionError, type CircuitState, type IncidentRecord, type OperationKind, type RawEvidence, type StoredOperation } from "../failures/store.ts";
 import { getGatewayInternals, type OperatorPrepared, type RedriveOutcome } from "../runtime/gateway.ts";
 import type { TraceQuery } from "../runtime/traces.ts";
@@ -697,13 +700,86 @@ function policySummary(policy: ResolvedSourcePolicy): OperatorSourceStatus["poli
   };
 }
 
+/** A source-integrity hold that no retry or guard can settle at this position, by its diagnosis; or null. */
+type IntegrityHold = "position-moved" | "cluster-mismatch" | "evidence-conflict";
+function integrityHold(record: IncidentRecord): IntegrityHold | null {
+  if (record.diagnosis.startsWith(POSITION_MOVED_DIAGNOSIS)) return "position-moved";
+  if (record.diagnosis.startsWith(CLUSTER_MISMATCH_DIAGNOSIS)) return "cluster-mismatch";
+  if (record.diagnosis.startsWith(EVIDENCE_CONFLICT_DIAGNOSIS)) return "evidence-conflict";
+  return null;
+}
+
+/**
+ * The supported next step. The enum is the public contract; which repair a
+ * `repair-and-retry` incident needs (a retry, a policy switch, a rebaseline) is
+ * said in the explanation, by class and by integrity hold (runbook §6.4, §6.5).
+ */
 function nextAction(record: IncidentRecord, circuit: CircuitState, policy: ResolvedSourcePolicy): IncidentNextAction {
-  if (record.state === "resolved") return record.progress === "advanced" && policy.replaySafeMapping && record.evidence.completeness === "complete" ? "evaluate" : "none";
+  if (record.state === "resolved") {
+    // Invalid JSON never decodes, so evaluating its stored bytes can only say still-fails.
+    return record.progress === "advanced" && record.failureClass !== "invalid-json" && policy.replaySafeMapping && record.evidence.completeness === "complete" ? "evaluate" : "none";
+  }
   if (record.progress === "advance-pending" || record.progress === "uncertain" || record.progress === "retrying") return "none";
+  if (integrityHold(record) !== null) return "repair-and-retry";
   if (record.policy === "quarantine-resync" && QUARANTINE_ELIGIBLE_CLASSES.includes(record.failureClass) && (record.recovery === "held" || record.recovery === "denied")) {
     return circuit.state === "open" ? "reopen-circuit" : "reassess";
   }
   return "repair-and-retry";
+}
+
+/** How explanations cite the operator runbook (docs/guides/source-failures.md). */
+const RUNBOOK = "source-failure runbook";
+
+/** What to repair for a held incident, in words: by integrity hold, then quarantine outcome, then class. */
+function repairText(record: IncidentRecord): string {
+  const what = CLASS_TEXT[record.failureClass].what;
+  const fixture = record.position.kind === "fixture";
+  switch (integrityHold(record)) {
+    case "position-moved":
+      return `The source's position moved past the held record without a recorded advance, so the record may be gone (source retention, an offset reset, or another consumer on the group). A retry holds again unless the record is back at its position. If it is gone, rebaseline the source (${RUNBOOK}, §6.4 and §6.10).`;
+    case "cluster-mismatch":
+      return `The incident was captured on another Kafka cluster than the source now reads, so nothing from this cluster is processed. Point the connection profile back at the original cluster, or, if the source really moved, change its generation and rebaseline (${RUNBOOK}, §6.4 and §6.10).`;
+    case "evidence-conflict":
+      return fixture
+        ? `A different record now fails at this fixture position. Fixture records are matched by position within a generation: change the source's generation when you replace them, and rebaseline the old one (${RUNBOOK}, §6.5 and §6.10).`
+        : `The record now at this position has different bytes than the evidence captured for it, so it is not the held record. Find out why the topic changed under the same offset (usually a re-created topic), then change the source's generation and rebaseline (${RUNBOOK}, §6.5 and §6.10).`;
+    case null:
+      break;
+  }
+  if (record.quarantine === "failed" || record.quarantine === "unknown") {
+    const write = record.quarantine === "failed" ? "was refused" : "got no definite answer";
+    return record.evidence.location === "local"
+      ? `${what} Storing its local evidence ${write}. Free space in the journal (${RUNBOOK}, §6.3), then retry-current; the evidence is stored again when the record is redelivered.`
+      : `${what} The quarantine write ${write}, so no copy is kept yet. Fix the quarantine topic (it exists, its leader and replicas are available, and the gateway may write to it; ${RUNBOOK}, §6.1 and §6.2), then retry-current; the record is written again when it is redelivered.`;
+  }
+  const local = fixture ? " For a fixture source, correct the record in the handlers file and restart with the same state directory: a corrected record that processes resolves the incident." : "";
+  switch (record.failureClass) {
+    case "invalid-json":
+      return `${what} Its bytes can't be repaired in place, so a retry fails the same way. Either switch invalidJson to quarantine-resync with an honest recovery guard and restart, or rebaseline past the record (${RUNBOOK}, §6.5).${local}`;
+    case "tombstone":
+    case "oversize":
+      return `${what} It never reaches map, so no handler change helps and a retry fails the same way. Fix the publisher, then rebaseline past the record (${RUNBOOK}, §6.5 and §6.10).${local}`;
+    case "payload-schema":
+      return `${what} If the mapping or the schema is wrong, fix it, then restart or retry-current. If the value is rightly rejected, a retry fails the same way: switch invalidPublicPayload to quarantine-resync with an honest recovery guard, or rebaseline past the record (${RUNBOOK}, §6.5).${local}`;
+    case "revision-conflict":
+      return `${what} If your mapping produced it, fix the mapping and restart. A retry compares the record only with the state subscriptions hold now (pausing discarded the state it conflicted with), so it is usually admitted: retry only once you know its data is what subscribers should see (${RUNBOOK}, §6.5).`;
+    case "mapper-transient":
+      return `${what} When the dependency is back, retry the held record with retry-current. It is never skipped.`;
+    default:
+      return `${what} Repair the cause (the mapping, or what it reads), then restart with the fix or retry the held record with retry-current. It is never skipped.`;
+  }
+}
+
+/** What to correct before a reassess, in words. */
+function reassessText(record: IncidentRecord): string {
+  if (record.quarantine === "failed" || record.quarantine === "unknown") {
+    return `The quarantine write ${record.quarantine === "failed" ? "was refused" : "got no definite answer"}, so the recovery guard did not run. Fix the quarantine topic (${RUNBOOK}, §6.2), then reassess to write a fresh copy and run the guard.`;
+  }
+  if (record.recovery === "denied") return "The recovery guard answered hold. Correct whatever it checks, then reassess to run it again on a fresh quarantine copy.";
+  if (record.guard?.decision === "error" || record.guard?.decision === "timeout") {
+    return `The recovery guard ${record.guard.decision === "timeout" ? "timed out" : "failed or gave an invalid answer"}. Fix it, then reassess to run it again on a fresh quarantine copy.`;
+  }
+  return "The record is held without a recovery decision (the history says why, for example an open circuit or a restart while the guard ran). Correct that, then reassess to write a fresh quarantine copy and run the guard.";
 }
 
 const CLASS_TEXT: Readonly<Record<FailureClass, { what: string; expected: string }>> = {
@@ -735,7 +811,10 @@ function explain(record: IncidentRecord, action: IncidentNextAction, boundarySta
       : "No original bytes were captured.";
   let disposition: string;
   if (record.progress === "advanced") disposition = `The source advanced past ${position} under a recovery boundary; the record was not delivered.`;
-  else if (record.progress === "processed") disposition = `The record at ${position} processed normally after a retry; nothing was skipped.`;
+  else if (record.progress === "processed" && record.resolution === CORRECTED_RECORD_RESOLUTION) {
+    disposition = `A corrected record at ${position} processed; the original record never did, and its evidence is kept. Nothing after the position was skipped.`;
+  } else if (record.progress === "processed") disposition = `The record at ${position} processed normally after a retry or restart; nothing was skipped.`;
+  else if (record.state === "resolved") disposition = `The incident was closed (${record.resolution ?? "resolved"}) without its record being processed or advanced past.`;
   else if (record.progress === "advance-pending" || record.progress === "uncertain") disposition = `An advance past ${position} is unresolved; the source stays held until it is reconciled from the group's committed offset.`;
   else if (record.progress === "retrying") disposition = `The record at ${position} is being retried.`;
   else disposition = `The source is held at ${position}; nothing after it has been processed or committed.`;
@@ -744,14 +823,24 @@ function explain(record: IncidentRecord, action: IncidentNextAction, boundarySta
     : boundaryState === "in-force"
       ? `Every snapshot on source "${record.sourceId}" must acknowledge recovery boundary ${record.boundaryId} before subscribers can be live.`
       : `Recovery boundary ${record.boundaryId} is ${boundaryState ?? "no longer stored"}.`;
-  const next: Record<IncidentNextAction, string> = {
-    "repair-and-retry": `${CLASS_TEXT[record.failureClass].what} Repair the cause (the publisher, the mapping or the schema), then retry the held record with retry-current. It is never skipped.`,
-    "reassess": "Correct whatever made the recovery guard hold, then reassess to run the guard again on a fresh quarantine copy.",
-    "evaluate": "Optionally evaluate the stored original against the current mapping; if it now maps cleanly, an approved redrive admits it through the normal revision filter.",
-    "reopen-circuit": `Automatic continuation stopped: ${circuit.reason ?? "too many advances in the window"}. Find the cause, reopen the circuit, then reassess.`,
-    "none": record.state === "resolved" ? "Nothing; the incident is resolved." : "Nothing yet; the gateway reconciles this on its own."
+  const next: Record<IncidentNextAction, () => string> = {
+    "repair-and-retry": () => repairText(record),
+    "reassess": () => reassessText(record),
+    "evaluate": () => "Optionally evaluate the stored original against the current mapping; if it now maps cleanly, an approved redrive admits it through the normal revision filter.",
+    "reopen-circuit": () => `Automatic continuation stopped: ${circuit.reason ?? "too many advances in the window"}. Find the cause, reopen the circuit, then reassess.`,
+    "none": () => {
+      if (record.state === "resolved") {
+        return record.progress === "advanced" && record.failureClass === "invalid-json"
+          ? "Nothing; the incident is resolved. Invalid JSON can't be evaluated or redriven, because its bytes never decode; if the state it carried matters, publish it again as a valid record."
+          : "Nothing; the incident is resolved.";
+      }
+      if (record.progress === "uncertain" && integrityHold(record) !== null) {
+        return `The source stays held. A restart checks the advance again, but it can't settle this one while the group's position is unexplained or the source reads another cluster: point the source back at its original position or cluster, or rebaseline it (${RUNBOOK}, §6.10).`;
+      }
+      return "Nothing yet; the gateway reconciles this on its own.";
+    }
   };
-  return { whatFailed: `${CLASS_TEXT[record.failureClass].what} (${record.errorCode} at ${record.stage})`, evidence, disposition, snapshots, nextAction: next[action] };
+  return { whatFailed: `${CLASS_TEXT[record.failureClass].what} (${record.errorCode} at ${record.stage})`, evidence, disposition, snapshots, nextAction: next[action]() };
 }
 
 function rawView(evidence: Evidence): RawEvidenceView {

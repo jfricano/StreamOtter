@@ -591,6 +591,11 @@ export function storeFull(message: string): StreamOtterError {
   return new StreamOtterError("OVERLOADED", { message, details: { reason: "journal-full" } });
 }
 
+/** The detected event's note when an observation applies a different configured policy than the incident had. */
+export function policyChanged(from: FailurePolicy, to: FailurePolicy): string {
+  return `; policy changed from ${from} to ${to} in the configuration`;
+}
+
 export function evidenceBytes(evidence: RawEvidence): number {
   return (evidence.key?.byteLength ?? 0) + (evidence.value?.byteLength ?? 0)
     + evidence.headers.reduce((sum, header) => sum + Buffer.byteLength(header.name) + header.value.byteLength, 0);
@@ -705,14 +710,18 @@ export class MemoryIncidentStore implements IncidentStore {
       existing.resolution = null;
       existing.progress = "held";
     }
+    // The record is the same, so its class and the policy configured for it now apply (a policy switched since the
+    // last observation takes effect here, and the detected event records the change).
+    const policyChange = !conflict && existing.policy !== fields.policy ? policyChanged(existing.policy, fields.policy) : "";
     if (!conflict) {
       existing.failureClass = fields.failureClass;
       existing.stage = fields.stage;
       existing.errorCode = fields.errorCode;
       existing.channel = fields.channel;
       existing.diagnosis = fields.diagnosis;
+      existing.policy = fields.policy;
     }
-    this.#addEvent(existing.failureId, { at: observedAt, event: "detected", detail: conflict ? "evidence-conflict" : fields.failureClass, operationId: null });
+    this.#addEvent(existing.failureId, { at: observedAt, event: "detected", detail: conflict ? "evidence-conflict" : `${fields.failureClass}${policyChange}`, operationId: null });
     return { record: structuredClone(existing), created: false, conflict };
   }
 

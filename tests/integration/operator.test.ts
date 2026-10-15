@@ -148,7 +148,8 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     const advanced = await op.showFailure({ failureId: denied.failureId });
     assert.equal(advanced.progress, "advanced");
     assert.equal(advanced.boundary?.state, "in-force");
-    assert.equal(advanced.nextAction, "evaluate");
+    assert.equal(advanced.nextAction, "none", "invalid JSON never decodes, so evaluate could only say still-fails");
+    assert.match(advanced.explanation.nextAction, /can't be evaluated or redriven/);
     const after = await op.reassess({ sourceId: "orders", failureId: denied.failureId, expectedRevision: advanced.revision });
     assert.equal(after.outcome, "not-held");
   });
@@ -416,6 +417,61 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     assert.equal(store.pruneEvidence(new Date(Date.now() + 1_000).toISOString()), 1);
     const evaluation = await op.evaluate({ failureId: held.failureId, expectedRevision: held.revision });
     assert.equal(evaluation.ineligibleReason, "evidence-unavailable");
+  });
+
+  it("after switching a class from quarantine-hold to quarantine-resync and restarting, the incident follows the new policy and reassess works (runbook §6.5)", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {
+    const state = await mkdtemp(join(tmpdir(), "so-operator-"));
+    initJournal(state, "order-dashboard", [{ sourceId: "orders", generation: "fixture-1", kind: "fixture" }]);
+    const fixtures = [badJson(), orderRecord("acme", "ord_1", 4, "done", 100)];
+    h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures });
+    await h.advance(1);
+    const held = await only(h, getGatewayOperator(h.gateway));
+    assert.equal(held.policy, "quarantine-hold");
+    await h.close();
+    h = undefined;
+
+    const control = switchableGuard("hold");
+    h = await startHarness({ stateDirectory: state, failureHandling: resync(), recovery: { orders: control.guard }, fixtures });
+    const op = getGatewayOperator(h.gateway);
+    await h.advance(1);
+    const denied = await only(h, op);
+    assert.equal(denied.failureId, held.failureId, "the same incident");
+    assert.equal(denied.policy, "quarantine-resync", "the redelivered record follows the configured policy");
+    assert.equal(denied.recovery, "denied");
+    assert.equal(denied.nextAction, "reassess");
+    const detail = await op.showFailure({ failureId: denied.failureId });
+    assert.ok(detail.history.some(event => event.event === "detected" && event.detail === "invalid-json; policy changed from quarantine-hold to quarantine-resync in the configuration"),
+      "the history records the policy change");
+
+    control.set("recoverable");
+    const result = await op.reassess({ sourceId: "orders", failureId: denied.failureId, expectedRevision: denied.revision });
+    assert.equal(result.result, "completed", result.message);
+    assert.equal(result.outcome, "advanced");
+  });
+
+  it("fixture: correcting the held record and restarting resolves it as a corrected record, keeping the original evidence (runbook §6.5)", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {
+    const state = await mkdtemp(join(tmpdir(), "so-operator-"));
+    initJournal(state, "order-dashboard", [{ sourceId: "orders", generation: "fixture-1", kind: "fixture" }]);
+    const first = orderRecord("acme", "ord_1", 2, "processing", 20);
+    h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures: [first, badJson()] });
+    assert.equal(await h.advance(2), 1);
+    const held = await only(h, getGatewayOperator(h.gateway));
+    await h.close();
+    h = undefined;
+
+    // The developer fixes the record in the handlers file and restarts with the same state directory and generation.
+    h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures: [first, orderRecord("acme", "ord_1", 3, "done", 100)] });
+    const op = getGatewayOperator(h.gateway);
+    assert.equal(await h.advance(2), 2);
+    const resolved = await op.showFailure({ failureId: held.failureId });
+    assert.equal(resolved.state, "resolved");
+    assert.equal(resolved.progress, "processed");
+    assert.equal(resolved.resolution, "a corrected record at the same position processed");
+    assert.equal(resolved.evidence.hash, held.evidence.hash);
+    assert.match(resolved.explanation.disposition, /A corrected record at fixture record 1 processed/);
+    assert.ok(!resolved.history.some(event => event.detail === "the original record processed successfully"), "never reported as the original record");
+    const raw = await op.showFailure({ failureId: held.failureId, includeRaw: true });
+    assert.equal(Buffer.from(raw.raw?.valueBase64 ?? "", "base64").toString(), "{not json", "the original evidence is kept");
   });
 
   it("F35: an operation interrupted between intent and result is unknown after a restart and never rerun", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {
