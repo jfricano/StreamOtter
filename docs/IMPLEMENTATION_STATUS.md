@@ -180,7 +180,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Recovery guard, boundary and snapshot acknowledgment | F20–F24 | Implemented | |
 | Late results after epoch change, revoke or stop | F25 | Partial | Revoke and new-incident races are not separately tested. |
 | Circuit breaker | F26 | Implemented | |
-| Moved or expired source position; journal identity, rebaseline; second gateway | F27, F29, F30 | Implemented | F29: a re-created topic without a generation change is detected only when redelivered bytes differ. |
+| Moved or expired source position; journal identity, rebaseline; second gateway | F27, F29, F30 | Implemented | F29: a re-created topic without a generation change is detected only when the record at a held offset has different bytes (unreleased fix below: it is then held as an evidence conflict instead of resolving the incident). |
 | Operator retry, evaluate, redrive, plans and refusals | F19, F28, F31–F34, F36 | Implemented | |
 | Redrive interrupted by a crash | F35 | Implemented | |
 | Operator, health and raw-evidence boundary | F37 | Implemented | |
@@ -262,6 +262,16 @@ The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolv
 | `test:load` | 1 |
 
 GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by hand, passed on Node 24 and 26, along with the nightly replicated-Kafka job. On the release commit `fc7f47c` on `main`, CI and the [extended workflow](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser and deploy on Node 24 and 26, replicated Kafka on Node 24) passed, and the publishing workflow ran the full release checks again before publishing.
+
+### Fixes after 0.2.0-rc.1 (unreleased)
+
+Source-failure fixes found after the release ([API draft §5.2](./releases/v1.1/V1_1_API.md#52-incident-model), [CHANGELOG](../CHANGELOG.md)): a retry of a record that is gone settles as `held` instead of staying `retrying`; a restart and a rebaseline normalize `retrying` and `advance-pending`; an incident's `policy` follows the configuration on re-observation; a different Kafka record at a held offset is an evidence conflict and never resolves the incident (a corrected fixture record resolves it as "a corrected record at the same position processed"); an incident from another Kafka cluster holds the source at startup and before each record; and `nextAction` explanations are class-aware. Each has a regression test that fails without its fix: `packages/gateway/test/failure-service.test.ts`, `journal.test.ts` and `next-action.test.ts`, `tests/integration/operator.test.ts` and `rebaseline.test.ts`, and the Kafka tier's `tests/kafka/15-integrity-holds.test.ts` (F1, F4, F5 cases, all three failing on `main`). On Node 24.22.0 and pnpm 11.19.0, October 15, 2026:
+
+| Command | Result |
+| --- | --- |
+| `pnpm build && pnpm verify` | 507 tests, all pass |
+| `pnpm test:kafka` | 50 tests, all pass, against the local single-node Kafka 4.1.2 broker; the reference-guard suite skipped itself (it needs a build) and passed when run on its own after `pnpm build` |
+| `pnpm test:browser` (without its `pnpm build` step, after one) | 59 tests, all pass, in the preinstalled Chromium headless shell revision 1194 linked in place of Playwright's pinned one |
 
 ## V1.3 React hooks (unreleased; ships in 1.0.0)
 

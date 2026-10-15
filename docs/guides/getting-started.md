@@ -109,13 +109,14 @@ and `web/main.ts`:
 import { watchJob } from "./example.ts";
 
 const element = document.getElementById("job")!;
-void watchJob("job_1", async () => "local-dev-token", element);
+watchJob("job_1", async () => "local-dev-token", element).catch(error => console.error(error));
 ```
 
 `watchJob` in `web/example.ts` is the whole integration:
 
 ```ts
 const client = createClient<AppChannels>({ origin: "http://localhost:7400", getToken: () => getToken() });
+client.on("error", error => console.warn(`[${error.code}] ${error.message}`)); // connection errors, such as a refused origin
 const job = client.subscribe("jobProgress", { channelVersion: channelVersions.jobProgress, params: { jobId } });
 job.on("data", ({ data, revision }) => { element.textContent = `${data.state} — ${data.percent}% (revision ${revision})`; });
 job.on("state", ({ state }) => { element.dataset["delivery"] = state; });
@@ -130,7 +131,7 @@ npx vite
 
 Open `http://localhost:5173`. It shows **queued — 0% (revision 1) · live**.
 
-The gateway accepts this page because `streamotter.json` lists `http://localhost:5173` in `gateway.allowedOrigins`. A page served from any other origin is refused with `FORBIDDEN`. Add its exact origin there and restart `dev`.
+The gateway accepts this page because `streamotter.json` lists `http://localhost:5173` in `gateway.allowedOrigins`. A page served from any other origin is refused with `FORBIDDEN`: the client's `error` listener logs `[FORBIDDEN] This origin is not allowed.` to the console right away, the client stops reconnecting (`auth-required`), and `ready()` later rejects. Add the exact origin there and restart `dev`.
 
 ## 8. Watch it change
 

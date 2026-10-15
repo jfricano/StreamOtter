@@ -83,7 +83,7 @@ V1.1, opt-in: a configuration without `failureHandling` behaves exactly as above
 
 - **Every bad record gets a durable incident** in a local journal: its class, position, evidence and history, kept across restarts.
 - **Quarantine.** For invalid JSON and payload-schema failures, the original record is copied byte for byte to a Kafka topic you provide. The source stays held, or moves past the record only when your application's recovery guard approves and every later snapshot acknowledges it. Nothing is skipped silently, and integrity failures are never skipped.
-- **Operator commands.** `streamotter status`, `failures list|show|export|evaluate|redrive` and `sources retry-current|reassess|reopen-circuit|retire-boundary` over a local socket, the same operations in-process, and a Failures tab in the workbench during development.
+- **Operator commands.** `streamotter status`, `failures list|show|export|evaluate|redrive` and `sources retry-current|reassess|reopen-circuit|retire-boundary` over a local socket, `sources rebaseline` (offline, with the gateway stopped), the same operations in-process, and a Failures tab in the workbench during development.
 - **Health probes.** `streamotter start --health 127.0.0.1:7402` serves read-only `/health/live` and `/health/ready`, with or without failure handling.
 
 Failure handling with a durable journal needs Node.js 24.15 or later. Start with [Handle bad records](./docs/guides/source-failures.md). What is tested so far, and what isn't: [implementation status](./docs/IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1).
