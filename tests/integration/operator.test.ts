@@ -499,9 +499,13 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     const other = await op.showFailure({ failureId: later.failureId });
     assert.equal(other.progress, "held", "never stranded in retrying");
     assert.equal(other.nextAction, "repair-and-retry");
-    assert.ok(other.history.some(event => /paused again at fixture record 1 before this record was redelivered/.test(event.detail ?? "")));
+    assert.ok(other.history.some(event => /^the source paused again at fixture record 1; no retry is redelivering this record now/.test(event.detail ?? "")));
+    // Retried on its own, it is held again because the source pauses at record 1 first: the result says so, not that it failed again.
     const again = await op.retryCurrent({ sourceId: "orders", failureId: later.failureId, expectedRevision: other.revision });
     assert.equal(again.result, "completed", "it can be retried again");
+    assert.equal(again.outcome, "held");
+    assert.match(again.message, /^The source paused again at fixture record 1 before this record settled; no retry is redelivering it now/);
+    assert.doesNotMatch(again.message, /held again: /);
   });
 
   it("F35: an operation interrupted between intent and result is unknown after a restart and never rerun", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {

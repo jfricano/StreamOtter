@@ -1182,7 +1182,7 @@ export class GatewayRuntime implements SessionOwner {
         // Held before its first record (an incident from another cluster): it never reads as healthy, and nothing is fetched.
         const heldAtStart = this.#heldAtStart.has(source.id);
         if (heldAtStart) {
-          this.core.logger.error("An open incident was captured on another Kafka cluster; the source is held from startup and nothing from this cluster is processed", { sourceId: source.id });
+          this.core.logger.error("An open incident was captured on another Kafka cluster, or the source's cluster can't be confirmed for it; the source is held from startup and nothing is processed", { sourceId: source.id });
           this.#setSourceStatus(source, "paused", "SOURCE_UNAVAILABLE");
         }
         const adapter = source.config.kind === "fixture"

@@ -37,6 +37,8 @@ export interface AdvanceHooks {
  */
 export const POSITION_MOVED_DIAGNOSIS = "Source progress moved";
 export const CLUSTER_MISMATCH_DIAGNOSIS = "Kafka cluster mismatch";
+/** How the event detail starts when a retried incident is held again because the source paused at another record. */
+export const PAUSED_AGAIN_AT = "the source paused again at ";
 /** How a cluster-mismatch diagnosis names a current cluster whose ID was not read (no class on the source quarantines). */
 export const UNKNOWN_CLUSTER = "a cluster whose ID is unknown";
 export const EVIDENCE_CONFLICT_DIAGNOSIS = "The redelivered record's bytes differ from the evidence captured for the same position.";
@@ -211,7 +213,7 @@ export class FailureService {
       // A source whose open incident names another cluster holds from the start, even before a record arrives, so
       // it never reads as healthy (and subscriptions never go live) on a cluster nothing may be processed from.
       if (watched.some(incident => this.#knownClusterMismatch(source.id, incident) !== null
-        || (incident.progress === "uncertain" && incident.diagnosis.startsWith(CLUSTER_MISMATCH_DIAGNOSIS)))) {
+        || (incident.progress === "uncertain" && this.#clusterMismatch(source, incident) !== null))) {
         holding.add(source.id);
       }
     }
@@ -239,7 +241,10 @@ export class FailureService {
     try {
       committed = committedOffset === undefined ? null : await committedOffset(source, position.topic, position.partition);
     } catch (error) {
-      this.#update(incident, { progress: "uncertain" }, "held", `the committed offset could not be read at startup (${(error as Error).name}); the source stays held`);
+      this.#update(incident, {
+        progress: "uncertain",
+        diagnosis: `The group's committed offset could not be read at startup (${(error as Error).name}), so the advance past ${describePosition(position)} is not confirmed. The source stays held until a restart reads it.`
+      }, "held", `the committed offset could not be read at startup (${(error as Error).name}); the source stays held`);
       return;
     }
     const next = (BigInt(position.offset) + 1n).toString();
@@ -432,10 +437,18 @@ export class FailureService {
 
   #markRetrying(sourceId: string, reason: string): void {
     const open = this.store.open(sourceId);
+    const mismatched = this.otherClusterIncident(sourceId);
+    if (mismatched !== null) {
+      // No record from this cluster is processed, so a retry could never settle: it would only resume an idle source.
+      throw new StreamOtterError("SOURCE_UNAVAILABLE", {
+        message: `Source "${sourceId}" reads another Kafka cluster than incident ${mismatched.failureId} was captured on; nothing from it is processed, so a retry can't settle. Point the connection profile back at the original cluster and restart, or change the generation and rebaseline.`,
+        details: { status: 409, reason: "cluster-mismatch" }
+      });
+    }
     const blocking = open.find(incident => incident.progress === "advance-pending" || incident.progress === "uncertain");
     if (blocking !== undefined) {
       throw new StreamOtterError("SOURCE_UNAVAILABLE", {
-        message: `Source "${sourceId}" has an unresolved advance for incident ${blocking.failureId}; it cannot be retried until that is reconciled.`,
+        message: `Source "${sourceId}" has an unresolved advance for incident ${blocking.failureId}; it cannot be retried until that is reconciled. ${unresolvedAdvanceHint(blocking)}`,
         details: { status: 409, reason: "advance-unresolved" }
       });
     }
@@ -445,14 +458,6 @@ export class FailureService {
       throw new StreamOtterError("SOURCE_UNAVAILABLE", {
         message: `Source "${sourceId}" has an open automatic-continuation circuit; reopen it after correcting the cause, then retry.`,
         details: { status: 409, reason: "circuit-open" }
-      });
-    }
-    const mismatched = this.otherClusterIncident(sourceId);
-    if (mismatched !== null) {
-      // No record from this cluster is processed, so a retry could never settle: it would only resume an idle source.
-      throw new StreamOtterError("SOURCE_UNAVAILABLE", {
-        message: `Source "${sourceId}" reads another Kafka cluster than incident ${mismatched.failureId} was captured on; nothing from it is processed, so a retry can't settle. Point the connection profile back at the original cluster and restart, or change the generation and rebaseline.`,
-        details: { status: 409, reason: "cluster-mismatch" }
       });
     }
     // The resume redelivers from every held partition, so every held incident of the source is retried.
@@ -483,7 +488,7 @@ export class FailureService {
     }
     for (const incident of open) {
       if (incident.progress !== "retrying" || samePosition(incident.position, position)) continue;
-      this.#update(incident, { progress: "held" }, "held", `the source paused again at ${describePosition(position)} before this record was redelivered; retry it again`);
+      this.#update(incident, { progress: "held" }, "held", `${PAUSED_AGAIN_AT}${describePosition(position)}; no retry is redelivering this record now; retry it again if it is still held`);
     }
   }
 
@@ -962,6 +967,16 @@ function clusterMismatchDiagnosis(captured: string, current: string | null): str
     return `${CLUSTER_MISMATCH_DIAGNOSIS}: the incident was captured on cluster ${captured}, but the source now reads ${UNKNOWN_CLUSTER}. The gateway reads the cluster ID only while some class on the source uses a quarantine policy, so it can't confirm the source still reads the same cluster: the source stays held and is never advanced. If it does, restore a quarantining policy and restart; if it moved to another cluster, change its generation and rebaseline.`;
   }
   return `${CLUSTER_MISMATCH_DIAGNOSIS}: the incident was captured on cluster ${captured}, but the source now reads cluster ${current}. The same position may name a different record, so this is an integrity failure: the source stays held and is never advanced. If the source moved to another cluster, change its generation and rebaseline.`;
+}
+
+/**
+ * What a restart can do about an unresolved advance. It reconciles from the
+ * group's committed offset only on the cluster the incident was captured on.
+ */
+export function unresolvedAdvanceHint(incident: IncidentRecord): string {
+  return incident.diagnosis.startsWith(CLUSTER_MISMATCH_DIAGNOSIS)
+    ? "A restart reconciles it only once the source is confirmed to read the cluster it was captured on; see the incident's diagnosis."
+    : "It is reconciled from the group's committed offset at restart.";
 }
 
 function describePosition(position: SourceRecord["position"]): string {

@@ -466,7 +466,7 @@ describe("FailureService a held record that is gone (runbook §6.4)", () => {
     failures.sourceHeld("orders", other.position);
     const byPartition = (partition: number) => store.open("orders").find(incident => incident.position.kind === "kafka" && incident.position.partition === partition);
     assert.equal(byPartition(0)?.progress, "held", "not stranded in retrying");
-    assert.match(store.events(byPartition(0)?.failureId as string).at(-1)?.detail ?? "", /paused again at orders\/1 offset 7 before this record was redelivered/);
+    assert.match(store.events(byPartition(0)?.failureId as string).at(-1)?.detail ?? "", /^the source paused again at orders\/1 offset 7; no retry is redelivering this record now; retry it again if it is still held$/);
     assert.equal(byPartition(1)?.progress, "retrying", "the record paused at settles through its own disposition");
     await failures.held(source, other, pause);
     assert.equal(byPartition(1)?.progress, "held");
@@ -593,6 +593,42 @@ describe("FailureService an incident from another Kafka cluster (runbook §6.4)"
     assert.equal(third.failures.positionProblem("orders", plain.position, plain), null);
     third.failures.committed("orders", plain.position);
     assert.equal(store.list({ state: "all" }).items[0]?.state, "resolved");
+  });
+
+  it("an unresolved advance from another cluster is refused for its cluster, and one that can't be confirmed doesn't promise a restart will settle it", async () => {
+    const store = claimed();
+    const first = resync(store, { policy: "quarantine-hold", guard: null, clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    const [held] = store.open("orders");
+    store.update(held!.failureId, held!.revision, { progress: "advance-pending" }, { event: "advance-pending", detail: "prepared", operationId: null });
+
+    const other = resync(store, { policy: "quarantine-hold", guard: null, adapter: null, clusterId: "cluster-b" });
+    assert.deepEqual([...await other.failures.start([other.source], async () => "42")], ["orders"]);
+    assert.equal(store.open("orders")[0]?.progress, "uncertain");
+    await assert.rejects(other.failures.beforeRetry("orders", "operator retry"),
+      (error: { details?: Record<string, unknown> }) => error.details?.["reason"] === "cluster-mismatch", "the cluster, not a restart, is what must change");
+
+    const unknown = resync(store, { policy: "pause", guard: null, adapter: null, clusterId: null });
+    await unknown.failures.start([unknown.source], async () => "42");
+    await assert.rejects(unknown.failures.beforeRetry("orders", "operator retry"), (error: { message: string; details?: Record<string, unknown> }) =>
+      error.details?.["reason"] === "advance-unresolved" && /reconciles it only once the source is confirmed to read the cluster it was captured on/.test(error.message));
+  });
+
+  it("an unreadable committed offset at startup says so, and a stale cluster diagnosis doesn't hold the source from startup on the right cluster", async () => {
+    const store = claimed();
+    const first = resync(store, { policy: "quarantine-hold", guard: null, clusterId: "cluster-a" });
+    await first.failures.held(first.source, plain, pause);
+    const [held] = store.open("orders");
+    // Left uncertain by an earlier start on another cluster.
+    store.update(held!.failureId, held!.revision, { progress: "uncertain", diagnosis: "Kafka cluster mismatch: the incident was captured on cluster cluster-a, but the source now reads cluster cluster-b." },
+      { event: "held", detail: "cluster-mismatch at startup", operationId: null });
+
+    const back = resync(store, { policy: "quarantine-hold", guard: null, adapter: null, clusterId: "cluster-a" });
+    const holding = await back.failures.start([back.source], async () => { throw new Error("broker unavailable"); });
+    assert.equal(holding.size, 0, "not held from startup as if it read another cluster");
+    const [incident] = store.open("orders");
+    assert.equal(incident?.progress, "uncertain");
+    assert.match(incident?.diagnosis ?? "", /^The group's committed offset could not be read at startup \(Error\), so the advance past orders\/0 offset 41 is not confirmed/);
   });
 
   it("an unknown current cluster (a source that no longer quarantines) is not by itself a reason to hold", async () => {

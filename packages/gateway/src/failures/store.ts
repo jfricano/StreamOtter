@@ -595,15 +595,16 @@ export function storeFull(message: string): StreamOtterError {
  * Applies the policy configured now to an incident observed again, and returns
  * the detected event's note about the change ("" when there is none). A guard
  * decision is a fact about quarantine-resync: under a policy without a guard, a
- * denied or pending recovery becomes held (nothing approves moving past the
- * record), and the last guard result stays as history.
+ * denied recovery becomes held (nothing approves moving past the record), and
+ * the last guard result stays as history. (A guard-pending recovery never
+ * reaches a re-observation: startup makes it held first.)
  */
 export function applyPolicy(record: IncidentRecord, policy: FailurePolicy): string {
   if (record.policy === policy) return "";
   const from = record.policy;
   record.policy = policy;
   let note = `; policy changed from ${from} to ${policy} in the configuration`;
-  if (policy !== "quarantine-resync" && (record.recovery === "denied" || record.recovery === "guard-pending")) {
+  if (policy !== "quarantine-resync" && record.recovery === "denied") {
     note += `; recovery ${record.recovery} under ${from} is now held, because no recovery guard runs under ${policy}`;
     record.recovery = "held";
   }

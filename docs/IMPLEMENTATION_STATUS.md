@@ -269,7 +269,7 @@ Source-failure fixes found after the release ([API draft §5.2](./releases/v1.1/
 
 | Command | Result |
 | --- | --- |
-| `pnpm build && pnpm verify` | 512 tests, all pass |
+| `pnpm build && pnpm verify` | 513 tests, all pass |
 | `pnpm test:kafka` (after `pnpm build`) | 52 tests, all pass, against a local single-node Kafka 4.1.2 broker |
 | `pnpm test:browser` (without its `pnpm build` step, after one) | 59 tests, all pass, in Chromium |
 

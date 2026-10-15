@@ -12,7 +12,7 @@ import { validateOperatorRequest } from "@streamotter/contracts/internal";
 import { evidenceHash } from "../failures/evidence.ts";
 import type { QuarantineReader, QuarantineTopicReport } from "../failures/quarantine.ts";
 import {
-  CLUSTER_MISMATCH_DIAGNOSIS, CORRECTED_RECORD_RESOLUTION, EVIDENCE_CONFLICT_DIAGNOSIS, gatewayVersion, POSITION_MOVED_DIAGNOSIS, UNKNOWN_CLUSTER,
+  CLUSTER_MISMATCH_DIAGNOSIS, CORRECTED_RECORD_RESOLUTION, EVIDENCE_CONFLICT_DIAGNOSIS, gatewayVersion, PAUSED_AGAIN_AT, POSITION_MOVED_DIAGNOSIS, UNKNOWN_CLUSTER, unresolvedAdvanceHint,
   type BoundaryInForce, type FailureService
 } from "../failures/service.ts";
 import { LOCAL_EVIDENCE_RETENTION_MS, StaleRevisionError, type CircuitState, type IncidentRecord, type OperationKind, type RawEvidence, type StoredOperation } from "../failures/store.ts";
@@ -416,7 +416,7 @@ export class OperatorService implements OperatorApi {
     if (record.revision !== expectedRevision) return refused("stale-revision", `Incident ${failureId} is at revision ${record.revision}, not ${expectedRevision}.`, record.revision);
     if (record.state !== "open") return refused("not-held", `Incident ${failureId} is resolved (${record.resolution ?? record.progress}).`, record.revision);
     if (record.progress === "advance-pending" || record.progress === "uncertain") {
-      return refused("advance-unresolved", "An advance of this record is unresolved; it is reconciled from the group's committed offset at restart.", record.revision);
+      return refused("advance-unresolved", `An advance of this record is unresolved. ${unresolvedAdvanceHint(record)}`, record.revision);
     }
     if (record.progress !== "held") return refused("not-held", `Incident ${failureId} is ${record.progress}, not held.`, record.revision);
     if (record.recovery === "guard-pending") return refused("in-progress", "The recovery guard is running for this record.", record.revision);
@@ -461,6 +461,12 @@ export class OperatorService implements OperatorApi {
       return { result: "completed", outcome: "advanced", incidentRevision: revision, message: "The recovery guard approved and the source advanced past the quarantined record; snapshots must acknowledge the boundary." };
     }
     if (settled.progress === "held") {
+      // Held because the source paused at another record, not because this one failed again.
+      const last = this.#failures.store.events(settled.failureId).at(-1);
+      if (last?.event === "held" && last.detail?.startsWith(PAUSED_AGAIN_AT) === true) {
+        const at = last.detail.slice(PAUSED_AGAIN_AT.length).split(";")[0];
+        return { result: "completed", outcome: "held", incidentRevision: revision, message: `The source paused again at ${at} before this record settled; no retry is redelivering it now. Retry it again if it is still held.` };
+      }
       return { result: "completed", outcome: "held", incidentRevision: revision, message: `The record is held again: ${settled.diagnosis.slice(0, 300)}` };
     }
     return { result: "completed", outcome: settled.progress === "retrying" ? "retrying" : settled.progress, incidentRevision: revision, message: "The record was redelivered and has not settled yet; check its status." };
@@ -469,13 +475,14 @@ export class OperatorService implements OperatorApi {
   /** Why the gateway would refuse to resume the source now, checked before anything is recorded; or null. */
   #retryBlocker(record: IncidentRecord): Draft | null {
     if (this.#host.state() !== "running") return refused("gateway-not-running", "The gateway is not running.", record.revision);
-    const unresolved = this.#failures.store.open(record.sourceId).find(incident => incident.progress === "advance-pending" || incident.progress === "uncertain");
-    if (unresolved !== undefined) {
-      return refused("advance-unresolved", `An advance of incident ${unresolved.failureId} on this source is unresolved; it is reconciled from the group's committed offset at restart.`, record.revision);
-    }
+    // Checked first: an unresolved advance from another cluster is never reconciled by a restart on this one.
     const mismatched = this.#failures.otherClusterIncident(record.sourceId);
     if (mismatched !== null) {
       return refused("cluster-mismatch", `The source reads another Kafka cluster than incident ${mismatched.failureId} was captured on, and nothing from it is processed, so a retry can't settle. Point the connection profile back at the original cluster and restart, or change the generation and rebaseline.`, record.revision);
+    }
+    const unresolved = this.#failures.store.open(record.sourceId).find(incident => incident.progress === "advance-pending" || incident.progress === "uncertain");
+    if (unresolved !== undefined) {
+      return refused("advance-unresolved", `An advance of incident ${unresolved.failureId} on this source is unresolved. ${unresolvedAdvanceHint(unresolved)}`, record.revision);
     }
     return null;
   }
