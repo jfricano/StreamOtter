@@ -1,6 +1,6 @@
 # Handle bad records: source-failure policies and the operator runbook
 
-October 2026 · Applies to the V1.1 source-failure features, which are not yet in a published release.
+October 2026 · Applies to the V1.1 source-failure features published in `0.2.0-rc.1`; see the [publication receipt](../releases/0.2.0-rc.1/RELEASE_HANDOFF.md#verified-publication).
 
 A Kafka record your gateway can't process stops its source. That was true in V1 and it stays the default. V1.1 adds three things you can turn on:
 
