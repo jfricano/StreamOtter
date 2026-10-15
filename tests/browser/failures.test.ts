@@ -145,7 +145,7 @@ describe("workbench Failures tab", { skip: existsSync(resolve(WORKBENCH, "app.js
     assert.equal(await fact("What snapshots must establish").innerText(), "Nothing for this incident.");
     assert.match(await fact("Next action").innerText(), /Evaluate the record .* evaluate$/);
     assert.equal(await fact("Evidence captured").innerText(), "Local fixture evidence, not Kafka (complete).");
-    assert.match(await fact("Quarantine write").innerText(), /^acknowledged A quarantine copy was written/);
+    assert.match(await fact("Quarantine write").innerText(), /^acknowledged A quarantine copy was stored as local evidence/);
     assert.match(await fact("Source position").innerText(), /^held The source is held at this record/);
     assert.match(await fact("Snapshot recovery").innerText(), /^not-applicable/);
     assert.equal(await fact("Incident state").innerText(), "open");

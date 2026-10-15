@@ -52,11 +52,11 @@ export function failureOptionIssues(
   }
   if (options.operatorSocket !== undefined && typeof options.operatorSocket !== "boolean") issues.push("operatorSocket must be true or false");
   if (options.operatorSocket === true && (options.stateDirectory === undefined || config.failureHandling === undefined)) {
-    issues.push("operatorSocket requires stateDirectory and failureHandling: the socket lives in the state directory and serves the failure operator API");
+    issues.push("operatorSocket (--operator-socket) requires stateDirectory (--state-dir) and failureHandling: the socket lives in the state directory and serves the failure operator API");
   }
   const quarantined = Object.keys(config.sources).filter(sourceId => usesQuarantine(config, sourceId));
   if (quarantined.length > 0 && options.mode === "production" && options.stateDirectory === undefined) {
-    issues.push(`source ${quarantined[0]} uses a quarantine policy, which requires stateDirectory in production so incidents survive a restart`);
+    issues.push(`source ${quarantined[0]} uses a quarantine policy, which requires stateDirectory (--state-dir) in production so incidents survive a restart`);
   }
   if (options.stateDirectory !== undefined && config.failureHandling !== undefined && !nodeSupportsJournal(nodeVersion)) {
     issues.push(`the failure journal needs Node ${NODE_SQLITE_FLOOR} or later; this is Node ${nodeVersion}`);

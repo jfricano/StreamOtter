@@ -32,16 +32,30 @@ const PROGRESS: Record<IncidentProgress, [Tone, string]> = {
   retrying: ["warn", "The record is being retried."],
   "advance-pending": ["warn", "An advance past the record was started but is not confirmed."],
   advanced: ["info", "The source position advanced past the record without processing it."],
-  processed: ["ok", "The record was processed on a retry."],
+  processed: ["ok", "The record processed when it was redelivered, after a retry or a restart."],
   uncertain: ["bad", "An advance could not be confirmed; the source holds until it is reconciled."]
 };
 const RECOVERY: Record<IncidentRecovery, [Tone, string]> = {
   "not-applicable": ["neutral", "No snapshot recovery applies to this incident."],
   "guard-pending": ["warn", "The recovery guard has not decided yet."],
-  held: ["warn", "The recovery guard held the source."],
+  held: ["warn", "Held without an approval to move past the record: the recovery guard did not run, failed or timed out (see Guard and History)."],
   "boundary-in-force": ["info", "A recovery boundary is in force: snapshots must acknowledge it before subscriptions recover."],
   denied: ["bad", "Recovery was denied."]
 };
+/** The quarantine fact in words. A fixture source has no quarantine topic: its copy is local evidence. */
+function quarantineInfo(item: IncidentSummary): [Tone, string] {
+  const [tone, text] = QUARANTINE[item.quarantine];
+  if (item.quarantine === "acknowledged" && item.position.kind === "fixture") return [tone, "A quarantine copy was stored as local evidence (fixture sources have no quarantine topic)."];
+  return [tone, text];
+}
+/** The recovery fact in words. `held` is not a guard decision, and under a policy other than quarantine-resync no guard runs at all. */
+function recoveryInfo(item: IncidentSummary): [Tone, string] {
+  const [tone, text] = RECOVERY[item.recovery];
+  if (item.recovery === "held" && item.policy !== "quarantine-resync") {
+    return [tone, `Held: no recovery guard runs under ${item.policy}, so nothing approves moving past the record.`];
+  }
+  return [tone, text];
+}
 const RESULT_TONE: Record<OperationResult["result"], "info" | "warn" | "bad"> = { completed: "info", refused: "warn", failed: "bad", unknown: "warn" };
 
 const enumPill = (value: string, [tone, title]: [Tone, string]) => h("span", { class: `pill ${tone}`, title }, value);
@@ -206,9 +220,9 @@ export function renderFailures(root: HTMLElement, state: WorkbenchState): void {
           h("td", { class: "mono small", title: item.lastObservedAt }, time(item.lastObservedAt)),
           h("td", {}, String(item.observations)),
           h("td", {}, item.policy),
-          h("td", {}, enumPill(item.quarantine, QUARANTINE[item.quarantine])),
+          h("td", {}, enumPill(item.quarantine, quarantineInfo(item))),
           h("td", {}, enumPill(item.progress, PROGRESS[item.progress])),
-          h("td", {}, enumPill(item.recovery, RECOVERY[item.recovery])),
+          h("td", {}, enumPill(item.recovery, recoveryInfo(item))),
           h("td", {}, stateLabel(item)));
       }));
   };
@@ -385,9 +399,9 @@ export function renderFailures(root: HTMLElement, state: WorkbenchState): void {
       h("h4", {}, "Lifecycle"),
       facts([
         ["Evidence captured", evidenceText(detail)],
-        ["Quarantine write", h("span", {}, enumPill(detail.quarantine, QUARANTINE[detail.quarantine]), " ", QUARANTINE[detail.quarantine][1])],
+        ["Quarantine write", h("span", {}, enumPill(detail.quarantine, quarantineInfo(detail)), " ", quarantineInfo(detail)[1])],
         ["Source position", h("span", {}, enumPill(detail.progress, PROGRESS[detail.progress]), " ", PROGRESS[detail.progress][1])],
-        ["Snapshot recovery", h("span", {}, enumPill(detail.recovery, RECOVERY[detail.recovery]), " ", RECOVERY[detail.recovery][1])],
+        ["Snapshot recovery", h("span", {}, enumPill(detail.recovery, recoveryInfo(detail)), " ", recoveryInfo(detail)[1])],
         ["Incident state", stateLabel(detail)]
       ]),
       h("h4", {}, "Incident"),

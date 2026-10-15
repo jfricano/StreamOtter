@@ -52,6 +52,12 @@ describe("CLI: init, validate, generate, dev, start", () => {
     for (const file of ["streamotter.json", "server/handlers.mjs", "web/example.ts", "README.md"]) {
       assert.ok((await readFile(join(project, file), "utf8")).length > 0, file);
     }
+    // The next steps run through the locally installed package, from the project directory.
+    assert.ok(init.stdout.includes(`Next:\n  cd ${project}\n  npx streamotter dev --config streamotter.json`), init.stdout);
+    const here = await runCli(["init", "."], await mkdtemp(join(tmpdir(), "so-init-here-")));
+    assert.equal(here.code, 0, here.stderr);
+    assert.match(here.stdout, /Next:\n  npx streamotter dev /, "no cd into the current directory");
+    assert.match(await readFile(join(project, "web/example.ts"), "utf8"), /client\.on\("error"/, "the example logs connection errors");
     const again = await runCli(["init", project]);
     assert.equal(again.code, 2);
     assert.match(again.stderr, /Refusing to overwrite existing files: streamotter\.json/);
@@ -59,6 +65,7 @@ describe("CLI: init, validate, generate, dev, start", () => {
     const validate = await runCli(["validate", "--config", "streamotter.json"], project);
     assert.equal(validate.code, 0, validate.stderr);
     assert.match(validate.stdout, /Fingerprint: sha256:[0-9a-f]{64}/);
+    assert.doesNotMatch(validate.stdout, /not in canonical form/, "init writes the canonical form");
 
     const generate = await runCli(["generate", "--config", "streamotter.json", "--out", "generated"], project);
     assert.equal(generate.code, 0, generate.stderr);
@@ -170,6 +177,7 @@ describe("CLI: init, validate, generate, dev, start", () => {
     const original = JSON.parse(await readFile(join(dir, "app/streamotter.json"), "utf8")) as unknown;
     const canonical = canonicalJsonPretty(original);
     await writeFile(join(dir, "exported.json"), canonical);
+    await writeFile(join(dir, "app/streamotter.json"), `${JSON.stringify(original, null, 4)}\n`); // hand-formatted
     const fromOriginal = await runCli(["validate", "--config", join(dir, "app/streamotter.json")]);
     const fromExport = await runCli(["validate", "--config", join(dir, "exported.json")]);
     const fp = (text: string) => /sha256:([0-9a-f]{64})/.exec(text)?.[1];
