@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -49,6 +50,21 @@ async function heldIncident(k: KafkaHarness): Promise<IncidentRecord> {
     if (Date.now() > deadline) assert.fail(`never quarantined: ${JSON.stringify(incident ?? null)}`);
     await sleep(100);
   }
+}
+
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>(done => server.listen(0, "127.0.0.1", done));
+  const port = (server.address() as { port: number }).port;
+  await new Promise<void>(done => server.close(() => done()));
+  return port;
+}
+
+/** As if the incident had been captured on another cluster: rewrites its recorded cluster ID in a stopped gateway's journal. */
+function captureOnAnotherCluster(state: string, failureId: string): void {
+  const db = new DatabaseSync(join(state, "journal.sqlite"));
+  db.prepare("UPDATE incidents SET record = json_set(record, '$.clusterId', 'another-cluster') WHERE failure_id = ?").run(failureId);
+  db.close();
 }
 
 const valid = (revision: number) => Buffer.from(orderValue("acme", "ord_1", revision, "done", 100));
@@ -137,10 +153,7 @@ describe("source-integrity holds against Kafka", { skip }, () => {
     await k.close();
     k = undefined;
 
-    // As if the incident had been captured on another cluster: rewrite its recorded cluster ID in the stopped gateway's journal.
-    const db = new DatabaseSync(join(s.state, "journal.sqlite"));
-    db.prepare("UPDATE incidents SET record = json_set(record, '$.clusterId', 'another-cluster') WHERE failure_id = ?").run(held.failureId);
-    db.close();
+    captureOnAnotherCluster(s.state, held.failureId);
     // And this cluster has a record below the held offset to read: move the group back to it.
     await (await testAdmin()).setOffsets({ groupId: s.group, topic: s.topic, partitions: [{ partition: 0, offset: "0" }] });
 
@@ -158,5 +171,38 @@ describe("source-integrity holds against Kafka", { skip }, () => {
     const detail = await getGatewayOperator(k.gateway).showFailure({ failureId: held.failureId });
     assert.equal(detail.nextAction, "repair-and-retry");
     assert.match(detail.explanation.nextAction, /another Kafka cluster/);
+  });
+
+  it("F5: an idle source on another cluster is held from startup: not ready, no subscription goes live, and a retry is refused", async () => {
+    const s = await setup();
+    k = await startKafkaHarness({ topic: s.topic, group: s.group, failureHandling: s.failureHandling, stateDirectory: s.state });
+    await produceRaw(s.topic, [{ key: Buffer.from("ord_1"), value: Buffer.from("{not json") }]);
+    const held = await heldIncident(k);
+    await k.close();
+    k = undefined;
+    captureOnAnotherCluster(s.state, held.failureId);
+    // Nothing is left to read on this cluster: the group's position is past every record.
+    await (await testAdmin()).setOffsets({ groupId: s.group, topic: s.topic, partitions: [{ partition: 0, offset: "1" }] });
+
+    const healthPort = await freePort();
+    k = await startKafkaHarness({ topic: s.topic, group: s.group, failureHandling: s.failureHandling, stateDirectory: s.state, health: { port: healthPort } });
+    assert.deepEqual(k.internals.sources(), [{ sourceId: "orders", kind: "kafka", status: "paused", reason: "SOURCE_UNAVAILABLE" }], "held as soon as it starts");
+    const probe = await fetch(`http://127.0.0.1:${healthPort}/health/ready`);
+    assert.equal(probe.status, 503);
+    assert.deepEqual(((await probe.json()) as { reasons: string[] }).reasons, ["source-held"]);
+
+    k.app.put("acme", "alice", "ord_1", 1, "processing", 10);
+    const seen = observe(k.client().subscribe("orderStatus", { channelVersion: 1, params: { orderId: "ord_1" } }));
+    await sleep(3_000);
+    assert.equal(seen.states.includes("live"), false, "no subscription goes live on a cluster nothing may be processed from");
+    assert.equal(k.internals.sources()[0]?.status, "paused", "it stays held");
+
+    const op = getGatewayOperator(k.gateway);
+    const detail = await op.showFailure({ failureId: held.failureId });
+    const retry = await op.retryCurrent({ sourceId: "orders", failureId: held.failureId, expectedRevision: detail.revision });
+    assert.equal(retry.result, "refused");
+    assert.equal(retry.outcome, "cluster-mismatch");
+    assert.equal((await op.showFailure({ failureId: held.failureId })).progress, "held", "a refused retry leaves it held");
+    assert.equal((await committedOffsets(s.group, s.topic))[0], "1");
   });
 });

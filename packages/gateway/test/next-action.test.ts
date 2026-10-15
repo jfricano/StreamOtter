@@ -19,6 +19,31 @@ const invalidJson: Pause = { kind: "pause", code: "INVALID_PAYLOAD", failureClas
 const tombstone: Pause = { kind: "pause", code: "INVALID_PAYLOAD", failureClass: "tombstone", stage: "validate", channel: null, diagnosis: "tombstone" };
 const record = (bytes: Buffer | null): SourceInput => ({ key: "k", bytes, keyBytes: Buffer.from("k"), headers: [], timestamp: null, position: { kind: "kafka", topic: "orders", partition: 0, offset: "41" } });
 
+function setup(policy: FailurePolicy, store: MemoryIncidentStore, write: QuarantineOutcome, clusterId: string | null): { failures: FailureService; source: FailureSource; config: ProjectConfig } {
+  const config = {
+    configVersion: 1, projectId: "order-dashboard",
+    sources: { orders: { kind: "kafka", generation: "orders-1", connectionRef: "cluster", topics: ["orders"], consumerGroup: "g", codec: "json", startFrom: "earliest" } },
+    failureHandling: { quarantine: { topic: "orders.quarantine", capture: "full-record" }, sources: { orders: { invalidJson: policy } } }
+  } as unknown as ProjectConfig;
+  const writer: QuarantineWriter = { publish: async () => write, stop: async () => undefined };
+  const failures = new FailureService({
+    config, store, logger: silent, quarantine: writer, configFingerprint: "c".repeat(64), handlerBuildId: "b", maxSourceRecordBytes: 1 << 20,
+    guards: policy === "quarantine-resync" ? { orders: { recover: async () => ({ decision: "hold", reason: "not yet" }) } } : {}
+  });
+  if (clusterId !== null) failures.setClusterId("orders", clusterId);
+  return { failures, source: { id: "orders", config: config.sources["orders"] as FailureSource["config"], adapter: null }, config };
+}
+
+function operator(config: ProjectConfig, failures: FailureService): OperatorService {
+  const host: OperatorHost = {
+    mode: "development", config, fingerprint: "c", handlerBuildId: "b", logger: silent, state: () => "running",
+    source: () => ({ sourceId: "orders", kind: "kafka", status: "paused" }), traces: () => ({ items: [], nextCursor: null }),
+    quarantineReport: () => null, quarantineReader: () => null, retry: async () => undefined,
+    evaluateRecord: async () => { throw new Error("not used"); }, redriveRecord: async () => { throw new Error("not used"); }, setBoundary: () => undefined
+  };
+  return new OperatorService(host, failures);
+}
+
 async function incident(policy: FailurePolicy, outcome: Pause, input: SourceInput, write: QuarantineOutcome, after?: (failures: FailureService) => void): Promise<IncidentDetail> {
   const config = {
     configVersion: 1, projectId: "order-dashboard",
@@ -89,5 +114,24 @@ describe("class-aware next actions (runbook §6.5)", () => {
     assert.equal(detail.progress, "held");
     assert.equal(detail.nextAction, "repair-and-retry");
     assert.match(detail.explanation.nextAction, /A retry holds again unless the record is back at its position. If it is gone, rebaseline the source/);
+  });
+
+  it("an advance that can't be checked because the cluster ID is no longer read says to restore a quarantining policy, not to point the source back", async () => {
+    const store = new MemoryIncidentStore();
+    store.claim("order-dashboard", [{ sourceId: "orders", generation: "orders-1", kind: "kafka" }]);
+    const before = setup("quarantine-resync", store, acknowledged, "cluster-a");
+    await before.failures.held(before.source, record(Buffer.from("{bad")), invalidJson);
+    const [held] = store.open("orders");
+    store.update(held!.failureId, held!.revision, { progress: "advance-pending" }, { event: "advance-pending", detail: "prepared", operationId: null });
+
+    // The class was switched to pause, so the restart reads no cluster ID; the source still reads cluster-a.
+    const after = setup("pause", store, acknowledged, null);
+    await after.failures.start([after.source], async () => "42");
+    const detail = await operator(after.config, after.failures).showFailure({ failureId: held!.failureId });
+    assert.equal(detail.progress, "uncertain", "the advance is still not confirmed from an unknown cluster");
+    assert.match(detail.diagnosis.message, /reads a cluster whose ID is unknown. The gateway reads the cluster ID only while some class on the source uses a quarantine policy/);
+    assert.equal(detail.nextAction, "none");
+    assert.match(detail.explanation.nextAction, /restore a quarantining policy \(quarantine-hold or quarantine-resync\) and restart/);
+    assert.doesNotMatch(detail.explanation.nextAction, /point the source back/);
   });
 });

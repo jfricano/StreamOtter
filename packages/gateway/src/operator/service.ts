@@ -12,7 +12,7 @@ import { validateOperatorRequest } from "@streamotter/contracts/internal";
 import { evidenceHash } from "../failures/evidence.ts";
 import type { QuarantineReader, QuarantineTopicReport } from "../failures/quarantine.ts";
 import {
-  CLUSTER_MISMATCH_DIAGNOSIS, CORRECTED_RECORD_RESOLUTION, EVIDENCE_CONFLICT_DIAGNOSIS, gatewayVersion, POSITION_MOVED_DIAGNOSIS,
+  CLUSTER_MISMATCH_DIAGNOSIS, CORRECTED_RECORD_RESOLUTION, EVIDENCE_CONFLICT_DIAGNOSIS, gatewayVersion, POSITION_MOVED_DIAGNOSIS, UNKNOWN_CLUSTER,
   type BoundaryInForce, type FailureService
 } from "../failures/service.ts";
 import { LOCAL_EVIDENCE_RETENTION_MS, StaleRevisionError, type CircuitState, type IncidentRecord, type OperationKind, type RawEvidence, type StoredOperation } from "../failures/store.ts";
@@ -473,6 +473,10 @@ export class OperatorService implements OperatorApi {
     if (unresolved !== undefined) {
       return refused("advance-unresolved", `An advance of incident ${unresolved.failureId} on this source is unresolved; it is reconciled from the group's committed offset at restart.`, record.revision);
     }
+    const mismatched = this.#failures.otherClusterIncident(record.sourceId);
+    if (mismatched !== null) {
+      return refused("cluster-mismatch", `The source reads another Kafka cluster than incident ${mismatched.failureId} was captured on, and nothing from it is processed, so a retry can't settle. Point the connection profile back at the original cluster and restart, or change the generation and rebaseline.`, record.revision);
+    }
     return null;
   }
 
@@ -738,6 +742,7 @@ function repairText(record: IncidentRecord): string {
     case "position-moved":
       return `The source's position moved past the held record without a recorded advance, so the record may be gone (source retention, an offset reset, or another consumer on the group). A retry holds again unless the record is back at its position. If it is gone, rebaseline the source (${RUNBOOK}, §6.4 and §6.10).`;
     case "cluster-mismatch":
+      if (record.diagnosis.includes(UNKNOWN_CLUSTER)) return unknownClusterText();
       return `The incident was captured on another Kafka cluster than the source now reads, so nothing from this cluster is processed. Point the connection profile back at the original cluster, or, if the source really moved, change its generation and rebaseline (${RUNBOOK}, §6.4 and §6.10).`;
     case "evidence-conflict":
       return fixture
@@ -768,6 +773,11 @@ function repairText(record: IncidentRecord): string {
     default:
       return `${what} Repair the cause (the mapping, or what it reads), then restart with the fix or retry the held record with retry-current. It is never skipped.`;
   }
+}
+
+/** The way out when the cluster the source reads could not be confirmed, because its ID is read only under a quarantining policy. */
+function unknownClusterText(): string {
+  return `The gateway reads the source's Kafka cluster ID only while some class on the source uses a quarantine policy, so it could not confirm the source still reads the cluster this incident was captured on. If it does, restore a quarantining policy (quarantine-hold or quarantine-resync) and restart, so the ID is read and the incident is checked again; if the source moved to another cluster, change its generation and rebaseline (${RUNBOOK}, §6.4 and §6.10).`;
 }
 
 /** What to correct before a reassess, in words. */
@@ -834,6 +844,7 @@ function explain(record: IncidentRecord, action: IncidentNextAction, boundarySta
           ? "Nothing; the incident is resolved. Invalid JSON can't be evaluated or redriven, because its bytes never decode; if the state it carried matters, publish it again as a valid record."
           : "Nothing; the incident is resolved.";
       }
+      if (record.progress === "uncertain" && integrityHold(record) === "cluster-mismatch" && record.diagnosis.includes(UNKNOWN_CLUSTER)) return unknownClusterText();
       if (record.progress === "uncertain" && integrityHold(record) !== null) {
         return `The source stays held. A restart checks the advance again, but it can't settle this one while the group's position is unexplained or the source reads another cluster: point the source back at its original position or cluster, or rebaseline it (${RUNBOOK}, §6.10).`;
       }

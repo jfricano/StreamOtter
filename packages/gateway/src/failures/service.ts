@@ -37,6 +37,8 @@ export interface AdvanceHooks {
  */
 export const POSITION_MOVED_DIAGNOSIS = "Source progress moved";
 export const CLUSTER_MISMATCH_DIAGNOSIS = "Kafka cluster mismatch";
+/** How a cluster-mismatch diagnosis names a current cluster whose ID was not read (no class on the source quarantines). */
+export const UNKNOWN_CLUSTER = "a cluster whose ID is unknown";
 export const EVIDENCE_CONFLICT_DIAGNOSIS = "The redelivered record's bytes differ from the evidence captured for the same position.";
 /** The resolution of a fixture incident whose record was replaced at the same position and then processed (runbook §6.5). */
 export const CORRECTED_RECORD_RESOLUTION = "a corrected record at the same position processed";
@@ -171,7 +173,8 @@ export class FailureService {
    * generation refuses startup, because its positions no longer name the same
    * records (ADR-15A §3). Rebaselining is an operator command (slice D).
    */
-  async start(sources: Iterable<FailureSource>, committedOffset?: CommittedOffsetReader): Promise<void> {
+  async start(sources: Iterable<FailureSource>, committedOffset?: CommittedOffsetReader): Promise<Set<string>> {
+    const holding = new Set<string>();
     for (const source of sources) {
       const open = this.store.open(source.id);
       const stale = open.find(incident => incident.generation !== source.config.generation);
@@ -203,8 +206,16 @@ export class FailureService {
           }
         }
       }
-      if (this.store.open(source.id).some(incident => WATCHED_PROGRESS.has(incident.progress))) this.#watched.add(source.id);
+      const watched = this.store.open(source.id).filter(incident => WATCHED_PROGRESS.has(incident.progress));
+      if (watched.length > 0) this.#watched.add(source.id);
+      // A source whose open incident names another cluster holds from the start, even before a record arrives, so
+      // it never reads as healthy (and subscriptions never go live) on a cluster nothing may be processed from.
+      if (watched.some(incident => this.#knownClusterMismatch(source.id, incident) !== null
+        || (incident.progress === "uncertain" && incident.diagnosis.startsWith(CLUSTER_MISMATCH_DIAGNOSIS)))) {
+        holding.add(source.id);
+      }
     }
+    return holding;
   }
 
   /**
@@ -436,9 +447,43 @@ export class FailureService {
         details: { status: 409, reason: "circuit-open" }
       });
     }
+    const mismatched = this.otherClusterIncident(sourceId);
+    if (mismatched !== null) {
+      // No record from this cluster is processed, so a retry could never settle: it would only resume an idle source.
+      throw new StreamOtterError("SOURCE_UNAVAILABLE", {
+        message: `Source "${sourceId}" reads another Kafka cluster than incident ${mismatched.failureId} was captured on; nothing from it is processed, so a retry can't settle. Point the connection profile back at the original cluster and restart, or change the generation and rebaseline.`,
+        details: { status: 409, reason: "cluster-mismatch" }
+      });
+    }
+    // The resume redelivers from every held partition, so every held incident of the source is retried.
     for (const incident of open) {
       if (incident.progress !== "held") continue;
       this.#update(incident, { progress: "retrying" }, "retrying", reason);
+    }
+  }
+
+  /** An open incident of the source captured on another cluster than the one it now reads (when that is known); or null. */
+  otherClusterIncident(sourceId: string): IncidentRecord | null {
+    return this.store.open(sourceId).find(incident => WATCHED_PROGRESS.has(incident.progress) && this.#knownClusterMismatch(sourceId, incident) !== null) ?? null;
+  }
+
+  /**
+   * The source paused again at `position`. Until the next retry no other held
+   * record is redelivered, so an incident a retry marked retrying is held again
+   * instead of staying "retrying" (the record paused at settles through its own
+   * disposition or through positionProblem).
+   */
+  sourceHeld(sourceId: string, position: SourceRecord["position"]): void {
+    if (!this.#watched.has(sourceId)) return;
+    let open: IncidentRecord[];
+    try {
+      open = this.store.open(sourceId);
+    } catch {
+      return;
+    }
+    for (const incident of open) {
+      if (incident.progress !== "retrying" || samePosition(incident.position, position)) continue;
+      this.#update(incident, { progress: "held" }, "held", `the source paused again at ${describePosition(position)} before this record was redelivered; retry it again`);
     }
   }
 
@@ -913,7 +958,10 @@ export class FailureService {
 }
 
 function clusterMismatchDiagnosis(captured: string, current: string | null): string {
-  return `${CLUSTER_MISMATCH_DIAGNOSIS}: the incident was captured on cluster ${captured}, but the source now reads ${current === null ? "a cluster whose ID is unknown" : `cluster ${current}`}. The same position may name a different record, so this is an integrity failure: the source stays held and is never advanced. If the source moved to another cluster, change its generation and rebaseline.`;
+  if (current === null) {
+    return `${CLUSTER_MISMATCH_DIAGNOSIS}: the incident was captured on cluster ${captured}, but the source now reads ${UNKNOWN_CLUSTER}. The gateway reads the cluster ID only while some class on the source uses a quarantine policy, so it can't confirm the source still reads the same cluster: the source stays held and is never advanced. If it does, restore a quarantining policy and restart; if it moved to another cluster, change its generation and rebaseline.`;
+  }
+  return `${CLUSTER_MISMATCH_DIAGNOSIS}: the incident was captured on cluster ${captured}, but the source now reads cluster ${current}. The same position may name a different record, so this is an integrity failure: the source stays held and is never advanced. If the source moved to another cluster, change its generation and rebaseline.`;
 }
 
 function describePosition(position: SourceRecord["position"]): string {

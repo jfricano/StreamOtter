@@ -474,6 +474,36 @@ describe("V1.1 slice D: operator service (fixture tier)", () => {
     assert.equal(Buffer.from(raw.raw?.valueBase64 ?? "", "base64").toString(), "{not json", "the original evidence is kept");
   });
 
+  it("a retry that pauses again at another held record leaves no incident stranded in retrying", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {
+    const state = await mkdtemp(join(tmpdir(), "so-operator-"));
+    initJournal(state, "order-dashboard", [{ sourceId: "orders", generation: "fixture-1", kind: "fixture" }]);
+    const first = orderRecord("acme", "ord_1", 2, "processing", 20);
+    h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures: [first, orderRecord("acme", "ord_1", 3, "processing", 30), badJson()] });
+    assert.equal(await h.advance(3), 2);
+    const later = await only(h, getGatewayOperator(h.gateway));
+    await h.close();
+    h = undefined;
+
+    // After a restart an earlier record fails too, so the source has two held incidents.
+    h = await startHarness({ stateDirectory: state, failureHandling: HOLD, fixtures: [first, badJson("ord_2"), badJson()] });
+    const op = getGatewayOperator(h.gateway);
+    assert.equal(await h.advance(2), 1);
+    await h.internals.failuresSettled();
+    const earlier = (await op.listFailures({ state: "open" })).items.find(item => item.failureId !== later.failureId)!;
+    assert.ok(earlier !== undefined, "two held incidents");
+
+    // The retry resumes the source, which pauses again at the earlier record before the later one is redelivered.
+    const result = await op.retryCurrent({ sourceId: "orders", failureId: earlier.failureId, expectedRevision: earlier.revision });
+    assert.equal(result.outcome, "held", result.message);
+    await h.internals.failuresSettled();
+    const other = await op.showFailure({ failureId: later.failureId });
+    assert.equal(other.progress, "held", "never stranded in retrying");
+    assert.equal(other.nextAction, "repair-and-retry");
+    assert.ok(other.history.some(event => /paused again at fixture record 1 before this record was redelivered/.test(event.detail ?? "")));
+    const again = await op.retryCurrent({ sourceId: "orders", failureId: later.failureId, expectedRevision: other.revision });
+    assert.equal(again.result, "completed", "it can be retried again");
+  });
+
   it("F35: an operation interrupted between intent and result is unknown after a restart and never rerun", { skip: !nodeSupportsJournal() && "the journal needs Node 24.15 or newer" }, async () => {
     const state = await mkdtemp(join(tmpdir(), "so-operator-"));
     initJournal(state, "order-dashboard", [{ sourceId: "orders", generation: "fixture-1", kind: "fixture" }]);

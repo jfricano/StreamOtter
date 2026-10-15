@@ -316,6 +316,8 @@ export class GatewayRuntime implements SessionOwner {
   readonly #healthOptions: { host: string; port: number } | null;
   #health: HealthListener | null = null;
   #failures: FailureService | null = null;
+  /** Sources the failure journal holds before their first record (an incident from another Kafka cluster). */
+  #heldAtStart = new Set<string>();
   #operator: OperatorService | null = null;
   #quarantineReport: QuarantineTopicReport | null = null;
   #quarantineReader: QuarantineReader | null = null;
@@ -683,6 +685,7 @@ export class GatewayRuntime implements SessionOwner {
         ...(channel === null ? {} : { channel })
       });
       this.#setSourceStatus(source, "paused", code);
+      this.#failures?.sourceHeld(source.id, input.position);
       return { kind: "pause", code, failureClass, stage, channel, diagnosis: reason };
     };
     trace("source", "ok");
@@ -696,6 +699,7 @@ export class GatewayRuntime implements SessionOwner {
         sourceId: source.id, position: input.position as unknown as Json, reason: moved
       });
       this.#setSourceStatus(source, "paused", "SOURCE_UNAVAILABLE");
+      this.#failures?.sourceHeld(source.id, input.position);
       return { kind: "hold", code: "SOURCE_UNAVAILABLE", reason: moved };
     }
 
@@ -1023,7 +1027,7 @@ export class GatewayRuntime implements SessionOwner {
       });
       const clusterId = quarantine?.report?.clusterId;
       if (clusterId !== undefined) for (const source of quarantined) failures.setClusterId(source.id, clusterId);
-      await failures.start(this.#sources.values(), async (source, topic, partition) => {
+      this.#heldAtStart = await failures.start(this.#sources.values(), async (source, topic, partition) => {
         if (source.config.kind !== "kafka") return null;
         return readCommittedOffset(connections.get(source.config.connectionRef) as ResolvedKafkaConnection,
           `streamotter-${this.config.projectId}-reconcile`, source.config.consumerGroup, topic, partition, this.core.logger);
@@ -1175,6 +1179,12 @@ export class GatewayRuntime implements SessionOwner {
       for (const source of this.#sources.values()) {
         source.status = "starting";
         source.reason = undefined;
+        // Held before its first record (an incident from another cluster): it never reads as healthy, and nothing is fetched.
+        const heldAtStart = this.#heldAtStart.has(source.id);
+        if (heldAtStart) {
+          this.core.logger.error("An open incident was captured on another Kafka cluster; the source is held from startup and nothing from this cluster is processed", { sourceId: source.id });
+          this.#setSourceStatus(source, "paused", "SOURCE_UNAVAILABLE");
+        }
         const adapter = source.config.kind === "fixture"
           ? new FixtureSourceAdapter(
             (this.#development?.fixtures[source.config.fixtureRef] ?? []) as readonly FixtureRecord[],
@@ -1188,6 +1198,7 @@ export class GatewayRuntime implements SessionOwner {
             connection: connections.get(source.config.connectionRef) as ResolvedKafkaConnection,
             sink: this.#sink(source),
             onCommit: position => this.#committed(source, position),
+            startHeld: heldAtStart,
             ...(this.#internal.beforeCommit === undefined ? {} : { beforeCommit: this.#internal.beforeCommit })
           });
         source.adapter = adapter;

@@ -231,7 +231,13 @@ export class KafkaSourceAdapter implements SourceAdapter {
     sink: SourceSink;
     onCommit: (position: SourceRecord["position"]) => void;
     beforeCommit?: (sourceId: string, position: SourceRecord["position"]) => Promise<void>;
+    /** Start paused, before any record is processed: an open incident says nothing from this source may be processed yet. */
+    startHeld?: boolean;
   }) {
+    if (options.startHeld === true) {
+      this.#paused = true;
+      this.#status = "paused";
+    }
     this.#sourceId = options.sourceId;
     this.#source = options.source;
     this.#connection = options.connection;
