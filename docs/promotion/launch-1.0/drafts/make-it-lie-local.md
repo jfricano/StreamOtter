@@ -23,7 +23,7 @@ Two edits to the scaffold:
 { key: "job_1", raw: "{not json" },
 ```
 
-Create a local failure journal, so the incident survives a restart, then start the gateway with it:
+Create a local failure journal, so the incident survives a restart, then start the gateway with it. `validate` may note that the file isn't in canonical form after your edit; that's only key order and changes nothing.
 
 ```bash
 npx streamotter init --failures --config streamotter.json --state-dir ./state
@@ -40,13 +40,13 @@ curl -X POST http://127.0.0.1:7401/management/v1/dev/fixtures/advance -H "author
 What happens at the malformed record:
 - The advance that reaches it returns `advanced: 0`, and the gateway logs "Source paused on an unprocessable record; it will not be committed or skipped" (`failureClass: invalid-json`). Further advances are refused while the source is paused, so revisions 4 and 5 are never delivered.
 - The preview stays `stale`; it never reports `live` while revisions are missing.
-- In a second terminal, `npx streamotter status --state-dir ./state` shows `jobs paused (INVALID_PAYLOAD), 1 open incident`, and `npx streamotter failures list --state-dir ./state` shows the incident: `invalid-json`, `held`, next `repair-and-retry`. The workbench Failures tab shows the same incident.
+- In a second terminal, `npx streamotter status --state-dir ./state` shows `jobs  paused (INVALID_PAYLOAD), 1 open incident`, and `npx streamotter failures list --state-dir ./state` shows the incident: `invalid-json`, `held`, next `repair-and-retry`. The workbench Failures tab shows the same incident.
 
 The challenge from here: make the previewed view report `live` while it's missing revision 4 or 5, or get the record skipped silently.
 
-The way back: stop `dev` (Ctrl+C), delete the malformed line from `server/handlers.mjs`, and start `dev` again with the same command. Fixture records are read at startup, so the corrected file takes effect on restart, and the journal still remembers the incident. Advance again: revisions 4 and 5 arrive, and `npx streamotter failures list --state-dir ./state --state all` shows the incident `resolved`, `processed`. Reload the page after the restart (the scaffold's in-memory data starts over).
+The way back: stop `dev` (Ctrl+C), delete the malformed line from `server/handlers.mjs`, and start `dev` again with the same command. Fixture records are read at startup, so the corrected file takes effect on restart, and the journal still remembers the incident. Advance four times: revisions 2 and 3 are delivered again (the fixture starts over), then 4 and 5 arrive, and `npx streamotter failures list --state-dir ./state --state all` shows the incident `resolved`, `processed`. Reload the page after the restart (the scaffold's in-memory data starts over).
 
 Notes:
-- On `0.2.0-rc.1` the resolved incident's history says "the original record processed successfully". The next release says "a corrected record at the same position processed" and keeps the original evidence; quote whatever the published release prints.
+- On `0.2.0-rc.1` the resolved incident's history says "the original record processed successfully". The next release resolves it as "a corrected record at the same position processed", its history says "a different record at this fixture position processed successfully; the original record did not, and its evidence is kept", and the original evidence stays; quote whatever the published release prints.
 - `retry-current` doesn't help here: it re-reads the same in-memory bytes and holds again. It's for causes outside the record, such as a mapper bug fixed in a redeploy or a guard decision.
 - To start over completely, stop `dev` and delete `./state`.
