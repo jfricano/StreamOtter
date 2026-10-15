@@ -10,6 +10,9 @@ coverage/
 tests/.generated-contracts/
 # Local instructions for Claude Code; not part of the published repository.
 CLAUDE.md
+# Local Claude Code state. settings.json stays tracked: it holds the shared permission rules.
+/.claude/*
+!/.claude/settings.json
 
 # StreamOtter failure journal (V1.1 spec §12): decision state, never committed
 journal.sqlite*
