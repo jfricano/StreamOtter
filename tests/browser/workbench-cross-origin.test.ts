@@ -257,7 +257,7 @@ await import("/workbench/assets/${manifest.entry.script}");
     assert.equal(started.status(), 200);
     await page.getByRole("button", { name: "Reload" }).click();
     await page.getByText("Sources ready").waitFor();
-    problems.length = 0; // Chromium logged the deliberate 401.
+    problems.length = 0; // The browser may log the deliberate 401.
   });
 
   it("calls only the API origin, with the cookie and X-StreamOtter-Workbench, and never Authorization", async () => {
@@ -285,7 +285,7 @@ await import("/workbench/assets/${manifest.entry.script}");
     assert.ok(preflights.length > 0, "the custom header makes every request preflighted");
     for (const preflight of preflights) {
       assert.equal(preflight.headers.origin, siteOrigin);
-      assert.match(preflight.headers["access-control-request-headers"] ?? "", /x-streamotter-workbench/);
+      assert.match(preflight.headers["access-control-request-headers"] ?? "", /x-streamotter-workbench/i);
       assert.equal(preflight.headers.cookie, undefined, "preflights never carry credentials");
     }
     assert.deepEqual(siteSeen.filter(entry => entry.path.includes("/api/")), [], "nothing went to the page's own origin's API");
@@ -340,7 +340,7 @@ await import("/workbench/assets/${manifest.entry.script}");
     await page.goto(`${siteOrigin}/workbench/null-ok/`);
     await page.getByText("The workbench API is unavailable: Unexpected response (200).").waitFor();
     assert.deepEqual(pageErrors(), []);
-    problems.length = 0; // Chromium logged the deliberate 401.
+    problems.length = 0; // The browser may log the deliberate 401.
   });
 
   it("an API origin that does not answer CORS shows as unavailable, not as a crash", async () => {

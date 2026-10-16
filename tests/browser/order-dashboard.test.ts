@@ -14,7 +14,7 @@ import { createGateway, silentLogger, type Gateway } from "@streamotter/gateway"
 import { getGatewayInternals, type GatewayInternals } from "@streamotter/gateway/internals";
 import { development, handlers } from "../../examples/order-dashboard/src/server/fixture-handlers.ts";
 import { waitFor } from "../integration/harness.ts";
-import { launch, openPage } from "./browser.ts";
+import { engine, launch, openPage } from "./browser.ts";
 import type { Browser, Page } from "playwright";
 
 const EXAMPLE = resolve(import.meta.dirname, "../../examples/order-dashboard");
@@ -136,7 +136,8 @@ describe("order-dashboard example in a browser", { skip: existsSync(APP) ? false
   });
 
   it("fits a phone-width viewport and loads without console or CSP errors", async () => {
-    const mobile = await openPage(browser, { viewport: { width: 375, height: 740 }, isMobile: true, hasTouch: true });
+    // Firefox doesn't support isMobile; the 375 px viewport still sets the layout width there.
+    const mobile = await openPage(browser, { viewport: { width: 375, height: 740 }, isMobile: engine !== "firefox", hasTouch: true });
     await mobile.page.goto(appOrigin);
     await mobile.page.getByRole("button", { name: "Carol" }).click();
     await mobile.page.locator(".badge", { hasText: "Live" }).first().waitFor();
