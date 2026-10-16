@@ -8,7 +8,7 @@
 
 > **Where and when:** separate text posts, one subreddit at a time, after launch day. Two are core (r/apachekafka, r/node). The other three are later and optional, outside the launch plan (appendix). Decisions are in PUBLIC_LAUNCH.md (D1–D8).
 >
-> **Plan B (D8 in PUBLIC_LAUNCH.md, decided at T-7):** if your HN account can't submit Show HN, r/apachekafka moves to **T-0 Tue, 8:00 ET** and becomes the launch post, and r/node moves up to T+2 (PUBLIC_LAUNCH.md §4.5).
+> **Plan B (D8 in PUBLIC_LAUNCH.md, decided at T-7):** if your HN account can't submit Show HN, r/apachekafka moves to **T-0 Tue, 11:00 ET or later** and becomes the launch post, and r/node moves up to T+2 (PUBLIC_LAUNCH.md §4.5).
 >
 > **Rules:**
 > - **REWRITE IN YOUR OWN WORDS.** These are reference drafts, not posts. Many subreddits remove or downvote AI-written posts, and your own voice is what earns replies. Use them for facts and structure only.

@@ -14,8 +14,8 @@ Binding calls for the fix pass followed (`review/FIX_DECISIONS.md`). They were a
 
 ## What was fixed
 **The plan (`PUBLIC_LAUNCH.md`)**
-- A one-screen summary: five things to do now, the minimum launch (gates and bonuses), the concept in three lines, eight yes/no decisions (down from 17).
-- "Can you make it lie?" is the launch, led by the home page's "Drop my connection" button, with two local tiers; the hosted Lab, the hosting configuration change for S02–S05 and `/blog` are bonuses, not gates.
+- A one-screen summary: five things to do now, the minimum launch (gates and bonuses; superseded by D2, Oct 7, which made the hosted Lab, the hosting change and the blog gates), the concept in three lines, eight yes/no decisions (down from 17).
+- "Can you make it lie?" is the launch, led by the home page's "Drop my connection" button, with two local tiers; the hosted Lab, the hosting configuration change for S02–S05 and `/blog` are bonuses, not gates. *(Superseded by D2, Oct 7: the hosted Lab, the hosting change and the blog are gates.)*
 - B1: Fouled sensor (S01, retry) and Garbled reading (S02, quarantine) described separately; no single run claims both. B2: no claim that the hosted Lab runs all eight exercises (S01 and S06 only, until a hosting configuration change lands; S07–S09 never).
 - Bad-record wording: the default `pause` holds the source and copies nothing; the byte-for-byte copy and the journal come only with `failureHandling` on (a correction made during the pass).
 - The launch visuals (PR #65) are listed with their caveats (§9).

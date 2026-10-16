@@ -45,8 +45,8 @@ Then the [release checklist](../../RELEASE_CHECKLIST.md): main-push CI and **Ext
 These gate the launch or `1.0.0`, not `1.0.0-rc.1`:
 
 - **The hosted ACL change on streamotter.dev** (the trial and then enforcement, run by the rollout with devops). T-0 is set only after enforcement is accepted. The local ACL tier above tests the library against a broker with authorization; it does not replace the hosted rollout.
-- **The site on the candidate:** Lontra Creek re-pins to `1.0.0-rc.1` on staging, and the T-7 rehearsal runs on it. Production moves straight to `1.0.0` on launch day. Publishing changes nothing on the site until a Lontra Creek PR moves its pin.
-- **Pup Patrol** may pin the candidate for a preview; it pins `1.0.0` before it goes live.
+- **The site on the candidate:** there is no staging environment. "Staged on rc.1" means the site's Pages previews plus the live production backend on `1.0.0-rc.1`, so that re-pin is a public change on the live demo. It comes after Stage 5 finishes on the current backend, and the T-7 rehearsal runs on it. The backend moves to `1.0.0` on launch day. Publishing changes nothing on the site until a Lontra Creek PR moves its pin.
+- **Pup Patrol** may pin the candidate for a preview; it moves to `1.0.0` after launch day.
 - **docs.streamotter.dev and blog.streamotter.dev:** preview deployments worked on October 15 (after #80). Production docs build only from the `v1.0.0` tag (`DOCS_CHANNEL=release`, which refuses a prerelease). The blog must be live before T-7.
 - **The recording** and the remaining launch-kit items in the promotion plan.
 
@@ -80,22 +80,21 @@ The owner decided on October 16 that `1.0.0` drops the same day as the updated d
 
 **Before launch day, on `1.0.0-rc.1`:**
 - Publish `1.0.0-rc.1` (above); the seven-day soak with no blocking bug starts.
-- Lontra Creek staging on rc.1, with the hosted Lab, the Kafka ACL enforcement accepted (Stage 5) and the T-7 rehearsal.
+- In this order: the Kafka ACL enforcement accepted on the current backend (Stage 5), then the live backend re-pinned to rc.1 (a full rollout), then the T-7 rehearsal on it with the hosted Lab and the site's Pages previews.
 - A docs preview and a blog preview with the 1.0 article, from `main`.
-- Pup Patrol previewed on rc.1.
-- The recording and GIF, on staging.
-- Open and review, without merging: the `1.0.0` release PR (versions and the CHANGELOG entry only; the README, implementation status and release plan naming `1.0.0`), the Lontra Creek and Pup Patrol pin PRs to `1.0.0`, the 1.0 article's post PR, and lontra-creek #56 (the docs link).
+- The recording and GIF, on the rc.1 backend.
+- Open and review, without merging: the `1.0.0` release PR (versions and the CHANGELOG entry only; the README, implementation status and release plan naming `1.0.0`), the Lontra Creek pin PR to `1.0.0`, the 1.0 article's post PR, and lontra-creek #56 (the docs link).
 - Go/no-go at T-1.
 
-**On launch day, before anything is posted:**
+**On launch day, before anything is posted** (the first post at 11:00 ET or later, with Codex on hand from the start; the backend rollout is the long step, and Stage 3's staging-to-acceptance alone took about 1 h 45 min):
 1. Merge the `1.0.0` release PR; main-push CI on it.
 2. Tag `v1.0.0` and run the publish workflow with `latest`; it verifies the registry and the install.
 3. Deploy docs.streamotter.dev from the `v1.0.0` tag (the release channel).
-4. Merge and deploy the Lontra Creek pin (production) and #56, then Pup Patrol.
+4. Roll the backend out on `1.0.0`: merge the Lontra Creek pin PR and #56, then the image (registry approval), candidate, recovery evidence, activation and browser acceptance, with Codex.
 5. Merge the 1.0 article and deploy the blog; update Medium; publish the GitHub release; pin the Discussion.
 6. Check the site, docs and install on `1.0.0`, then post.
 
-If step 2 or 4 fails, move the day: nothing has been announced. A runtime fix found during the soak ships as `rc.N+1` and restarts the seven days.
+If step 2 or 4 fails, move the day: nothing has been announced. Pup Patrol moves to `1.0.0` after launch day. A runtime fix found during the soak ships as `rc.N+1` and restarts the seven days.
 
 ## Rollback
 
