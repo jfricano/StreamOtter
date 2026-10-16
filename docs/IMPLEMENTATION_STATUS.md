@@ -1,6 +1,6 @@
 # StreamOtter V1 implementation status
 
-September 25, 2026, updated October 4 · Release candidate `0.2.0-rc.1` is published on npm (`latest`) for all six packages, including the all-in-one `streamotter` package and the V1.1, V1.2 and V1.2.1 milestones (see the [CHANGELOG](../CHANGELOG.md)).
+September 25, 2026, updated October 16 · Release candidate `0.2.0-rc.1` is published on npm (`latest`) for all six packages, including the all-in-one `streamotter` package and the V1.1, V1.2 and V1.2.1 milestones (see the [CHANGELOG](../CHANGELOG.md)). `1.0.0-rc.1`, the release candidate for 1.0.0, is prepared in this repository and not yet published; its [release handoff](./releases/1.0.0/RELEASE_HANDOFF.md) lists what has to pass before the tag. Sections marked *new in 1.0.0-rc.1* describe it.
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
@@ -32,7 +32,7 @@ This document records what exists, the commands that verify it, the results obse
 | Sources | `packages/gateway/src/sources` | Deterministic fixture source; KafkaJS 2.2.4 adapter with explicit per-record commits, pause-and-seek on poison records, rebalance/crash/inactivity detection, staged diagnostics, tracked sockets. |
 | Transport | `packages/gateway/src/transport/socketio.ts`, `packages/client/src/connection.ts` | Socket.IO 4.8.3, namespace `/`, WebSocket only, recovery and client reconnection disabled; the only files that import Socket.IO. |
 | Management API | `packages/gateway/src/management` | All specified `/management/v1` routes plus `GET /dev/principals`; bearer token, exact-origin/Referer checks, `Result` envelopes and status codes, 1 MiB bodies, rate limit, workbench hosting with CSP. Refuses production gateways. |
-| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. React hooks on `@streamotter/client/react` and `streamotter/react` (V1.3, ships in 1.0.0; unreleased); see below. |
+| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. React hooks on `@streamotter/client/react` and `streamotter/react` (V1.3, new in 1.0.0-rc.1); see below. |
 | CLI | `packages/cli` | `init`, `validate` (prints the canonical fingerprint), `generate` (manifest-guarded overwrite), `dev`, `start`; exit codes 0/1/2; SIGINT/SIGTERM graceful shutdown; startup diagnostics. |
 | Workbench | `apps/workbench` | Connect (status, staged checks, resume, fixture advance), Define (channel contracts, candidate editor, validation, restart-required indicator), Preview (real SDK subscription as a development principal; advance, disconnect, resync), Inspect (filterable, polling trace table), Export (canonical file, fingerprint, CLI commands). |
 | Reference example | `examples/order-dashboard` | Application-owned identity, ownership rules, snapshot storage; fixture and Kafka modes; vanilla TypeScript and React views; reproducible scenarios. |
@@ -181,7 +181,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Recovery guard, boundary and snapshot acknowledgment | F20–F24 | Implemented | |
 | Late results after epoch change, revoke or stop | F25 | Partial | Revoke and new-incident races are not separately tested. |
 | Circuit breaker | F26 | Implemented | |
-| Moved or expired source position; journal identity, rebaseline; second gateway | F27, F29, F30 | Implemented | F29: a re-created topic without a generation change is detected only when the record at a held offset has different bytes (unreleased fix below: it is then held as an evidence conflict instead of resolving the incident). |
+| Moved or expired source position; journal identity, rebaseline; second gateway | F27, F29, F30 | Implemented | F29: a re-created topic without a generation change is detected only when the record at a held offset has different bytes (fixed in 1.0.0-rc.1, below: it is then held as an evidence conflict instead of resolving the incident). |
 | Operator retry, evaluate, redrive, plans and refusals | F19, F28, F31–F34, F36 | Implemented | |
 | Redrive interrupted by a crash | F35 | Implemented | |
 | Operator, health and raw-evidence boundary | F37 | Implemented | |
@@ -210,7 +210,7 @@ All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, 
 
 The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.10.0. On Node 24.14.0 the journal refuses to open (`node-version`) and its SQLite suites skip.
 
-### Runs added October 16, 2026 (unreleased)
+### Runs added October 16, 2026 (new in 1.0.0-rc.1)
 
 Two of the checks the [acceptance packet](./releases/v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status) requires before a stable release, on Linux (x86-64), Node 24.21.0 and pnpm 11.19.0:
 
@@ -278,7 +278,7 @@ The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolv
 
 GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by hand, passed on Node 24 and 26, along with the nightly replicated-Kafka job. On the release commit `fc7f47c` on `main`, CI and the [extended workflow](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser and deploy on Node 24 and 26, replicated Kafka on Node 24) passed, and the publishing workflow ran the full release checks again before publishing.
 
-### Fixes after 0.2.0-rc.1 (unreleased)
+### Fixes after 0.2.0-rc.1 (new in 1.0.0-rc.1)
 
 Source-failure fixes found after the release ([API draft §5.2](./releases/v1.1/V1_1_API.md#52-incident-model), [CHANGELOG](../CHANGELOG.md)): a retry of a record that is gone settles as `held` instead of staying `retrying`; a restart and a rebaseline normalize `retrying` and `advance-pending`; an incident's `policy` follows the configuration on re-observation; a different Kafka record at a held offset is an evidence conflict and never resolves the incident (a corrected fixture record resolves it as "a corrected record at the same position processed"); an incident from another Kafka cluster holds the source from startup (paused and not ready even with nothing to read; a retry there is refused) and before each record; a retry that pauses again at one held record returns the source's other retried incidents to `held`; a switch away from `quarantine-resync` makes a denied recovery `held`; and `nextAction` explanations are class-aware, including for an advance that can't be checked because no class quarantines any more. Each has a regression test that fails without its fix: `packages/gateway/test/failure-service.test.ts`, `journal.test.ts` and `next-action.test.ts`, `tests/integration/operator.test.ts` and `rebaseline.test.ts`, and the Kafka tier's `tests/kafka/15-integrity-holds.test.ts` (the moved-position, evidence-conflict, cluster-mismatch and idle-cluster cases, each failing without its fix). On Node 24.22.0 and pnpm 11.19.0, October 15, 2026, after the code review's fixes:
 
@@ -288,9 +288,9 @@ Source-failure fixes found after the release ([API draft §5.2](./releases/v1.1/
 | `pnpm test:kafka` (after `pnpm build`) | 52 tests, all pass, against a local single-node Kafka 4.1.2 broker |
 | `pnpm test:browser` (without its `pnpm build` step, after one) | 59 tests, all pass, in Chromium |
 
-## V1.3 React hooks (unreleased; ships in 1.0.0)
+## V1.3 React hooks (new in 1.0.0-rc.1)
 
-`@streamotter/client/react` and `streamotter/react` add a provider and hooks over the SDK ([docs/releases/v1.3](./releases/v1.3/README.md)). Built on `feat/v1.3-react-hooks`; ships in `1.0.0` (owner, October 6, 2026); not published. Its exact API is locked in the [API contract](./releases/v1.3/API.md), and every hooks test names the contract clauses it covers. Independently reviewed (three reviewers; two behavior fixes and a wider test suite came out of it). On Node 24.21.0: `pnpm verify` 471 passed; `test:install` 23 passed and 1 skipped (TLS Kafka, no local broker), including bundling and type-checking React apps against the packed packages on React 19 and React 18; `test:browser` 59 passed, including the reference example's React page on the hooks, on a preinstalled Chromium headless shell (revision 1194) rather than the pinned one. Details in the [implementation log](./releases/v1.3/IMPLEMENTATION_LOG.md).
+`@streamotter/client/react` and `streamotter/react` add a provider and hooks over the SDK ([docs/releases/v1.3](./releases/v1.3/README.md)). Built on `feat/v1.3-react-hooks` and merged as #73; ships in `1.0.0-rc.1` and then `1.0.0` (owner, October 6, 2026); not yet published. Its exact API is locked in the [API contract](./releases/v1.3/API.md), and every hooks test names the contract clauses it covers. Reviewed by three reviewers; two behavior fixes and a wider test suite came out of it). On Node 24.21.0: `pnpm verify` 471 passed; `test:install` 23 passed and 1 skipped (TLS Kafka, no local broker), including bundling and type-checking React apps against the packed packages on React 19 and React 18; `test:browser` 59 passed, including the reference example's React page on the hooks, on a preinstalled Chromium headless shell (revision 1194) rather than the pinned one. Details in the [implementation log](./releases/v1.3/IMPLEMENTATION_LOG.md).
 
 ## Gate A status (home site and demo plan)
 

@@ -33,12 +33,12 @@ The roadmap's [npm versions](../../API_AND_FEATURE_ROADMAP.md#npm-versions) puts
 
 | Check | State |
 | --- | --- |
-| A Kafka broker with ACLs enabled | This release adds the `test:kafka:acl` tier: a broker with authorization on, where the gateway holds exactly the runbook's ACLs. Results are in [implementation status](../../IMPLEMENTATION_STATUS.md). |
-| Firefox and WebKit (F45) | This release runs the browser tier on all three engines in **Extended checks**. The first passing run on the release `main` is the evidence. |
-| The proxy deployment with `failureHandling` on | This release adds that case to `test:deploy`. |
+| A Kafka broker with ACLs enabled | `pnpm test:kafka:acl` (new): one Kafka 4.1.2 broker with authorization on, where the gateway holds exactly the runbook's ACLs. It runs a plain channel, quarantine-hold and quarantine-resync end to end, then removes each ACL in turn and checks the documented symptom; it also corrected the runbook's symptom table. It runs as the **Kafka with ACLs** job in Extended checks and in the publishing workflow's preparation job. Results: [implementation status](../../IMPLEMENTATION_STATUS.md). |
+| Firefox and WebKit (F45) | The browser tier now runs in Chromium, Firefox and WebKit: the **Browser tests in firefox** and **Browser tests in webkit** jobs in Extended checks. The first passing run on the release `main` is the evidence. |
+| The proxy deployment with `failureHandling` on | `test:deploy` (in Extended checks and the preparation job) now also runs the compiled `streamotter start` behind Caddy with a state directory, quarantine-resync, the operator socket and the health listener: a bad record holds the source while the app keeps serving, the CLI shows the incident, `sources reassess` advances it, and a graceful restart keeps the recovery boundary. |
 | One integrator walks the [source-failure runbook](../../guides/source-failures.md) end to end on their own machine with real Kafka | **Open, the owner's.** No outside integrator is named. A clean-room agent run of the public docs on `0.2.0-rc.1` (October 14) found five defects, fixed in #83, but it ran on Linux and isn't a person. The plan is the owner's own Mac run on the release source (the no-Kafka recipe and `npm run dev:lab` in lontra-creek, about 30–45 minutes) and the wording of a public gate issue. Whether that satisfies the check is the owner's call. |
 
-Then the [release checklist](../../RELEASE_CHECKLIST.md): main-push CI and **Extended checks** on the exact release `main`, including the replicated tier and the new ACL and browser jobs.
+Then the [release checklist](../../RELEASE_CHECKLIST.md): main-push CI and **Extended checks** on the exact release `main`, including the replicated tier, the Kafka with ACLs job and the Firefox and WebKit jobs.
 
 ## What does not gate this candidate
 
