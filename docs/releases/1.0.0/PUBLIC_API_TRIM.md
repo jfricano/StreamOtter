@@ -89,5 +89,5 @@ The API reference loses 61 pages.
 1. jason approved these lists on October 7, 2026. This document is the spec.
 2. The tests came first: the guard above, plus updated expectations in the existing tests.
 3. Then the code and docs; `pnpm verify` and the docs site build passed.
-4. jason chose the reviewers' model. The independent review found nothing blocking.
+4. jason chose the reviewers' model. The code review found nothing blocking.
 5. It merged with PR #72. The review's smaller fixes, and grouping `streamotter/contracts` by audience in the docs (jason kept every remaining export public), followed in their own PR.

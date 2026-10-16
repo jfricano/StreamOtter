@@ -10,6 +10,7 @@
 | [Run in production](./DEPLOYMENT.md) | `streamotter start`, supervision, health checks, the V1.1 state directory and operator socket, reverse proxies, limits, and programmatic use |
 | [Handle bad records](./guides/source-failures.md) | V1.1 (new in 0.2.0-rc.1): failure policies, quarantine, recovery guards, operator commands, incident procedures, and upgrade and downgrade notes |
 | [Troubleshooting](./guides/troubleshooting.md) | Symptoms, causes, and fixes |
+| [Can you make it lie?](./make-it-lie.md) | Hold a source at a malformed record without Kafka, then try to break the guarantees |
 
 Package guides, also shown on npm: [`streamotter`](../packages/streamotter/README.md) (everything in one install), [`@streamotter/cli`](../packages/cli/README.md), [`@streamotter/client`](../packages/client/README.md), [`@streamotter/gateway`](../packages/gateway/README.md), [`@streamotter/contracts`](../packages/contracts/README.md), and [`@streamotter/workbench`](../apps/workbench/README.md).
 

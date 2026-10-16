@@ -102,7 +102,7 @@ Status as of the [implementation log](./IMPLEMENTATION_LOG.md):
 - The React consumer in the install test type-checks `useSubscription` against generated `AppChannels` and rejects a wrong channel name, version or params shape at compile time. **Met**, on React 19 and React 18 type packages.
 - A non-React consumer bundles no React. **Met**: the install test checks the bundler's inputs for React, not a byte count; the plan's original "bundle size unchanged" wording claimed a measurement that no test makes.
 - The client README's example compiles against the published declarations. **Met by review**, not by a test: the reference example is a different page (orders, with denial), so the plan's original "run as written in the reference example" was not done.
-- An independent review of the implementation before the PR opens, per the project's convention. **Done**; findings and fixes are in the log.
+- A review of the implementation by reviewers who hadn't written it, before the PR opens, per the project's convention. **Done**; findings and fixes are in the log.
 
 ## Open decisions
 

@@ -2,6 +2,8 @@
 
 Thanks for helping. This guide covers setup, the test tiers, and what a change needs before it is merged.
 
+Everyone taking part follows the [code of conduct](./CODE_OF_CONDUCT.md).
+
 ## Scope first
 
 StreamOtter V1 is deliberately small: one gateway, state channels with snapshot resynchronization, application-owned access, and bounded delivery. The [V1 API specification](./docs/V1_API.md) governs behavior. Durable replay, multiple gateways, commands, and other V2/V3 items on the [roadmap](./docs/API_AND_FEATURE_ROADMAP.md) are intentionally deferred. For anything beyond a bug fix or documentation, please open an issue to discuss it before writing code.
