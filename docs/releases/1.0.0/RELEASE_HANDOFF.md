@@ -54,7 +54,7 @@ These gate the launch or `1.0.0`, not `1.0.0-rc.1`:
 
 1. Review and merge the release preparation PR. Ordinary merges never publish.
 2. Confirm main-push CI is green on the exact merge commit, then run **Extended checks** on it (Actions → Extended checks → Run workflow, branch `main`) and check every job, including the ACL tier and Firefox/WebKit.
-3. Do the runbook walk above, and decide the integrator check.
+3. Do the runbook walk above, and decide the integrator check. Check that mail to info@streamotter.dev reaches you: the [code of conduct](../../../CODE_OF_CONDUCT.md) names it as the reporting address, and it ships in the tagged source.
 4. Set the CHANGELOG heading's date: a one-line PR replaces "not yet published" with the planned publication date, as the `v0.2.0-rc.1` tag did, so the GitHub release's changelog link shows it. Its merge commit is the release commit; main-push CI must pass on it.
 5. Tag that exact commit:
 
@@ -71,7 +71,7 @@ After publishing, a follow-up PR records the publication (as for `0.2.0-rc.1`): 
 
 ## After publishing
 
-- `npx streamotter@1.0.0-rc.1 --help` runs, and the tier (a) ["make it lie" recipe](../../promotion/launch-1.0/drafts/make-it-lie-local.md) works in a clean folder on the candidate (it asks for a re-run on `1.0.0-rc.1` and `1.0.0`).
+- `npx streamotter@1.0.0-rc.1 --help` runs, and [Can you make it lie?](../../make-it-lie.md) works in a clean folder on the candidate, step by step (it was written against `0.2.0-rc.1`; run it again on `1.0.0-rc.1` and on `1.0.0`).
 - The Console.dev Betas email is the one announcement at `1.0.0-rc.1`; everything else waits for `1.0.0` (launch plan).
 
 ## Toward 1.0.0: one launch day
