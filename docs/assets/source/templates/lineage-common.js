@@ -7,8 +7,8 @@
   // Copy for the four stations. No dates, no judgement labels.
   const STATIONS = [
     { tag: "Java bridge", name: "b/kafka-websocket", desc: "Kafka 0.8-era topics, raw, over WebSockets", chips: [], buoy: "cone" },
-    { tag: "OSLabs · accelerator", name: "KafkaSocks", desc: "Kafka to WebSockets for JavaScript apps", chips: [], buoy: "can" },
-    { tag: "OSLabs · KafkaJS", name: "kafka-penguin", desc: "Error strategies for KafkaJS consumers", chips: ["fail fast", "ignore", "dead-letter queue"], buoy: "sphere" },
+    { tag: "Node.js bridge", name: "KafkaSocks", desc: "Kafka to WebSockets for JavaScript apps", chips: [], buoy: "can" },
+    { tag: "Error handling", name: "kafka-penguin", desc: "Error strategies for KafkaJS consumers", chips: ["fail fast", "ignore", "dead-letter queue"], buoy: "sphere" },
     { tag: "State channels", name: null, desc: "Snapshots, then revision-ordered updates", chips: ["hold", "quarantine", "redrive"], mark: true },
   ];
 
