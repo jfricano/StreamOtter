@@ -103,6 +103,7 @@ Real-Kafka behaviors also verified: `startFrom` latest vs earliest for new group
 | TLS + SASL SCRAM-SHA-512 | Verified (production gateway) |
 | TLS with system trust (`tls: {}`) | Implemented; **not verified** (needs a publicly trusted broker certificate) |
 | Wrong password / untrusted CA / missing topic | Verified to fail at the `authenticate` / `tls` / `metadata` diagnostic stage without leaking credentials |
+| ACLs enforced (`StandardAuthorizer`, TLS + SASL SCRAM-SHA-512) | Verified with exactly the source and quarantine ACLs the [runbook](./guides/source-failures.md#61-credentials-and-acls) lists (`pnpm test:kafka:acl`, added after `0.2.0-rc.1`) |
 | Other Kafka versions, managed Kafka services, Docker Compose file | **Unverified** |
 
 ### Declared workload (`tests/load/load.test.ts`)
@@ -130,7 +131,7 @@ Playwright drives the built assets in headless Chromium against real gateways an
 
 ### Deployment behind a TLS-terminating proxy (`pnpm test:deploy`)
 
-One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/streamotter/*` goes to the gateway, run by the **compiled** `streamotter start` in production mode and consuming Kafka over TLS + SASL SCRAM-SHA-512; everything else goes to the example application in Kafka mode. Verified: the browser's socket is `wss://…/streamotter/socket.io/` through the proxy; an application-published Kafka change reaches the page; a disallowed or missing `Origin` is `FORBIDDEN` through the proxy while the exact origin reaches authentication; no management route exists on the public origin or on port 7401; after `SIGTERM` (exit 0) the page shows *Reconnecting*, and a restarted gateway brings it back to live (about 2.5 s) with later updates delivered.
+One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/streamotter/*` goes to the gateway, run by the **compiled** `streamotter start` in production mode and consuming Kafka over TLS + SASL SCRAM-SHA-512; everything else goes to the example application in Kafka mode. Verified: the browser's socket is `wss://…/streamotter/socket.io/` through the proxy; an application-published Kafka change reaches the page; a disallowed or missing `Origin` is `FORBIDDEN` through the proxy while the exact origin reaches authentication; no management route exists on the public origin or on port 7401; after `SIGTERM` (exit 0) the page shows *Reconnecting*, and a restarted gateway brings it back to live (about 2.5 s) with later updates delivered. A second deployment, added after `0.2.0-rc.1`, turns failure handling on; see [the V1.1 runs](#runs-added-october-16-2026-unreleased).
 
 ### Earlier manual browser checks (in-app Chromium)
 
@@ -173,7 +174,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Legacy behavior and configuration | F01, F02 | Implemented | |
 | Classification, pause and quarantine-hold | F03–F08, F10–F12, F14 | Implemented | F14's lost broker acknowledgment is scripted; it can't be reproduced on one local broker. |
 | Outage, token denial and stalled browser with failure handling on | F09 | Partial | No V1.1-specific test; the unchanged V1 tests pass. |
-| Quarantine topic failures | F13 | Partial | A denied ACL and an unavailable quarantine broker are not tested. A write refused as too large, and a missing or undersized topic, are. |
+| Quarantine topic failures | F13 | Partial | An unavailable quarantine broker is not tested on its own (F47 covers too few in-sync replicas). Denied ACLs, a write refused as too large, and a missing or undersized topic are tested. |
 | Crash after quarantine, before commit | F15 | Partial | No gateway crash-tier test; graceful restarts and the journal's SIGKILL test cover it. |
 | Crash around the advance | F16, F17 | Implemented | |
 | Stop or rebalance during write, guard or commit | F18 | Partial | No rebalance-during-advance test. |
@@ -190,7 +191,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Workbench Failures tab and host contract | F44 | Implemented | Chromium only (see below). |
 | Health and lifecycle states | F43 | Partial | An unresolved commit has no readiness test of its own. |
 | Firefox and WebKit | F45 | Not run | The browser tier now runs in Chromium, Firefox and WebKit in the Extended checks workflow; Firefox and WebKit are pending until its first run with them passes. The build environment can run only Chromium. |
-| Packed install, production proxy, crash restart | F46 | Implemented | The proxy deployment test runs without `failureHandling`. |
+| Packed install, production proxy, crash restart | F46 | Implemented | Behind the proxy, restarts are graceful; the crash restart is covered by the packed install test only. |
 | Replicated Kafka under broker failure | F47 | Partial | One machine, loopback, one partition, broker SIGKILL only (leader loss, and ISR below `min.insync.replicas`). |
 | Upgrade, then downgrade, with open incidents | F48 | Partial | Restarts in the test are graceful; no SIGKILL during a downgrade. |
 
@@ -209,12 +210,26 @@ All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, 
 
 The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.10.0. On Node 24.14.0 the journal refuses to open (`node-version`) and its SQLite suites skip.
 
+### Runs added October 16, 2026 (unreleased)
+
+Two of the checks the [acceptance packet](./releases/v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status) requires before a stable release, on Linux (x86-64), Node 24.21.0 and pnpm 11.19.0:
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:kafka:acl` | 11 tests, all pass, none skipped, against a local Kafka 4.1.2 broker with `StandardAuthorizer` and no allow-everyone fallback (`scripts/kafka/acl-start.sh`) |
+| `pnpm test:deploy` | 9 tests, all pass, none skipped (the environment check, four without failure handling and four with it), in headless Chromium 141 linked in place of Playwright 1.63's pinned Chrome Headless Shell, which could not be downloaded there |
+| `pnpm verify` | 514 tests, all pass |
+
+**ACL-enabled broker (F13).** The gateway connects as a principal that holds V1's source ACLs (Read on the source topic and group) and the rows of the [runbook's table](./guides/source-failures.md#61-credentials-and-acls), and nothing else. With them, a plain channel in production mode, `quarantine-hold` and `quarantine-resync` run end to end: the startup check, the quarantine write, the guarded advance, show and export with raw bytes, evaluate, redrive, retry-current, and the startup reconciliation of an advance whose journal write was lost; every throwaway read group is deleted. With one of them missing (each in turn, except Describe, which Read and Write include), startup or the operation fails with the symptom the runbook lists, and no held record is passed: without Write on the quarantine topic, the write is refused (`TOPIC_AUTHORIZATION_FAILED`), the incident is held with readiness `quarantine`, nothing is committed, and after granting Write a `retry-current` advances. The run corrected the runbook: it now names V1's source ACLs, the startup failure when the principal has no Write on any topic (Kafka refuses it an idempotent producer: "Cluster authorization failed"), and the messages a missing DescribeConfigs or a missing group Read actually give.
+
+**Proxy deployment with failure handling on (F46).** The compiled `streamotter start` runs behind Caddy with a state directory from `streamotter init --failures`, the example's `quarantine-resync` policy and recovery guard, `--operator-socket` and `--health`. A truncated record holds the source: readiness reports `source-held`; `status`, `failures list` and `failures show --raw` show the incident and its quarantined copy; the page shows the order as out of date while the application and the socket through the proxy keep working. After the application re-publishes the order, `streamotter sources reassess` advances past the record and the page goes live with the change. A graceful restart keeps the recovery boundary, removes and recreates the operator socket, and the page goes live again.
+
 ### What this does not establish
 
 - **Broker-failure durability beyond the F47 envelope.** F47 ran on a local three-broker cluster: acknowledged quarantine copies survived a leader SIGKILL, and writes were refused while the ISR was below `min.insync.replicas`. It says nothing about disk or fsync loss, network partitions, controller failure, managed services or more than one partition. Every other Kafka run used one local broker.
-- **ACL-enabled brokers.** The ACL list in the [runbook](./guides/source-failures.md#61-credentials-and-acls) follows from the client calls; no run used a broker with authorization enabled.
+- **ACLs beyond one local broker.** `pnpm test:kafka:acl` runs a single Kafka 4.1.2 broker with `StandardAuthorizer`, TLS and SCRAM-SHA-512, where the gateway holds exactly the [runbook's ACLs](./guides/source-failures.md#61-credentials-and-acls). Managed services, other authorizers and principals mapped from TLS certificates are not tested.
 - **Browsers other than Chromium** (F45).
-- **A crash during a downgrade** (F48), and restart of a production deployment behind a proxy with failure handling on (F46).
+- **A crash during a downgrade** (F48), and a crash (rather than a graceful restart) of a production deployment behind a proxy with failure handling on (F46).
 - **The truth of an application's recovery guard and snapshot acknowledgment.** The gateway checks boundary identity and lifecycle only.
 - **Security beyond the listed checks.** Passing F37–F40 is not a security audit.
 

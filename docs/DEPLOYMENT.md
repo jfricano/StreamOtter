@@ -195,6 +195,8 @@ https://app.example.com {
 
 Bind the gateway to loopback (or a private interface) so browsers reach it only through the proxy. Caddy forwards WebSocket upgrades and the `Origin` header without extra configuration. The test also covers a graceful restart (`SIGTERM`, then start again): open views show *stale* and resynchronize from snapshots once the new gateway has joined its consumer group.
 
+It runs the same deployment a second time with failure handling on, as in the [systemd example](#example-systemd-unit-with-failure-handling): a state directory from `streamotter init --failures`, a `quarantine-resync` policy with the example application's recovery guard, `--operator-socket` and `--health` on loopback. A record the gateway can't read holds the source: readiness reports `source-held`, the CLI on the gateway's host shows the incident, and the page shows the order as out of date while the application and the socket through the proxy keep working. Once the application re-publishes the order, `streamotter sources reassess` moves past the record and the page goes live again. The recovery boundary survives a graceful restart.
+
 ### nginx (not exercised)
 
 For nginx, forward the upgrade headers on the socket path, and keep the read timeout above Socket.IO's 25-second ping interval. This block follows nginx's standard WebSocket proxying; the test suite doesn't exercise it:
