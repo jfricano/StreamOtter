@@ -31,7 +31,7 @@ October 5, 2026 · Prepared for Jason Fricano · **Status: draft, revised after 
 | --- | --- | --- | --- |
 | D1 | Make "Can you make it lie?" the launch, led by "Drop my connection", with the hosted Lab and the two local tiers? | **Yes** (Oct 7) | The product's promise turned into something a stranger can test, with three ways in |
 | D2 | Launch without the hosted benches, the hosting configuration change and `blog.streamotter.dev` if they aren't ready by T-7? | **No** (Oct 7: "we can hold launch for these") | All three are gates. The launch date is set by the slowest of them and G1 |
-| D3 | Release path: integrator named by **Fri Oct 16** and runbook walk done by **Fri Oct 30** (if nobody, you decide, e.g. walk it yourself on a clean machine and say so in the gate issue); `1.0.0-rc.1` quiet at T-14 apart from a Console.dev Betas email; `1.0.0` at T-5? | **Yes, nobody named yet** (Oct 7); dates are proposals | Timeboxes the one gate with no owner; Betas only takes pre-1.0 versions |
+| D3 | Release path: integrator named by **Fri Oct 16** and runbook walk done by **Fri Oct 30** (if nobody, you decide, e.g. walk it yourself on a clean machine and say so in the gate issue); `1.0.0-rc.1` quiet at T-14 apart from a Console.dev Betas email; `1.0.0` at T-5? | **Yes, nobody named yet** (Oct 7); dates are proposals. **Changed Oct 16:** `1.0.0` ships on launch day with the demo and the marketing (§3) | Timeboxes the one gate with no owner; Betas only takes pre-1.0 versions |
 | D4 | Use the one AI sentence on every outward-facing surface (Show HN comment, articles, Reddit, LinkedIn, social, Medium), never optional? | **Yes** (Oct 7), with Codex named next to Claude Code (`drafts/ai-disclosure.md`) | Said first, it reads as confidence; found later, it reads as hiding |
 | D5 | Also put it (one line) in the README, which is the Show HN URL? Release notes and the Discussion can link to it | **No, for now** (Oct 7) | HN readers land on the README first. If no, the HN comment carries it |
 | D6 | Reword "independent review" in the repo docs to "review by separate AI agent sessions that didn't write the code", before `1.0.0-rc.1`? | **Open.** With D5 no, the proposal is neutral wording instead: "a separate review pass" | "Independent" reads as outside people; HN will read those docs, and the 1.0 npm pages should carry the corrected text |
@@ -119,7 +119,7 @@ Internal notes (not for the Discussion):
 The bad-records and history material lives in the 1.0 article and `drafts/hn-faq.md`. b/kafka-websocket is a "how is this different" FAQ answer, not a demand signal. Lineage wording: KafkaSocks co-author (OSLabs, 2021; its last commit was June 2021), and V1.1's strategies inspired by kafka-penguin. No "ten-year thread", no "on and off for years". Alternatives exist (Centrifugo, Zilla, Ably, Lightstreamer; `docs/promotion/briefs/product-marketing.md` §3); never say nobody has solved this.
 
 ### Recording: one plan (`drafts/hero-demo-script.md`)
-- **(a) GIF, 10–15 s:** "Drop my connection" on the home page, `live` → `stale` → `live`. Recordable now; re-record on `1.0.0` at T-4. For the README first screen, the Medium fix and social posts.
+- **(a) GIF, 10–15 s:** "Drop my connection" on the home page, `live` → `stale` → `live`. Recordable now; re-record on staging (rc.1) at T-4. For the README first screen, the Medium fix and social posts.
 - **(b) Recording, 60–90 s:** S01 `fouled-sensor`, then S02 `garbled-reading`, both on the hosted Lab and labeled "hosted" (a local Lab stack, labeled "local stack", is the fallback if no bench is free while recording). Each segment carries where it was recorded: "Recording · <date> · streamotter@<exact version> · <hosted | local stack> · Lontra Creek is fictional; the Kafka pipeline is real."
 - You record both with the OS screen recorder from the shot list (about 30 minutes). No Playwright recording of the hosted Lab is planned.
 - Where it goes: the README (GitHub renders an uploaded mp4), the site's "demo is full" state, the 1.0 article, LinkedIn. No YouTube channel or brand account.
@@ -143,8 +143,8 @@ The bad-records and history material lives in the 1.0 article and `drafts/hn-faq
 ```
 Now (undated)                          Quiet pre-launch                                   Launch
 G1 rc.1 checks ─┐
-G2 front door ──┼─> 1.0.0-rc.1 (T-14) ─> soak ─> G4 (T-7) ─> 1.0.0 (T-5) ─> go/no-go (T-1) ─> T-0
-G3 site ────────┘   (Console.dev only)                        site on 1.0.0
+G2 front door ──┼─> 1.0.0-rc.1 (T-14) ─> soak ─> G4 (T-7) ─> go/no-go (T-1) ─> T-0: 1.0.0 + site + docs + posts
+G3 site ────────┘   (Console.dev only)   everything staged and tested on rc.1
 ```
 
 **G1, the `1.0.0-rc.1` gate** (roadmap §8; acceptance packet §10, steps 2 and 4 open as of Oct 5):
@@ -160,7 +160,7 @@ G3 site ────────┘   (Console.dev only)                        
 - Community files, Discussions on, social preview. The homepage field changes to streamotter.dev at T-0.
 
 **G3, the site** (the Lontra Creek project and its hosting setup):
-- **Gate:** backend re-pinned to `1.0.0` (staging on `1.0.0-rc.1` first); the home page live panel and "Drop my connection" / "Restore it" work on `1.0.0` under the 300-connection cap; the `OVERLOADED` "demo is full" state shows the recording; copy fixes (the "streamotter.app" leftovers, "Five minutes, no Kafka needed", the "Planned for V1.1" blocks, the `/releases` versioning note); the five "why this matters" demo annotations in [site-annotations.md](site-annotations.md) (Jason, 2026-10-06: ship before launch).
+- **Gate:** staging re-pinned to `1.0.0-rc.1` and tested there, with production moving to `1.0.0` on launch day; the home page live panel and "Drop my connection" / "Restore it" work under the 300-connection cap, on staging with rc.1 and again on production with `1.0.0` on launch day; the `OVERLOADED` "demo is full" state shows the recording; copy fixes (the "streamotter.app" leftovers, "Five minutes, no Kafka needed", the "Planned for V1.1" blocks, the `/releases` versioning note); the five "why this matters" demo annotations in [site-annotations.md](site-annotations.md) (Jason, 2026-10-06: ship before launch).
 - **Gate for tier (b) and the S02 recording:** #42 is merged on lontra-creek main (`6cb47e9`); re-pinning and deploying it to the host are pending.
 - **Gate (D2 no):** `lab.enabled`, after your approval and its own acceptance. Contract defaults, not measured capacity (lontra `docs/contracts/lab-api.md` §2): 3 benches, 300 s max lease, 30 s claim, 30 s idle, a queue of 50, 2 per IP, 20 concurrent and 3/s per IP. Real values get recorded on the host before launch.
 - **Gate (D2 no):** the hosting configuration change, so S02–S05 run alongside S01 and S06. Sequenced after the site's current release: Lab on first, then the change.
@@ -175,14 +175,14 @@ G3 site ────────┘   (Console.dev only)                        
 
 **Release rule:** `1.0.0` is `1.0.0-rc.N` republished with no runtime change (version and changelog only), after at least 7 days on that rc with no blocking bug. A runtime fix means `rc.N+1`, and T-0 moves out by at least 7 days. Leave rc.1 on `latest` until `1.0.0`; never mention `@next` (still on `0.1.0-rc.1`). npm trusted publishing waits until after launch.
 
-**Why `1.0.0` at T-5 (Thu):** the passkey publish takes 30–60 minutes, and the site has to re-pin and rerun its checks; launch morning is the worst time for that. The launch is the announcement, not the registry timestamp.
+**`1.0.0` ships on launch day** (Jason, Oct 16): the official release drops the same day as the updated demo and the marketing, all ready together. So everything is staged and tested on `1.0.0-rc.1` first (the site and the hosted Lab on staging, a docs preview, the article on a blog preview, the recording), and launch day is only: publish `1.0.0`, move the pins, deploy the site and the docs from the `v1.0.0` tag, publish the article, then post. Because `1.0.0` is `rc.N` with only its version and changelog changed, what was tested on staging is what ships. The publish takes 30–60 minutes and the site re-pin reruns its checks, so that work starts early on T-0 (§4.3), and the pin PRs are opened and reviewed on T-1.
 
 ### Go/no-go (T-1, and again 30 minutes before T-0's first post)
 All must be true. If any fails, move the day; a week costs nothing.
-1. The home page live panel and "Drop my connection" work on `1.0.0`, and the "full" state worked in rehearsal. The hosted Lab is on and you leased a bench and ran S01 and S02 yourself; `blog.streamotter.dev` has the 1.0 article and a valid RSS feed.
+1. The home page live panel and "Drop my connection" work on staging on `1.0.0-rc.1`, and the "full" state worked in rehearsal. The hosted Lab is on and you leased a bench and ran S01 and S02 yourself; the 1.0 article and a valid RSS feed render on the blog preview; the `1.0.0` pin PRs for Lontra Creek and Pup Patrol are open, reviewed and green on rc.1.
 2. Every public link returns 200. No placeholder or unresolved **[update at 1.0]** marker is visible anywhere.
-3. The registry install test passes for `1.0.0`, and the no-Kafka commands and the tier (a) recipe work in a clean folder.
-4. The README, `IMPLEMENTATION_STATUS.md`, `/releases`, the article and every draft name `1.0.0` and use the same limits sentence.
+3. The registry install test passes for the current rc, and the no-Kafka commands and the tier (a) recipe work in a clean folder on it. (On T-0, the same checks run on `1.0.0` before the first post.)
+4. The `1.0.0` release PR (version and changelog, plus the README, `IMPLEMENTATION_STATUS.md` and the drafts naming `1.0.0`) is open and reviewed; `/releases`, the article and every draft name `1.0.0` and use the same limits sentence.
 5. Medium has its fixes, CI is green on `main`, and no open bug contradicts a claim.
 6. You wrote the HN comment and title yourself, and you're free for 3–4 hours plus the next morning.
 7. T-0 on-call for the hosting setup is confirmed; the GIF and recording are uploaded and labeled.
@@ -224,16 +224,16 @@ All must be true. If any fails, move the day; a week costs nothing.
 | T-8 Mon | 45 min: read the 1.0 article, write your own paragraphs, approve | `hn-faq.md` refreshed (talking points) | — |
 | **T-7 Tue** | 30 min: **lock T-0** (or move it); approve the invitation scope; confirm the hosted Lab and the hosting configuration change are in place (D2: gates); last HN account check, else Plan B | Bench numbers confirmed on the host, not guessed | **G4 rehearsal**; scope sign-off; on-call agreed |
 | T-6 Wed | 45 min: **write your Show HN comment and title yourself** (title inputs in `drafts/show-hn.md`); save them locally | rc soak report | — |
-| **T-5 Thu** | **Publish `1.0.0`** (release work) | Registry check; README, `IMPLEMENTATION_STATUS.md` and drafts moved to `1.0.0` | Production re-pinned to `1.0.0`; checks rerun |
-| T-4 Fri | 30 min: record the 60–90 s recording and re-record the GIF on `1.0.0` | Captions and labels; launch-day card (title, URL, comment note, six hardest questions, the "demo is full" reply) | — |
+| T-5 Thu | — | The `1.0.0` release PR (version and changelog only), and the README, `IMPLEMENTATION_STATUS.md` and drafts moved to `1.0.0`, all as unmerged PRs | The `1.0.0` pin PRs for Lontra Creek and Pup Patrol, open and green on rc.1 |
+| T-4 Fri | 30 min: record the 60–90 s recording and re-record the GIF on staging (rc.1 looks the same as `1.0.0`) | Captions and labels; launch-day card (title, URL, comment note, six hardest questions, the "demo is full" reply) | — |
 | T-3 Sat, T-2 Sun | — | — | — |
-| **T-1 Mon** | 30 min: review LinkedIn and the Medium 1.0 text; sign in to HN, Reddit and LinkedIn; **go/no-go**. Then, about 20 min: merge the 1.0 article's post PR and run the site deploy (preview, then production) so it's on `blog.streamotter.dev`. Evening, 25 min: update the Medium story in place (§4.6); finalize the `1.0.0` GitHub release notes; pin the Discussion | A report on each go/no-go item; final link and install checks | Confirms on-call |
+| **T-1 Mon** | 30 min: review LinkedIn and the Medium 1.0 text; sign in to HN, Reddit and LinkedIn; **go/no-go**. Review the `1.0.0` release PR and the pin PRs (merge none yet). Evening, 25 min: prepare the Medium update (§4.6) and the `1.0.0` GitHub release notes as drafts; draft the Discussion | A report on each go/no-go item; final link and install checks | Confirms on-call |
 
 ### 4.3 Launch week, T-0 to T+7
 
 | Day | Jason (time) | Prepared |
 | --- | --- | --- |
-| **T-0 Tue** | 7:30: on your phone, press "Drop my connection" and open the README. 7:45: repo homepage → streamotter.dev. **8:00: submit Show HN** (your title, `https://github.com/jfricano/StreamOtter`, text empty) and post your comment within a minute. Reply until about 11:30. 12:00: LinkedIn (link the site or GitHub, never HN). Check-ins at about 14:00, 17:00 and 21:00. **About 4.5 h** | 7:30 link, install and demo check. All day: a log of questions, bugs and doc gaps. Evening: draft issues, FAQ entries, doc fixes |
+| **T-0 Tue** | **Release first, about 2 h before the post:** merge the `1.0.0` release PR, tag `v1.0.0`, run the publish workflow with `latest`; when it verifies, merge and deploy the Lontra Creek and Pup Patrol pin PRs (production), deploy docs from the tag, merge the 1.0 article and deploy the blog, update Medium, publish the GitHub release, pin the Discussion. If the publish or the site deploy fails, move the day; nothing has been announced. 7:30: on your phone, press "Drop my connection" and open the README. 7:45: repo homepage → streamotter.dev. **8:00: submit Show HN** (your title, `https://github.com/jfricano/StreamOtter`, text empty) and post your comment within a minute. Reply until about 11:30. 12:00: LinkedIn (link the site or GitHub, never HN). Check-ins at about 14:00, 17:00 and 21:00. **About 4.5 h, plus about 2 h of release work before the post** | Release checks after each step (registry, install on `1.0.0`, site and docs on `1.0.0`); 7:30 link, install and demo check. All day: a log of questions, bugs and doc gaps. Evening: draft issues, FAQ entries, doc fixes |
 | T+1 Wed | Morning HN pass. **Newsletters:** one email to Cooperpress (editor@cooperpress.com, for Node Weekly and JavaScript Weekly); Data Engineering Weekly via a PR to its repo (it wants vendor-neutral articles, and the PR route is unverified); Changelog News only if it's still publishing (its News editor left in March 2026). No Confluent newsletter email and no Get Kafka-Nated (no route found). 15 min triage. **About 1 h** | Submissions ready to paste (`drafts/newsletter-blurb.md`) |
 | T+2 Thu | **r/apachekafka** in your own words (read the sidebar first), then replies. 15 min triage. **About 1 h** | Talking points (`drafts/reddit.md`) |
 | T+3 Fri | **LinkedIn origin post** (fill the two required slots). The KafkaSocks banner, if the co-authors agreed. 15 min triage. **About 45 min** | Banner PR; dev.to import check |

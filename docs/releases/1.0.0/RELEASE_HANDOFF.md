@@ -34,7 +34,7 @@ The roadmap's [npm versions](../../API_AND_FEATURE_ROADMAP.md#npm-versions) puts
 | Check | State |
 | --- | --- |
 | A Kafka broker with ACLs enabled | `pnpm test:kafka:acl` (new): one Kafka 4.1.2 broker with authorization on, where the gateway holds exactly the runbook's ACLs. It runs a plain channel, quarantine-hold and quarantine-resync end to end, then removes each ACL in turn and checks the documented symptom; it also corrected the runbook's symptom table. It runs as the **Kafka with ACLs** job in Extended checks and in the publishing workflow's preparation job. Results: [implementation status](../../IMPLEMENTATION_STATUS.md). |
-| Firefox and WebKit (F45) | The browser tier now runs in Chromium, Firefox and WebKit: the **Browser tests in firefox** and **Browser tests in webkit** jobs in Extended checks. The first passing run on the release `main` is the evidence. |
+| Firefox and WebKit (F45) | The browser tier now runs in Chromium, Firefox and WebKit: the **Browser tests in firefox** and **Browser tests in webkit** jobs in Extended checks. Both passed all 59 tests on this branch on October 16 ([run 38835942346](https://github.com/jfricano/StreamOtter/actions/runs/38835942346)), with every other Extended job; the run on the release `main` is the evidence for the tag. |
 | The proxy deployment with `failureHandling` on | `test:deploy` (in Extended checks and the preparation job) now also runs the compiled `streamotter start` behind Caddy with a state directory, quarantine-resync, the operator socket and the health listener: a bad record holds the source while the app keeps serving, the CLI shows the incident, `sources reassess` advances it, and a graceful restart keeps the recovery boundary. |
 | One integrator walks the [source-failure runbook](../../guides/source-failures.md) end to end on their own machine with real Kafka | **Open, the owner's.** No outside integrator is named. A clean-room agent run of the public docs on `0.2.0-rc.1` (October 14) found five defects, fixed in #83, but it ran on Linux and isn't a person. The plan is the owner's own Mac run on the release source (the no-Kafka recipe and `npm run dev:lab` in lontra-creek, about 30–45 minutes) and the wording of a public gate issue. Whether that satisfies the check is the owner's call. |
 
@@ -42,10 +42,10 @@ Then the [release checklist](../../RELEASE_CHECKLIST.md): main-push CI and **Ext
 
 ## What does not gate this candidate
 
-These gate the launch (T-0) or `1.0.0`, not `1.0.0-rc.1`:
+These gate the launch or `1.0.0`, not `1.0.0-rc.1`:
 
 - **The hosted ACL change on streamotter.dev** (the trial and then enforcement, run by the rollout with devops). T-0 is set only after enforcement is accepted. The local ACL tier above tests the library against a broker with authorization; it does not replace the hosted rollout.
-- **The site on the candidate:** Lontra Creek re-pins to `1.0.0-rc.1` on staging first, and the T-7 rehearsal runs on it. Production re-pins to `1.0.0`. Publishing changes nothing on the site until a Lontra Creek PR moves its pin.
+- **The site on the candidate:** Lontra Creek re-pins to `1.0.0-rc.1` on staging, and the T-7 rehearsal runs on it. Production moves straight to `1.0.0` on launch day. Publishing changes nothing on the site until a Lontra Creek PR moves its pin.
 - **Pup Patrol** may pin the candidate for a preview; it pins `1.0.0` before it goes live.
 - **docs.streamotter.dev and blog.streamotter.dev:** preview deployments worked on October 15 (after #80). Production docs build only from the `v1.0.0` tag (`DOCS_CHANNEL=release`, which refuses a prerelease). The blog must be live before T-7.
 - **The recording** and the remaining launch-kit items in the promotion plan.
@@ -73,6 +73,29 @@ After publishing, a follow-up PR records the publication (as for `0.2.0-rc.1`): 
 
 - `npx streamotter@1.0.0-rc.1 --help` runs, and the tier (a) ["make it lie" recipe](../../promotion/launch-1.0/drafts/make-it-lie-local.md) works in a clean folder on the candidate (it asks for a re-run on `1.0.0-rc.1` and `1.0.0`).
 - The Console.dev Betas email is the one announcement at `1.0.0-rc.1`; everything else waits for `1.0.0` (launch plan).
+
+## Toward 1.0.0: one launch day
+
+The owner decided on October 16 that `1.0.0` drops the same day as the updated demo and the marketing, all ready together ([launch plan §3](../../promotion/launch-1.0/PUBLIC_LAUNCH.md#3-gates-and-timing)). So everything is staged and tested on `1.0.0-rc.1`, and launch day only switches it over.
+
+**Before launch day, on `1.0.0-rc.1`:**
+- Publish `1.0.0-rc.1` (above); the seven-day soak with no blocking bug starts.
+- Lontra Creek staging on rc.1, with the hosted Lab, the Kafka ACL enforcement accepted (Stage 5) and the T-7 rehearsal.
+- A docs preview and a blog preview with the 1.0 article, from `main`.
+- Pup Patrol previewed on rc.1.
+- The recording and GIF, on staging.
+- Open and review, without merging: the `1.0.0` release PR (versions and the CHANGELOG entry only; the README, implementation status and release plan naming `1.0.0`), the Lontra Creek and Pup Patrol pin PRs to `1.0.0`, the 1.0 article's post PR, and lontra-creek #56 (the docs link).
+- Go/no-go at T-1.
+
+**On launch day, before anything is posted:**
+1. Merge the `1.0.0` release PR; main-push CI on it.
+2. Tag `v1.0.0` and run the publish workflow with `latest`; it verifies the registry and the install.
+3. Deploy docs.streamotter.dev from the `v1.0.0` tag (the release channel).
+4. Merge and deploy the Lontra Creek pin (production) and #56, then Pup Patrol.
+5. Merge the 1.0 article and deploy the blog; update Medium; publish the GitHub release; pin the Discussion.
+6. Check the site, docs and install on `1.0.0`, then post.
+
+If step 2 or 4 fails, move the day: nothing has been announced. A runtime fix found during the soak ships as `rc.N+1` and restarts the seven days.
 
 ## Rollback
 

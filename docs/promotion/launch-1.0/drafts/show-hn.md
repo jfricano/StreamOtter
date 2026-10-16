@@ -79,7 +79,7 @@ About 200–300 words, your own voice, no marketing adjectives. In this order.
 
 ## Facts to keep straight (from the repository, October 5, 2026)
 
-- **Version:** launch on `1.0.0`. Today npm `latest` is `0.2.0-rc.1` (V1 plus V1.1, V1.2 and V1.2.1), published October 5 UTC with provenance. `1.0.0-rc.1` comes first, once the V1.1 acceptance packet's release checks pass, at T-14 (quiet apart from the Console.dev Betas email); `1.0.0` follows at T-5, a Thursday (D3). There is no final `0.2.0`. Never write `@next` (it still points at `0.1.0-rc.1` on five packages).
+- **Version:** launch on `1.0.0`. Today npm `latest` is `0.2.0-rc.1` (V1 plus V1.1, V1.2 and V1.2.1), published October 5 UTC with provenance. `1.0.0-rc.1` comes first, once the V1.1 acceptance packet's release checks pass, at T-14 (quiet apart from the Console.dev Betas email); `1.0.0` is published on launch day itself, the same morning as the updated demo and the posts, after everything was staged on the candidate. There is no final `0.2.0`. Never write `@next` (it still points at `0.1.0-rc.1` on five packages).
 - **Packages:** `npm install streamotter` installs everything: the command, `streamotter/gateway` and `streamotter/client`. A frontend deployed separately can use `@streamotter/client`. All six packages share one version.
 - **Requirements:** Node.js 24 or later for the gateway and CLI; 24.15 or later where the failure-handling journal runs. The SDK targets current evergreen browsers.
 - **Delivery states:** `authorizing → synchronizing → live`, plus `stale`, `resync-required` and `failed`. V1.1 adds no browser states and doesn't change the protocol or SDK.
