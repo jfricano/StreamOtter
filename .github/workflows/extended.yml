@@ -1,7 +1,8 @@
 # Nightly and on demand, on Node 24 and 26: real Kafka (Apache Kafka 4.1.2), the install test including
 # the installed `streamotter start` over TLS Kafka, browser tests (headless Chromium), and the production
-# deployment check behind Caddy; plus, on Node 24, the replicated-broker tier (three brokers, three
-# controllers). Every download is pinned and checksum-verified by the setup scripts, including the JDK.
+# deployment check behind Caddy; plus, on Node 24, the browser tests again in Firefox and in WebKit, and
+# the replicated-broker tier (three brokers, three controllers). Every download is pinned and
+# checksum-verified by the setup scripts, including the JDK.
 # These tiers fail rather than skip when their broker or Caddy is missing. Actions are pinned by commit
 # SHA, with the release tag in a comment.
 name: Extended checks
@@ -53,6 +54,31 @@ jobs:
           name: kafka-log-node-${{ matrix.node }}
           path: .local/kafka.log
           if-no-files-found: ignore
+
+  browsers:
+    name: Browser tests in ${{ matrix.browser }} (Node 24)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    env:
+      STREAMOTTER_BROWSER: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Install ${{ matrix.browser }} and its system libraries
+        run: |
+          pnpm browsers:setup
+          sudo "$(command -v node)" tests/node_modules/playwright/cli.js install-deps "$STREAMOTTER_BROWSER"
+      - run: pnpm test:browser
 
   replicated:
     name: Replicated Kafka (Node 24)

@@ -149,7 +149,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 
 ## Limitations and open items
 
-- **Browsers:** automated and manual checks use Chromium only. Firefox and Safari (WebKit) are untested.
+- **Browsers:** the automated browser tier (`pnpm test:browser`) runs in headless Chromium, and the Extended checks workflow now also runs it in Firefox and WebKit (`STREAMOTTER_BROWSER` picks the engine). Firefox and WebKit are pending until that workflow's first run with them passes; until then, only Chromium has passed. Manual checks used Chromium only.
 - **Deployment** was verified on one machine: Caddy on loopback with a private CA. Real hosting, public certificates, and other proxies (nginx, cloud load balancers) are unverified; their only requirements are WebSocket upgrade forwarding on the socket path and passing the browser's `Origin` header.
 - Tests execute TypeScript sources through Node's type stripping and the `streamotter-source` export condition; published artifacts are the compiled `dist/`, which `pnpm test:install` exercises from packed tarballs.
 - **No production health endpoint** (management is development-only by design); see `docs/DEPLOYMENT.md`.
@@ -189,7 +189,7 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Independent sources | F42 | Implemented | |
 | Workbench Failures tab and host contract | F44 | Implemented | Chromium only (see below). |
 | Health and lifecycle states | F43 | Partial | An unresolved commit has no readiness test of its own. |
-| Firefox and WebKit | F45 | Not run | Only Chromium could run in the build environment. |
+| Firefox and WebKit | F45 | Not run | The browser tier now runs in Chromium, Firefox and WebKit in the Extended checks workflow; Firefox and WebKit are pending until its first run with them passes. The build environment can run only Chromium. |
 | Packed install, production proxy, crash restart | F46 | Implemented | The proxy deployment test runs without `failureHandling`. |
 | Replicated Kafka under broker failure | F47 | Partial | One machine, loopback, one partition, broker SIGKILL only (leader loss, and ISR below `min.insync.replicas`). |
 | Upgrade, then downgrade, with open incidents | F48 | Partial | Restarts in the test are graceful; no SIGKILL during a downgrade. |
