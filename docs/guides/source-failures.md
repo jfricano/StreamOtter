@@ -344,12 +344,12 @@ Each procedure starts from what you see: readiness reasons from the [health list
 
 ### 6.1 Credentials and ACLs
 
-The quarantine producer and reader use the connection profile of the quarantining sources, so the gateway's one Kafka principal needs, beyond V1's source ACLs:
+The quarantine producer and reader use the connection profile of the quarantining sources, so the gateway's one Kafka principal needs, beyond V1's source ACLs (Read on each source topic and Read on each source's consumer group):
 
 | Resource | Operations | Used for |
 | --- | --- | --- |
 | Quarantine topic | Describe, DescribeConfigs | Startup check of the topic and its `max.message.bytes` |
-| Quarantine topic | Write | Quarantine writes (idempotent producer, `acks=all`) |
+| Quarantine topic | Write | Quarantine writes (idempotent producer, `acks=all`). Kafka lets a principal start an idempotent producer only if it has Write on some topic (or IdempotentWrite on the cluster), so without this grant startup can fail before any write |
 | Quarantine topic | Read | Reading evidence back for `show --raw`, `export --include-raw`, `evaluate` and `redrive` |
 | Consumer groups with the **prefix** `streamotter-<projectId>-quarantine-read-` | Read, Delete | Each read-back uses a throwaway group that never commits and is deleted afterwards |
 | Each source's consumer group | Describe (V1's Read already includes it) | Reading the committed offset at startup to reconcile an unresolved advance |
@@ -365,13 +365,15 @@ kafka-acls.sh --bootstrap-server kafka-1.example.com:9093 --command-config admin
   --group streamotter-orders-app-quarantine-read- --operation Read --operation Delete
 ```
 
-These follow from the client calls the gateway makes. A broker with ACLs enabled has not been tested yet, so check them in a staging cluster.
+`pnpm test:kafka:acl` checks this list against Apache Kafka 4.1.2 with `StandardAuthorizer` and no allow-everyone fallback. A principal holding exactly these ACLs and V1's runs a plain channel and both quarantine policies end to end: the startup check, quarantine writes, the guarded advance, `show --raw`, `export --include-raw`, `evaluate`, `redrive`, `retry-current`, and the startup reconciliation of an unconfirmed advance. Nothing else is needed: no cluster ACL and no wildcard. With one of them missing, the gateway shows the matching symptom below and never moves past a held record. (Read and Write include Describe, so Describe alone is never missing in practice.) Managed Kafka services can add rules of their own, so still check the list in a staging cluster.
 
 | Symptom | Likely cause | Do |
 | --- | --- | --- |
-| Startup fails: "The quarantine topic is missing" | The topic doesn't exist, **or** the principal can't Describe it | Check both. |
-| Startup fails reading the topic's configuration | No DescribeConfigs on the topic | Grant it. |
-| Incidents show `quarantine: failed` (for example `TOPIC_AUTHORIZATION_FAILED`); readiness reports `quarantine` | No Write on the topic | Grant Write, then `retry-current`. The record is written again when it is redelivered. |
+| Startup fails: "The quarantine topic is missing" | The topic doesn't exist, **or** the principal has no ACL on it at all | Check both. |
+| Startup fails: "A source failed to start: Not authorized to access topics: [Topic authorization failed]" | No DescribeConfigs on the quarantine topic (the message doesn't name the topic), or no Read on a source topic | Check both, then grant what is missing. |
+| Startup fails after 30 seconds: "Sources did not become ready within the 30-second startup deadline." | No Read on a source's consumer group (a broker that never answers looks the same) | Check the group ACL, then the brokers. |
+| Startup fails: "A source failed to start: Cluster authorization failed" | No Write on the quarantine topic, and no Write on any other topic either, so Kafka refuses the idempotent producer | Grant Write on the quarantine topic. |
+| Incidents show `quarantine: failed`, with "quarantine write refused: TOPIC_AUTHORIZATION_FAILED" in the history; readiness reports `quarantine` | No Write on the quarantine topic, while the principal has Write on another topic | Grant Write, then `retry-current`. The record is written again when it is redelivered. |
 | `show --raw`, `evaluate` or `redrive` report `evidence-unavailable` "not authorized to read the quarantine topic" | No Read on the topic or the read-group prefix | Grant them. |
 | Log: "Could not delete a quarantine read's throwaway consumer group" | No Delete on the group prefix | Grant it, then delete the leftover `…-quarantine-read-<uuid>` groups. |
 
@@ -551,4 +553,4 @@ Scenario F48 in the [evidence matrix](../releases/v1.1/EVIDENCE.md) tracks the t
 
 ## 9. What is verified
 
-Tested so far: fixture integration tests; a single local Kafka 4.1.2 broker, including SIGKILL crash tests around the advance and during a redrive; a local three-broker cluster where the quarantine leader, and then two of three brokers, were killed (acknowledged copies survived, and nothing advanced without one); Chromium browser tests of the Failures tab; packed-package install tests, including a crash and restart with the operator socket; and the downgrade refusal. Not yet: network partitions, disk loss or a managed Kafka service, a broker with ACLs enabled, Firefox and WebKit, and a crash during a downgrade. Details per scenario are in the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1) and the [evidence matrix](../releases/v1.1/EVIDENCE.md).
+Tested so far: fixture integration tests; a single local Kafka 4.1.2 broker, including SIGKILL crash tests around the advance and during a redrive; a local three-broker cluster where the quarantine leader, and then two of three brokers, were killed (acknowledged copies survived, and nothing advanced without one); a single local broker with ACLs enforced, where the gateway held exactly the ACLs in [§6.1](#61-credentials-and-acls) (and each missing one gave its documented symptom); Chromium browser tests of the Failures tab; packed-package install tests, including a crash and restart with the operator socket; a production deployment behind Caddy with a state directory, `quarantine-resync`, the operator socket and the health listener, where a held record kept the app serving and the CLI recovered it; and the downgrade refusal. Not yet: network partitions, disk loss or a managed Kafka service, Firefox and WebKit, and a crash during a downgrade. Details per scenario are in the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1) and the [evidence matrix](../releases/v1.1/EVIDENCE.md).

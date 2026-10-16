@@ -115,6 +115,15 @@ jobs:
         if: always()
         working-directory: candidate
         run: ./scripts/kafka/replicated-stop.sh
+      - name: ACL-enabled broker acceptance
+        working-directory: candidate
+        run: |
+          ./scripts/kafka/acl-start.sh
+          pnpm test:kafka:acl
+      - name: Stop ACL-enabled broker
+        if: always()
+        working-directory: candidate
+        run: ./scripts/kafka/acl-stop.sh
       - name: Pack immutable six-package release
         env:
           RELEASE_SELECTION: ${{ runner.temp }}/selection.json

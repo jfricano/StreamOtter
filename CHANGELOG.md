@@ -42,6 +42,7 @@ Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages sha
 - Source failures: a retry resumes every held partition of a source; when the source pauses again at one of them, the other incidents the retry marked `retrying` go back to `held` instead of staying `retrying` with nothing redelivering them, and `retry-current` on such an incident says where the source paused instead of repeating the incident's own diagnosis.
 - Source failures: switching a class from `quarantine-resync` to a policy without a recovery guard makes a `denied` recovery `held` when the record is next observed, so the incident (and the workbench) no longer reports a denial under a policy that has no guard.
 - Docs: the source-failure runbook, the Kafka and troubleshooting guides and getting started were corrected where they disagreed with the gateway (revision-conflict detection, snapshot-acknowledgment retries, the management API's answer shape, `--json` output, the downgrade procedure and the recovery wording), and the Kafka guide has a one-command local broker.
+- Docs: the runbook's ACL list was checked against a Kafka broker with authorization enabled and is sufficient as written. Its symptom table now names V1's source ACLs (Read on each source topic and consumer group), the startup failure when the principal has no Write on any topic ("Cluster authorization failed": Kafka refuses an idempotent producer to such a principal), and the messages a missing DescribeConfigs or group Read actually give.
 
 ## [0.2.0-rc.1] — 2026-10-04
 

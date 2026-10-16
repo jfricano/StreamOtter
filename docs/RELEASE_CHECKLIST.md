@@ -19,7 +19,7 @@ Use the approval-gated [publishing workflow and setup/recovery guide](PUBLISHING
 - [ ] `README.md` and `docs/IMPLEMENTATION_STATUS.md` distinguish the prepared candidate from what is currently published.
 - [ ] **owner** Review and merge the release preparation commit after the intended development PRs.
 - [ ] The exact final `main` commit passes main-push CI `Verify (Node 24)` and `Verify (Node 26)`. Earlier branch results are insufficient.
-- [ ] **owner** Run **Extended checks** against that exact final release `main`: native Kafka, packed installation, browser and proxy tiers on Node 24/26, plus its separate replicated Kafka tier on Node 24. Earlier development-branch runs are insufficient; this check does not publish.
+- [ ] **owner** Run **Extended checks** against that exact final release `main`: native Kafka, packed installation, browser and proxy tiers on Node 24/26, plus its separate replicated Kafka and ACL-enabled Kafka tiers on Node 24. Earlier development-branch runs are insufficient; this check does not publish.
 
 ## 2. Release acceptance and packing
 
@@ -43,10 +43,13 @@ pnpm kafka:stop
 ./scripts/kafka/replicated-start.sh
 pnpm test:kafka:replicated
 ./scripts/kafka/replicated-stop.sh
+./scripts/kafka/acl-start.sh
+pnpm test:kafka:acl
+./scripts/kafka/acl-stop.sh
 ```
 
 - [ ] All required suites pass on the selected release source. The candidate must include the replicated broker tier; older source without it is rejected by preparation.
-- [ ] Packed installation's real TLS Kafka case passes rather than skips. `pnpm test:kafka:replicated` reports three tests passed (the environment check and both failure tests), none skipped; leave `STREAMOTTER_ALLOW_SKIP` unset.
+- [ ] Packed installation's real TLS Kafka case passes rather than skips. `pnpm test:kafka:replicated` reports three tests passed (the environment check and both failure tests), and `pnpm test:kafka:acl` eleven, none skipped; leave `STREAMOTTER_ALLOW_SKIP` unset.
 - [ ] On the first macOS rehearsal, replicated start reports "Replicated Kafka 4.1.2 is ready"; stop reports each node stopped and leaves no broker Kafka `java` process running.
 - [ ] Review all six packed file lists and the exact artifact manifest in the workflow summary. `pnpm pack` rewrites internal workspace dependencies to the selected version and applies `publishConfig.exports`; directory-based `npm publish` is not substituted.
 - [ ] Record additional handoff limitations honestly, including acceptance checks that this workflow does not execute.

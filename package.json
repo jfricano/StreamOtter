@@ -19,6 +19,7 @@
     "test:integration": "node --conditions=streamotter-source --test --test-force-exit --test-concurrency=4 \"tests/integration/**/*.test.ts\"",
     "test:kafka": "tsc -b && node --conditions=streamotter-source --test --test-force-exit --test-concurrency=1 --test-timeout=300000 \"tests/kafka/**/*.test.ts\"",
     "test:kafka:replicated": "tsc -b && node --conditions=streamotter-source --test --test-force-exit --test-concurrency=1 --test-timeout=300000 \"tests/kafka-replicated/**/*.test.ts\"",
+    "test:kafka:acl": "tsc -b && node --conditions=streamotter-source --test --test-force-exit --test-concurrency=1 --test-timeout=300000 \"tests/kafka-acl/**/*.test.ts\"",
     "kafka:setup": "./scripts/kafka/setup.sh",
     "kafka:start": "./scripts/kafka/start.sh",
     "kafka:stop": "./scripts/kafka/stop.sh",
