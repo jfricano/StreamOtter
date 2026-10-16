@@ -23,7 +23,7 @@ export async function launch(): Promise<Browser> {
  * A WebSocket request, or a request the page itself cancelled (by navigating away, or Socket.IO
  * closing a transport during reconnect tests), in each engine's wording: expected, not a page problem.
  */
-const EXPECTED_FAILURE = /websocket|net::ERR_ABORTED|NS_BINDING_ABORTED|cancelled/i;
+const EXPECTED_FAILURE = { chromium: /websocket|ERR_ABORTED/i, firefox: /websocket|NS_BINDING_ABORTED/i, webkit: /websocket|cancelled/i }[engine];
 
 /** Opens a page that records console errors, page errors, and failed requests (CSP violations appear as console errors). */
 export async function openPage(browser: Browser, options: BrowserContextOptions = {}): Promise<{ page: Page; problems: string[] }> {

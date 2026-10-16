@@ -75,7 +75,7 @@ All six are released together with the same version; see the [changelog](./CHANG
 - **Kafka source progress.** Explicit per-record commits; poison records pause without skipping; rebalances and outages trigger resynchronization. Deterministic fixture sources for development.
 - **Diagnosis.** Staged connection checks (resolve → connect → TLS → authenticate → metadata) and a bounded, payload-free trace of each record's path through validate, map, queue, send, receipt, and commit.
 
-**Limits in V1, by design:** one gateway per project, no durable replay or history, no durable revocation store, and no production health endpoint (V1.1 adds an optional one). Chromium is the only browser that is automatically tested. Kafka is verified against Apache Kafka 4.1.2.
+**Limits in V1, by design:** one gateway per project, no durable replay or history, no durable revocation store, and no production health endpoint (V1.1 adds an optional one). Browsers are tested automatically in Chromium, Firefox and WebKit (Playwright). Kafka is verified against Apache Kafka 4.1.2.
 
 ## New in 0.2.0-rc.1: contain, explain, recover
 

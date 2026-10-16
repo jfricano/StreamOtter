@@ -309,7 +309,14 @@ describe("deployment behind the proxy with failure handling on", { skip }, () =>
     }
     assert.deepEqual(probe, { status: 503, reasons: ["source-held"] });
 
-    const [incident, ...others] = operator("failures", "list")["items"] as Record<string, any>[];
+    // The source pauses before its quarantine write and recovery guard finish, so wait for both.
+    const settled = Date.now() + 20_000;
+    let items = operator("failures", "list")["items"] as Record<string, any>[];
+    while (!(items.length === 1 && items[0]!["quarantine"] === "acknowledged" && items[0]!["recovery"] === "denied") && Date.now() < settled) {
+      await sleep(250);
+      items = operator("failures", "list")["items"] as Record<string, any>[];
+    }
+    const [incident, ...others] = items;
     assert.equal(others.length, 0);
     assert.ok(incident !== undefined);
     failureId = incident["failureId"];

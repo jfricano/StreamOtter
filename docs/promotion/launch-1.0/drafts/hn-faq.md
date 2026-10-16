@@ -105,7 +105,7 @@
 **"Your tests and your reviewers are AI too. Why trust either?"** *(new)*
 - Agree with the premise: the code, the tests and the reviews all came from the same kind of model, so they can share blind spots. That's a fair reason for caution.
 - What doesn't come from the model:
-  - the systems the tests run against: a real Apache Kafka 4.1.2 broker (TLS, SASL PLAIN and SCRAM), a three-broker cluster where the quarantine leader is killed, real Chromium **[update at 1.0: plus Firefox and WebKit if the gate run passes]**, installs from the npm registry, and a deployment behind a TLS proxy;
+  - the systems the tests run against: a real Apache Kafka 4.1.2 broker (TLS, SASL PLAIN and SCRAM), a three-broker cluster where the quarantine leader is killed, real Chromium, Firefox and WebKit (Playwright), a broker with ACLs enforced, installs from the npm registry, and a deployment behind a TLS proxy;
   - the specs and acceptance scenarios, which you wrote and which say what "correct" means;
   - the 1.0 gate's outside integrator walking the runbook **[update at 1.0: say whether that happened, and how]**;
   - anyone running the break-it paths and reporting what they find.
@@ -165,7 +165,7 @@
 **"Is 1.0 production-ready?"** *(rewritten)*
 - Don't say yes or no. Say what 1.0 promises (public operations keep working until a new major) and what's verified, and point to the list of what isn't:
   - Kafka: only Apache Kafka 4.1.2; managed services, other versions and system-trust TLS unverified; ACL-enabled broker **[update at 1.0]**;
-  - browsers: Chromium only **[update at 1.0]**;
+  - browsers: Chromium, Firefox and WebKit automated (Playwright's WebKit, not Safari); manual checks in Chromium only;
   - hosting: one machine with Caddy, plus the demo's own server; other proxies and cloud load balancers unverified;
   - failure handling: no network-partition, disk-loss or managed-Kafka tests; the journal stops at 256 MiB (no pruning command yet) and keeps the source held; operator socket not on Windows.
 - Evaluate it against that list, starting with a non-critical view.
@@ -275,7 +275,7 @@
 - Apache Kafka 4.4.0 was in its release-candidate vote (RC3 opened Sep 30, per the channel brief). StreamOtter is verified on 4.1.2 only. Say so, and invite a report: "If you try it, please open an issue with the result."
 
 **"Firefox / Safari?"** **[update at 1.0]**
-- Today: automated and manual checks are Chromium only. Firefox and WebKit are part of the 1.0 gate; if they pass, say so and link the run. If not, the answer stays "untested; bug reports welcome."
+- The browser tests run automatically in Chromium, Firefox and WebKit (Playwright); they first passed in all three on October 16 ([run](https://github.com/jfricano/StreamOtter/actions/runs/38835942346)). Manual checks used Chromium. Real Safari and mobile browsers are untested; bug reports welcome.
 
 **"Can I use it without Kafka?"** / **"Avro / Schema Registry / Protobuf?"** *(unchanged)*
 - Development: fixture sources (the four-command quickstart). Production: Kafka only.

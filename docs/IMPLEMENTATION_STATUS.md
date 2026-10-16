@@ -131,7 +131,7 @@ Playwright drives the built assets in headless Chromium against real gateways an
 
 ### Deployment behind a TLS-terminating proxy (`pnpm test:deploy`)
 
-One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/streamotter/*` goes to the gateway, run by the **compiled** `streamotter start` in production mode and consuming Kafka over TLS + SASL SCRAM-SHA-512; everything else goes to the example application in Kafka mode. Verified: the browser's socket is `wss://…/streamotter/socket.io/` through the proxy; an application-published Kafka change reaches the page; a disallowed or missing `Origin` is `FORBIDDEN` through the proxy while the exact origin reaches authentication; no management route exists on the public origin or on port 7401; after `SIGTERM` (exit 0) the page shows *Reconnecting*, and a restarted gateway brings it back to live (about 2.5 s) with later updates delivered. A second deployment, added after `0.2.0-rc.1`, turns failure handling on; see [the V1.1 runs](#runs-added-october-16-2026-unreleased).
+One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/streamotter/*` goes to the gateway, run by the **compiled** `streamotter start` in production mode and consuming Kafka over TLS + SASL SCRAM-SHA-512; everything else goes to the example application in Kafka mode. Verified: the browser's socket is `wss://…/streamotter/socket.io/` through the proxy; an application-published Kafka change reaches the page; a disallowed or missing `Origin` is `FORBIDDEN` through the proxy while the exact origin reaches authentication; no management route exists on the public origin or on port 7401; after `SIGTERM` (exit 0) the page shows *Reconnecting*, and a restarted gateway brings it back to live (about 2.5 s) with later updates delivered. A second deployment, added after `0.2.0-rc.1`, turns failure handling on; see [the V1.1 runs](#runs-added-october-16-2026-new-in-100-rc1).
 
 ### Earlier manual browser checks (in-app Chromium)
 
@@ -150,7 +150,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 
 ## Limitations and open items
 
-- **Browsers:** the automated browser tier (`pnpm test:browser`) runs in headless Chromium, and the Extended checks workflow now also runs it in Firefox and WebKit (`STREAMOTTER_BROWSER` picks the engine). Firefox and WebKit are pending until that workflow's first run with them passes; until then, only Chromium has passed. Manual checks used Chromium only.
+- **Browsers:** the automated browser tier (`pnpm test:browser`) runs in headless Chromium, and the Extended checks workflow now also runs it in Firefox and WebKit (`STREAMOTTER_BROWSER` picks the engine). All three engines pass: Firefox 155 and WebKit 26.6 (Playwright 1.63's pinned builds) ran all 59 tests on October 16 ([run 38835942346](https://github.com/jfricano/StreamOtter/actions/runs/38835942346)). WebKit isn't Safari, and manual checks used Chromium only.
 - **Deployment** was verified on one machine: Caddy on loopback with a private CA. Real hosting, public certificates, and other proxies (nginx, cloud load balancers) are unverified; their only requirements are WebSocket upgrade forwarding on the socket path and passing the browser's `Origin` header.
 - Tests execute TypeScript sources through Node's type stripping and the `streamotter-source` export condition; published artifacts are the compiled `dist/`, which `pnpm test:install` exercises from packed tarballs.
 - **No production health endpoint** (management is development-only by design); see `docs/DEPLOYMENT.md`.
@@ -188,9 +188,9 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Socket permissions, raw payload handling, exports | F38–F40 | Implemented | |
 | Budgets and limits | F41 | Partial | Repeated-failure limits on the operator surfaces are not tested. |
 | Independent sources | F42 | Implemented | |
-| Workbench Failures tab and host contract | F44 | Implemented | Chromium only (see below). |
+| Workbench Failures tab and host contract | F44 | Implemented | Automated in Chromium, Firefox and WebKit (F45). |
 | Health and lifecycle states | F43 | Partial | An unresolved commit has no readiness test of its own. |
-| Firefox and WebKit | F45 | Not run | The browser tier now runs in Chromium, Firefox and WebKit in the Extended checks workflow; Firefox and WebKit are pending until its first run with them passes. The build environment can run only Chromium. |
+| Firefox and WebKit | F45 | Implemented | The browser tier runs in Chromium, Firefox and WebKit in the Extended checks workflow; Firefox 155 and WebKit 26.6 passed all 59 tests on October 16 ([run 38835942346](https://github.com/jfricano/StreamOtter/actions/runs/38835942346)). |
 | Packed install, production proxy, crash restart | F46 | Implemented | Behind the proxy, restarts are graceful; the crash restart is covered by the packed install test only. |
 | Replicated Kafka under broker failure | F47 | Partial | One machine, loopback, one partition, broker SIGKILL only (leader loss, and ISR below `min.insync.replicas`). |
 | Upgrade, then downgrade, with open incidents | F48 | Partial | Restarts in the test are graceful; no SIGKILL during a downgrade. |
@@ -228,7 +228,7 @@ Two of the checks the [acceptance packet](./releases/v1.1/ACCEPTANCE_PACKET.md#1
 
 - **Broker-failure durability beyond the F47 envelope.** F47 ran on a local three-broker cluster: acknowledged quarantine copies survived a leader SIGKILL, and writes were refused while the ISR was below `min.insync.replicas`. It says nothing about disk or fsync loss, network partitions, controller failure, managed services or more than one partition. Every other Kafka run used one local broker.
 - **ACLs beyond one local broker.** `pnpm test:kafka:acl` runs a single Kafka 4.1.2 broker with `StandardAuthorizer`, TLS and SCRAM-SHA-512, where the gateway holds exactly the [runbook's ACLs](./guides/source-failures.md#61-credentials-and-acls). Managed services, other authorizers and principals mapped from TLS certificates are not tested.
-- **Browsers other than Chromium** (F45).
+- **Real Safari and mobile browsers.** WebKit in Playwright is the engine, not Safari, and mobile is only emulated by viewport.
 - **A crash during a downgrade** (F48), and a crash (rather than a graceful restart) of a production deployment behind a proxy with failure handling on (F46).
 - **The truth of an application's recovery guard and snapshot acknowledgment.** The gateway checks boundary identity and lifecycle only.
 - **Security beyond the listed checks.** Passing F37–F40 is not a security audit.

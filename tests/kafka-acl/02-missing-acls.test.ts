@@ -60,11 +60,18 @@ describe("the gateway on an ACL-enabled broker with one runbook ACL missing", { 
     });
     await grant(s.acls["source-topic-read"]);
     await revoke(s.acls["source-group-read"]);
-    await assert.rejects(start(), (error: { code: string; message: string }) => {
-      assert.equal(error.code, "SOURCE_UNAVAILABLE");
-      assert.equal(error.message, "Sources did not become ready within the 30-second startup deadline.");
-      return true;
-    });
+    const logger = recordingLogger();
+    await assert.rejects(
+      startKafkaHarness({ topic: s.topic, group: s.group, connection: GATEWAY_CONNECTION, failureHandling: s.failureHandling, stateDirectory: s.state, logger }),
+      (error: { code: string; message: string }) => {
+        assert.equal(error.code, "SOURCE_UNAVAILABLE");
+        assert.equal(error.message, "Sources did not become ready within the 30-second startup deadline.");
+        return true;
+      });
+    // The warning before the deadline is what tells a missing group ACL apart from a broker that never
+    // answers: KafkaJS reports the refused group as a coordinator it can't find.
+    const crash = logger.entries.find(entry => entry.message === "Kafka consumer crashed");
+    assert.equal(crash?.fields?.["error"], "KafkaJSGroupCoordinatorNotFound");
   });
 
   it("no ACL on the quarantine topic: startup refuses it as missing", { timeout: 60_000 }, async () => {

@@ -143,7 +143,7 @@ The [reference application](https://github.com/jfricano/StreamOtter/tree/main/ex
 - [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md): your sessions, handlers, and this SDK together
 - [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md): `FORBIDDEN`, `UNAUTHENTICATED`, `stale`, `resync-required`, and more
 - [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): the SDK (§4), states and synchronization (§5), and errors (§9)
-- [Implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md): what is verified, and the known limitations (for example, automated browser checks cover Chromium only)
+- [Implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md): what is verified, and the known limitations (for example, which browsers are tested automatically)
 - [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues) · [Security policy](https://github.com/jfricano/StreamOtter/blob/main/SECURITY.md)
 
 ## StreamOtter packages
