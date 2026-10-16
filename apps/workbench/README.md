@@ -26,7 +26,7 @@ The same assets can run under a route of your own site, such as `https://example
 <script type="application/json" id="streamotter-workbench-host">
 { "hostContract": 1, "apiBase": "/workbench/api/v1", "auth": { "mode": "session" },
   "gateway": { "origin": "https://example.com", "path": "/sandbox/socket.io" },
-  "environment": { "kind": "sandbox", "label": "Synthetic fixture", "packageVersion": "0.2.0-rc.1" } }
+  "environment": { "kind": "sandbox", "label": "Synthetic fixture", "packageVersion": "1.0.0-rc.1" } }
 </script>
 <div id="app"></div>
 <link rel="stylesheet" href="/workbench/assets/workbench-host.css" integrity="sha384-…">

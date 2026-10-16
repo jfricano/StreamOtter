@@ -6,7 +6,7 @@ All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`
 
 The release candidate for `1.0.0`, StreamOtter's V1 public launch. It adds React hooks (the V1.3 milestone), trims the public API before 1.0 commits to it, and fixes the source-failure defects that a clean-machine run of the public docs found. `1.0.0` will be this candidate republished with only its version and changelog changed, after at least seven days on it with no blocking bug; a runtime fix would ship as `1.0.0-rc.2` first. The release handoff is [docs/releases/1.0.0/RELEASE_HANDOFF.md](docs/releases/1.0.0/RELEASE_HANDOFF.md).
 
-Upgrading from `0.2.0-rc.1` needs no migration: configurations, the protocol (`protocolVersion: 1`), `configVersion: 1` and the failure journal's format are unchanged. The one change that can break an app's build is an import of a name listed under "Removed from the public API". Behavior changes are listed under "Changed" and "Fixed"; one of them can pause a source at startup that `0.2.0-rc.1` ran, when an open incident was captured on another Kafka cluster.
+Upgrading from `0.2.0-rc.1` needs no migration: configurations, the protocol (`protocolVersion: 1`), `configVersion: 1` and the failure journal's format are unchanged. The one change that can break an app's build (or, in plain JavaScript, its startup) is an import of a name listed under "Removed from the public API". Behavior changes are listed under "Changed" and "Fixed"; one of them can pause a source at startup that `0.2.0-rc.1` ran, when an open incident was captured on another Kafka cluster.
 
 ### Removed from the public API
 
@@ -241,6 +241,7 @@ Acceptance scenarios, real-Kafka behavior (Apache Kafka 4.1.2), a declared-workl
 
 A single gateway per project, no durable replay or revocation store, no production health endpoint, Chromium-only browser checks, and Kafka verification against one broker version. Details are in the implementation status document.
 
+[0.2.0-rc.1]: https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1
 [0.1.0-rc.3]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.3
 [0.1.0-rc.2]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.2
 [0.1.0-rc.1]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.1
