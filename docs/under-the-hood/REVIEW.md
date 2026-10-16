@@ -2,7 +2,7 @@
 
 October 7, 2026 · Pages checked against `main` at 1c75aaa
 
-Before publication, five independent reviewers who had not written the pages checked each part claim by claim against the code and docs at 1c75aaa. Every finding was fixed in the pages; nothing was waived. Line-number citations (82 of them) were also removed, so file references stay valid as the code moves.
+Before publication, five reviewers who had not written the pages checked each part claim by claim against the code and docs at 1c75aaa. Every finding was fixed in the pages; nothing was waived. Line-number citations (82 of them) were also removed, so file references stay valid as the code moves.
 
 | Part | Claims checked (approx.) | Findings |
 | --- | --- | --- |
