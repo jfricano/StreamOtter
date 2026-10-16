@@ -1,6 +1,6 @@
 /**
  * WHC-1 revision 0.3 §2.1: dist/workbench-host.css, generated from styles.css with every selector
- * scoped under [data-streamotter-workbench]. The transformer is checked directly, then in Chromium
+ * scoped under [data-streamotter-workbench]. The transformer is checked directly, then in a browser
  * on a host page with its own header, footer, element styles and custom properties.
  */
 import assert from "node:assert/strict";

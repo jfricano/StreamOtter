@@ -1,6 +1,6 @@
 # V1.3 — React hooks
 
-**Status: built and independently reviewed on `feat/v1.3-react-hooks`; ships in `1.0.0`, the V1 public launch.** Plan approved by the owner on October 6, 2026 (Pacific); build started the same evening at the owner's go; later that evening the owner folded it into the launch release instead of a later `1.1.0`. A single feature that brings the React hooks forward from V2.2. The exact public API is locked in the [API contract](./API.md). Nothing is published to npm; see the [implementation log](./IMPLEMENTATION_LOG.md) for what was built and verified, and [folded into 1.0.0](./IMPLEMENTATION_LOG.md#folded-into-100) for what shipping it with the launch took.
+**Status: merged to main (#73) and ships in `1.0.0-rc.1`, then `1.0.0`, the V1 public launch.** Plan approved by the owner on October 6, 2026 (Pacific); build started the same evening at the owner's go; later that evening the owner folded it into the launch release instead of a later `1.1.0`. A single feature that brings the React hooks forward from V2.2. The exact public API is locked in the [API contract](./API.md). Not yet published to npm; see the [implementation log](./IMPLEMENTATION_LOG.md) for what was built and verified, and [folded into 1.0.0](./IMPLEMENTATION_LOG.md#folded-into-100) for what shipping it with the launch took.
 
 ## Why now
 

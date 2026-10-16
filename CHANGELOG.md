@@ -1,8 +1,12 @@
 # Changelog
 
-All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, and `@streamotter/workbench`) are released together with the same version. `streamotter` first appeared in `0.1.0-rc.3`. Package versions follow [Semantic Versioning](https://semver.org/) and are independent of the V1 protocol (`protocolVersion: 1`) and configuration format (`configVersion: 1`). Before 1.0.0, a minor release may contain breaking API changes; they will be listed here.
+All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, and `@streamotter/workbench`) are released together with the same version. `streamotter` first appeared in `0.1.0-rc.3`. Package versions follow [Semantic Versioning](https://semver.org/) and are independent of the V1 protocol (`protocolVersion: 1`) and configuration format (`configVersion: 1`). Before 1.0.0, a minor release could contain breaking API changes, listed here. From 1.0.0, every public operation keeps working until a new major version.
 
-## Unreleased
+## [1.0.0-rc.1] — not yet published
+
+The release candidate for `1.0.0`, StreamOtter's V1 public launch. It adds React hooks (the V1.3 milestone), trims the public API before 1.0 commits to it, and fixes the source-failure defects that a clean-machine run of the public docs found. `1.0.0` will be this candidate republished with only its version and changelog changed, after at least seven days on it with no blocking bug; a runtime fix would ship as `1.0.0-rc.2` first. The release handoff is [docs/releases/1.0.0/RELEASE_HANDOFF.md](docs/releases/1.0.0/RELEASE_HANDOFF.md).
+
+Upgrading from `0.2.0-rc.1` needs no migration: configurations, the protocol (`protocolVersion: 1`), `configVersion: 1` and the failure journal's format are unchanged. The one change that can break an app's build (or, in plain JavaScript, its startup) is an import of a name listed under "Removed from the public API". Behavior changes are listed under "Changed" and "Fixed"; one of them can pause a source at startup that `0.2.0-rc.1` ran, when an open incident was captured on another Kafka cluster.
 
 ### Removed from the public API
 
@@ -16,7 +20,7 @@ Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages sha
 
 ### Added
 
-- React hooks (V1.3, shipping in 1.0.0): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
+- React hooks (V1.3): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
 - `streamotter/gateway/operator` exports the types that `callOperator`'s requests and results use (`OperatorOperation`, `OperatorRequests`, `IncidentProgress`, `Trace`, `Page` and others), so operator code no longer needs `streamotter/contracts`.
 - The docs site for docs.streamotter.dev (`apps/docs`): the guides, an API reference generated from the doc comments on every public export, and StreamOtter Under the Hood. A build is an unreleased preview, with a banner and `noindex`, unless `DOCS_CHANNEL=release`, which builds only from a release tag.
 
@@ -38,6 +42,7 @@ Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages sha
 - Source failures: a retry resumes every held partition of a source; when the source pauses again at one of them, the other incidents the retry marked `retrying` go back to `held` instead of staying `retrying` with nothing redelivering them, and `retry-current` on such an incident says where the source paused instead of repeating the incident's own diagnosis.
 - Source failures: switching a class from `quarantine-resync` to a policy without a recovery guard makes a `denied` recovery `held` when the record is next observed, so the incident (and the workbench) no longer reports a denial under a policy that has no guard.
 - Docs: the source-failure runbook, the Kafka and troubleshooting guides and getting started were corrected where they disagreed with the gateway (revision-conflict detection, snapshot-acknowledgment retries, the management API's answer shape, `--json` output, the downgrade procedure and the recovery wording), and the Kafka guide has a one-command local broker.
+- Docs: the runbook's ACL list was checked against a Kafka broker with authorization enabled and is sufficient as written. Its symptom table now names V1's source ACLs (Read on each source topic and consumer group), the startup failure when the principal has no Write on any topic ("Cluster authorization failed": Kafka refuses an idempotent producer to such a principal), and the messages a missing DescribeConfigs or group Read actually give.
 
 ## [0.2.0-rc.1] — 2026-10-04
 
@@ -237,6 +242,7 @@ Acceptance scenarios, real-Kafka behavior (Apache Kafka 4.1.2), a declared-workl
 
 A single gateway per project, no durable replay or revocation store, no production health endpoint, Chromium-only browser checks, and Kafka verification against one broker version. Details are in the implementation status document.
 
+[0.2.0-rc.1]: https://github.com/jfricano/StreamOtter/releases/tag/v0.2.0-rc.1
 [0.1.0-rc.3]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.3
 [0.1.0-rc.2]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.2
 [0.1.0-rc.1]: https://github.com/jfricano/StreamOtter/releases/tag/v0.1.0-rc.1

@@ -161,7 +161,7 @@ Mature options already cover real parts of this problem: [Centrifugo](https://ce
 
 ## What it doesn't do (yet)
 
-The limits are written down: one gateway per project; no replay of missed updates (a reconnecting view gets a fresh snapshot of the current state, which is what a status page needs and not what an activity feed needs); JSON state over Socket.IO only; managed Kafka services are unverified (verified: Apache Kafka 4.1.2 with TLS and SASL PLAIN or SCRAM); KafkaJS 2.2.4 is pinned behind an internal adapter; and browser automation covers [update at 1.0 from IMPLEMENTATION_STATUS: "Chromium only", or "Chromium, Firefox and WebKit" if the gate run passes]. 1.0 is a promise about the API (every public operation keeps working until a new major version), not a claim of maturity or adoption. What's verified, how, and what isn't is in the [implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md).
+The limits are written down: one gateway per project; no replay of missed updates (a reconnecting view gets a fresh snapshot of the current state, which is what a status page needs and not what an activity feed needs); JSON state over Socket.IO only; managed Kafka services are unverified (verified: Apache Kafka 4.1.2 with TLS and SASL PLAIN or SCRAM); KafkaJS 2.2.4 is pinned behind an internal adapter; and browsers are tested automatically in Chromium, Firefox and WebKit (Playwright). 1.0 is a promise about the API (every public operation keeps working until a new major version), not a claim of maturity or adoption. What's verified, how, and what isn't is in the [implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md).
 
 ## Try it
 

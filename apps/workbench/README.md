@@ -6,7 +6,7 @@ The static assets of the StreamOtter local workbench. You don't usually use this
 
 Workbench is development tooling, not a required stage between the gateway and production frontends. Production subscriptions use the browser SDK connected to a compatible running gateway. See [runtime and package requirements](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md#runtime-and-package-requirements).
 
-> **Release candidate `0.2.0-rc.1`.**
+> **Release candidate `1.0.0-rc.1`** for 1.0.0.
 
 `dist/THIRD_PARTY_LICENSES.txt` lists the MIT-licensed Socket.IO client packages bundled into `dist/app.js`.
 
@@ -26,7 +26,7 @@ The same assets can run under a route of your own site, such as `https://example
 <script type="application/json" id="streamotter-workbench-host">
 { "hostContract": 1, "apiBase": "/workbench/api/v1", "auth": { "mode": "session" },
   "gateway": { "origin": "https://example.com", "path": "/sandbox/socket.io" },
-  "environment": { "kind": "sandbox", "label": "Synthetic fixture", "packageVersion": "0.2.0-rc.1" } }
+  "environment": { "kind": "sandbox", "label": "Synthetic fixture", "packageVersion": "1.0.0-rc.1" } }
 </script>
 <div id="app"></div>
 <link rel="stylesheet" href="/workbench/assets/workbench-host.css" integrity="sha384-…">

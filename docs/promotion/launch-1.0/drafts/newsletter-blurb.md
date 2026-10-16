@@ -48,7 +48,7 @@ StreamOtter (MIT) is a Node.js gateway and TypeScript SDK for live, Kafka-backed
 >
 > Jason
 
-*Note:* their criteria ask about multi-browser support and active maintenance. Be ready to answer honestly: browser automation is Chromium only at rc.1 (Firefox and WebKit are part of the 1.0 gate), and it's a solo project created September 25. The demo link is left out on purpose, because at rc.1 the site may still show an older release.
+*Note:* their criteria ask about multi-browser support and active maintenance. Be ready to answer honestly: browsers are tested automatically in Chromium, Firefox and WebKit (Playwright) from rc.1, and it's a solo project created September 25. The demo link is left out on purpose, because at rc.1 the site may still show an older release.
 
 ## T+1: Cooperpress, Node Weekly and JavaScript Weekly (editor@cooperpress.com)
 

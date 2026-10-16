@@ -1,6 +1,6 @@
 # StreamOtter V1 implementation status
 
-September 25, 2026, updated October 4 · Release candidate `0.2.0-rc.1` is published on npm (`latest`) for all six packages, including the all-in-one `streamotter` package and the V1.1, V1.2 and V1.2.1 milestones (see the [CHANGELOG](../CHANGELOG.md)).
+September 25, 2026, updated October 16 · Release candidate `0.2.0-rc.1` is published on npm (`latest`) for all six packages, including the all-in-one `streamotter` package and the V1.1, V1.2 and V1.2.1 milestones (see the [CHANGELOG](../CHANGELOG.md)). `1.0.0-rc.1`, the release candidate for 1.0.0, is prepared in this repository and not yet published; its [release handoff](./releases/1.0.0/RELEASE_HANDOFF.md) lists what has to pass before the tag. Sections marked *new in 1.0.0-rc.1* describe it.
 
 V1 is implemented in this repository through the handoff's slices 1–4: the gateway, browser SDK, shared contracts, CLI with the TypeScript generator, local workbench, and the order-dashboard reference application. It is tested with fixture-backed integration tests, real-Kafka tests, a declared-workload resource test, automated browser tests, and a production-shaped deployment check behind a TLS-terminating proxy, on Node 24 and Node 26. Gate A of the home site and demo plan is met. The public home site and live demo are being built as a separate project that uses the published packages ([plan](./WEBSITE_AND_DEMO_PLAN.md)).
 
@@ -32,7 +32,7 @@ This document records what exists, the commands that verify it, the results obse
 | Sources | `packages/gateway/src/sources` | Deterministic fixture source; KafkaJS 2.2.4 adapter with explicit per-record commits, pause-and-seek on poison records, rebalance/crash/inactivity detection, staged diagnostics, tracked sockets. |
 | Transport | `packages/gateway/src/transport/socketio.ts`, `packages/client/src/connection.ts` | Socket.IO 4.8.3, namespace `/`, WebSocket only, recovery and client reconnection disabled; the only files that import Socket.IO. |
 | Management API | `packages/gateway/src/management` | All specified `/management/v1` routes plus `GET /dev/principals`; bearer token, exact-origin/Referer checks, `Result` envelopes and status codes, 1 MiB bodies, rate limit, workbench hosting with CSP. Refuses production gateways. |
-| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. React hooks on `@streamotter/client/react` and `streamotter/react` (V1.3, ships in 1.0.0; unreleased); see below. |
+| Browser SDK | `packages/client` | `createClient`, subscriptions with epochs, sequence/revision validation, receipts after synchronous dispatch, listener-failure handling, `ready`/`resync`/`unsubscribe`/`close`/`reconnect`, full-jitter reconnection, token refresh, account-switch closure. React hooks on `@streamotter/client/react` and `streamotter/react` (V1.3, new in 1.0.0-rc.1); see below. |
 | CLI | `packages/cli` | `init`, `validate` (prints the canonical fingerprint), `generate` (manifest-guarded overwrite), `dev`, `start`; exit codes 0/1/2; SIGINT/SIGTERM graceful shutdown; startup diagnostics. |
 | Workbench | `apps/workbench` | Connect (status, staged checks, resume, fixture advance), Define (channel contracts, candidate editor, validation, restart-required indicator), Preview (real SDK subscription as a development principal; advance, disconnect, resync), Inspect (filterable, polling trace table), Export (canonical file, fingerprint, CLI commands). |
 | Reference example | `examples/order-dashboard` | Application-owned identity, ownership rules, snapshot storage; fixture and Kafka modes; vanilla TypeScript and React views; reproducible scenarios. |
@@ -103,6 +103,7 @@ Real-Kafka behaviors also verified: `startFrom` latest vs earliest for new group
 | TLS + SASL SCRAM-SHA-512 | Verified (production gateway) |
 | TLS with system trust (`tls: {}`) | Implemented; **not verified** (needs a publicly trusted broker certificate) |
 | Wrong password / untrusted CA / missing topic | Verified to fail at the `authenticate` / `tls` / `metadata` diagnostic stage without leaking credentials |
+| ACLs enforced (`StandardAuthorizer`, TLS + SASL SCRAM-SHA-512) | Verified with exactly the source and quarantine ACLs the [runbook](./guides/source-failures.md#61-credentials-and-acls) lists (`pnpm test:kafka:acl`, added after `0.2.0-rc.1`) |
 | Other Kafka versions, managed Kafka services, Docker Compose file | **Unverified** |
 
 ### Declared workload (`tests/load/load.test.ts`)
@@ -130,7 +131,7 @@ Playwright drives the built assets in headless Chromium against real gateways an
 
 ### Deployment behind a TLS-terminating proxy (`pnpm test:deploy`)
 
-One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/streamotter/*` goes to the gateway, run by the **compiled** `streamotter start` in production mode and consuming Kafka over TLS + SASL SCRAM-SHA-512; everything else goes to the example application in Kafka mode. Verified: the browser's socket is `wss://…/streamotter/socket.io/` through the proxy; an application-published Kafka change reaches the page; a disallowed or missing `Origin` is `FORBIDDEN` through the proxy while the exact origin reaches authentication; no management route exists on the public origin or on port 7401; after `SIGTERM` (exit 0) the page shows *Reconnecting*, and a restarted gateway brings it back to live (about 2.5 s) with later updates delivered.
+One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/streamotter/*` goes to the gateway, run by the **compiled** `streamotter start` in production mode and consuming Kafka over TLS + SASL SCRAM-SHA-512; everything else goes to the example application in Kafka mode. Verified: the browser's socket is `wss://…/streamotter/socket.io/` through the proxy; an application-published Kafka change reaches the page; a disallowed or missing `Origin` is `FORBIDDEN` through the proxy while the exact origin reaches authentication; no management route exists on the public origin or on port 7401; after `SIGTERM` (exit 0) the page shows *Reconnecting*, and a restarted gateway brings it back to live (about 2.5 s) with later updates delivered. A second deployment, added after `0.2.0-rc.1`, turns failure handling on; see [the V1.1 runs](#runs-added-october-16-2026-new-in-100-rc1).
 
 ### Earlier manual browser checks (in-app Chromium)
 
@@ -149,7 +150,7 @@ One HTTPS origin served by Caddy with a certificate from a throwaway CA: `/strea
 
 ## Limitations and open items
 
-- **Browsers:** automated and manual checks use Chromium only. Firefox and Safari (WebKit) are untested.
+- **Browsers:** the automated browser tier (`pnpm test:browser`) runs in headless Chromium, and the Extended checks workflow now also runs it in Firefox and WebKit (`STREAMOTTER_BROWSER` picks the engine). All three engines pass: Firefox 155 and WebKit 26.6 (Playwright 1.63's pinned builds) ran all 59 tests on October 16 ([run 38835942346](https://github.com/jfricano/StreamOtter/actions/runs/38835942346)). WebKit isn't Safari, and manual checks used Chromium only.
 - **Deployment** was verified on one machine: Caddy on loopback with a private CA. Real hosting, public certificates, and other proxies (nginx, cloud load balancers) are unverified; their only requirements are WebSocket upgrade forwarding on the socket path and passing the browser's `Origin` header.
 - Tests execute TypeScript sources through Node's type stripping and the `streamotter-source` export condition; published artifacts are the compiled `dist/`, which `pnpm test:install` exercises from packed tarballs.
 - **No production health endpoint** (management is development-only by design); see `docs/DEPLOYMENT.md`.
@@ -173,24 +174,24 @@ This section restates the [V1.1 evidence matrix](./releases/v1.1/EVIDENCE.md) an
 | Legacy behavior and configuration | F01, F02 | Implemented | |
 | Classification, pause and quarantine-hold | F03–F08, F10–F12, F14 | Implemented | F14's lost broker acknowledgment is scripted; it can't be reproduced on one local broker. |
 | Outage, token denial and stalled browser with failure handling on | F09 | Partial | No V1.1-specific test; the unchanged V1 tests pass. |
-| Quarantine topic failures | F13 | Partial | A denied ACL and an unavailable quarantine broker are not tested. A write refused as too large, and a missing or undersized topic, are. |
+| Quarantine topic failures | F13 | Partial | An unavailable quarantine broker is not tested on its own (F47 covers too few in-sync replicas). Denied ACLs, a write refused as too large, and a missing or undersized topic are tested. |
 | Crash after quarantine, before commit | F15 | Partial | No gateway crash-tier test; graceful restarts and the journal's SIGKILL test cover it. |
 | Crash around the advance | F16, F17 | Implemented | |
 | Stop or rebalance during write, guard or commit | F18 | Partial | No rebalance-during-advance test. |
 | Recovery guard, boundary and snapshot acknowledgment | F20–F24 | Implemented | |
 | Late results after epoch change, revoke or stop | F25 | Partial | Revoke and new-incident races are not separately tested. |
 | Circuit breaker | F26 | Implemented | |
-| Moved or expired source position; journal identity, rebaseline; second gateway | F27, F29, F30 | Implemented | F29: a re-created topic without a generation change is detected only when the record at a held offset has different bytes (unreleased fix below: it is then held as an evidence conflict instead of resolving the incident). |
+| Moved or expired source position; journal identity, rebaseline; second gateway | F27, F29, F30 | Implemented | F29: a re-created topic without a generation change is detected only when the record at a held offset has different bytes (fixed in 1.0.0-rc.1, below: it is then held as an evidence conflict instead of resolving the incident). |
 | Operator retry, evaluate, redrive, plans and refusals | F19, F28, F31–F34, F36 | Implemented | |
 | Redrive interrupted by a crash | F35 | Implemented | |
 | Operator, health and raw-evidence boundary | F37 | Implemented | |
 | Socket permissions, raw payload handling, exports | F38–F40 | Implemented | |
 | Budgets and limits | F41 | Partial | Repeated-failure limits on the operator surfaces are not tested. |
 | Independent sources | F42 | Implemented | |
-| Workbench Failures tab and host contract | F44 | Implemented | Chromium only (see below). |
+| Workbench Failures tab and host contract | F44 | Implemented | Automated in Chromium, Firefox and WebKit (F45). |
 | Health and lifecycle states | F43 | Partial | An unresolved commit has no readiness test of its own. |
-| Firefox and WebKit | F45 | Not run | Only Chromium could run in the build environment. |
-| Packed install, production proxy, crash restart | F46 | Implemented | The proxy deployment test runs without `failureHandling`. |
+| Firefox and WebKit | F45 | Implemented | The browser tier runs in Chromium, Firefox and WebKit in the Extended checks workflow; Firefox 155 and WebKit 26.6 passed all 59 tests on October 16 ([run 38835942346](https://github.com/jfricano/StreamOtter/actions/runs/38835942346)). |
+| Packed install, production proxy, crash restart | F46 | Implemented | Behind the proxy, restarts are graceful; the crash restart is covered by the packed install test only. |
 | Replicated Kafka under broker failure | F47 | Partial | One machine, loopback, one partition, broker SIGKILL only (leader loss, and ISR below `min.insync.replicas`). |
 | Upgrade, then downgrade, with open incidents | F48 | Partial | Restarts in the test are graceful; no SIGKILL during a downgrade. |
 
@@ -209,12 +210,26 @@ All on Node 24.21.0 and pnpm 11.19.0, on `feat/v1.1-review-fixes` at `483eb82`, 
 
 The journal tests (`packages/gateway/test/journal.test.ts`) also ran on Node 26.10.0. On Node 24.14.0 the journal refuses to open (`node-version`) and its SQLite suites skip.
 
+### Runs added October 16, 2026 (new in 1.0.0-rc.1)
+
+Two of the checks the [acceptance packet](./releases/v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status) requires before a stable release, on Linux (x86-64), Node 24.21.0 and pnpm 11.19.0:
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:kafka:acl` | 11 tests, all pass, none skipped, against a local Kafka 4.1.2 broker with `StandardAuthorizer` and no allow-everyone fallback (`scripts/kafka/acl-start.sh`) |
+| `pnpm test:deploy` | 9 tests, all pass, none skipped (the environment check, four without failure handling and four with it), in headless Chromium 141 linked in place of Playwright 1.63's pinned Chrome Headless Shell, which could not be downloaded there |
+| `pnpm verify` | 514 tests, all pass |
+
+**ACL-enabled broker (F13).** The gateway connects as a principal that holds V1's source ACLs (Read on the source topic and group) and the rows of the [runbook's table](./guides/source-failures.md#61-credentials-and-acls), and nothing else. With them, a plain channel in production mode, `quarantine-hold` and `quarantine-resync` run end to end: the startup check, the quarantine write, the guarded advance, show and export with raw bytes, evaluate, redrive, retry-current, and the startup reconciliation of an advance whose journal write was lost; every throwaway read group is deleted. With one of them missing (each in turn, except Describe, which Read and Write include), startup or the operation fails with the symptom the runbook lists, and no held record is passed: without Write on the quarantine topic, the write is refused (`TOPIC_AUTHORIZATION_FAILED`), the incident is held with readiness `quarantine`, nothing is committed, and after granting Write a `retry-current` advances. The run corrected the runbook: it now names V1's source ACLs, the startup failure when the principal has no Write on any topic (Kafka refuses it an idempotent producer: "Cluster authorization failed"), and the messages a missing DescribeConfigs or a missing group Read actually give.
+
+**Proxy deployment with failure handling on (F46).** The compiled `streamotter start` runs behind Caddy with a state directory from `streamotter init --failures`, the example's `quarantine-resync` policy and recovery guard, `--operator-socket` and `--health`. A truncated record holds the source: readiness reports `source-held`; `status`, `failures list` and `failures show --raw` show the incident and its quarantined copy; the page shows the order as out of date while the application and the socket through the proxy keep working. After the application re-publishes the order, `streamotter sources reassess` advances past the record and the page goes live with the change. A graceful restart keeps the recovery boundary, removes and recreates the operator socket, and the page goes live again.
+
 ### What this does not establish
 
 - **Broker-failure durability beyond the F47 envelope.** F47 ran on a local three-broker cluster: acknowledged quarantine copies survived a leader SIGKILL, and writes were refused while the ISR was below `min.insync.replicas`. It says nothing about disk or fsync loss, network partitions, controller failure, managed services or more than one partition. Every other Kafka run used one local broker.
-- **ACL-enabled brokers.** The ACL list in the [runbook](./guides/source-failures.md#61-credentials-and-acls) follows from the client calls; no run used a broker with authorization enabled.
-- **Browsers other than Chromium** (F45).
-- **A crash during a downgrade** (F48), and restart of a production deployment behind a proxy with failure handling on (F46).
+- **ACLs beyond one local broker.** `pnpm test:kafka:acl` runs a single Kafka 4.1.2 broker with `StandardAuthorizer`, TLS and SCRAM-SHA-512, where the gateway holds exactly the [runbook's ACLs](./guides/source-failures.md#61-credentials-and-acls). Managed services, other authorizers and principals mapped from TLS certificates are not tested.
+- **Real Safari and mobile browsers.** WebKit in Playwright is the engine, not Safari, and mobile is only emulated by viewport.
+- **A crash during a downgrade** (F48), and a crash (rather than a graceful restart) of a production deployment behind a proxy with failure handling on (F46).
 - **The truth of an application's recovery guard and snapshot acknowledgment.** The gateway checks boundary identity and lifecycle only.
 - **Security beyond the listed checks.** Passing F37–F40 is not a security audit.
 
@@ -263,7 +278,7 @@ The 33 minor findings V1.2 deferred and the V1.1 review's J7 are fixed or resolv
 
 GitHub CI ran `pnpm verify` on Node 24 and 26. The extended workflow, run by hand, passed on Node 24 and 26, along with the nightly replicated-Kafka job. On the release commit `fc7f47c` on `main`, CI and the [extended workflow](https://github.com/jfricano/StreamOtter/actions/runs/37252966584) (Kafka, install, browser and deploy on Node 24 and 26, replicated Kafka on Node 24) passed, and the publishing workflow ran the full release checks again before publishing.
 
-### Fixes after 0.2.0-rc.1 (unreleased)
+### Fixes after 0.2.0-rc.1 (new in 1.0.0-rc.1)
 
 Source-failure fixes found after the release ([API draft §5.2](./releases/v1.1/V1_1_API.md#52-incident-model), [CHANGELOG](../CHANGELOG.md)): a retry of a record that is gone settles as `held` instead of staying `retrying`; a restart and a rebaseline normalize `retrying` and `advance-pending`; an incident's `policy` follows the configuration on re-observation; a different Kafka record at a held offset is an evidence conflict and never resolves the incident (a corrected fixture record resolves it as "a corrected record at the same position processed"); an incident from another Kafka cluster holds the source from startup (paused and not ready even with nothing to read; a retry there is refused) and before each record; a retry that pauses again at one held record returns the source's other retried incidents to `held`; a switch away from `quarantine-resync` makes a denied recovery `held`; and `nextAction` explanations are class-aware, including for an advance that can't be checked because no class quarantines any more. Each has a regression test that fails without its fix: `packages/gateway/test/failure-service.test.ts`, `journal.test.ts` and `next-action.test.ts`, `tests/integration/operator.test.ts` and `rebaseline.test.ts`, and the Kafka tier's `tests/kafka/15-integrity-holds.test.ts` (the moved-position, evidence-conflict, cluster-mismatch and idle-cluster cases, each failing without its fix). On Node 24.22.0 and pnpm 11.19.0, October 15, 2026, after the code review's fixes:
 
@@ -273,9 +288,9 @@ Source-failure fixes found after the release ([API draft §5.2](./releases/v1.1/
 | `pnpm test:kafka` (after `pnpm build`) | 52 tests, all pass, against a local single-node Kafka 4.1.2 broker |
 | `pnpm test:browser` (without its `pnpm build` step, after one) | 59 tests, all pass, in Chromium |
 
-## V1.3 React hooks (unreleased; ships in 1.0.0)
+## V1.3 React hooks (new in 1.0.0-rc.1)
 
-`@streamotter/client/react` and `streamotter/react` add a provider and hooks over the SDK ([docs/releases/v1.3](./releases/v1.3/README.md)). Built on `feat/v1.3-react-hooks`; ships in `1.0.0` (owner, October 6, 2026); not published. Its exact API is locked in the [API contract](./releases/v1.3/API.md), and every hooks test names the contract clauses it covers. Independently reviewed (three reviewers; two behavior fixes and a wider test suite came out of it). On Node 24.21.0: `pnpm verify` 471 passed; `test:install` 23 passed and 1 skipped (TLS Kafka, no local broker), including bundling and type-checking React apps against the packed packages on React 19 and React 18; `test:browser` 59 passed, including the reference example's React page on the hooks, on a preinstalled Chromium headless shell (revision 1194) rather than the pinned one. Details in the [implementation log](./releases/v1.3/IMPLEMENTATION_LOG.md).
+`@streamotter/client/react` and `streamotter/react` add a provider and hooks over the SDK ([docs/releases/v1.3](./releases/v1.3/README.md)). Built on `feat/v1.3-react-hooks` and merged as #73; ships in `1.0.0-rc.1` and then `1.0.0` (owner, October 6, 2026); not yet published. Its exact API is locked in the [API contract](./releases/v1.3/API.md), and every hooks test names the contract clauses it covers. Reviewed by three reviewers; two behavior fixes and a wider test suite came out of it). On Node 24.21.0: `pnpm verify` 471 passed; `test:install` 23 passed and 1 skipped (TLS Kafka, no local broker), including bundling and type-checking React apps against the packed packages on React 19 and React 18; `test:browser` 59 passed, including the reference example's React page on the hooks, on a preinstalled Chromium headless shell (revision 1194) rather than the pinned one. Details in the [implementation log](./releases/v1.3/IMPLEMENTATION_LOG.md).
 
 ## Gate A status (home site and demo plan)
 

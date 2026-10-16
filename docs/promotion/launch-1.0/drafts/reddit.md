@@ -8,7 +8,7 @@
 
 > **Where and when:** separate text posts, one subreddit at a time, after launch day. Two are core (r/apachekafka, r/node). The other three are later and optional, outside the launch plan (appendix). Decisions are in PUBLIC_LAUNCH.md (D1–D8).
 >
-> **Plan B (D8 in PUBLIC_LAUNCH.md, decided at T-7):** if your HN account can't submit Show HN, r/apachekafka moves to **T-0 Tue, 8:00 ET** and becomes the launch post, and r/node moves up to T+2 (PUBLIC_LAUNCH.md §4.5).
+> **Plan B (D8 in PUBLIC_LAUNCH.md, decided at T-7):** if your HN account can't submit Show HN, r/apachekafka moves to **T-0 Tue, 11:00 ET or later** and becomes the launch post, and r/node moves up to T+2 (PUBLIC_LAUNCH.md §4.5).
 >
 > **Rules:**
 > - **REWRITE IN YOUR OWN WORDS.** These are reference drafts, not posts. Many subreddits remove or downvote AI-written posts, and your own voice is what earns replies. Use them for facts and structure only.
@@ -31,7 +31,7 @@ Post Tuesday–Thursday mornings US time (a heuristic), except r/webdev.
 
 **Standard wording (for facts; say it your way):**
 - **What it is:** "an open-source (MIT) Node.js gateway and TypeScript browser SDK, version 1.0.0."
-- **Limits:** "one gateway per project; no replay of missed updates (a fresh snapshot instead); Chromium is the only browser tested automatically **[update at 1.0]**; managed Kafka services are unverified; KafkaJS 2.2.4 is pinned behind an internal adapter."
+- **Limits:** "one gateway per project; no replay of missed updates (a fresh snapshot instead); browsers are tested automatically in Chromium, Firefox and WebKit (Playwright); managed Kafka services are unverified; KafkaJS 2.2.4 is pinned behind an internal adapter."
 - **The pitch, accurately:** "you define the state shape and one mapping function, plus the snapshot and access checks your app already has; StreamOtter does the rest."
 - **The invitation:** "Can you make it lie? Get a view to say `live` while it shows something other than the newest state its snapshot and the topic's revisions imply, or get a bad record skipped silently. Reports: {{MAKE_IT_LIE_LINK}}."
 - **Ways to break it:** "Drop my connection" on the streamotter.dev home page **[update at 1.0: check it answers on 1.0.0]**; locally with no Kafka, a fixture record with raw text (`{ key, raw: "{not json" }`) and a `quarantine-hold` policy: the source pauses at it and the incident is quarantine-held with local evidence (recipe: {{MAKE_IT_LIE_LOCAL_LINK}}, verified Oct 5 on 0.2.0-rc.1; it didn't check the browser view); locally on real Kafka, `npm run dev:lab` in https://github.com/jfricano/lontra-creek (Docker and Compose 2.24.4+; public, checked Oct 5); and a hosted Failure Lab bench at https://streamotter.dev/lab/ (Source failures S01–S06 and the connection exercises; there are only a few benches, so you may wait in a queue) **[confirm at launch: you leased one yourself]**.

@@ -6,7 +6,7 @@ Live state from Kafka in the browser, in a form you can trust. Browsers subscrib
 
 This package is StreamOtter in one install: the `streamotter` command (scaffold, validate, generate TypeScript types, develop with the local workbench, and run the production gateway), the Node.js gateway, and the browser SDK.
 
-> **Release candidate `0.2.0-rc.1`.** The API may still change before a stable release. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
+> **Release candidate `1.0.0-rc.1`** for 1.0.0, the first stable release. The public API is set for 1.0 unless the candidate turns up a bug that needs a change; from 1.0.0, every public operation keeps working until a new major version. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
 
 ```bash
 npm install streamotter
@@ -43,7 +43,7 @@ Open the workbench URL that `dev` prints and paste its one-time token. Then prev
 | `streamotter/gateway/operator` | Node.js | The V1.1 operator API for source failures (`getGatewayOperator`, `callOperator`); new in 0.2.0-rc.1 |
 | `streamotter/contracts` | Anywhere | Shared types, protocol constants, and configuration validation |
 | `streamotter/cli` | Node.js | The CLI's programmatic API (`runCli`, `generateFiles`) |
-| `streamotter/react` | Browser | The React provider and hooks (`StreamOtterProvider`, `useSubscription`, `useConnectionState`, `createStreamOtterHooks`); your app installs `react` 18 or later. New in 1.0.0 |
+| `streamotter/react` | Browser | The React provider and hooks (`StreamOtterProvider`, `useSubscription`, `useConnectionState`, `createStreamOtterHooks`); your app installs `react` 18 or later. New in 1.0.0-rc.1 |
 
 There is no bare `import "streamotter"`. Browser code and server code are separate subpaths, so a browser bundle never pulls in the gateway.
 

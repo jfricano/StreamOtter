@@ -56,6 +56,8 @@ An example value:
 
 Missing environment variables or an unreadable CA file stop startup with a clear message and never print the values. Credentials never appear in exports, logs, or traces.
 
+On a broker with ACLs, the principal needs Read on each source topic and Read on each source's consumer group; Read includes the Describe the gateway also uses. Failure handling adds the quarantine topic's ACLs below.
+
 Then point your channel at the source (`"source": "orders"`) and write a `map` handler that turns a record into the channel's state. See [Add live state to an existing app](./existing-app.md#5-write-the-handlers).
 
 ## Progress and commits
@@ -97,7 +99,7 @@ kafka-topics.sh --bootstrap-server kafka-1.example.com:9093 --command-config adm
 - **Retention decides how long evidence can be read back** for `evaluate` and `redrive`. Seven days is a reasonable start. Expired evidence is reported as expired; it never clears a recovery requirement. See [the runbook](./source-failures.md#64-topic-retention-and-expired-evidence).
 - **Protect it like the source data.** It holds full records. Give read access to operators only.
 
-**ACLs.** In addition to its source permissions, the gateway's principal needs Describe, DescribeConfigs, Write and Read on the quarantine topic, and Read and Delete on consumer groups with the prefix `streamotter-<projectId>-quarantine-read-`, which evidence read-back uses as throwaway groups that never commit. The full table and an example are in the [runbook](./source-failures.md#61-credentials-and-acls); ACL-enabled brokers are not tested yet.
+**ACLs.** In addition to its source permissions, the gateway's principal needs Describe, DescribeConfigs, Write and Read on the quarantine topic, and Read and Delete on consumer groups with the prefix `streamotter-<projectId>-quarantine-read-`, which evidence read-back uses as throwaway groups that never commit. The full table, an example, and what each missing ACL looks like are in the [runbook](./source-failures.md#61-credentials-and-acls). A broker with ACLs enforced has run the gateway with exactly these ACLs and V1's.
 
 **Source retention matters too.** A held record is never committed, so set the source topics' retention well above how long a hold may last. If retention deletes a held record, the gateway holds the source rather than jumping past it.
 
@@ -144,7 +146,7 @@ KafkaJS 2.2.4 against Apache Kafka 4.1.2 (single-node KRaft), from the [implemen
 
 Also verified against real Kafka: explicit per-record commits, poison records pausing without skipping, redelivery after a crash without the displayed state going backwards, rebalances and broker outages marking views `stale` and resynchronizing, and `startFrom` for new groups.
 
-V1.1 failure handling (new in 0.2.0-rc.1), against the same single local broker: byte-exact quarantine of binary keys, invalid UTF-8 and repeated headers; refusal of a missing or undersized quarantine topic; holding a source for 35 seconds without losing group membership; holding when the group position moves past a held record; advancing past a record with the commit confirmed by reading it back, including a gateway killed on either side of the commit; and reading evidence back byte for byte. On a local three-broker cluster (F47): acknowledged quarantine copies survived the leader's SIGKILL, and writes were refused, with the source held, while two of three brokers were down. Not yet tested: ACL-enabled brokers, network partitions, and managed services. See the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1).
+V1.1 failure handling (new in 0.2.0-rc.1), against the same single local broker: byte-exact quarantine of binary keys, invalid UTF-8 and repeated headers; refusal of a missing or undersized quarantine topic; holding a source for 35 seconds without losing group membership; holding when the group position moves past a held record; advancing past a record with the commit confirmed by reading it back, including a gateway killed on either side of the commit; and reading evidence back byte for byte. On a local three-broker cluster (F47): acknowledged quarantine copies survived the leader's SIGKILL, and writes were refused, with the source held, while two of three brokers were down. On a single broker with ACLs enforced (`StandardAuthorizer`, TLS and SCRAM-SHA-512): the gateway ran with exactly the [runbook's ACLs](./source-failures.md#61-credentials-and-acls), and each missing one gave its documented symptom, never progress past a held record. Not yet tested: network partitions and managed services. See the [implementation status](../IMPLEMENTATION_STATUS.md#v11-source-failure-handling-020-rc1).
 
 ## A local broker
 

@@ -14,7 +14,7 @@ import { after, before, describe, it } from "node:test";
 import { WORKBENCH_OPERATIONS, type WorkbenchHostManifest, type WorkbenchOperation } from "@streamotter/contracts";
 import { createManagementHandler } from "@streamotter/gateway/management";
 import { FAR_FUTURE, orderRecord, startHarness, type Harness } from "../integration/harness.ts";
-import { launch, openPage } from "./browser.ts";
+import { engine, launch, openPage } from "./browser.ts";
 import type { Browser, Page, WebSocket } from "playwright";
 
 const WORKBENCH = resolve(import.meta.dirname, "../../apps/workbench/dist");
@@ -300,8 +300,10 @@ ${json}
     await tab("Inspect").click();
     await page.getByRole("columnheader", { name: "Stage" }).waitFor();
     assert.equal(await page.getByText("Not available in this environment").count(), 0);
-    // The only console message is Chromium logging the discovery 404 that this case is about.
-    assert.deepEqual(problems, ["console: Failed to load resource: the server responded with a status of 404 (Not Found)"]);
+    // The only console message is the browser logging the discovery 404 that this case is about.
+    // Chromium and WebKit log it; Firefox doesn't log HTTP error statuses to the console.
+    const notFound = "console: Failed to load resource: the server responded with a status of 404 (Not Found)";
+    assert.deepEqual(problems, engine === "firefox" ? [] : [notFound]);
     assert.deepEqual(seen.filter(entry => entry.path.startsWith(LEGACY_API) && entry.headers.authorization !== undefined), []);
   });
 

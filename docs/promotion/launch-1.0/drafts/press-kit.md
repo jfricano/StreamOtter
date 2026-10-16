@@ -4,7 +4,7 @@
 >
 > **Changed Oct 7 (D2 answered no):** hosted Lab with S01–S06 and blog.streamotter.dev are launch gates; conditionals removed.
 >
-> **Placeholders in this file:** `{{LAUNCH_DATE}}` (the 1.0.0 release and launch date; none set) · `{{RC1_DATE}}` (when `1.0.0-rc.1` is published, planned for T-14; `1.0.0` at T-5, D3) · `{{MAINTAINER_BIO}}` (2–3 sentences only you can write) · `{{CONTACT}}` (your preferred press contact, or "open an issue on GitHub")
+> **Placeholders in this file:** `{{LAUNCH_DATE}}` (the 1.0.0 release and launch date; none set) · `{{RC1_DATE}}` (when `1.0.0-rc.1` is published, planned for T-14; `1.0.0` on launch day, the same day as the demo and the posts) · `{{MAINTAINER_BIO}}` (2–3 sentences only you can write) · `{{CONTACT}}` (your preferred press contact, or "open an issue on GitHub")
 
 > **Where and when:** optional (PUBLIC_LAUNCH.md); the source for a press page on streamotter.dev (not the README or release notes) and for anyone who asks for "a paragraph about it." Publish it only after `1.0.0` is on npm, once every placeholder and **[update at 1.0]** marker is resolved. During the quiet `1.0.0-rc.1` period, don't publish it. **Rules:** every statement must match `docs/IMPLEMENTATION_STATUS.md` for `1.0.0`; no adoption, performance or capacity numbers; plans stay labeled as plans.
 
@@ -71,7 +71,7 @@ Image: `lineage-strip.png` from the launch visuals in PR #65 (also `-dark`, `-sq
 | Runtime | Node.js 24 or later for the gateway and CLI (24.15 or later where the failure-handling journal runs); current evergreen browsers for the SDK |
 | Built on | KafkaJS 2.2.4 (pinned behind an internal adapter); Socket.IO 4.8.3, WebSocket only; Node's built-in SQLite for the incident journal |
 | Kafka verified | Apache Kafka 4.1.2: TLS with a supplied CA; TLS with SASL PLAIN, SCRAM-SHA-256, SCRAM-SHA-512; quarantine durability on a local three-broker cluster |
-| Tested | Acceptance scenarios, real-Kafka tests, a declared-workload resource test, browser tests in Chromium **[update at 1.0: Firefox and WebKit]**, a production-mode deployment behind a TLS-terminating proxy **[update at 1.0: with failure handling on]**, and install tests from packed tarballs and from the npm registry. CI runs on Node 24 and 26. Details and commands: implementation status. |
+| Tested | Acceptance scenarios, real-Kafka tests, a declared-workload resource test, browser tests in Chromium, Firefox and WebKit, a broker with ACLs enforced, a production-mode deployment behind a TLS-terminating proxy (also with failure handling on), and install tests from packed tarballs and from the npm registry. CI runs on Node 24 and 26. Details and commands: implementation status. |
 | Predecessor | KafkaSocks (2021, OSLabs) |
 
 ## What it does (1.0)
@@ -94,7 +94,7 @@ Image: `lineage-strip.png` from the launch visuals in PR #65 (also `-dark`, `-sq
 
 - one gateway per project (no multi-gateway operation);
 - no durable replay or history (a fresh snapshot after a gap), and no durable revocation store;
-- Chromium is the only automatically tested browser **[update at 1.0]**;
+- browsers are tested automatically in Chromium, Firefox and WebKit (Playwright);
 - Kafka is verified only against Apache Kafka 4.1.2; managed Kafka services, other versions and TLS with the system trust store are unverified; a broker with ACLs enabled is untested **[update at 1.0]**;
 - JSON payloads only (no Schema Registry, Avro or Protobuf), and no OAuth, IAM or mutual TLS to Kafka;
 - failure handling: the journal is local to one host and needs Node.js 24.15 or later; it stops accepting writes at 256 MiB (no pruning command yet), keeping the source held; the operator socket isn't available on Windows; no tests yet for network partitions, disk loss or managed Kafka;

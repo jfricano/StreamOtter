@@ -1,6 +1,6 @@
 # Run StreamOtter in production
 
-September 25, 2026, updated October 2026 · Applies to the `0.1.0` release candidates and to `0.2.0-rc.1`; the [health checks](#health-checks) and [source-failure handling](#source-failure-handling-v11) sections describe V1.1 features that are new in `0.2.0-rc.1`
+September 25, 2026, updated October 2026 · Applies to the `0.1.0` release candidates, `0.2.0-rc.1` and `1.0.0-rc.1`; the [health checks](#health-checks) and [source-failure handling](#source-failure-handling-v11) sections describe V1.1 features that are new in `0.2.0-rc.1`
 
 In production, StreamOtter is one gateway process (`streamotter start`), behind the reverse proxy that serves your application, consuming Kafka over TLS. This guide covers installing, starting, supervising, and proxying it, and what it doesn't do. For development, see [Getting started](./guides/getting-started.md).
 
@@ -194,6 +194,8 @@ https://app.example.com {
 ```
 
 Bind the gateway to loopback (or a private interface) so browsers reach it only through the proxy. Caddy forwards WebSocket upgrades and the `Origin` header without extra configuration. The test also covers a graceful restart (`SIGTERM`, then start again): open views show *stale* and resynchronize from snapshots once the new gateway has joined its consumer group.
+
+It runs the same deployment a second time with failure handling on, as in the [systemd example](#example-systemd-unit-with-failure-handling): a state directory from `streamotter init --failures`, a `quarantine-resync` policy with the example application's recovery guard, `--operator-socket` and `--health` on loopback. A record the gateway can't read holds the source: readiness reports `source-held`, the CLI on the gateway's host shows the incident, and the page shows the order as out of date while the application and the socket through the proxy keep working. Once the application re-publishes the order, `streamotter sources reassess` moves past the record and the page goes live again. The recovery boundary survives a graceful restart.
 
 ### nginx (not exercised)
 

@@ -5,8 +5,8 @@ import { docsChannel, repositoryRef } from "../integrations/release-channel.mjs"
 
 /**
  * The workspace's streamotter version. A release build is built from this version's tag, so the
- * site describes that release. On main between releases it is still the last version published
- * to npm, which a preview's banner names.
+ * site describes that release. On main between releases it is the last version published to npm,
+ * which a preview's banner names, except between a release's preparation and its publication.
  */
 export const RELEASE: string = streamotter.version;
 

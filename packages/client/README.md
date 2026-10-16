@@ -4,7 +4,7 @@
 
 The StreamOtter browser SDK. Subscribe to a **state channel** served by a [StreamOtter gateway](https://www.npmjs.com/package/@streamotter/gateway): each subscription gets an authoritative snapshot, then full-state updates in revision order. It also reports whether the view is verifiably current (`live`) or not (`stale`), so a screen is never silently wrong.
 
-> **Release candidate `0.2.0-rc.1`.** The API may still change before a stable release. Package versions follow SemVer independently of the V1 protocol (`protocolVersion: 1`).
+> **Release candidate `1.0.0-rc.1`** for 1.0.0, the first stable release. The public API is set for 1.0 unless the candidate turns up a bug that needs a change; from 1.0.0, every public operation keeps working until a new major version. Package versions follow SemVer independently of the V1 protocol (`protocolVersion: 1`).
 
 ```bash
 npm install @streamotter/client
@@ -143,7 +143,7 @@ The [reference application](https://github.com/jfricano/StreamOtter/tree/main/ex
 - [Add live state to an existing app](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/existing-app.md): your sessions, handlers, and this SDK together
 - [Troubleshooting](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/troubleshooting.md): `FORBIDDEN`, `UNAUTHENTICATED`, `stale`, `resync-required`, and more
 - [V1 API specification](https://github.com/jfricano/StreamOtter/blob/main/docs/V1_API.md): the SDK (§4), states and synchronization (§5), and errors (§9)
-- [Implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md): what is verified, and the known limitations (for example, automated browser checks cover Chromium only)
+- [Implementation status](https://github.com/jfricano/StreamOtter/blob/main/docs/IMPLEMENTATION_STATUS.md): what is verified, and the known limitations (for example, which browsers are tested automatically)
 - [Repository](https://github.com/jfricano/StreamOtter) · [Issues](https://github.com/jfricano/StreamOtter/issues) · [Security policy](https://github.com/jfricano/StreamOtter/blob/main/SECURITY.md)
 
 ## StreamOtter packages

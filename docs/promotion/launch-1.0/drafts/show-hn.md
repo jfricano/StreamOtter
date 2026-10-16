@@ -8,7 +8,7 @@
 >
 > **Markers:** **[update at 1.0]** means the 1.0 gate (an ACL-enabled broker, Firefox and WebKit, the proxy deployment with failure handling on, one integrator walking the runbook) or the release itself may change the line. Recheck at T-7. **[confirm at launch]** means check it yourself that morning (for the hosted Lab: that you leased a bench).
 
-> **Where and when:** news.ycombinator.com/submit on `{{LAUNCH_DATE}}` (a Tuesday or Wednesday, about 8:00 a.m. ET), only after the go/no-go in PUBLIC_LAUNCH.md passes **and `1.0.0` is on npm `latest`.** Never submit on `1.0.0-rc.1`: you get one real Show HN, and a version bump doesn't qualify for a second.
+> **Where and when:** news.ycombinator.com/submit on `{{LAUNCH_DATE}}` (a Tuesday or Wednesday, 11:00 a.m. ET or later, once the `1.0.0` rollout is accepted), only after the go/no-go in PUBLIC_LAUNCH.md passes **and `1.0.0` is on npm `latest`.** Never submit on `1.0.0-rc.1`: you get one real Show HN, and a version bump doesn't qualify for a second.
 >
 > **Rules:**
 > - The title starts with "Show HN", is at most 80 characters, and has no superlatives. **You write the final title.** The ones below are inputs.
@@ -23,7 +23,7 @@
 HN has been blocking Show HN submissions from some accounts, reported for new ones ("your account isn't able to submit"); the moderators don't say what qualifies. Check today, logged in, at news.ycombinator.com/submit, and note your username, karma and account age privately (PUBLIC_LAUNCH.md §11 keeps only the checklist item). If it's thin, take part in ordinary threads in your own words between now and launch.
 
 **Plan B (D8 in PUBLIC_LAUNCH.md), decided at T-7:** if the account can't submit by T-7 (or you're unsure and hn@ycombinator.com hasn't answered); the T-1 go/no-go can still trigger it.
-- **T-0 Tue, 8:00 ET becomes r/apachekafka** (`reddit.md` variant 1, rewritten in your words, leading with the bad-record question and the break-it recipes). LinkedIn at noon as planned, newsletters at T+1, r/node moved up to T+2 (PUBLIC_LAUNCH.md §4.5).
+- **T-0 Tue, 11:00 ET or later, becomes r/apachekafka** (`reddit.md` variant 1, rewritten in your words, leading with the bad-record question and the break-it recipes). LinkedIn at noon as planned, newsletters at T+1, r/node moved up to T+2 (PUBLIC_LAUNCH.md §4.5).
 - **Show HN later**, once the account qualifies, as the project's first and only Show HN, with whatever "Making it lie" turned up. Never repost.
 - You can ask hn@ycombinator.com whether your account can submit. **Never have a friend or anyone else submit it for you**, and don't post the repo as an ordinary link to get around the block.
 
@@ -79,7 +79,7 @@ About 200–300 words, your own voice, no marketing adjectives. In this order.
 
 ## Facts to keep straight (from the repository, October 5, 2026)
 
-- **Version:** launch on `1.0.0`. Today npm `latest` is `0.2.0-rc.1` (V1 plus V1.1, V1.2 and V1.2.1), published October 5 UTC with provenance. `1.0.0-rc.1` comes first, once the V1.1 acceptance packet's release checks pass, at T-14 (quiet apart from the Console.dev Betas email); `1.0.0` follows at T-5, a Thursday (D3). There is no final `0.2.0`. Never write `@next` (it still points at `0.1.0-rc.1` on five packages).
+- **Version:** launch on `1.0.0`. Today npm `latest` is `0.2.0-rc.1` (V1 plus V1.1, V1.2 and V1.2.1), published October 5 UTC with provenance. `1.0.0-rc.1` comes first, once the V1.1 acceptance packet's release checks pass, at T-14 (quiet apart from the Console.dev Betas email); `1.0.0` is published on launch day itself, the same morning as the updated demo and the posts, after everything was staged on the candidate. There is no final `0.2.0`. Never write `@next` (it still points at `0.1.0-rc.1` on five packages).
 - **Packages:** `npm install streamotter` installs everything: the command, `streamotter/gateway` and `streamotter/client`. A frontend deployed separately can use `@streamotter/client`. All six packages share one version.
 - **Requirements:** Node.js 24 or later for the gateway and CLI; 24.15 or later where the failure-handling journal runs. The SDK targets current evergreen browsers.
 - **Delivery states:** `authorizing → synchronizing → live`, plus `stale`, `resync-required` and `failed`. V1.1 adds no browser states and doesn't change the protocol or SDK.
