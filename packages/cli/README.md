@@ -4,7 +4,7 @@
 
 The `streamotter` command: scaffold a project, validate its configuration, generate TypeScript channel types, run a development gateway with the local workbench, and start the production gateway.
 
-> **Release candidate `0.2.0-rc.1`.** The API may still change before a stable release. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
+> **Release candidate `1.0.0-rc.1`** for 1.0.0, the first stable release. The public API is set for 1.0 unless the candidate turns up a bug that needs a change; from 1.0.0, every public operation keeps working until a new major version. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
 
 ```bash
 npm install @streamotter/cli

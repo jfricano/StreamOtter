@@ -1,0 +1,78 @@
+# StreamOtter 1.0.0-rc.1 — release handoff
+
+October 16, 2026 · Prepared, not published. The release candidate for `1.0.0`, the V1 public launch. This page says what ships, what has to be true before the tag, and what the owner does to publish. It links the detailed documents instead of repeating them, and contains no credentials.
+
+## What ships
+
+All six packages at `1.0.0-rc.1`: `streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli` and `@streamotter/workbench`. The user-facing story is the `1.0.0-rc.1` entry in [CHANGELOG.md](../../../CHANGELOG.md):
+
+- React hooks (V1.3): `@streamotter/client/react` and `streamotter/react` ([V1.3](../v1.3/README.md)).
+- The public API trimmed before 1.0 commits to it ([PUBLIC_API_TRIM.md](PUBLIC_API_TRIM.md)). This is the only change that can break an app built on `0.2.0-rc.1`, and only at build time.
+- Source-failure fixes from the clean-machine run of the public docs (#83), and record data kept out of the "Source paused" log line (#70).
+- `streamotter init` writes canonical configuration, and the CLI, workbench and `nextAction` wording are corrected.
+
+No configuration, protocol, `configVersion` or journal format change. The docs site (`apps/docs`) and blog (`apps/blog`) live in this repository but are not npm packages; this release doesn't publish them.
+
+**Release rule** (launch plan, decided October 5): `1.0.0` is `1.0.0-rc.N` republished with only its version and changelog changed, after at least seven days on that candidate with no blocking bug. A runtime fix ships as `rc.N+1`, and the seven days start again.
+
+## Merged since 0.2.0-rc.1
+
+| PR | What |
+| --- | --- |
+| [#70](https://github.com/jfricano/StreamOtter/pull/70) | The "Source paused" log line keeps record data out |
+| [#73](https://github.com/jfricano/StreamOtter/pull/73) | V1.3 React hooks |
+| [#72](https://github.com/jfricano/StreamOtter/pull/72), [#77](https://github.com/jfricano/StreamOtter/pull/77), [#79](https://github.com/jfricano/StreamOtter/pull/79) | Doc comments on every export, the public API trim, and the docs site with its release channel |
+| [#76](https://github.com/jfricano/StreamOtter/pull/76) | The blog app |
+| [#78](https://github.com/jfricano/StreamOtter/pull/78), [#80](https://github.com/jfricano/StreamOtter/pull/80) | Manual Pages deploy workflows for the docs and blog, and their pnpm bootstrap fix |
+| [#83](https://github.com/jfricano/StreamOtter/pull/83) | Clean-machine run fixes (F1–F5) and documentation corrections |
+| #60, #62–#67, #69, #71, #74, #82 | Documentation, brand assets, Under the Hood, promotion docs and repository housekeeping |
+
+## Gates before the tag
+
+The roadmap's [npm versions](../../API_AND_FEATURE_ROADMAP.md#npm-versions) and the V1.1 [acceptance packet §10](../v1.1/ACCEPTANCE_PACKET.md#10-recommended-release-status) name four checks before `1.0.0-rc.1`:
+
+| Check | State |
+| --- | --- |
+| A Kafka broker with ACLs enabled | This release adds the `test:kafka:acl` tier: a broker with authorization on, where the gateway holds exactly the runbook's ACLs. Results are in [implementation status](../../IMPLEMENTATION_STATUS.md). |
+| Firefox and WebKit (F45) | This release runs the browser tier on all three engines in **Extended checks**. The first passing run on the release `main` is the evidence. |
+| The proxy deployment with `failureHandling` on | This release adds that case to `test:deploy`. |
+| One integrator walks the [source-failure runbook](../../guides/source-failures.md) end to end on their own machine with real Kafka | **Open, the owner's.** No outside integrator is named. A clean-room agent run of the public docs on `0.2.0-rc.1` (October 14) found F1–F5, fixed in #83, but it ran on Linux and isn't a person. The plan is the owner's own Mac run on the release source (the no-Kafka recipe and `npm run dev:lab` in lontra-creek, about 30–45 minutes) and the wording of a public gate issue. Whether that satisfies the check is the owner's call. |
+
+Then the [release checklist](../../RELEASE_CHECKLIST.md): main-push CI and **Extended checks** on the exact release `main`, including the replicated tier and the new ACL and browser jobs.
+
+## What does not gate this candidate
+
+These gate the launch (T-0) or `1.0.0`, not `1.0.0-rc.1`:
+
+- **The hosted ACL change on streamotter.dev** (the trial and then enforcement, run by the rollout with devops). T-0 is set only after enforcement is accepted. The local ACL tier above tests the library against a broker with authorization; it does not replace the hosted rollout.
+- **The site on the candidate:** Lontra Creek re-pins to `1.0.0-rc.1` on staging first, and the T-7 rehearsal runs on it. Production re-pins to `1.0.0`. Publishing changes nothing on the site until a Lontra Creek PR moves its pin.
+- **Pup Patrol** may pin the candidate for a preview; it pins `1.0.0` before it goes live.
+- **docs.streamotter.dev and blog.streamotter.dev:** preview deployments worked on October 15 (after #80). Production docs build only from the `v1.0.0` tag (`DOCS_CHANNEL=release`, which refuses a prerelease). The blog must be live before T-7.
+- **The recording** and the remaining launch-kit items in the promotion plan.
+
+## Owner steps
+
+1. Review and merge the release preparation PR. Ordinary merges never publish.
+2. Confirm main-push CI is green on the exact merge commit, then run **Extended checks** on it (Actions → Extended checks → Run workflow, branch `main`) and check every job, including the ACL tier and Firefox/WebKit.
+3. Do the runbook walk above, and decide the integrator check.
+4. Tag that exact commit:
+
+   ```bash
+   git fetch origin main
+   git tag -a v1.0.0-rc.1 -m "StreamOtter 1.0.0-rc.1" <merge commit>
+   git push origin v1.0.0-rc.1
+   ```
+
+5. Actions → **Publish approved npm release** → Run workflow from `main` with tag `v1.0.0-rc.1` and a distribution tag. The launch plan says `latest` ("leave rc.1 on `latest` until `1.0.0`"), as with every release candidate so far; the workflow accepts `latest` or `next` for a prerelease, and the choice is the owner's. Review the preparation results and approve the `npm-release` job.
+6. The workflow verifies the registry and the install (with TLS Kafka) and creates the GitHub prerelease. Then check the npm pages show the new READMEs.
+
+After publishing, a follow-up PR records the publication (as for `0.2.0-rc.1`): the receipt in this file, the CHANGELOG date, and the README, implementation status and release plan status lines. With `latest` on the candidate, the docs preview banner reads "npm latest is 1.0.0-rc.1"; `UPCOMING` in `apps/docs/src/site.ts` stays `1.0` until `1.0.0` is out.
+
+## After publishing
+
+- `npx streamotter@1.0.0-rc.1 --help` runs, and the tier (a) ["make it lie" recipe](../../promotion/launch-1.0/drafts/make-it-lie-local.md) works in a clean folder on the candidate (it asks for a re-run on `1.0.0-rc.1` and `1.0.0`).
+- The Console.dev Betas email is the one announcement at `1.0.0-rc.1`; everything else waits for `1.0.0` (launch plan).
+
+## Rollback
+
+Never unpublish. If `1.0.0-rc.1` is broken and was published on `latest`: move `latest` back to `0.2.0-rc.1` for all six packages, deprecate `1.0.0-rc.1` with what is wrong, and fix forward as `1.0.0-rc.2` through the same checklist ([corrections](../../RELEASE_CHECKLIST.md#corrections-and-partial-releases)). Moving a distribution tag is a metadata correction and needs the owner's separate authorization. The journal format is unchanged; before taking a gateway back to `0.2.0-rc.1`, follow the runbook's [upgrade and downgrade notes](../../guides/source-failures.md#8-upgrade-and-downgrade).

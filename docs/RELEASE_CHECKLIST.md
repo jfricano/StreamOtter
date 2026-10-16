@@ -66,7 +66,7 @@ git push origin v<version>
 ## 4. Select and approve publication (owner)
 
 - [ ] Actions → **Publish approved npm release** → **Run workflow**, branch `main`, explicit existing release tag and distribution tag.
-- [ ] Stable versions use `latest`; prereleases accept the explicitly selected `latest` or `next`. For `0.2.0-rc.1`, Jason approved `latest`; no secondary `next` promotion is included. Future releases still require an explicit selection.
+- [ ] Stable versions use `latest`; prereleases accept the explicitly selected `latest` or `next`. For `0.2.0-rc.1`, Jason approved `latest`; no secondary `next` promotion is included. For `1.0.0-rc.1`, the launch plan proposes `latest` again, to stay there until `1.0.0`; the owner confirms it when dispatching. Every release requires an explicit selection.
 - [ ] Review preparation results, source SHA, package versions, selected distribution tag, and artifact hashes.
 - [ ] Approve the `npm-release` job for this release only. No token/login/OTP needs to be supplied to the workflow.
 

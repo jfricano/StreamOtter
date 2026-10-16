@@ -6,7 +6,7 @@ The public types, protocol constants, error vocabulary, and runtime validation s
 
 **Most applications don't install it directly.** [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) and [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) re-export the types you need. Install this package when you build tooling around StreamOtter: editors, linters, or deployment checks for `streamotter.json`, or anything that must agree exactly with the gateway's rules.
 
-> **Release candidate `0.2.0-rc.1`.** The API may still change before a stable release. Package versions follow SemVer independently of the V1 protocol (`PROTOCOL_VERSION = 1`) and `configVersion: 1`.
+> **Release candidate `1.0.0-rc.1`** for 1.0.0, the first stable release. The public API is set for 1.0 unless the candidate turns up a bug that needs a change; from 1.0.0, every public operation keeps working until a new major version. Package versions follow SemVer independently of the V1 protocol (`PROTOCOL_VERSION = 1`) and `configVersion: 1`.
 
 ```bash
 npm install @streamotter/contracts

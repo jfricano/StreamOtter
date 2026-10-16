@@ -16,7 +16,7 @@ Package guides, also shown on npm: [`streamotter`](../packages/streamotter/READM
 ## Reference
 
 - [V1 API specification](./V1_API.md): configuration, handlers, SDK, states and synchronization, source progress and limits, access, protocol, errors, management, CLI, and the refinements made during implementation (§13).
-- [Implementation status](./IMPLEMENTATION_STATUS.md): what is implemented, the commands that verify it, the results, the Kafka support matrix, and the limitations, for V1 and for V1.1, which ships in 0.2.0-rc.1.
+- [Implementation status](./IMPLEMENTATION_STATUS.md): what is implemented, the commands that verify it, the results, the Kafka support matrix, and the limitations, for V1, for V1.1 (since 0.2.0-rc.1) and for the V1.3 React hooks (new in 1.0.0-rc.1).
 - [Changelog](../CHANGELOG.md).
 
 ## Project

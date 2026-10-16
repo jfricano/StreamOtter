@@ -160,7 +160,7 @@ A subscription always starts with an authoritative snapshot from your `snapshot`
 
 ## Next
 
-- [Add live state to an existing app](./existing-app.md): real sessions, your database, Kafka events, and React (with the React hooks from 1.0.0).
+- [Add live state to an existing app](./existing-app.md): real sessions, your database, Kafka events, and React (with the React hooks new in 1.0.0-rc.1).
 - [Connect to Kafka](./kafka.md): replace the fixture with a topic, over TLS and SASL.
 - [Run in production](../DEPLOYMENT.md): `streamotter start`, one gateway, and a reverse proxy.
 - [Troubleshooting](./troubleshooting.md).

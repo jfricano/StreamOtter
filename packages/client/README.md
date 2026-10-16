@@ -4,7 +4,7 @@
 
 The StreamOtter browser SDK. Subscribe to a **state channel** served by a [StreamOtter gateway](https://www.npmjs.com/package/@streamotter/gateway): each subscription gets an authoritative snapshot, then full-state updates in revision order. It also reports whether the view is verifiably current (`live`) or not (`stale`), so a screen is never silently wrong.
 
-> **Release candidate `0.2.0-rc.1`.** The API may still change before a stable release. Package versions follow SemVer independently of the V1 protocol (`protocolVersion: 1`).
+> **Release candidate `1.0.0-rc.1`** for 1.0.0, the first stable release. The public API is set for 1.0 unless the candidate turns up a bug that needs a change; from 1.0.0, every public operation keeps working until a new major version. Package versions follow SemVer independently of the V1 protocol (`protocolVersion: 1`).
 
 ```bash
 npm install @streamotter/client

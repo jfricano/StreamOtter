@@ -1,8 +1,12 @@
 # Changelog
 
-All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, and `@streamotter/workbench`) are released together with the same version. `streamotter` first appeared in `0.1.0-rc.3`. Package versions follow [Semantic Versioning](https://semver.org/) and are independent of the V1 protocol (`protocolVersion: 1`) and configuration format (`configVersion: 1`). Before 1.0.0, a minor release may contain breaking API changes; they will be listed here.
+All six packages (`streamotter`, `@streamotter/contracts`, `@streamotter/client`, `@streamotter/gateway`, `@streamotter/cli`, and `@streamotter/workbench`) are released together with the same version. `streamotter` first appeared in `0.1.0-rc.3`. Package versions follow [Semantic Versioning](https://semver.org/) and are independent of the V1 protocol (`protocolVersion: 1`) and configuration format (`configVersion: 1`). Before 1.0.0, a minor release could contain breaking API changes, listed here. From 1.0.0, every public operation keeps working until a new major version.
 
-## Unreleased
+## [1.0.0-rc.1] — not yet published
+
+The release candidate for `1.0.0`, StreamOtter's V1 public launch. It adds React hooks (the V1.3 milestone), trims the public API before 1.0 commits to it, and fixes the source-failure defects that a clean-machine run of the public docs found. `1.0.0` will be this candidate republished with only its version and changelog changed, after at least seven days on it with no blocking bug; a runtime fix would ship as `1.0.0-rc.2` first. The release handoff is [docs/releases/1.0.0/RELEASE_HANDOFF.md](docs/releases/1.0.0/RELEASE_HANDOFF.md).
+
+Upgrading from `0.2.0-rc.1` needs no migration: configurations, the protocol (`protocolVersion: 1`), `configVersion: 1` and the failure journal's format are unchanged. The one change that can break an app's build is an import of a name listed under "Removed from the public API". Behavior changes are listed under "Changed" and "Fixed"; one of them can pause a source at startup that `0.2.0-rc.1` ran, when an open incident was captured on another Kafka cluster.
 
 ### Removed from the public API
 
@@ -16,7 +20,7 @@ Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages sha
 
 ### Added
 
-- React hooks (V1.3, shipping in 1.0.0): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
+- React hooks (V1.3): `@streamotter/client/react`, re-exported as `streamotter/react`, with `StreamOtterProvider`, `useSubscription`, `useConnectionState`, `useStreamOtterClient` and `createStreamOtterHooks` for channels typed from the generated `AppChannels`, and the `SubscriptionOptions`, `SubscriptionResult`, `StreamOtterHooks` and `StreamOtterProviderProps` types. `react` 18 or later is an optional peer dependency of `@streamotter/client` and `streamotter`; apps that don't import the subpath are unchanged. See [docs/releases/v1.3](docs/releases/v1.3/README.md) and its [API contract](docs/releases/v1.3/API.md).
 - `streamotter/gateway/operator` exports the types that `callOperator`'s requests and results use (`OperatorOperation`, `OperatorRequests`, `IncidentProgress`, `Trace`, `Page` and others), so operator code no longer needs `streamotter/contracts`.
 - The docs site for docs.streamotter.dev (`apps/docs`): the guides, an API reference generated from the doc comments on every public export, and StreamOtter Under the Hood. A build is an unreleased preview, with a banner and `noindex`, unless `DOCS_CHANNEL=release`, which builds only from a release tag.
 
