@@ -27,7 +27,7 @@ The code started as the planning-phase prototype. On October 6, 2026 (Pacific) t
 - **Two gaps closed.** A2 (server rendering) and P3 (the latest `getToken`) had no test. Both are tested now. The P3 test was checked by removing the code that keeps `getToken` current, and it failed as it should.
 - **Stricter existing tests.** A1 covers all three hooks. P4 checks that a supplied client is never closed. S5 checks that a client change clears the error. S6 checks that `resync` keeps its identity. P1 checks that the provider supplies `null` before its effect runs.
 
-## Independent review (October 6, 2026 Pacific)
+## Code review (October 6, 2026 Pacific)
 
 Three reviewers with no prior context, each with one lens, reviewed the branch after the [API first](#api-first) pass, per the project's convention. All three reports are in the thread; what they found and what changed:
 
@@ -62,11 +62,11 @@ On October 6, 2026 (Pacific), after the review, the owner decided the hooks ship
 1. **Merge order.** Unchanged: the branch adds files and makes additive edits to two manifests, `tests/package.json`, the lockfile, the install test and documentation, so it merges onto `main` ahead of the release candidate. The lockfile is the likeliest conflict, regenerated with `pnpm install`.
 2. **Versions.** No version bump in this branch; the release candidate sets `1.0.0-rc.1` for all six packages as planned. The roadmap's [npm table](../../API_AND_FEATURE_ROADMAP.md#npm-versions) is back to its pre-V1.3 numbering (V2.0 = `1.1.0`, and so on), and the plan's [versioning section](./README.md#versioning-and-sequencing) records the decision.
 3. **Launch gate.** One added check on the release candidate: the extended workflow's install and browser tiers on Node 24 and 26 with the hooks included.
-4. **Review.** Done before folding; see [Independent review](#independent-review-october-6-2026-pacific).
+4. **Review.** Done before folding; see [Code review](#code-review-october-6-2026-pacific).
 5. **Documentation.** The CHANGELOG's Unreleased entry says the hooks ship in `1.0.0` and becomes part of that entry at release; the release index, plan, status document, V1 API §13 and the all-in-one README say `1.0.0` instead of "unreleased"; the root README and getting-started guide name the hooks.
 6. **Stability.** From `1.0.0` the hooks API in [API.md](./API.md) is covered by the 1.x compatibility promise, recorded in its decisions log. A breaking change found later waits for `2.0.0`; additions are minors.
 
 ## Open items
 
 - The owner's review and merge of the consolidated V1.3 pull request, ahead of the `1.0.0` release candidate.
-- The demo, [Pup Patrol](./PUP_PATROL.md), is built in its own repository and in lontra-creek, and is in independent review there.
+- The demo, [Pup Patrol](./PUP_PATROL.md), is built in its own repository and in lontra-creek, and is in code review there.

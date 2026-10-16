@@ -21,6 +21,16 @@ The gateway consumes Kafka and runs your application-owned mapping and snapshot 
 
 > **Status: `1.0.0-rc.1`, the release candidate for 1.0.0, is prepared but not yet on npm; npm `latest` is `0.2.0-rc.1`** ([publication receipt](./docs/releases/0.2.0-rc.1/RELEASE_HANDOFF.md#verified-publication)). From 1.0.0, every public operation keeps working until a new major version. What is verified, how, and the known limitations: [implementation status](./docs/IMPLEMENTATION_STATUS.md).
 
+## Can you make it lie?
+
+StreamOtter makes two promises: a view never reports `live` while it shows anything other than the newest state, and a bad record is never skipped silently. Try to break either one:
+
+- **In your browser:** press **Drop my connection** on [streamotter.dev](https://streamotter.dev). Every view goes `stale`, then `live` again once fresh snapshots arrive.
+- **On your machine, without Kafka:** [hold a source at a malformed record](./docs/make-it-lie.md) in about two minutes, then try to get it skipped.
+- **With real Kafka:** `npm run dev:lab` in [Lontra Creek](https://github.com/jfricano/lontra-creek), the demo's source, runs the Failure Lab locally with Docker.
+
+If you find a way, please [open an issue](https://github.com/jfricano/StreamOtter/issues/new).
+
 ## Install
 
 ```bash
@@ -29,7 +39,7 @@ npm install streamotter
 
 [`streamotter`](https://www.npmjs.com/package/streamotter) is everything in one install: the `streamotter` command, the gateway (`streamotter/gateway`), and the browser SDK (`streamotter/client`). A frontend that lives apart from the gateway can install just [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client). Node.js 24 or later for the gateway and CLI; current evergreen browsers for the SDK.
 
-## Try it in five minutes
+## Try it without Kafka
 
 In a new folder; no Kafka needed, because the scaffold uses a built-in fixture source.
 
@@ -97,7 +107,7 @@ Failure handling with a durable journal needs Node.js 24.15 or later. Start with
 
 ## Contributing
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](./CONTRIBUTING.md) covers building from source, the test tiers, and running the example. Report security problems as described in [SECURITY.md](./SECURITY.md).
+Issues and pull requests are welcome. [CONTRIBUTING.md](./CONTRIBUTING.md) covers building from source, the test tiers, and running the example. Report security problems as described in [SECURITY.md](./SECURITY.md). Everyone taking part follows the [code of conduct](./CODE_OF_CONDUCT.md).
 
 ## License
 

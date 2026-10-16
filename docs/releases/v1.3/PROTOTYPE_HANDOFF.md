@@ -34,4 +34,4 @@ What the patch contains, and what was verified:
 3. Documentation pass per the plan: client README, guides, V1_API §13, IMPLEMENTATION_STATUS, README, CHANGELOG.
 4. Settle the plan's open decisions with the owner; they are small and the prototype takes the recommended answer to each.
 5. Version: nothing until release; the hooks ship as `1.1.0` after the `1.0.0` launch. (Later the same day the owner folded them into `1.0.0`; see the [plan](./README.md#versioning-and-sequencing).)
-6. The owner reviews before the PR opens (the usual independent review was skipped during planning at his request).
+6. The owner reviews before the PR opens (the usual separate code review was skipped during planning at his request).
