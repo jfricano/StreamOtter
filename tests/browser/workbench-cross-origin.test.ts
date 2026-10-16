@@ -17,7 +17,7 @@ import { after, before, describe, it } from "node:test";
 import type { WorkbenchHostManifest, WorkbenchOperation } from "@streamotter/contracts";
 import { createManagementHandler } from "@streamotter/gateway/management";
 import { FAR_FUTURE, orderRecord, startHarness, type Harness } from "../integration/harness.ts";
-import { launch, openPage } from "./browser.ts";
+import { engine, launch, openPage } from "./browser.ts";
 import type { Browser, Page } from "playwright";
 
 const WORKBENCH = resolve(import.meta.dirname, "../../apps/workbench/dist");
@@ -244,7 +244,11 @@ await import("/workbench/assets/${manifest.entry.script}");
   });
 
   const apiCalls = () => apiSeen.filter(entry => entry.path.startsWith(`${API_BASE}/`) && entry.method !== "OPTIONS");
-  const pageErrors = () => problems.filter(problem => problem.startsWith("pageerror"));
+  // WebKit reports a fetch that CORS refuses, which these tests cause on purpose, as a page error
+  // ("Fetch API cannot load … due to access control checks."), although the workbench handles the
+  // rejection. Chromium and Firefox only log it, so any other page error still fails the test.
+  const CORS_REFUSAL = /due to access control checks\.$/;
+  const pageErrors = () => problems.filter(problem => problem.startsWith("pageerror") && !(engine === "webkit" && CORS_REFUSAL.test(problem)));
 
   it("without a session, shows the session-ended state; Reload recovers once the API origin has set its cookie", async () => {
     await page.goto(`${siteOrigin}/workbench/main/`);
