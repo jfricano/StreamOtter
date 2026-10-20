@@ -112,3 +112,7 @@ Issues and pull requests are welcome. [CONTRIBUTING.md](./CONTRIBUTING.md) cover
 ## License
 
 [MIT](./LICENSE) © 2026 Orca Solutions.
+
+## Shared agent instructions
+
+`AGENTS.md` and `CLAUDE.md` are shared project instructions and stay tracked in this repository so local and cloud agents can read them. Keep personal overrides in ignored `CLAUDE.local.md`; credentials and session state stay private. Existing project-specific instructions and permissions continue to apply.
