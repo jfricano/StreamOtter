@@ -3,7 +3,7 @@
   "version": "1.0.0-rc.1",
   "description": "StreamOtter browser SDK: subscribe to state channels with authoritative snapshots, revision-ordered updates, and explicit live/stale states over Socket.IO, with React hooks.",
   "keywords": ["streamotter", "kafka", "socket.io", "websocket", "realtime", "live-data", "state-sync", "browser", "typescript", "react"],
-  "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/client#readme",
+  "homepage": "https://streamotter.dev",
   "bugs": { "url": "https://github.com/jfricano/StreamOtter/issues" },
   "repository": { "type": "git", "url": "git+https://github.com/jfricano/StreamOtter.git", "directory": "packages/client" },
   "license": "MIT",

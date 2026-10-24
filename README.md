@@ -7,6 +7,8 @@
 
 # StreamOtter
 
+[Website](https://streamotter.dev) · [Live demo](https://streamotter.dev/#live) · [Documentation](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md) · [Source](https://github.com/jfricano/StreamOtter)
+
 Make live data straightforward to build with, and understandable when it breaks.
 
 [![npm](https://img.shields.io/npm/v/@streamotter/cli?label=%40streamotter%2Fcli)](https://www.npmjs.com/package/@streamotter/cli)

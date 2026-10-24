@@ -26,6 +26,8 @@ Before 1.0.0 freezes the public API, the plumbing StreamOtter's own packages sha
 
 ### Changed
 
+- All six npm packages link their Homepage to streamotter.dev. The repository and package READMEs provide prominent Website, Live demo, Documentation and Source links. These metadata and npm README updates take effect on the next package publication.
+
 - The reference example's React page uses the new hooks in place of its hand-written provider and hook.
 - The package READMEs, and so the npm pages, show the flat brandmark lockup that the repository README uses, in place of the detailed logo.
 - `streamotter init` writes `streamotter.json` in canonical form (sorted keys), so `validate` no longer reports the new project as non-canonical. Its "Next" steps, the scaffold README and the handler comments use `npx streamotter`, and `init .` no longer prints `cd .`. The scaffold's `web/example.ts` logs client-level errors (`client.on("error", …)`), such as a refused origin.

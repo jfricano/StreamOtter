@@ -2,6 +2,8 @@
 
 # @streamotter/gateway
 
+[Website](https://streamotter.dev) · [Live demo](https://streamotter.dev/#live) · [Documentation](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md) · [Source](https://github.com/jfricano/StreamOtter)
+
 The StreamOtter Node.js gateway. It consumes Kafka (or deterministic fixtures during development), runs **your** handlers to decide identity, access, public payload, and authoritative state, and delivers state channels to browsers using [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client). Each subscription gets a snapshot, then full-state updates ordered by revision, with bounded queues and explicit `live`/`stale` states.
 
 > **Release candidate `1.0.0-rc.1`** for 1.0.0, the first stable release. The public API is set for 1.0 unless the candidate turns up a bug that needs a change; from 1.0.0, every public operation keeps working until a new major version. Package versions follow SemVer independently of the V1 protocol and `configVersion: 1`.
