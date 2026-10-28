@@ -4,6 +4,7 @@ import { sourceTone, type WorkbenchState } from "../state.ts";
 
 const STEP_ICON = { ok: "✓", failed: "✗", skipped: "–" } as const;
 
+/** Draws the Connect tab: each source's status with its connection check, resume and fixture advance actions. Sources and health are refreshed on open and after each change. */
 export function renderConnect(root: HTMLElement, state: WorkbenchState): void {
   const table = h("tbody");
   const results = h("div", { class: "stack" });

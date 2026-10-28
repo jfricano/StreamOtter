@@ -15,6 +15,7 @@ const DOCUMENT_ROOTS = new Set(["html", "body", ":root"]);
 
 type Item = { kind: "rule"; prelude: string; body: string } | { kind: "group"; prelude: string; items: Item[] };
 
+/** A construct the transformer cannot scope safely. Thrown to fail the build. */
 export class CssScopeError extends Error {}
 
 /** Returns the scoped stylesheet, or throws CssScopeError naming the construct it cannot scope safely. */
@@ -25,6 +26,7 @@ export function scopeStylesheet(css: string, scope: string = HOST_SCOPE): string
   return `${lines.join("\n")}\n`;
 }
 
+/** The CSS without its comments, leaving strings as they are. Throws on an unterminated comment or string. */
 function stripComments(css: string): string {
   let out = "";
   let quote: string | null = null;
@@ -68,6 +70,7 @@ function blockEnd(css: string, open: number): number {
   throw new CssScopeError(`Unbalanced "{" near: ${css.slice(open - 40, open + 1).trim()}`);
 }
 
+/** Splits CSS into style rules and `@media`/`@supports` groups. Throws on any other at-rule, a nested rule, a statement outside a rule, or unbalanced braces. */
 function parse(css: string): Item[] {
   const items: Item[] = [];
   let start = 0;
@@ -130,6 +133,7 @@ function splitSelectors(prelude: string): string[] {
   return parts.map(part => part.trim().replace(/\s+/g, " "));
 }
 
+/** The text with every quoted string emptied, so nothing inside a string is read as syntax. */
 function withoutStrings(text: string): string {
   return text.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, "\"\"");
 }
@@ -139,6 +143,7 @@ function structure(selector: string): string {
   return withoutStrings(selector).replace(/\[[^\]]*\]/g, "[]");
 }
 
+/** One selector under the scope. A leading `html`, `body` or `:root` becomes the scope itself, and `*` becomes the scope and everything in it. Throws for anything that could match outside it. */
 function scopeSelector(selector: string, scope: string): string[] {
   if (selector === "") throw new CssScopeError("Empty selector in a selector list.");
   if (/^[>+~]/.test(selector)) throw new CssScopeError(`A selector cannot start with a combinator: ${selector}`);
@@ -153,6 +158,7 @@ function scopeSelector(selector: string, scope: string): string[] {
   return [`${scope} ${selector}`];
 }
 
+/** Appends the scoped rules and groups to `lines`, nesting at `indent`. Throws if any selector would not be the scope or inside it. */
 function emit(items: readonly Item[], scope: string, indent: string, lines: string[]): void {
   for (const item of items) {
     if (item.kind === "group") {

@@ -14,10 +14,12 @@ import { HAS_UNDER_THE_HOOD, LINKS, PREVIEW, PREVIEW_BANNER, UNDER_THE_HOOD_DIR 
 const BACK_BAR = `<div style="margin-bottom:40px"><nav aria-label="StreamOtter Docs" style="display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 16px;font:600 14px/1.4 system-ui,sans-serif;border-bottom:1px solid color-mix(in srgb,currentColor 20%,transparent)"><a href="/" style="color:inherit">← StreamOtter Docs</a><a href="${LINKS.home}" style="color:inherit">streamotter.dev ↗</a></nav>${PREVIEW ? `<div role="note" style="padding:10px 16px;font:400 14px/1.4 system-ui,sans-serif;border-bottom:1px solid color-mix(in srgb,currentColor 20%,transparent)"><strong>${PREVIEW_BANNER.title}</strong> ${PREVIEW_BANNER.detail}</div>` : ""}</div>`;
 const NOINDEX = PREVIEW ? `<meta name="robots" content="noindex">` : "";
 
+/** One page per .html file in docs/under-the-hood/, or none without its index.html (HAS_UNDER_THE_HOOD). */
 export const getStaticPaths = (() => (HAS_UNDER_THE_HOOD
   ? readdirSync(UNDER_THE_HOOD_DIR).filter(file => file.endsWith(".html")).map(file => ({ params: { file } }))
   : [])) satisfies GetStaticPaths;
 
+/** The part's HTML with the back bar after `<body>` and, in a preview build, `noindex` after `<head>`. Throws when either tag is missing. */
 export const GET: APIRoute = ({ params }) => {
   const html = readFileSync(`${UNDER_THE_HOOD_DIR}${params.file}`, "utf8");
   const head = /<head(?:\s[^>]*)?>/i.exec(html);

@@ -36,6 +36,7 @@ const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 const KAFKA_NAME_PATTERN = /^[A-Za-z0-9._-]{1,249}$/;
 const BROKER_PATTERN = /^[A-Za-z0-9.-]+:[0-9]{1,5}$|^\[[0-9A-Fa-f:.]+\]:[0-9]{1,5}$/;
 
+/** Collects configuration issues; its type checks record an issue and return false instead of throwing. */
 class Checker {
   readonly issues: ConfigIssue[] = [];
 
@@ -83,6 +84,7 @@ class Checker {
   }
 }
 
+/** Whether a value is an http(s) origin written exactly as URL normalizes it (no path, trailing slash or default port). */
 function isOrigin(value: unknown): value is string {
   if (typeof value !== "string") return false;
   try {

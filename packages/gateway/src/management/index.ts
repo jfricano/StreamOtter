@@ -49,6 +49,7 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 
 const API_BASE = "/management/v1";
 
+/** Compares bearer tokens without leaking where they differ; tokens of different lengths are simply unequal. */
 function tokensEqual(expected: string, provided: string): boolean {
   const a = Buffer.from(expected);
   const b = Buffer.from(provided);

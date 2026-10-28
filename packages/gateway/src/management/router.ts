@@ -25,10 +25,14 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, number>> = {
   OVERLOADED: 429, SOURCE_UNAVAILABLE: 503, TIMEOUT: 504
 };
 
+/** An error answered with an exact HTTP status, thrown by the router and the management servers. */
 export class HttpError extends Error {
+  /** HTTP status of the response. */
   readonly status: number;
+  /** The public error sent in the response body. */
   readonly error: StreamError;
 
+  /** Creates an error answered with `status` and a `code` error; `message` and `details` are shown to the client. */
   constructor(status: number, code: ErrorCode, message?: string, details?: Readonly<Record<string, Json>>) {
     super(message ?? code);
     this.status = status;
@@ -39,6 +43,7 @@ export class HttpError extends Error {
   }
 }
 
+/** Maps a thrown value to an HTTP status and public error: an HttpError as given, a StreamOtterError by its `details.status` (which is not shown) or else its code, and anything else as 500 INTERNAL. */
 export function mapError(error: unknown): { status: number; error: StreamError } {
   if (error instanceof HttpError) return { status: error.status, error: error.error };
   if (error instanceof StreamOtterError) {
@@ -51,6 +56,7 @@ export function mapError(error: unknown): { status: number; error: StreamError }
   return { status: 500, error: streamError("INTERNAL") };
 }
 
+/** Writes a Result envelope as JSON with `status`, or only ends the response if headers were already sent. */
 export function sendResult(response: ServerResponse, status: number, body: Result<unknown>): void {
   if (response.headersSent) {
     response.end();
@@ -68,12 +74,14 @@ export function sendError(response: ServerResponse, internals: GatewayInternals,
   sendResult(response, mapped.status, { ok: false, requestId, error: { ...mapped.error, requestId } });
 }
 
+/** A byte count in MiB or KiB when it divides evenly, otherwise in bytes, for error messages. */
 function describeBytes(bytes: number): string {
   if (bytes % 1_048_576 === 0) return `${bytes / 1_048_576} MiB`;
   if (bytes % 1_024 === 0) return `${bytes / 1_024} KiB`;
   return `${bytes} bytes`;
 }
 
+/** Reads and parses a JSON body of at most `maxBytes`: 413 when larger, 400 when empty, not application/json, or not valid JSON. */
 async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise<unknown> {
   const tooLarge = () => new HttpError(413, "INVALID_REQUEST", `The request body exceeds ${describeBytes(maxBytes)}.`);
   const declared = Number(request.headers["content-length"] ?? "0");
@@ -113,11 +121,13 @@ function shape(value: unknown, required: readonly string[], optional: readonly s
   return value;
 }
 
+/** Returns `value` if it is a string of 1 to 256 characters; otherwise throws 400 naming `name`. */
 function requireString(value: unknown, name: string): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 256) throw new HttpError(400, "INVALID_REQUEST", `${name} must be a non-empty string.`);
   return value;
 }
 
+/** The query parameters as an object; throws 400 for a parameter not in `allowed` or given twice. */
 function parseQuery(params: URLSearchParams, allowed: readonly string[]): Record<string, string> {
   const values: Record<string, string> = {};
   for (const [key, value] of params) {
@@ -153,6 +163,7 @@ interface Route {
   run(context: RouteContext): unknown;
 }
 
+/** The gateway's operator service; throws 404 as an unknown route when there is none. */
 function operatorOf(context: RouteContext): OperatorApi {
   if (context.operator === null) throw new HttpError(404, "INVALID_REQUEST", "Unknown management route.");
   return context.operator;
@@ -321,15 +332,18 @@ export const IMPLEMENTED_OPERATIONS: readonly WorkbenchOperation[] = Object.free
   WORKBENCH_OPERATIONS.filter(operation => ROUTES.some(route => route.operation === operation))
 );
 
+/** Options for createRouter. */
 export interface RouterOptions {
   internals: GatewayInternals;
   /** Operations this router answers; others are refused with 403. `workbench` (discovery) is always answered. */
   operations: readonly WorkbenchOperation[];
+  /** Largest JSON body accepted; operator routes are also capped at MAX_OPERATOR_BODY_BYTES. Reported by discovery. */
   maxBodyBytes: number;
   /** When true, POST requests must carry `X-StreamOtter-Workbench: 1` (createManagementHandler's CSRF guard). */
   requireWorkbenchHeader: boolean;
 }
 
+/** Runs one management request. `path` is the path below the API base, or null for a path outside it (answered 404). Resolves to the operation's data or throws an error for mapError. */
 export type ManagementRouter = (request: IncomingMessage, path: string | null, query: URLSearchParams) => Promise<unknown>;
 
 /** Finds the route for a method and path; exact paths win over pattern routes. */

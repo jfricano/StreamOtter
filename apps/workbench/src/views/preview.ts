@@ -44,6 +44,7 @@ let latest: { kind: string; revision: string; receivedAt: string; data: Json } |
 let mounted: { status: () => void; log: () => void } | null = null;
 type Tone = "ok" | "warn" | "bad" | "info" | "neutral";
 
+/** Adds an entry to the top of the activity log, which keeps the latest 200, and redraws it when Preview is shown. */
 function note(text: string, tone: Tone): void {
   log.unshift({ at: new Date().toISOString(), text, tone });
   if (log.length > 200) log.length = 200;
@@ -62,6 +63,7 @@ export function closePreview(): void {
   if (current !== null) void current.client.close();
 }
 
+/** One field per parameter of an object schema, and a reader that collects their values (integer fields through Number()). Any other schema gets a note and no parameters. */
 function paramInputs(schema: Schema | undefined): { element: HTMLElement; read: () => Params } {
   if (schema === undefined || schema.type !== "object") {
     return { element: h("p", { class: "muted" }, "This channel's parameter schema is not an object."), read: () => ({}) };
@@ -85,6 +87,11 @@ function paramInputs(schema: Schema | undefined): { element: HTMLElement; read: 
   return { element: h("div", { class: "stack" }, fields), read: () => Object.fromEntries(readers.map(read => read())) };
 }
 
+/**
+ * Draws the Preview tab. The running preview is module state, not this render's: it survives tab
+ * switches and is redrawn on return. Starting another preview stops it first; only Stop preview or
+ * closePreview ends it otherwise.
+ */
 export function renderPreview(root: HTMLElement, state: WorkbenchState): void {
   const principal = h("select", { "aria-label": "Development principal" },
     state.principals.map(item => h("option", { value: item.ref }, `${item.ref} (tenant ${item.tenantId}, subject ${item.subject})`)));

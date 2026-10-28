@@ -18,6 +18,7 @@ export interface PendingFrame {
 /** Envelope overhead added to serialized events when estimating frame bytes. */
 export const FRAME_OVERHEAD_BYTES = 128;
 
+/** What admit() did with a frame: queued it, filtered it as not newer than the subscriber's state, overflowed the budget (which fails the current attempt), or ignored it because the subscription is not capturing. */
 export type AdmitResult = "queued" | "filtered" | "overflow" | "inactive";
 
 type Phase =
@@ -41,12 +42,19 @@ const CAPTURING: ReadonlySet<Phase> = new Set(["capturing", "snapshot-sent", "dr
  * invalidation discards the previous generation's frames and handler results.
  */
 export class ServerSubscription {
+  /** The client-chosen subscription ID, unique within its connection. */
   readonly id: string;
+  /** The channel this subscription reads. */
   readonly channel: ChannelRuntime;
+  /** Parameters after schema canonicalization, as passed to authorize and snapshot. */
   readonly params: Params;
+  /** Canonical JSON of the parameters, used in routing and revocation matching. */
   readonly canonicalParams: string;
+  /** Routing identity of channel, version, the principal's tenant and parameters; see routingKey(). */
   readonly routingKey: string;
+  /** Channel, version and canonical parameters as one key, to tell whether a reused subscription ID asks for the same thing. */
   readonly contractKey: string;
+  /** Frame and byte budget for frames queued or in flight, chained to the connection's. */
   readonly budget: SubscriptionBudget;
   readonly #host: SubscriptionHost;
   readonly #core: GatewayCore;
@@ -67,6 +75,7 @@ export class ServerSubscription {
   #tail: { revision: Revision; dataHash: string } | null = null;
   #lastDelivered: Revision | null = null;
 
+  /** Creates an idle subscription; nothing runs until start(). */
   constructor(options: {
     id: string;
     channel: ChannelRuntime;
@@ -87,26 +96,32 @@ export class ServerSubscription {
     this.budget = new SubscriptionBudget(limits.maxPendingFramesPerSubscription, limits.maxPendingBytesPerSubscription, this.#host.connectionBudget);
   }
 
+  /** The state last reported to the client. */
   get state(): SubscriptionState {
     return this.#publicState;
   }
 
+  /** The internal synchronization phase, finer-grained than state. */
   get phase(): string {
     return this.#phase;
   }
 
+  /** The current synchronization epoch, or "" before the first capture began. */
   get epoch(): string {
     return this.#epoch;
   }
 
+  /** True once the subscription failed or was disposed; it never runs again. */
   get terminated(): boolean {
     return this.#phase === "terminated";
   }
 
+  /** True while registered for live capture, from capture through live, when admitted frames are kept. */
   get capturing(): boolean {
     return CAPTURING.has(this.#phase);
   }
 
+  /** Registers with the channel and begins the first synchronization attempt. */
   start(requestId: string): void {
     this.channel.subscriptions.add(this);
     void this.#beginAttempt(false, requestId);
@@ -134,6 +149,7 @@ export class ServerSubscription {
     }
   }
 
+  /** While synchronizing or live, stops the attempt and goes stale with `reason` until the source is ready again. */
   onSourceUnavailable(reason: ErrorCode): void {
     switch (this.#phase) {
       case "authorizing":
@@ -151,6 +167,7 @@ export class ServerSubscription {
     }
   }
 
+  /** Begins a new attempt if this subscription was waiting for the source. */
   onSourceReady(): void {
     if (this.#phase === "waiting-source") void this.#beginAttempt(true, newId());
   }
@@ -208,6 +225,7 @@ export class ServerSubscription {
     return "queued";
   }
 
+  /** Handles the client's receipt for the in-flight frame: frees its budget and sends the next frame, moving from snapshot to draining to live. Receipts for another epoch and duplicates are ignored; a receipt for an unsent or skipped frame is a protocol violation that restarts synchronization. */
   onReceipt(epoch: string, sequence: number): void {
     if (epoch !== this.#epoch || !this.capturing) return;
     const inFlight = this.#inFlight;

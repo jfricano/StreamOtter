@@ -16,6 +16,7 @@ export function pointer(base: string, segment: string | number): string {
   return `${base}/${String(segment).replaceAll("~", "~0").replaceAll("/", "~1")}`;
 }
 
+/** Whether a value is a safe integer of 0 or more, as schema length and item limits must be. */
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }

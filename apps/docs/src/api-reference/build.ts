@@ -11,8 +11,11 @@ import { API_MODULES, apiModuleHref, apiSymbolHref, type ApiModuleInfo, type Api
 
 /** A comment fragment: text, a code span, or an inline tag such as {@link}. */
 export interface TdPart { kind: "text" | "code" | "inline-tag" | "relative-link"; text: string; tag?: string; target?: unknown }
+/** A block tag such as @returns or @example; `name` is the parameter of a @param or @typeParam. */
 export interface TdTag { tag: string; name?: string; content: TdPart[] }
+/** A doc comment: its summary, its block tags, and its modifier tags such as @internal. */
 export interface TdComment { summary: TdPart[]; blockTags?: TdTag[]; modifierTags?: string[] }
+/** A type, by its `type` ("reference", "union", "reflection" and so on); each kind of type sets only its own fields. */
 export interface TdType {
   type: string;
   name?: string;
@@ -46,6 +49,7 @@ export interface TdType {
   optionalModifier?: "+" | "-";
   constraint?: TdType;
 }
+/** A declaration, member, signature or parameter. `kind` is a TypeDoc ReflectionKind (see KIND). */
 export interface TdReflection {
   id: number;
   name: string;
@@ -69,6 +73,7 @@ export interface TdReflection {
   /** On a reference (a re-export): the id of the declaration it re-exports. */
   target?: number;
 }
+/** The model's root: one child module per entry point, named by its entry file (`entry` in modules.ts). */
 export interface TdProject { children?: TdReflection[] }
 
 /** TypeDoc's ReflectionKind values that this file distinguishes. */
@@ -79,6 +84,7 @@ export const KIND = {
 
 /* The reference the pages render. */
 
+/** The kinds of exported declaration that get their own page. */
 export type ApiKind = "function" | "class" | "interface" | "type" | "variable" | "enum" | "namespace";
 
 /** One row of an export list. `summaryHtml` is inline HTML (no block elements). */
@@ -98,6 +104,7 @@ export interface ApiNote { label: string; html: string }
 /** An example: a code sample for the site's highlighter, or markdown that was more than a sample. */
 export type ApiExample = { code: string; lang: string } | { html: string };
 
+/** A parameter of a signature; `html` is its description, and `optional` includes parameters with a default. */
 export interface ApiParameter { name: string; typeHtml: string; optional: boolean; rest: boolean; html: string }
 /** A documented type parameter: its constraint (`typeHtml`, empty when none) and description. */
 export interface ApiTypeParameter { name: string; typeHtml: string; html: string }
@@ -105,6 +112,7 @@ export interface ApiTypeParameter { name: string; typeHtml: string; html: string
 export interface ApiField { name: string; codeHtml: string; html: string }
 /** One variant's fields (labeled by its discriminant, or by the fields it requires), or the shared fields (no label). */
 export interface ApiFieldGroup { labelHtml: string | null; fields: ApiField[] }
+/** One call signature as a page shows it. Its documentation is empty when it is already the symbol's description. */
 export interface ApiSignature {
   /** The whole signature as linked, escaped code. */
   codeHtml: string;
@@ -115,6 +123,7 @@ export interface ApiSignature {
   examples: ApiExample[];
   deprecatedHtml: string | null;
 }
+/** A member on a declaration's page, at the fragment id `anchor`. */
 export interface ApiMember {
   name: string;
   anchor: string;
@@ -129,6 +138,7 @@ export interface ApiMember {
   inheritedFrom: string | null;
   deprecatedHtml: string | null;
 }
+/** One declaration's page, under the entry point that declares it. */
 export interface ApiSymbol {
   name: string;
   kind: ApiKind;
@@ -159,9 +169,12 @@ export interface ApiSymbol {
   deprecatedHtml: string | null;
   sourceUrl: string | null;
 }
+/** The whole reference: the release it describes, a page per import path, and a page per declaration. */
 export interface ApiReference { release: string; modules: ApiModule[]; symbols: ApiSymbol[] }
 
+/** What buildApiReference needs besides the TypeDoc model. */
 export interface BuildOptions {
+  /** The installed streamotter version the model was read from. */
   release: string;
   /** The import paths to document, in order; by default every one in modules.ts. */
   modules?: readonly ApiModuleInfo[];
@@ -175,6 +188,7 @@ const KIND_OF: Readonly<Record<number, ApiKind>> = {
 };
 const TYPE_ONLY: ReadonlySet<ApiKind> = new Set(["interface", "type"]);
 
+/** Text safe in HTML content and quoted attributes: & < > " and ' become numeric character references. */
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, character => `&#${character.charCodeAt(0)};`);
 }
@@ -356,6 +370,7 @@ function membersOf(declaration: TdReflection): TdReflection[] {
   return [...holder.children ?? []];
 }
 
+/** One declaration's page. `paths` are the import paths that export it and `anchors` the fragment ids of the members it shows. */
 function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflection, segment: string, paths: string[], anchors: Map<number, string>): ApiSymbol {
   const kind = KIND_OF[declaration.kind]!;
   // A function's comment sits on its signatures; the first carries the summary for lists.
@@ -437,6 +452,7 @@ function renderSymbol(ctx: Context, info: ApiModuleInfo, declaration: TdReflecti
   };
 }
 
+/** A method or constructor with its signatures, an accessor, or a property with its documented fields (and its signatures when its function type is documented). */
 function renderMember(ctx: Context, member: TdReflection, anchor: string, owner: string): ApiMember {
   const inheritedFrom = member.inheritedFrom === undefined ? null : typeHtml(ctx, member.inheritedFrom);
   const isStatic = member.flags?.isStatic ? "static " : "";
@@ -523,6 +539,7 @@ function variantLabel(ctx: Context, variant: TdType, index: number): string {
   return `Variant ${index + 1}`;
 }
 
+/** The type parameters with their constraints and descriptions, or none when no parameter has a description. */
 function typeParameterDocs(ctx: Context, parameters: TdReflection[] | undefined): ApiTypeParameter[] {
   const rendered = (parameters ?? []).map(parameter => ({
     name: parameter.name,
@@ -532,6 +549,7 @@ function typeParameterDocs(ctx: Context, parameters: TdReflection[] | undefined)
   return rendered.some(parameter => parameter.html !== "") ? rendered : [];
 }
 
+/** An index signature as a member, shown as `[key: K]: V`. */
 function renderIndexSignature(ctx: Context, signature: TdReflection, anchor: string): ApiMember {
   const doc = commentHtml(ctx, signature.comment);
   const parameter = signature.parameters?.[0];
@@ -574,6 +592,7 @@ function renderSignature(ctx: Context, signature: TdReflection, lead: string | n
   };
 }
 
+/** A type parameter list as code (`<T extends X = Y>`), or "" when there is none. */
 function typeParametersHtml(ctx: Context, parameters: TdReflection[] | undefined): string {
   if (!parameters?.length) return "";
   return `&lt;${parameters.map(parameter => [
@@ -723,6 +742,7 @@ const NOTE_LABELS: Readonly<Record<string, string>> = {
   "@returns": "Returns", "@throws": "Throws", "@defaultValue": "Default", "@default": "Default", "@see": "See also", "@since": "Since"
 };
 
+/** Comment parts as markdown. An inline tag links to its target's page, as code (as text for @linkplain); a target without a page is plain code. */
 function partsToMarkdown(ctx: Context, parts: readonly TdPart[] | undefined): string {
   return (parts ?? []).map(part => {
     if (part.kind !== "inline-tag") return part.text;
@@ -734,6 +754,7 @@ function partsToMarkdown(ctx: Context, parts: readonly TdPart[] | undefined): st
   }).join("");
 }
 
+/** Renders a comment: summary and @remarks, examples, @deprecated, and the other block tags as notes. @param and @typeParam are left to the parameters. */
 function commentHtml(ctx: Context, comment: TdComment | undefined): RenderedComment {
   const summaryMarkdown = partsToMarkdown(ctx, comment?.summary).trim();
   const firstParagraph = leadingParagraph(summaryMarkdown);

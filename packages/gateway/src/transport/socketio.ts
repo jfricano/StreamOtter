@@ -7,6 +7,7 @@ import {
 import { HELLO_TIMEOUT_MS } from "@streamotter/contracts/internal";
 import type { ConnectionTransport } from "./types.ts";
 
+/** What a successful handshake hands to the connection: the principal, any preview session, and the revocation position to check later. */
 export interface HandshakeResult {
   principal: Principal;
   previewSessionId: string | null;
@@ -14,6 +15,7 @@ export interface HandshakeResult {
   revocationSeq: number;
 }
 
+/** The session operations the Socket.IO adapter calls for client events; ClientSession implements them. */
 export interface SessionHandlers {
   handleSubscribe(payload: unknown, reply: unknown): void;
   handleUnsubscribe(payload: unknown, reply: unknown): void;
@@ -24,6 +26,7 @@ export interface SessionHandlers {
   open(): void;
 }
 
+/** The gateway hooks the Socket.IO adapter needs: authenticate a handshake, then open its session. */
 export interface TransportCallbacks {
   /** Validates origin and credentials; resolves to a principal or a public error. `signal` aborts when the client disconnects. */
   authenticate(input: { auth: unknown; origin: string | undefined; signal: AbortSignal }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }>;
@@ -36,6 +39,7 @@ type StreamSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<st
 
 const KNOWN_EVENTS: ReadonlySet<string> = new Set([EVENTS.subscribe, EVENTS.unsubscribe, EVENTS.resync, EVENTS.receipt]);
 
+/** ConnectionTransport over one Socket.IO socket, emitting the protocol's so:* frames. */
 class SocketIoConnection implements ConnectionTransport {
   readonly #socket: StreamSocket;
 

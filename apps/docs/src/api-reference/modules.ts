@@ -117,6 +117,7 @@ const CONTRACTS_SECTIONS: readonly ApiSectionInfo[] = [
   }
 ];
 
+/** Every import path the reference can document, in page order. Only streamotter/contracts groups its exports into sections. */
 export const API_MODULES: readonly ApiModuleInfo[] = [
   {
     slug: "client", entry: "client", importPath: "streamotter/client", scopedImport: "@streamotter/client", title: "Browser SDK",
@@ -149,7 +150,10 @@ export const API_MODULES: readonly ApiModuleInfo[] = [
   }
 ];
 
+/** The API reference's index page, under which every reference page lives. */
 export const API_ROOT = "/api/";
 
+/** The page of one import path, by its slug. */
 export const apiModuleHref = (slug: string) => `${API_ROOT}${slug}/`;
+/** The page of one declaration; `name` is its path segment, URL-encoded here. */
 export const apiSymbolHref = (slug: string, name: string) => `${API_ROOT}${slug}/${encodeURIComponent(name)}/`;

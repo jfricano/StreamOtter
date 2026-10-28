@@ -102,6 +102,7 @@ type Evidence =
 
 type Draft = Omit<OperationResult, "operationId">;
 
+/** A refused operation result: nothing was changed. incidentRevision is the incident's revision when the caller knows it, else null. */
 const refused = (outcome: string, message: string, incidentRevision: number | null = null): Draft =>
   ({ result: "refused", outcome, incidentRevision, message });
 
@@ -119,6 +120,7 @@ export class OperatorService implements OperatorApi {
   readonly #plans = new Map<string, Plan>();
   #evaluations = 0;
 
+  /** Marks every operation a crash left pending as unknown and logs each one; none is rerun. */
   constructor(host: OperatorHost, failures: FailureService, hooks: OperatorHooks = {}) {
     this.#host = host;
     this.#failures = failures;
@@ -133,6 +135,7 @@ export class OperatorService implements OperatorApi {
 
   // --- reads ------------------------------------------------------------------------
 
+  /** Gateway, store, quarantine topic and per-source status. Metadata only. */
   async status(): Promise<OperatorStatus> {
     const store = this.#failures.store;
     const usage = store.usage();
@@ -153,6 +156,7 @@ export class OperatorService implements OperatorApi {
     };
   }
 
+  /** One page of incident summaries, each with its next action. */
   async listFailures(request: ListFailuresRequest): Promise<Page<IncidentSummary>> {
     const query = validateOperatorRequest("listFailures", request);
     const page = this.#failures.store.list(query);
@@ -165,6 +169,7 @@ export class OperatorService implements OperatorApi {
     return { items: page.items.map(record => this.#summary(record, circuitOf(record.sourceId))), nextCursor: page.nextCursor };
   }
 
+  /** An incident's detail, history and explanation; with includeRaw, also its original bytes, read back from where they were captured. */
   async showFailure(request: ShowFailureRequest): Promise<IncidentDetail & { raw?: RawEvidenceView }> {
     const { failureId, includeRaw } = validateOperatorRequest("showFailure", request);
     const record = this.#require(failureId);
@@ -173,6 +178,7 @@ export class OperatorService implements OperatorApi {
     return { ...detail, raw: rawView(await this.#evidence(record)) };
   }
 
+  /** A reproduction bundle: the incident, recent traces of its source, its policy and the expected behavior. Original bytes only with includeRaw. */
   async exportFailure(request: ExportFailureRequest): Promise<ReproductionBundle> {
     const { failureId, includeRaw } = validateOperatorRequest("exportFailure", request);
     const record = this.#require(failureId);
@@ -202,6 +208,11 @@ export class OperatorService implements OperatorApi {
 
   // --- evaluation and redrive (ADR-15C §5) ---------------------------------------------
 
+  /**
+   * Maps the incident's stored original with the current handlers without
+   * admitting anything, and issues a single-use redrive plan when it maps cleanly
+   * and a redrive is allowed. At most two run at once; more are OVERLOADED.
+   */
   async evaluate(request: EvaluateRequest): Promise<EvaluationResult> {
     const { failureId, expectedRevision } = validateOperatorRequest("evaluate", request);
     const ineligible = (stage: string, reason: string, message: string): EvaluationResult =>
@@ -240,6 +251,11 @@ export class OperatorService implements OperatorApi {
     }
   }
 
+  /**
+   * Admits an advanced-past record through the revision filter under an approved
+   * evaluate plan. A plan is single use, and the redrive is refused unless the
+   * incident revision, generation, evidence and mapped output still match it.
+   */
   async redrive(request: RedriveRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("redrive", request);
     const record = this.#failures.store.get(input.failureId);
@@ -283,6 +299,7 @@ export class OperatorService implements OperatorApi {
 
   // --- source mutations ------------------------------------------------------------------
 
+  /** Retries the held record (redelivers it, never skips it) and reports where it settled, waiting at most SETTLE_TIMEOUT_MS. */
   async retryCurrent(request: RetryCurrentRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("retryCurrent", request);
     return this.#mutate("retry-current", input.sourceId, input.failureId, input, undefined, operationId => this.#redeliver(input.sourceId, operationId, () => {
@@ -296,6 +313,11 @@ export class OperatorService implements OperatorApi {
     }));
   }
 
+  /**
+   * Redelivers a held quarantine-resync record, so a fresh quarantine copy is
+   * written and the recovery guard runs again. Refused for integrity classes and
+   * while the circuit is open.
+   */
   async reassess(request: ReassessRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("reassess", request);
     return this.#mutate("reassess", input.sourceId, input.failureId, input, undefined, operationId => this.#redeliver(input.sourceId, operationId, () => {
@@ -318,6 +340,7 @@ export class OperatorService implements OperatorApi {
     }));
   }
 
+  /** Closes the source's open automatic-continuation circuit at the expected revision and clears its advances; held records stay held. */
   async reopenCircuit(request: ReopenCircuitRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("reopenCircuit", request);
     return this.#mutate("reopen-circuit", input.sourceId, null, input, undefined, () => this.#failures.run(input.sourceId, async () => {
@@ -343,6 +366,11 @@ export class OperatorService implements OperatorApi {
     }));
   }
 
+  /**
+   * Retires an in-force boundary of the source by operator decision, when its
+   * boundaryRetirement is "operator"; the store refuses while an incident it
+   * covers is still held.
+   */
   async retireBoundary(request: RetireBoundaryRequest): Promise<OperationResult> {
     const input = validateOperatorRequest("retireBoundary", request);
     return this.#mutate("retire-boundary", input.sourceId, null, input, undefined, operationId => this.#failures.run(input.sourceId, async () => {
@@ -697,10 +725,12 @@ function integrityFault(incident: IncidentRecord, events: () => readonly { detai
   return null;
 }
 
+/** True when the source's invalid-JSON or invalid-payload policy is quarantine-resync. */
 function usesResync(policy: ResolvedSourcePolicy): boolean {
   return policy.invalidJson === "quarantine-resync" || policy.invalidPublicPayload === "quarantine-resync";
 }
 
+/** The policy fields that operator status and reproduction bundles report. */
 function policySummary(policy: ResolvedSourcePolicy): OperatorSourceStatus["policy"] {
   return {
     invalidJson: policy.invalidJson,
@@ -713,6 +743,7 @@ function policySummary(policy: ResolvedSourcePolicy): OperatorSourceStatus["poli
 
 /** A source-integrity hold that no retry or guard can settle at this position, by its diagnosis; or null. */
 type IntegrityHold = "position-moved" | "cluster-mismatch" | "evidence-conflict";
+/** The record's integrity hold, read from the start of its diagnosis, or null. */
 function integrityHold(record: IncidentRecord): IntegrityHold | null {
   if (record.diagnosis.startsWith(POSITION_MOVED_DIAGNOSIS)) return "position-moved";
   if (record.diagnosis.startsWith(CLUSTER_MISMATCH_DIAGNOSIS)) return "cluster-mismatch";
@@ -811,10 +842,15 @@ const CLASS_TEXT: Readonly<Record<FailureClass, { what: string; expected: string
   "oversize": { what: "The record exceeds maxSourceRecordBytes.", expected: "Records stay within maxSourceRecordBytes." }
 };
 
+/** What correct input looks like for the failure class, for the reproduction bundle. */
 function expectedBehavior(failureClass: FailureClass): string {
   return CLASS_TEXT[failureClass].expected;
 }
 
+/**
+ * The plain-language explanation of an incident: what failed, where its evidence
+ * is, what happened at its position, snapshot obligations and the next step.
+ */
 function explain(record: IncidentRecord, action: IncidentNextAction, boundaryState: string | null, circuit: CircuitState): IncidentDetail["explanation"] {
   const position = record.position.kind === "kafka"
     ? `${record.position.topic}/${record.position.partition} offset ${record.position.offset}`
@@ -861,6 +897,7 @@ function explain(record: IncidentRecord, action: IncidentNextAction, boundarySta
   return { whatFailed: `${CLASS_TEXT[record.failureClass].what} (${record.errorCode} at ${record.stage})`, evidence, disposition, snapshots, nextAction: next[action]() };
 }
 
+/** Original bytes as base64 for an operator view, or an empty, incomplete view saying why they are missing. */
 function rawView(evidence: Evidence): RawEvidenceView {
   if (evidence.kind === "missing") return { keyBase64: null, valueBase64: null, headers: [], complete: false, note: evidence.message };
   const { raw } = evidence;
@@ -873,6 +910,10 @@ function rawView(evidence: Evidence): RawEvidenceView {
   };
 }
 
+/**
+ * The answer to a repeated operation ID: the recorded result, or a refusal when
+ * the request differs or it is still pending. One abandoned by a crash is unknown.
+ */
 function replay(operation: StoredOperation, requestHash: string): Draft {
   if (operation.requestHash !== requestHash) {
     return refused("operation-id-reused", "That operation ID was already used for a different request.");
@@ -885,6 +926,7 @@ function replay(operation: StoredOperation, requestHash: string): Draft {
   return { result: stored.result, outcome: stored.outcome, incidentRevision: stored.incidentRevision, message: stored.message };
 }
 
+/** The operation result for a redrive outcome; "reprocessed" only when some subscription queued the record. */
 function redriveResult(outcome: RedriveOutcome, revision: number): Draft {
   switch (outcome.kind) {
     case "abandon":

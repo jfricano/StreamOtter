@@ -51,7 +51,9 @@ export type ProcessOutcome =
   | { kind: "hold"; code: ErrorCode; reason: string }
   | { kind: "abandon" };
 
+/** The gateway side of a source adapter: record processing, readiness reports, held-record disposition, logging, and the stop signal. */
 export interface SourceSink {
+  /** Decodes, maps and admits one record; the outcome tells the adapter whether it may commit past it. */
   process(input: SourceInput): Promise<ProcessOutcome>;
   /** Adapter-observed readiness changes (connection loss, rebalance, recovery). */
   setStatus(status: SourceStatus["status"], reason?: ErrorCode): void;
@@ -62,6 +64,7 @@ export interface SourceSink {
    */
   held(input: SourceInput, outcome: Extract<ProcessOutcome, { kind: "pause" }>): void;
   readonly logger: GatewayLogger;
+  /** Aborted when the gateway begins stopping. */
   readonly stopSignal: AbortSignal;
 }
 

@@ -7,6 +7,7 @@ const MAX_CONNECTIONS = 32;
 /** A probe that has not sent its request by then is dropped. */
 const REQUEST_TIMEOUT_MS = 5_000;
 
+/** A running health listener: the origin it is reachable at, and a close that is safe to call more than once. */
 export interface HealthListener {
   readonly origin: string;
   close(): Promise<void>;
@@ -15,6 +16,7 @@ export interface HealthListener {
 /** Report order is fixed so a probe's body is stable while nothing changes. */
 const REASON_ORDER: readonly HealthReason[] = ["starting", "source-held", "source-unavailable", "journal", "quarantine"];
 
+/** The health response for the given reasons, in fixed report order; status is "ok" only when there are none. */
 export function healthBody(reasons: Iterable<HealthReason>): HealthResponse {
   const present = new Set(reasons);
   const ordered = REASON_ORDER.filter(reason => present.has(reason));

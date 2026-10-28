@@ -90,14 +90,17 @@ export type OperatorResult<O extends OperatorOperation> = Awaited<ReturnType<Ope
 
 // --- filesystem checks ---------------------------------------------------------------
 
+/** A CONFIG_INVALID error with a machine-readable details.reason. */
 function refuse(reason: string, message: string, details: Record<string, Json> = {}): StreamOtterError {
   return new StreamOtterError("CONFIG_INVALID", { message, details: { reason, ...details } });
 }
 
+/** The errno code (ENOENT, ECONNREFUSED and so on) of a Node error, or undefined. */
 function errnoCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null ? (error as NodeJS.ErrnoException).code : undefined;
 }
 
+/** lstat that returns null for a missing path and throws any other error. */
 function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path);
@@ -128,6 +131,7 @@ function checkProtected(path: string, stats: Stats, label: string, kind: "direct
   }
 }
 
+/** Refuses (UNSUPPORTED_CAPABILITY) on Windows, which has neither Unix-domain sockets nor POSIX modes. */
 function requirePosix(): void {
   if (process.platform === "win32") {
     throw new StreamOtterError("UNSUPPORTED_CAPABILITY", { message: "The operator socket needs Unix-domain sockets and POSIX permissions; it is not available on Windows." });
@@ -146,6 +150,7 @@ function checkRunDirectory(stateDirectory: string, missing: (path: string) => St
   return runDirectory;
 }
 
+/** Removes the path only while it is still the file with inode `ino` (nothing when null), so a later gateway's socket or token is left alone. */
 function removeIfSame(path: string, ino: number | null): void {
   if (ino === null) return;
   const stats = lstatOrNull(path);
@@ -226,6 +231,7 @@ async function clearSocketPath(path: string): Promise<void> {
 
 // --- server --------------------------------------------------------------------------
 
+/** The request rate limit shared by every connection: `burst` requests at once, refilled at `rate` per second. */
 class TokenBucket {
   readonly #rate: number;
   readonly #burst: number;
@@ -249,21 +255,25 @@ class TokenBucket {
   }
 }
 
+/** A numeric option, or the fallback when unset; anything but a positive finite number is CONFIG_INVALID. */
 function positive(value: number | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
   if (!Number.isFinite(value) || value <= 0) throw new StreamOtterError("CONFIG_INVALID", { message: `${name} must be a positive number.` });
   return value;
 }
 
+/** An INVALID_REQUEST error for a malformed request. */
 function invalid(message: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message });
 }
 
+/** An error response for request `id`. An error that is not a StreamOtterError is sent as a bare INTERNAL, without its message. */
 function failure(id: string, error: unknown): OperatorIpcResponse {
   const wire: StreamError = error instanceof StreamOtterError ? toStreamError(error) : toStreamError(new StreamOtterError("INTERNAL"));
   return { v: OPERATOR_IPC_VERSION, id, ok: false, error: wire };
 }
 
+/** SHA-256 of the text, so tokens of any length can be compared with timingSafeEqual. */
 function digest(value: string): Buffer {
   return createHash("sha256").update(value, "utf8").digest();
 }
@@ -514,6 +524,7 @@ export async function startOperatorSocket(options: OperatorSocketOptions): Promi
 
 // --- client --------------------------------------------------------------------------
 
+/** The client's refusal when no gateway serves the state directory (details.reason "operator-not-running"). */
 function notRunning(stateDirectory: string, detail: string): StreamOtterError {
   return new StreamOtterError("UNSUPPORTED_CAPABILITY", {
     message: `No gateway is serving the operator socket for ${stateDirectory}: ${detail}. ` +
@@ -555,6 +566,7 @@ function readToken(stateDirectory: string): string {
   }
 }
 
+/** The INTERNAL error for an answer the client cannot use. */
 function badResponse(message: string): StreamOtterError {
   return new StreamOtterError("INTERNAL", { message: `The gateway's operator socket answered unexpectedly: ${message}.` });
 }
@@ -566,6 +578,7 @@ function badResponse(message: string): StreamOtterError {
  */
 const NO_ANSWER = "no-answer";
 
+/** The error with details.reason "no-answer": the request was sent, so the gateway may have run it. */
 function unanswered(error: StreamOtterError): StreamOtterError {
   return new StreamOtterError(error.code, { message: error.message, details: { ...error.details, reason: NO_ANSWER } });
 }

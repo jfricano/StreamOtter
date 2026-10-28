@@ -23,11 +23,13 @@ export interface HostSettings {
   environment: { kind: "development" | "sandbox"; label: string | null; detail: string | null; packageVersion: string | null };
 }
 
+/** What readBoot found: settings to run with, the boot block's validation issues, or a host contract this build does not implement. */
 export type Boot =
   | { kind: "ok"; settings: HostSettings }
   | { kind: "invalid"; issues: readonly WorkbenchHostConfigIssue[] }
   | { kind: "unsupported"; hostContract: string };
 
+/** The content of the page's `<meta name>` element, or "" without one. The native page names its gateway this way. */
 const meta = (name: string) => document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content ?? "";
 
 /**
@@ -68,6 +70,7 @@ export function readBoot(): Boot {
   return { kind: "ok", settings: fromConfig(result.config) };
 }
 
+/** Settings from a validated boot block. What it leaves out gets the defaults: token auth, the default API base and socket path, a development environment. No `gateway` means no Preview. */
 function fromConfig(config: WorkbenchHostConfig): HostSettings {
   const environment = config.environment;
   return {

@@ -592,10 +592,12 @@ export function operationExitCode(result: OperationResult["result"]): 0 | 1 | 3 
 
 // --- request validation --------------------------------------------------------------
 
+/** An INVALID_REQUEST error with the message. */
 function invalid(message: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message });
 }
 
+/** The request object, after refusing unknown fields and missing required ones; undefined counts as `{}` when nothing is required. */
 function fields(value: unknown, required: readonly string[], optional: readonly string[]): Record<string, unknown> {
   if (value === undefined && required.length === 0) return {};
   if (!isPlainObject(value)) throw invalid("The request must be a JSON object.");
@@ -608,6 +610,7 @@ function fields(value: unknown, required: readonly string[], optional: readonly 
   return value;
 }
 
+/** A non-empty identifier of at most `max` characters with no control characters. */
 function id(value: unknown, name: string, max = 512): string {
   if (typeof value !== "string" || value.length === 0 || value.length > max || /[\u0000-\u001f\u007f]/.test(value)) {
     throw invalid(`${name} must be a non-empty string of at most ${max} characters without control characters.`);
@@ -615,11 +618,13 @@ function id(value: unknown, name: string, max = 512): string {
   return value;
 }
 
+/** An expected revision: a non-negative safe integer. */
 function revision(value: unknown, name: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw invalid(`${name} must be a non-negative integer.`);
   return value;
 }
 
+/** An operator's reason: not blank and at most MAX_OPERATOR_REASON characters; undefined when optional and absent. */
 function reason(value: unknown, name: string, required: boolean): string | undefined {
   if (value === undefined && !required) return undefined;
   if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_OPERATOR_REASON) {
@@ -628,12 +633,14 @@ function reason(value: unknown, name: string, required: boolean): string | undef
   return value;
 }
 
+/** An optional boolean field. */
 function flag(value: unknown, name: string): boolean | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") throw invalid(`${name} must be true or false.`);
   return value;
 }
 
+/** Sets `target[key]` only when the value is defined, and returns the target. */
 function assign<T extends object>(target: T, key: string, value: unknown): T {
   if (value !== undefined) (target as Record<string, unknown>)[key] = value;
   return target;

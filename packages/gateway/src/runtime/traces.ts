@@ -5,7 +5,9 @@ import { nowIso } from "./util.ts";
 
 interface Entry { seq: number; trace: Trace; bytes: number }
 
+/** A trace as callers record it; the buffer assigns its id and timestamp. */
 export type TraceInput = Omit<Trace, "id" | "at">;
+/** Filters and paging for TraceBuffer.page; `cursor` is a nextCursor from an earlier page of this run. */
 export interface TraceQuery { limit: number; cursor?: string; sourceId?: string; channel?: string; outcome?: Trace["outcome"] }
 
 /**
@@ -21,11 +23,13 @@ export class TraceBuffer {
   #bytes = 0;
   #nextSeq = 1;
 
+  /** Creates an empty buffer holding at most `maxEntries` traces and `maxBytes` of their serialized JSON. */
   constructor(maxEntries: number, maxBytes: number) {
     this.#maxEntries = maxEntries;
     this.#maxBytes = maxBytes;
   }
 
+  /** Stores a trace, evicting the oldest until both the entry and byte limits hold again. */
   record(input: TraceInput): void {
     const seq = this.#nextSeq++;
     const trace: Trace = { id: `${this.#runId}-${seq}`, at: nowIso(), ...input };
@@ -44,6 +48,7 @@ export class TraceBuffer {
     }
   }
 
+  /** Number of traces currently held. */
   get size(): number {
     return this.#entries.length - this.#head;
   }

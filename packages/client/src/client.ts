@@ -10,6 +10,7 @@ import {
 import { Connection } from "./connection.ts";
 import { ClientSubscription, type ManagedSubscription, type SubscriptionOwner } from "./subscription.ts";
 
+/** The gateway origin, defaulting to the page's; throws INVALID_REQUEST unless it is an http(s) origin with no path. */
 function resolveOrigin(origin: string | undefined): string {
   const candidate = origin ?? (globalThis as { location?: { origin?: string } }).location?.origin;
   if (typeof candidate !== "string") {
@@ -27,6 +28,7 @@ function resolveOrigin(origin: string | undefined): string {
   return url.origin;
 }
 
+/** A random UUID for subscription and request ids. */
 function randomId(): string {
   return globalThis.crypto.randomUUID();
 }
@@ -59,6 +61,7 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
   #tokenAbort: AbortController | null = null;
   #closing: Promise<void> | null = null;
 
+  /** Validates the options without connecting; throws INVALID_REQUEST for a missing getToken, a bad origin, or a path without a leading `/`. */
   constructor(options: ClientOptions) {
     if (typeof options !== "object" || options === null || typeof options.getToken !== "function") {
       throw new StreamOtterError("INVALID_REQUEST", { message: "createClient requires a getToken function." });
@@ -69,24 +72,29 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
     this.#getToken = options.getToken;
   }
 
+  /** The current connection state. */
   get state(): ConnectionState {
     return this.#state;
   }
 
   // --- SubscriptionOwner ---------------------------------------------------------------
 
+  /** True once close() has been called. */
   get closed(): boolean {
     return this.#closed;
   }
 
+  /** True while reconnection is suspended until reconnect() after an authentication or handshake refusal. */
   get authRequired(): boolean {
     return this.#suspended;
   }
 
+  /** The adopted connection while it is connected, otherwise null. */
   get connection(): Connection | null {
     return this.#connection !== null && this.#connection.connected ? this.#connection : null;
   }
 
+  /** Tracks a new subscription and attaches it to the live connection, or starts connecting; while suspended it only tells the subscription authentication is required; no-op once closed. */
   register(subscription: ManagedSubscription): void {
     if (this.#closed) return;
     this.#subscriptions.add(subscription);
@@ -99,26 +107,31 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
     else this.#ensureConnection();
   }
 
+  /** Stops tracking a terminated subscription. */
   unregister(subscription: ManagedSubscription): void {
     this.#subscriptions.delete(subscription);
   }
 
+  /** Closes the current connection after an unacknowledged control request, so reconnection rebuilds it; ignores superseded connections. */
   controlTimedOut(connection: Connection): void {
     if (connection !== this.#connection) return;
     // After an ambiguous control request, rebuild on a new connection instead of retrying on this one.
     connection.close();
   }
 
+  /** A random UUID for subscription and request ids. */
   randomId(): string {
     return randomId();
   }
 
+  /** Logs a listener that threw or rejected to the console. */
   logListenerFailure(error: unknown): void {
     console.error("[streamotter] listener failed", error);
   }
 
   // --- public API ------------------------------------------------------------------------
 
+  /** Creates a subscription that registers in the next microtask; throws CLIENT_CLOSED, INVALID_REQUEST, or UNSUPPORTED_CAPABILITY for unknown options. */
   subscribe<K extends keyof C & string>(channel: K, options: { channelVersion: C[K]["version"]; params: C[K]["params"] }): Subscription<C[K]["data"]> {
     if (this.#closed) throw new StreamOtterError("CLIENT_CLOSED");
     if (typeof channel !== "string" || typeof options !== "object" || options === null
@@ -132,8 +145,11 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
     return new ClientSubscription<C[K]["data"]>(this, channel, options.channelVersion, { ...options.params } as Params);
   }
 
+  /** Listens for connection state changes. */
   on(event: "state", listener: (state: StateChange<ConnectionState>) => void): Unlisten;
+  /** Listens for connection-level errors. */
   on(event: "error", listener: (error: StreamError) => void): Unlisten;
+  /** Adds a listener and returns its remover; throws INVALID_REQUEST for another event or a non-function. */
   on(event: "state" | "error", listener: ((state: StateChange<ConnectionState>) => void) | ((error: StreamError) => void)): Unlisten {
     const set = (event === "state" ? this.#stateListeners : event === "error" ? this.#errorListeners : undefined) as Set<typeof listener> | undefined;
     if (set === undefined || typeof listener !== "function") {
@@ -163,6 +179,7 @@ export class StreamClient<C extends ChannelMap> implements Client<C>, Subscripti
     return wait;
   }
 
+  /** Closes every subscription locally, drops the connection and listeners, and moves to `closed`; idempotent. */
   close(): Promise<void> {
     if (this.#closing !== null) return this.#closing;
     this.#closed = true;

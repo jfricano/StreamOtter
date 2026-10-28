@@ -23,6 +23,7 @@ export interface GatewayCore {
   boundaryAcknowledged?(sourceId: string, boundaryId: string): void;
 }
 
+/** Anything the Router can index: it carries its routing identity (see routingKey()). */
 export interface RoutedSubscription {
   readonly routingKey: string;
 }
@@ -31,6 +32,7 @@ export interface RoutedSubscription {
 export class Router<S extends RoutedSubscription = RoutedSubscription> {
   readonly #byKey = new Map<string, Set<S>>();
 
+  /** Indexes a subscription under its routing key. */
   add(subscription: S): void {
     let set = this.#byKey.get(subscription.routingKey);
     if (set === undefined) {
@@ -40,6 +42,7 @@ export class Router<S extends RoutedSubscription = RoutedSubscription> {
     set.add(subscription);
   }
 
+  /** Removes a subscription from the index, dropping its key once no subscription is left under it. */
   remove(subscription: S): void {
     const set = this.#byKey.get(subscription.routingKey);
     if (set === undefined) return;
@@ -47,10 +50,12 @@ export class Router<S extends RoutedSubscription = RoutedSubscription> {
     if (set.size === 0) this.#byKey.delete(subscription.routingKey);
   }
 
+  /** The subscriptions capturing this routing key, or undefined if there are none. */
   get(routingKey: string): ReadonlySet<S> | undefined {
     return this.#byKey.get(routingKey);
   }
 
+  /** Total subscriptions indexed across all routing keys. */
   get size(): number {
     let total = 0;
     for (const set of this.#byKey.values()) total += set.size;
@@ -63,6 +68,7 @@ export function routingKey(channel: string, version: number, tenantId: string, c
   return JSON.stringify([channel, version, tenantId, canonicalParams]);
 }
 
+/** A configured channel at run time: its handlers, resolved schemas, source, and the subscriptions open on it. */
 export interface ChannelRuntime {
   readonly name: string;
   readonly version: number;
@@ -70,21 +76,27 @@ export interface ChannelRuntime {
   readonly paramsSchema: Schema;
   readonly payloadSchema: Schema;
   readonly source: SourceRuntime;
+  /** Started subscriptions that have not terminated; told when the source's readiness changes. */
   readonly subscriptions: Set<SubscriptionLike>;
 }
 
+/** What a source's readiness changes need from a subscription on one of its channels. */
 export interface SubscriptionLike {
   onSourceUnavailable(reason: ErrorCode): void;
   onSourceReady(): void;
 }
 
+/** A configured source at run time: its adapter, status, and the channels it feeds. */
 export interface SourceRuntime {
   readonly id: string;
   readonly config: Source;
   readonly channels: ChannelRuntime[];
+  /** Created when the gateway starts; null before then and after a failed start. */
   adapter: SourceAdapter | null;
   status: SourceStatus["status"];
+  /** Why the source is not healthy; undefined while it is. */
   reason: ErrorCode | undefined;
+  /** True only while status is healthy. */
   readonly ready: boolean;
   /** The recovery boundary in force (V1.1): every snapshot on this source must acknowledge it. */
   boundary: { readonly id: string; readonly context: Json } | null;

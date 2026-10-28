@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalJson, StreamOtterError, type Awaitable, type GatewayLogger, type Json } from "@streamotter/contracts";
 
+/** How an application handler call ended: its value, a timeout, an abort of the parent signal, or the error it threw or rejected with. */
 export type HandlerOutcome<T> =
   | { kind: "ok"; value: T }
   | { kind: "timeout" }
@@ -41,14 +42,17 @@ export async function invokeHandler<T>(
   }
 }
 
+/** Hex SHA-256 of the canonical JSON of `value`; throws if it is not JSON data or nests deeper than `maxDepth`. */
 export function sha256Hex(value: unknown, maxDepth?: number): string {
   return createHash("sha256").update(canonicalJson(value, maxDepth)).digest("hex");
 }
 
+/** A random UUID v4. */
 export function newId(): string {
   return randomUUID();
 }
 
+/** The current time as an ISO 8601 UTC timestamp. */
 export function nowIso(): string {
   return new Date().toISOString();
 }
@@ -106,10 +110,12 @@ export class Semaphore {
   #available: number;
   readonly #waiters: { resolve: (acquired: boolean) => void }[] = [];
 
+  /** Creates a semaphore with `permits` free permits. */
   constructor(permits: number) {
     this.#available = permits;
   }
 
+  /** Resolves true once a permit is taken, or false if `signal` aborts or the `deadline` (epoch ms) passes first. */
   acquire(signal: AbortSignal, deadline: number): Promise<boolean> {
     if (signal.aborted || Date.now() >= deadline) return Promise.resolve(false);
     if (this.#available > 0) {
@@ -136,6 +142,7 @@ export class Semaphore {
     });
   }
 
+  /** Returns a permit, handing it straight to the oldest waiter if there is one. */
   release(): void {
     const next = this.#waiters.shift();
     if (next !== undefined) next.resolve(true);
@@ -150,12 +157,14 @@ export class TokenBucket {
   #tokens: number;
   #updated = Date.now();
 
+  /** Creates a full bucket of `capacity` tokens that refills at `ratePerSecond`. */
   constructor(ratePerSecond: number, capacity: number) {
     this.#ratePerSecond = ratePerSecond;
     this.#capacity = capacity;
     this.#tokens = capacity;
   }
 
+  /** Takes one token after refilling for elapsed time; false if less than one is available. */
   take(): boolean {
     const now = Date.now();
     this.#tokens = Math.min(this.#capacity, this.#tokens + ((now - this.#updated) / 1000) * this.#ratePerSecond);

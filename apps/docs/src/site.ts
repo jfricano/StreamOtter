@@ -30,6 +30,7 @@ const REPOSITORY = "https://github.com/jfricano/StreamOtter";
 /** Where repository links open: this release's tag, so they survive later commits, or main in a preview. */
 export const REF: string = repositoryRef(CHANNEL, RELEASE);
 
+/** Links off the site: streamotter.dev, the repository, npm, and the repository's documents at REF. */
 export const LINKS = {
   home: "https://streamotter.dev",
   github: REPOSITORY,
@@ -61,6 +62,7 @@ const ROOT = typeof __STREAMOTTER_ROOT__ === "string" ? __STREAMOTTER_ROOT__ : f
 
 /** docs/under-the-hood/ in the repository, served as is at /under-the-hood/ when it exists. */
 export const UNDER_THE_HOOD_DIR = `${ROOT}docs/under-the-hood/`;
+/** Whether docs/under-the-hood/index.html exists. Without it the section, its pages and their sitemap entries are left out. */
 export const HAS_UNDER_THE_HOOD = existsSync(`${UNDER_THE_HOOD_DIR}index.html`);
 
 /** The site's sections, in the header and the footer. */

@@ -22,6 +22,7 @@ export const FAILURE_CAPABILITIES: FailureCapabilities = Object.freeze({
 /** Node versions whose node:sqlite loads without an experimental warning (D1). */
 export const MIN_JOURNAL_NODE = [24, 15] as const;
 
+/** True when the given Node version (this process's by default) can run the failure journal. */
 export function nodeSupportsJournal(version: string = process.versions.node): boolean {
   return nodeSqliteSupported(version);
 }
@@ -132,6 +133,7 @@ export function failureHandlingIssues(
   return issues;
 }
 
+/** Throws CONFIG_INVALID listing every failure-handling issue in the configuration, handlers and gateway options; returns when there are none. */
 export function assertFailureHandling(
   config: ProjectConfig,
   handlers: HandlerRegistry<ChannelMap>,

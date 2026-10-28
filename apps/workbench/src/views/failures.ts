@@ -58,19 +58,23 @@ function recoveryInfo(item: IncidentSummary): [Tone, string] {
 }
 const RESULT_TONE: Record<OperationResult["result"], "info" | "warn" | "bad"> = { completed: "info", refused: "warn", failed: "bad", unknown: "warn" };
 
+/** A pill for an enum value, with what it means as the hover title. */
 const enumPill = (value: string, [tone, title]: [Tone, string]) => h("span", { class: `pill ${tone}`, title }, value);
 
+/** "open", or "resolved" with the resolution when it has one. */
 function stateLabel(item: IncidentSummary): HTMLSpanElement {
   // "resolved" appears only when the incident's state says so.
   return item.state === "resolved" ? pill(item.resolution === null ? "resolved" : `resolved · ${item.resolution}`, "neutral") : pill("open", "warn");
 }
 
+/** Where the record is: its fixture index, or its Kafka topic, partition and offset. */
 function positionText(item: IncidentSummary): string {
   return item.position.kind === "fixture"
     ? `fixture record ${item.position.index}`
     : `${item.position.topic} partition ${item.position.partition} offset ${item.position.offset}`;
 }
 
+/** Where the record's evidence was captured (fixture evidence, the Kafka quarantine topic, or the local journal spool) and how completely. */
 function evidenceText(item: IncidentSummary): string {
   const { location, completeness } = item.evidence;
   if (location === "none") return `Not captured (${completeness}).`;
@@ -79,14 +83,17 @@ function evidenceText(item: IncidentSummary): string {
   return `${where} (${completeness}).`;
 }
 
+/** An error for a banner: `CODE: message` for an API error, otherwise its message. */
 function errorText(error: unknown): string {
   return error instanceof ApiError ? `${error.error.code}: ${error.error.message}` : (error as Error).message;
 }
 
+/** A definition list of label and value rows. A null value shows as a dash. */
 function facts(rows: [string, Node | string | null][]): HTMLDListElement {
   return h("dl", { class: "facts" }, rows.flatMap(([term, value]) => [h("dt", {}, term), h("dd", {}, value ?? "—")]));
 }
 
+/** An operation's result as the gateway returned it: result, outcome, message, operation id, and the incident revision it left. */
 function operationBanner(title: string, result: OperationResult): HTMLDivElement {
   return h("div", { class: `banner ${RESULT_TONE[result.result]} operation-result`, role: "status" },
     h("div", {}, h("strong", {}, `${title}: ${result.result}`), ` · outcome ${result.outcome}`),
@@ -94,6 +101,11 @@ function operationBanner(title: string, result: OperationResult): HTMLDivElement
     h("div", { class: "small mono" }, `operation ${result.operationId}`, result.incidentRevision === null ? "" : ` · incident revision ${result.incidentRevision}`));
 }
 
+/**
+ * Draws the Failures tab: the filtered, paged incident list, the selected incident's detail and
+ * actions, and operator status. A list or detail load whose answer arrives after a newer one started
+ * is dropped.
+ */
 export function renderFailures(root: HTMLElement, state: WorkbenchState): void {
   const can = (operation: WorkbenchOperation) => state.can(operation);
   let status: OperatorStatus | null = null;
