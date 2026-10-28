@@ -73,6 +73,7 @@ function literal(value: string): string {
   return JSON.stringify(value).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
 
+/** Joins the `-`/`_`-separated parts of a schema ID with each part's first letter capitalized. */
 function pascalCase(id: string): string {
   return id.split(/[-_]+/).filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("");
 }
@@ -95,10 +96,12 @@ export function typeNames(schemaIds: readonly string[]): Map<string, string> {
   return names;
 }
 
+/** A property name as written in generated code: bare when it is an identifier, otherwise a string literal. */
 function propertyKey(name: string): string {
   return IDENTIFIER.test(name) ? name : literal(name);
 }
 
+/** The constraints a generated property's doc comment lists (lengths, numeric kind and range, maxItems), or null for none. */
 function describe(schema: Schema): string | null {
   switch (schema.type) {
     case "string": {

@@ -37,17 +37,20 @@ function renderNotice(title: string, ...body: (Node | string | null)[]): void {
   replace(app, h("main", {}, h("section", { class: "panel stack gate", role: "alert" }, h("h1", {}, title), ...body)));
 }
 
+/** The notice for an invalid boot block, listing each issue by path. */
 function renderConfigError(issues: readonly WorkbenchHostConfigIssue[]): void {
   renderNotice("Workbench configuration error",
     h("p", {}, "This page's workbench boot block is invalid, so the workbench made no requests. The site that hosts it needs to correct it."),
     h("ul", { class: "issues" }, issues.map(issue => h("li", {}, h("code", {}, issue.path || "/"), ` ${issue.message}`))));
 }
 
+/** The notice for a host contract this build does not implement; `reason` says where the other contract was named. */
 function renderUnsupported(reason: string): void {
   renderNotice("Unsupported host contract",
     h("p", {}, `${reason} This workbench (${WORKBENCH_VERSION}) implements host contract ${WORKBENCH_HOST_CONTRACT} only, so it stopped here.`));
 }
 
+/** The token-mode sign-in form. Submitting opens the workbench with the token; `error` explains why the last attempt failed. */
 function renderGate(settings: HostSettings, error?: string): void {
   const input = h("input", { type: "password", autocomplete: "off", spellcheck: "false", required: true, id: "token" });
   const form = h("form", { class: "panel stack gate" },
@@ -96,12 +99,19 @@ async function discover(api: ManagementApi): Promise<{ operations: Set<Workbench
   }
 }
 
+/** The top bar's environment label: Development or Sandbox, followed by the host's label when it sets one. */
 function environmentPill(settings: HostSettings): HTMLSpanElement {
   const { kind, label } = settings.environment;
   const name = kind === "sandbox" ? "Sandbox" : "Development";
   return pill(label === null ? name : `${name} · ${label}`, kind === "sandbox" ? "info" : "neutral");
 }
 
+/**
+ * Opens the workbench with one credential: discovers the offered operations, restricts the client to
+ * them, loads the shared state and shows the Connect tab. It stops at a notice when the host lacks an
+ * operation the shell needs. A failure returns to the token form in token mode; in session mode it
+ * shows the session-ended notice or offers a retry.
+ */
 async function open(settings: HostSettings, auth: ApiAuth): Promise<void> {
   let cleanup: (() => void) | null = null;
   const api = new ManagementApi({ apiBase: settings.apiBase, apiOrigin: settings.apiOrigin }, auth, () => {

@@ -4,6 +4,7 @@ import reference from "virtual:streamotter-docs/api-reference";
 import { API_ROOT } from "../api-reference/modules.ts";
 import { GUIDES, HAS_UNDER_THE_HOOD, UNDER_THE_HOOD_DIR } from "../site.ts";
 
+/** Serves /sitemap.xml: the home page, the guides, every API reference page, and Under the Hood when it exists. */
 export const GET: APIRoute = ({ site }) => {
   const paths = [
     "/", "/guides/", ...GUIDES.map(guide => `/guides/${guide.slug}/`),

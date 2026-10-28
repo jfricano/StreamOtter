@@ -82,7 +82,7 @@ export type StreamOtterProviderProps = {
  * With `options`, the provider supplies `null` until its client exists: on the first client render
  * and throughout server rendering.
  *
- * @throws {@link StreamOtterError} with code `INVALID_REQUEST` when `options` has no `getToken` function.
+ * @throws {@link contracts!StreamOtterError} with code `INVALID_REQUEST` when `options` has no `getToken` function.
  *
  * @example
  * ```tsx
@@ -106,6 +106,10 @@ export function StreamOtterProvider(props: StreamOtterProviderProps): ReactEleme
   return createElement(ClientContext.Provider, { value }, props.children);
 }
 
+/**
+ * The client a provider with `options` owns, or null without options or before the effect creates it.
+ * A new `origin` or `path` replaces it; `getToken` is read through a ref so a new function keeps it.
+ */
 function useOwnedClient(options: ClientOptions | undefined): Client<ChannelMap> | null {
   const getToken = useRef(options?.getToken);
   useEffect(() => { getToken.current = options?.getToken; });
@@ -141,7 +145,7 @@ function useOwnedClient(options: ClientOptions | undefined): Client<ChannelMap> 
  * {@link createStreamOtterHooks}, which is the same function typed for your channels.
  *
  * @typeParam C - The channel map the client is typed for.
- * @throws {@link StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider} (A1).
+ * @throws {@link contracts!StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider} (A1).
  */
 export function useStreamOtterClient<C extends ChannelMap = ChannelMap>(): Client<C> | null {
   const client = useContext(ClientContext);
@@ -151,6 +155,7 @@ export function useStreamOtterClient<C extends ChannelMap = ChannelMap>(): Clien
   return client as Client<C> | null;
 }
 
+/** Stand-in unsubscribe and rejection handler. */
 const noop = (): void => {};
 
 /**
@@ -165,7 +170,7 @@ const noop = (): void => {};
  * }
  * ```
  *
- * @throws {@link StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider} (A1).
+ * @throws {@link contracts!StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider} (A1).
  */
 export function useConnectionState(): ConnectionState {
   const client = useStreamOtterClient();
@@ -281,7 +286,7 @@ const IDLE_VIEW: View = { client: null, key: null, data: undefined, revision: un
  * supplied client the application closed) the hook subscribes to nothing and renders its
  * no-subscription values (S9).
  *
- * @throws {@link StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider}
+ * @throws {@link contracts!StreamOtterError} with code `INVALID_REQUEST` outside a {@link StreamOtterProvider}
  * (A1), or when `options` has no numeric `channelVersion` or no `params` object.
  */
 export function useSubscription<C extends ChannelMap = ChannelMap, K extends keyof C & string = keyof C & string>(

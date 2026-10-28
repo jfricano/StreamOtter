@@ -17,6 +17,7 @@ export const postSchema = z.object({
   draft: z.boolean().default(false)
 });
 
+/** A post's frontmatter after validation: dates parsed and `draft` defaulted to false. */
 export type PostData = z.infer<typeof postSchema>;
 
 /** The part of a collection entry the blog reads; `id` is the file name, and the post's slug. */

@@ -14,10 +14,13 @@ if (!patchKafkaJsRequestQueue()) {
   process.emitWarning("StreamOtter's KafkaJS request-queue fix applies only to kafkajs 2.2.4; idle Kafka connections may spin a 1 ms timer.", { code: "STREAMOTTER_KAFKAJS_PATCH" });
 }
 
+/** A Kafka connection profile with its secrets read from the environment and its CA file loaded. It holds credentials, so it is never logged. */
 export interface ResolvedKafkaConnection {
   readonly brokers: readonly string[];
   readonly tls: boolean;
+  /** PEM text of the configured CA file, or null to trust the default certificate authorities. */
   readonly ca: string | null;
+  /** Resolved SASL credentials, or null when the profile has no SASL. */
   readonly sasl: { mechanism: "plain" | "scram-sha-256" | "scram-sha-512"; username: string; password: string } | null;
 }
 
@@ -62,6 +65,7 @@ export async function resolveKafkaConnection(profile: KafkaConnection, configDir
 export class TrackedSockets {
   readonly #open = new Set<Socket>();
 
+  /** The KafkaJS socket factory: opens a TCP or TLS socket (with SNI for host names) and tracks it until it closes. */
   readonly factory: ISocketFactory = ({ host, port, ssl, onConnect }) => {
     const socket: Socket = ssl
       ? tlsConnect({ host, port, ...(isIP(host) === 0 ? { servername: host } : {}), ...(typeof ssl === "object" ? ssl : {}) } as ConnectionOptions, onConnect)
@@ -72,6 +76,7 @@ export class TrackedSockets {
     return socket;
   };
 
+  /** Number of tracked sockets still open. */
   get size(): number {
     return this.#open.size;
   }
@@ -91,6 +96,7 @@ export interface KafkaClientOverrides {
   requestTimeout?: number;
 }
 
+/** KafkaJS client settings for a resolved profile: tracked sockets, fixed timeouts and retries, TLS and SASL, and a log bridge that forwards namespace and message (plus topic and partition for an offset reset) as warnings, silenced while `quiet()` returns true. */
 export function kafkaConfig(
   clientId: string,
   connection: ResolvedKafkaConnection,
@@ -159,6 +165,7 @@ export async function readCommittedOffset(
   }
 }
 
+/** The offset Kafka commits after processing `offset`: the next one to read. */
 function nextOffset(offset: string): string {
   return (BigInt(offset) + 1n).toString();
 }
@@ -179,6 +186,7 @@ const START_POSITION_RETRY = { initialRetryTime: 300, maxRetryTime: 1_000, retri
  * resume retries the same record; nothing after it is committed.
  */
 export class KafkaSourceAdapter implements SourceAdapter {
+  /** Identifies this adapter as a Kafka source. */
   readonly kind = "kafka" as const;
   readonly #sourceId: string;
   readonly #source: Extract<Source, { kind: "kafka" }>;
@@ -223,6 +231,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
   #startCommit: Promise<void> | null = null;
   readonly #sockets = new TrackedSockets();
 
+  /** Creates the adapter without connecting; its client ID is `streamotter-<projectId>-<sourceId>`. */
   constructor(options: {
     projectId: string;
     sourceId: string;
@@ -247,6 +256,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     this.#clientId = `streamotter-${options.projectId}-${options.sourceId}`;
   }
 
+  /** Connects, subscribes and runs the consumer, resolving once the group first assigns partitions; the watchdog and commit retries start then. Resolves early if stop() has begun. */
   async start(): Promise<void> {
     const kafka = new Kafka(kafkaConfig(this.#clientId, this.#connection, this.#sink, this.#sockets, () => this.#stopping));
     this.#kafka = kafka;
@@ -346,6 +356,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     this.#watchdog.unref();
   }
 
+  /** Closes the admin clients, waits for the consumer to disconnect until `deadline` (epoch ms), then destroys any sockets KafkaJS left open. */
   async stop(deadline: number): Promise<void> {
     this.#stopping = true;
     if (this.#watchdog !== null) clearInterval(this.#watchdog);
@@ -376,6 +387,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     this.#status = "stopped";
   }
 
+  /** Clears a pause and resumes fetching from the held record, which the pause sought back to; does nothing unless paused. */
   async resume(): Promise<void> {
     if (!this.#paused || this.#consumer === null) return;
     this.#paused = false;
@@ -384,6 +396,7 @@ export class KafkaSourceAdapter implements SourceAdapter {
     this.#consumer.resume(this.#source.topics.map(topic => ({ topic })));
   }
 
+  /** Runs the staged connectivity diagnostics for this source's profile and topics. */
   async check(deadline: number): Promise<DiagnosticStep[]> {
     return runKafkaDiagnostics(this.#connection, this.#source.topics, deadline);
   }
@@ -714,16 +727,19 @@ export class KafkaSourceAdapter implements SourceAdapter {
   }
 }
 
+/** Creates a Kafka source adapter; nothing connects until start(). */
 export function createKafkaSourceAdapter(options: ConstructorParameters<typeof KafkaSourceAdapter>[0]): KafkaSourceAdapter {
   return new KafkaSourceAdapter(options);
 }
 
+/** Splits a validated host:port broker address, removing IPv6 brackets. */
 function splitBroker(broker: string): { host: string; port: number } {
   const index = broker.lastIndexOf(":");
   const host = broker.slice(0, index).replace(/^\[|\]$/g, "");
   return { host, port: Number(broker.slice(index + 1)) };
 }
 
+/** Races `promise` against `deadline` (epoch ms), rejecting with "<label> timed out"; the timer does not keep the process alive. */
 function withDeadline<T>(promise: Promise<T>, deadline: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   return Promise.race([

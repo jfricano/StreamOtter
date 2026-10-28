@@ -8,6 +8,10 @@ export const QUARANTINE_HEADROOM_BYTES = 80 * 1024;
 /** ADR-15A §4: the metadata header is compact JSON of at most 16 KiB. */
 export const MAX_ENVELOPE_HEADER_BYTES = 16 * 1024;
 
+/**
+ * Feeds one field to the hash: a presence byte, the length as a big-endian u64,
+ * then the bytes. A null field is a zero presence byte and zero length.
+ */
 function lengthPrefixed(hash: ReturnType<typeof createHash>, bytes: Uint8Array | null): void {
   const length = Buffer.alloc(9);
   if (bytes === null) {
@@ -76,6 +80,7 @@ export function sourceHeadersFromQuarantine(headers: Readonly<Record<string, Buf
     .map(header => ({ name: header.name.slice(SOURCE_HEADER_PREFIX.length), value: header.value }));
 }
 
+/** Bytes the key and headers (UTF-8 names plus values) add to a capture, checked against MAX_CAPTURED_KEY_AND_HEADER_BYTES. */
 export function keyAndHeaderBytes(evidence: RawEvidence): number {
   return (evidence.key?.byteLength ?? 0) + evidence.headers.reduce((sum, header) => sum + Buffer.byteLength(header.name) + header.value.byteLength, 0);
 }

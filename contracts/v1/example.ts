@@ -5,7 +5,9 @@ import {
   type Revision, type StreamError, type SubscriptionState
 } from "./api";
 
+/** Params of the orderStatus channel: the order to follow. */
 export type OrderParams = { orderId: string };
+/** Payload of the orderStatus channel; `progress` is a percentage from 0 to 100. */
 export type OrderState = {
   orderId: string;
   status: "queued" | "processing" | "done";
@@ -16,6 +18,7 @@ export type AppChannels = {
   orderStatus: ChannelContract<OrderParams, OrderState, 1>;
 };
 
+/** Example configuration: one Kafka source of order status records feeding the orderStatus channel. */
 export const project = defineProject<AppChannels>({
   configVersion: 1,
   projectId: "order-dashboard",
@@ -82,6 +85,7 @@ export interface ApplicationServices {
   }>;
 }
 
+/** Creates a development gateway for `project` whose handlers delegate to the application's services. */
 export function buildGateway(services: ApplicationServices) {
   const handlers: HandlerRegistry<AppChannels> = {
     authenticate: ({ token, signal }) => services.verifyToken(token, signal),
@@ -107,6 +111,10 @@ export function buildGateway(services: ApplicationServices) {
   return createGateway({ config: project, handlers, mode: "development" });
 }
 
+/**
+ * Subscribes to one order and resolves, once it is live, with a function that unsubscribes and
+ * closes the client. If it does not become live within 30 seconds, cleans up and rethrows the error.
+ */
 export async function mountOrderView(options: {
   orderId: string;
   getToken: (signal: AbortSignal) => Promise<string>;

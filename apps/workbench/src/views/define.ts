@@ -3,6 +3,7 @@ import { ApiError } from "../api.ts";
 import { h, pill, replace } from "../dom.ts";
 import { candidateDiffers, prettyConfig, type WorkbenchState } from "../state.ts";
 
+/** An object schema as a one-line field list (`id: string, mode?: "a" | "b"`); any other schema as its type. */
 function describeSchema(schema: Schema | undefined): string {
   if (schema === undefined) return "unknown schema";
   if (schema.type !== "object") return schema.type;
@@ -13,6 +14,7 @@ function describeSchema(schema: Schema | undefined): string {
   }).join(", ");
 }
 
+/** Draws the Define tab: the channel table and the candidate editor. Editing and validating the candidate never change the running gateway. */
 export function renderDefine(root: HTMLElement, state: WorkbenchState): void {
   const editor = h("textarea", { spellcheck: "false", "aria-label": "Candidate configuration JSON" });
   editor.value = state.candidateText;

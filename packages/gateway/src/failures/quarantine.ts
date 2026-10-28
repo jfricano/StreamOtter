@@ -46,6 +46,7 @@ export type QuarantineRead =
   | { kind: "mismatch"; reason: string }
   | { kind: "unavailable"; reason: string };
 
+/** Where to read an incident's quarantined copy, and the hash it must match. */
 export interface QuarantineReadRequest {
   failureId: string;
   partition: number;
@@ -62,6 +63,11 @@ export interface QuarantineReader {
   stop(): Promise<void>;
 }
 
+/**
+ * The quarantine topic as checked when the writer starts, for status and logs.
+ * replicationFactor is the smallest of any partition; minInsyncReplicas is null
+ * when the broker did not report it.
+ */
 export interface QuarantineTopicReport {
   topic: string;
   clusterId: string;
@@ -78,6 +84,7 @@ const DEFINITE_REFUSALS = new Set([
   "SASL_AUTHENTICATION_FAILED", "TRANSACTIONAL_ID_AUTHORIZATION_FAILED"
 ]);
 
+/** The KafkaJS broker error type (such as "MESSAGE_TOO_LARGE") of an error or of up to three errors it wraps, or null. */
 function brokerErrorType(error: unknown): string | null {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
@@ -103,6 +110,7 @@ export const QUARANTINE_REQUEST_TIMEOUT_MS = 10_000;
  * (ADR-15A §5). A timeout is reported as unknown, never as success.
  */
 export class KafkaQuarantineWriter implements QuarantineWriter {
+  /** The quarantine topic's name. */
   readonly topic: string;
   readonly #connection: ResolvedKafkaConnection;
   readonly #logger: GatewayLogger;
@@ -112,6 +120,7 @@ export class KafkaQuarantineWriter implements QuarantineWriter {
   #sockets: TrackedSockets | null = null;
   #report: QuarantineTopicReport | null = null;
 
+  /** Nothing connects until start(). */
   constructor(options: { topic: string; connection: ResolvedKafkaConnection; logger: GatewayLogger; maxSourceRecordBytes: number; clientId: string }) {
     this.topic = options.topic;
     this.#connection = options.connection;
@@ -120,6 +129,7 @@ export class KafkaQuarantineWriter implements QuarantineWriter {
     this.#clientId = options.clientId;
   }
 
+  /** The topic report from start(), or null until start() has checked the topic. */
   get report(): QuarantineTopicReport | null {
     return this.#report;
   }
@@ -178,6 +188,12 @@ export class KafkaQuarantineWriter implements QuarantineWriter {
     return this.#report;
   }
 
+  /**
+   * Writes one quarantine record: the original key and value, the original headers
+   * under the src. prefix, plus the envelope and failure-ID headers. A missing
+   * producer, an oversized envelope or a definite broker refusal is failed;
+   * anything else unconfirmed is unknown.
+   */
   async publish(write: QuarantineWrite): Promise<QuarantineOutcome> {
     const producer = this.#producer;
     if (producer === null) return { kind: "failed", reason: "the quarantine producer is not connected" };
@@ -214,6 +230,7 @@ export class KafkaQuarantineWriter implements QuarantineWriter {
     }
   }
 
+  /** Disconnects the producer and destroys its sockets; later publishes fail. */
   async stop(): Promise<void> {
     const producer = this.#producer;
     this.#producer = null;
@@ -289,6 +306,7 @@ function errorKind(error: unknown): string {
   return name;
 }
 
+/** The unavailable outcome for a read error, naming authorization and missing-topic causes; never quotes the error's message. */
 function unavailable(error: unknown): QuarantineRead {
   const kind = errorKind(error);
   if (kind.endsWith("_AUTHORIZATION_FAILED") || kind === "SASL_AUTHENTICATION_FAILED") {
@@ -311,6 +329,7 @@ function groupDeletionErrors(error: unknown): string[] | null {
   return null;
 }
 
+/** A timer promise that can be cancelled; a cancelled one never settles. */
 function delay(ms: number): { promise: Promise<void>; cancel(): void } {
   let timer: NodeJS.Timeout | undefined;
   const promise = new Promise<void>(resolve => { timer = setTimeout(resolve, ms); });
@@ -336,6 +355,7 @@ async function within<T>(step: Promise<T>, ms: number, hurry?: Promise<void>): P
 
 const ABANDONED: QuarantineRead = { kind: "unavailable", reason: "the read was abandoned" };
 
+/** Thrown inside a read once it was abandoned, so it starts no further step. */
 class AbandonedRead extends Error {}
 
 /**
@@ -512,6 +532,7 @@ class QuarantineReadAttempt {
  * flight) and before idle() and stop() return.
  */
 export class KafkaQuarantineReader implements QuarantineReader {
+  /** The quarantine topic's name. */
   readonly topic: string;
   readonly #connection: ResolvedKafkaConnection;
   readonly #logger: GatewayLogger;
@@ -532,6 +553,7 @@ export class KafkaQuarantineReader implements QuarantineReader {
   readonly #hurry = new Promise<void>(resolve => { this.#signalHurry = resolve; });
   #abort: (() => void) | null = null;
 
+  /** Nothing connects until the first read. */
   constructor(options: { topic: string; connection: ResolvedKafkaConnection; logger: GatewayLogger; maxSourceRecordBytes: number; clientId: string }) {
     this.topic = options.topic;
     this.#connection = options.connection;
@@ -553,6 +575,11 @@ export class KafkaQuarantineReader implements QuarantineReader {
     await Promise.all(this.#sweeps);
   }
 
+  /**
+   * Reads the record at the request's coordinates and checks it is this failure's
+   * evidence. Every failure is an outcome: malformed coordinates, a stopped reader
+   * and a missed deadline are unavailable.
+   */
   async read(request: QuarantineReadRequest): Promise<QuarantineRead> {
     const issue = quarantineCoordinateIssue(request.partition, request.offset);
     if (issue !== null) return { kind: "unavailable", reason: issue };

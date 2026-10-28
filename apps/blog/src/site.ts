@@ -4,6 +4,7 @@ export const BLOG = {
   description: "Releases, design decisions, and notes from building StreamOtter."
 } as const;
 
+/** Who wrote a post, as its byline shows them. */
 export interface Author {
   name: string;
   /** A line under the name on every post; posts show only the name when it is unset. */
@@ -13,6 +14,7 @@ export interface Author {
 /** Every post's byline. */
 export const AUTHOR: Author = { name: "Jason Fricano", bio: "Maintainer of StreamOtter. Co-created KafkaSocks at OSLabs in 2021." };
 
+/** The other StreamOtter sites, linked from the header, the footer, each post's end and the 404 page. */
 export const LINKS = {
   home: "https://streamotter.dev",
   docs: "https://docs.streamotter.dev",

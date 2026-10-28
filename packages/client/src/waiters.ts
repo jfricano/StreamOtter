@@ -8,10 +8,15 @@ import { asStreamOtterError, DEFAULT_READY_TIMEOUT_MS } from "@streamotter/contr
 export class WaiterSet {
   readonly #waiters = new Set<{ resolve: () => void; reject: (error: StreamError) => void }>();
 
+  /** Number of callers still waiting. */
   get size(): number {
     return this.#waiters.size;
   }
 
+  /**
+   * Adds a waiter that settles on the next resolveAll or rejectAll. Rejects with CANCELLED when the
+   * signal aborts and with TIMEOUT after `timeoutMs` (default DEFAULT_READY_TIMEOUT_MS).
+   */
   wait(options: WaitOptions | undefined): Promise<void> {
     const timeoutMs = options?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
     const signal = options?.signal;
@@ -35,10 +40,12 @@ export class WaiterSet {
     });
   }
 
+  /** Resolves every current waiter. */
   resolveAll(): void {
     for (const waiter of [...this.#waiters]) waiter.resolve();
   }
 
+  /** Rejects every current waiter with the error as a StreamOtterError. */
   rejectAll(error: StreamError): void {
     for (const waiter of [...this.#waiters]) waiter.reject(error);
   }

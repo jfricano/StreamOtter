@@ -36,11 +36,13 @@ export interface AdvanceHooks {
  * diagnosis starts with one of these.
  */
 export const POSITION_MOVED_DIAGNOSIS = "Source progress moved";
+/** Starts the diagnosis of an incident captured on another Kafka cluster than the source now reads. */
 export const CLUSTER_MISMATCH_DIAGNOSIS = "Kafka cluster mismatch";
 /** How the event detail starts when a retried incident is held again because the source paused at another record. */
 export const PAUSED_AGAIN_AT = "the source paused again at ";
 /** How a cluster-mismatch diagnosis names a current cluster whose ID was not read (no class on the source quarantines). */
 export const UNKNOWN_CLUSTER = "a cluster whose ID is unknown";
+/** Starts the diagnosis when the record at a held position has different bytes than the evidence captured there. */
 export const EVIDENCE_CONFLICT_DIAGNOSIS = "The redelivered record's bytes differ from the evidence captured for the same position.";
 /** The resolution of a fixture incident whose record was replaced at the same position and then processed (runbook §6.5). */
 export const CORRECTED_RECORD_RESOLUTION = "a corrected record at the same position processed";
@@ -64,6 +66,7 @@ export interface FailureSource {
 type Pause = Extract<ProcessOutcome, { kind: "pause" }>;
 
 let cachedVersion: string | null = null;
+/** This package's version from its package.json, read once; "unknown" when it cannot be read. */
 export function gatewayVersion(): string {
   if (cachedVersion !== null) return cachedVersion;
   try {
@@ -83,6 +86,7 @@ export function gatewayVersion(): string {
  * record's position uncommitted, and continuation is slice C's guarded path.
  */
 export class FailureService {
+  /** The incident store this service owns; stop() closes it. */
   readonly store: IncidentStore;
   readonly #config: ProjectConfig;
   readonly #logger: GatewayLogger;
@@ -114,6 +118,7 @@ export class FailureService {
   readonly #retiring = new Set<string>();
   readonly #hooks: AdvanceHooks;
 
+  /** Resolves each source's policy and the incident fingerprints, then expires local fixture evidence past its retention. */
   constructor(options: {
     config: ProjectConfig;
     store: IncidentStore;
@@ -161,6 +166,10 @@ export class FailureService {
     }
   }
 
+  /**
+   * The message of the last failed journal write, or null; readiness reports it.
+   * Cleared when a later observation or prepared advance is recorded.
+   */
   get journalError(): string | null {
     return this.#journalError;
   }
@@ -261,6 +270,7 @@ export class FailureService {
     }
   }
 
+  /** The source's resolved failure policy; an unconfigured source gets the defaults. */
   policy(sourceId: string): ResolvedSourcePolicy {
     return this.#policies.get(sourceId) ?? resolveSourcePolicy(undefined, sourceId);
   }
@@ -492,6 +502,7 @@ export class FailureService {
     }
   }
 
+  /** Waits for queued failure work, stops the quarantine writer and closes the store. */
   async stop(): Promise<void> {
     await this.settled();
     await this.#quarantine?.stop();
@@ -962,6 +973,7 @@ export class FailureService {
   }
 }
 
+/** The cluster-mismatch diagnosis; `current` is null when the ID of the cluster the source reads now is unknown. */
 function clusterMismatchDiagnosis(captured: string, current: string | null): string {
   if (current === null) {
     return `${CLUSTER_MISMATCH_DIAGNOSIS}: the incident was captured on cluster ${captured}, but the source now reads ${UNKNOWN_CLUSTER}. The gateway reads the cluster ID only while some class on the source uses a quarantine policy, so it can't confirm the source still reads the same cluster: the source stays held and is never advanced. If it does, restore a quarantining policy and restart; if it moved to another cluster, change its generation and rebaseline.`;
@@ -979,14 +991,17 @@ export function unresolvedAdvanceHint(incident: IncidentRecord): string {
     : "It is reconciled from the group's committed offset at restart.";
 }
 
+/** A position as operators read it: "topic/partition offset N" or "fixture record N". */
 function describePosition(position: SourceRecord["position"]): string {
   return position.kind === "kafka" ? `${position.topic}/${position.partition} offset ${position.offset}` : `fixture record ${position.index}`;
 }
 
+/** True for the classes detected at the validate stage, before map runs. */
 function isValidateClass(failureClass: FailureClass): boolean {
   return failureClass === "invalid-json" || failureClass === "tombstone" || failureClass === "oversize";
 }
 
+/** The diagnosis when the pause outcome gives none: the class and error code. */
 function defaultDiagnosis(failureClass: FailureClass, code: ErrorCode): string {
   return `${failureClass} (${code})`;
 }
@@ -1002,10 +1017,12 @@ function rawEvidence(input: SourceInput): RawEvidence | null {
   return { key: key === null ? null : new Uint8Array(key), value: value === null ? null : new Uint8Array(value), headers: (input.headers ?? []).map(header => ({ name: header.name, value: new Uint8Array(header.value) })) };
 }
 
+/** A map key for one record of one source; NUL separators keep IDs and topic names from running together. */
 function positionKey(sourceId: string, position: SourceRecord["position"]): string {
   return position.kind === "kafka" ? `${sourceId}\u0000${position.topic}\u0000${position.partition}\u0000${position.offset}` : `${sourceId}\u0000${position.index}`;
 }
 
+/** True when both positions are of the same kind and name the same coordinates. */
 function samePosition(a: SourceRecord["position"], b: SourceRecord["position"]): boolean {
   if (a.kind === "fixture" && b.kind === "fixture") return a.index === b.index;
   if (a.kind === "kafka" && b.kind === "kafka") return a.topic === b.topic && a.partition === b.partition && a.offset === b.offset;

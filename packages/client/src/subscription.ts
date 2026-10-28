@@ -38,6 +38,7 @@ type Listener = (value: never) => unknown;
 /** SDK-detected synchronization failures tolerated per incident before resync-required. */
 const LOCAL_SYNC_ATTEMPTS = 3;
 
+/** Whether a listener's return value is promise-like, so its rejection can be caught. */
 function isThenable(value: unknown): value is PromiseLike<unknown> {
   return (typeof value === "object" || typeof value === "function") && value !== null
     && typeof (value as { then?: unknown }).then === "function";
@@ -50,9 +51,13 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
  * disconnected or superseded view.
  */
 export class ClientSubscription<D extends Json = Json> implements Subscription<D>, ManagedSubscription {
+  /** Client-generated subscription id the gateway uses to route frames. */
   readonly id: string;
+  /** Channel name passed to subscribe(). */
   readonly channel: string;
+  /** Contract version every delivered event must carry. */
   readonly channelVersion: number;
+  /** Copy of the params passed to subscribe(). */
   readonly params: Params;
   readonly #owner: SubscriptionOwner;
   readonly #listeners = {
@@ -82,6 +87,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
   #unsubscribing: Promise<void> | null = null;
   #retryTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Creates the subscription idle; it registers with its owner in the next microtask unless already unsubscribed. */
   constructor(owner: SubscriptionOwner, channel: string, channelVersion: number, params: Params) {
     this.#owner = owner;
     this.id = owner.randomId();
@@ -94,17 +100,23 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     });
   }
 
+  /** The current delivery state. */
   get state(): SubscriptionState {
     return this.#state;
   }
 
+  /** False once the subscription is closed or failed. */
   get active(): boolean {
     return !this.#terminal;
   }
 
+  /** Listens for snapshots and updates in order; a listener that throws or rejects fails the subscription. */
   on(event: "data", listener: (event: StreamEvent<D>) => void): Unlisten;
+  /** Listens for delivery state changes; a listener that throws or rejects fails the subscription. */
   on(event: "state", listener: (state: StateChange<SubscriptionState>) => void): Unlisten;
+  /** Listens for errors; failures in these listeners are only logged. */
   on(event: "error", listener: (error: StreamError) => void): Unlisten;
+  /** Adds a listener and returns its remover; throws INVALID_REQUEST for another event or a non-function. */
   on(event: "data" | "state" | "error", listener: Listener): Unlisten {
     const set = this.#listeners[event] as Set<Listener> | undefined;
     if (set === undefined || typeof listener !== "function") {
@@ -114,6 +126,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     return () => { set.delete(listener); };
   }
 
+  /** Resolves when the subscription is live; rejects at once if it is terminated, needs reconnect(), or needs a resync. */
   ready(options?: WaitOptions): Promise<void> {
     if (this.#state === "live") return Promise.resolve();
     const blocked = this.#blockedError();
@@ -121,6 +134,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     return this.#waiters.wait(options);
   }
 
+  /** Asks for a fresh snapshot and resolves when live again; concurrent calls share one request. */
   resync(options?: WaitOptions): Promise<void> {
     const blocked = this.#blockedError(true);
     if (blocked !== null) return Promise.reject(asStreamOtterError(blocked));
@@ -131,6 +145,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     return wait;
   }
 
+  /** Closes the subscription locally at once; resolves when the gateway confirms, after a timeout, or immediately if it never knew it. */
   unsubscribe(): Promise<void> {
     if (this.#unsubscribing !== null) return this.#unsubscribing;
     const connection = this.#attached;
@@ -186,6 +201,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     this.#terminate(state, error.code, error);
   }
 
+  /** Applies a gateway state frame for the attached connection, ignoring frames of old or replaced epochs. */
   handleState(connection: Connection, frame: SubscriptionFrame): void {
     if (this.#terminal || connection !== this.#attached) return;
     // A frame proves the gateway holds this subscription, even if its acknowledgement
@@ -233,6 +249,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     }
   }
 
+  /** Validates and delivers a data frame of the current epoch, then sends its receipt; an invalid frame triggers a bounded local resync. */
   handleData(connection: Connection, frame: DataFrame): void {
     if (this.#terminal || connection !== this.#attached) return;
     this.#serverKnows = true;
@@ -274,6 +291,7 @@ export class ClientSubscription<D extends Json = Json> implements Subscription<D
     connection.receipt({ subscriptionId: this.id, epoch: frame.epoch, sequence: frame.sequence });
   }
 
+  /** Records and emits an error the gateway scoped to this subscription. */
   handleError(connection: Connection, error: StreamError): void {
     if (this.#terminal || connection !== this.#attached) return;
     this.#lastError = error;

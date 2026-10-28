@@ -30,6 +30,7 @@ const MUTATIONS: ReadonlySet<OperatorOperation> = new Set(["retryCurrent", "reas
 /** `details.reason` the operator client puts on an error raised after the request was sent but before an answer arrived. */
 const NO_ANSWER = "no-answer";
 
+/** The operator commands' usage lines, indented for the CLI's help text. */
 export const OPERATOR_USAGE = `  streamotter status --state-dir <dir> [--json]
   streamotter failures list --state-dir <dir> [--source <id>] [--state open|resolved|all] [--limit <n>] [--cursor <c>] [--json]
   streamotter failures show --state-dir <dir> --failure <id> [--raw] [--json]
@@ -53,6 +54,7 @@ export const RETIREMENT_WARNING = [
   "say what you checked in --reason."
 ].join("\n");
 
+/** Invalid flags or arguments; reported as INVALID_REQUEST with exit 2. */
 class UsageError extends Error {}
 
 type Values = Record<string, unknown>;
@@ -68,7 +70,9 @@ const COMMON = ["state-dir", "json"];
 
 // --- argument helpers --------------------------------------------------------------------
 
+/** A non-empty string flag; throws a UsageError when it is missing or empty. */
 function text(values: Values, name: string, required: true): string;
+/** A non-empty string flag, or undefined when it is missing or empty. */
 function text(values: Values, name: string, required: false): string | undefined;
 function text(values: Values, name: string, required: boolean): string | undefined {
   const value = values[name];
@@ -77,6 +81,7 @@ function text(values: Values, name: string, required: boolean): string | undefin
   return undefined;
 }
 
+/** A flag parsed as a non-negative safe integer of at most 16 digits; undefined when optional and absent, otherwise a UsageError if missing or malformed. */
 function integer(values: Values, name: string, required: boolean): number | undefined {
   const value = required ? text(values, name, true) : text(values, name, false);
   if (value === undefined) return undefined;
@@ -96,6 +101,7 @@ const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\
 /** The same, minus C0 controls, which JSON.stringify already escapes. */
 const UNSAFE_JSON = /[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]/g;
 
+/** A character as a `\uXXXX` escape. */
 function escape(character: string): string {
   return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
 }
@@ -110,11 +116,13 @@ function jsonText(value: unknown): string {
   return JSON.stringify(value, null, 2).replace(UNSAFE_JSON, escape);
 }
 
+/** Space-separated hex of the first `limit` bytes, noting how many more follow. */
 function hexPreview(bytes: Buffer, limit = 64): string {
   const shown = bytes.subarray(0, limit).toString("hex").replace(/(..)(?!$)/g, "$1 ");
   return bytes.length > limit ? `${shown} … (${bytes.length - limit} more bytes)` : shown;
 }
 
+/** Prints one raw evidence field as its length, base64 and a hex preview, or `none` when absent. */
 function rawBytes(io: CliIO, label: string, base64: string | null): void {
   if (base64 === null) {
     io.out(`  ${label}: none`);
@@ -126,6 +134,7 @@ function rawBytes(io: CliIO, label: string, base64: string | null): void {
   io.out(`    hex     ${hexPreview(bytes)}`);
 }
 
+/** Prints raw evidence (key, value and each header) as base64 and hex only, never as text. */
 function renderRaw(io: CliIO, raw: RawEvidenceView): void {
   io.out("");
   io.out(`Raw evidence (${raw.complete ? "complete" : "incomplete"}), shown as base64 and hex only; it is never printed as text:`);
@@ -135,10 +144,12 @@ function renderRaw(io: CliIO, raw: RawEvidenceView): void {
   for (const header of raw.headers) rawBytes(io, `header ${JSON.stringify(header.name).replace(UNSAFE_JSON, escape)}`, header.valueBase64);
 }
 
+/** Prints a cleaned value after a label padded to 12 columns. */
 function row(io: CliIO, label: string, value: unknown): void {
   io.out(`${label.padEnd(12)}${clean(value)}`);
 }
 
+/** Where the incident's record came from: Kafka topic/partition/offset or fixture index. */
 function position(incident: IncidentSummary): string {
   const where = incident.position;
   return where.kind === "kafka" ? `kafka ${where.topic}/${where.partition}/${where.offset}` : `fixture #${where.index}`;
@@ -146,6 +157,7 @@ function position(incident: IncidentSummary): string {
 
 // --- renderers ---------------------------------------------------------------------------
 
+/** Prints an operation result, as JSON or as outcome, message and operation lines, and returns its exit code. */
 export function renderOperation(io: CliIO, data: unknown, json: boolean): number {
   const result = data as OperationResult;
   if (json) io.out(jsonText(result));
@@ -157,6 +169,7 @@ export function renderOperation(io: CliIO, data: unknown, json: boolean): number
   return operationExitCode(result.result);
 }
 
+/** Prints the gateway, journal, quarantine and per-source status (circuit, held incident, boundary), or the JSON. */
 function renderStatus(io: CliIO, data: unknown, json: boolean): number {
   const status = data as OperatorStatus;
   if (json) {
@@ -181,6 +194,7 @@ function renderStatus(io: CliIO, data: unknown, json: boolean): number {
   return OK;
 }
 
+/** Prints a page of incidents as an aligned table with the next cursor, or the JSON. */
 function renderList(io: CliIO, data: unknown, json: boolean): number {
   const page = data as Page<IncidentSummary>;
   if (json) {
@@ -198,6 +212,7 @@ function renderList(io: CliIO, data: unknown, json: boolean): number {
   return OK;
 }
 
+/** Prints one incident's details, explanation and history; raw evidence is dropped unless --raw was given. */
 function renderShow(io: CliIO, data: unknown, values: Values, json: boolean): number {
   const incident = data as IncidentDetail & { raw?: RawEvidenceView };
   // Raw bytes are shown only when asked for, whatever the gateway sent.
@@ -236,6 +251,10 @@ function renderShow(io: CliIO, data: unknown, values: Values, json: boolean): nu
   return OK;
 }
 
+/**
+ * Writes the reproduction bundle to stdout, or with --out to a new mode 0600 file it never overwrites
+ * and removes if the write fails. Raw evidence is dropped unless --include-raw was given.
+ */
 async function renderExport(io: CliIO, data: unknown, values: Values, json: boolean): Promise<number> {
   const bundle = data as ReproductionBundle;
   const includeRaw = values["include-raw"] === true;
@@ -272,6 +291,7 @@ async function renderExport(io: CliIO, data: unknown, values: Values, json: bool
   return OK;
 }
 
+/** Prints a redrive evaluation and, when it produced a plan, the redrive command to run; or the JSON. */
 function renderEvaluate(io: CliIO, data: unknown, values: Values, json: boolean): number {
   const evaluation = data as EvaluationResult;
   if (json) {
@@ -292,6 +312,7 @@ function renderEvaluate(io: CliIO, data: unknown, values: Values, json: boolean)
   return OK;
 }
 
+/** Renderer for commands whose answer is an OperationResult. */
 const operation = (io: CliIO, data: unknown, _values: Values, json: boolean): number => renderOperation(io, data, json);
 
 const COMMANDS: Readonly<Record<string, Readonly<Record<string, Command>>>> = {

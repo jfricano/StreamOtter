@@ -125,6 +125,7 @@ export function canonicalJson(value: unknown, maxDepth = MAX_NESTING_DEPTH): str
   return JSON.stringify(canonicalize(value, 1, maxDepth));
 }
 
+/** Copies JSON data with sorted keys, undefined properties dropped and -0 as 0; throws a TypeError for anything else or past `maxDepth`. */
 function canonicalize(value: unknown, depth: number, maxDepth: number): Json {
   if (depth > maxDepth) throw new TypeError("Value exceeds the maximum nesting depth");
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;

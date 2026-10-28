@@ -14,13 +14,32 @@ import { MAX_RECOVERY_CONTEXT_BYTES } from "@streamotter/contracts/internal";
  */
 
 export type QuarantineState = "not-required" | "pending" | "unknown" | "acknowledged" | "failed";
+/**
+ * Where the source stands on the failing record: "held" or "retrying" at it,
+ * "advance-pending" or "uncertain" while an advance past it is unresolved,
+ * "advanced" past it under a recovery boundary, or "processed" normally after a
+ * retry or restart.
+ */
 export type ProgressState = "held" | "retrying" | "advance-pending" | "advanced" | "processed" | "uncertain";
+/**
+ * How far recovery past the record has got: "not-applicable" until a quarantine
+ * policy handles it, "held" with nothing approving an advance, "guard-pending"
+ * while the recovery guard runs, "denied" when the guard answered hold, and
+ * "boundary-in-force" once an advance was prepared under a boundary.
+ */
 export type RecoveryState = "not-applicable" | "guard-pending" | "held" | "boundary-in-force" | "denied";
+/**
+ * Whether the original bytes were captured whole: "incomplete" when the value, key
+ * or headers exceed the capture limits, "unavailable" when the adapter had no
+ * bytes to capture. Nothing in the gateway sets "expired" yet.
+ */
 export type EvidenceCompleteness = "complete" | "incomplete" | "unavailable" | "expired";
+/** The kind of an incident history event; "operator" marks an audited operator action. */
 export type IncidentEventName =
   | "detected" | "retrying" | "captured" | "quarantine-unknown" | "quarantined" | "held"
   | "advance-pending" | "advance-confirmed" | "snapshot-recovery-required" | "operator" | "resolved";
 
+/** One record header: its UTF-8 name and raw value bytes. Lists of them keep wire order and repeated names. */
 export interface HeaderBytes { name: string; value: Uint8Array }
 
 /** Original record bytes. Untrusted data: never parsed for instructions, never rendered as markup. */
@@ -30,6 +49,11 @@ export interface RawEvidence {
   headers: readonly HeaderBytes[];
 }
 
+/**
+ * What an incident records about its captured evidence, never the bytes
+ * themselves: where they are kept, whether they are whole, their sizes (null for a
+ * null or missing key or value) and their hash.
+ */
 export interface EvidenceSummary {
   location: "kafka" | "local" | "none";
   completeness: EvidenceCompleteness;
@@ -40,6 +64,11 @@ export interface EvidenceSummary {
   hash: string;
 }
 
+/**
+ * One source failure as the store keeps it. failureId is "f1:" plus the source
+ * record ID (project, source, generation and position), so a redelivered record
+ * maps to the same incident.
+ */
 export interface IncidentRecord {
   failureId: string;
   /** Increments on every change; mutations name the revision they expect. */
@@ -133,6 +162,7 @@ export interface PrepareAdvance {
   at: string;
 }
 
+/** One entry in an incident's history. operationId names the operator operation that caused it, or is null. */
 export interface IncidentEvent {
   at: string;
   event: IncidentEventName;
@@ -145,6 +175,7 @@ export type NewObservation = Omit<IncidentRecord,
   "revision" | "firstObservedAt" | "lastObservedAt" | "observations" | "quarantine" | "quarantineCoordinates"
   | "progress" | "recovery" | "state" | "resolution" | "updatedAt" | "guard" | "boundaryId"> & { observedAt: string };
 
+/** What observe() returns: the incident after the observation, and whether it was new or conflicts with the stored evidence. */
 export interface ObservationResult {
   record: IncidentRecord;
   /** True when this failureId was not in the store before. */
@@ -157,6 +188,7 @@ export interface ObservationResult {
 export type IncidentPatch = Partial<Pick<IncidentRecord,
   "quarantine" | "quarantineCoordinates" | "progress" | "recovery" | "state" | "resolution" | "evidence" | "diagnosis" | "guard" | "boundaryId">>;
 
+/** Filters and paging for list(). Incidents come back in insertion order; only open ones unless state says otherwise. */
 export interface IncidentQuery {
   sourceId?: string;
   state?: "open" | "resolved" | "all";
@@ -166,8 +198,10 @@ export interface IncidentQuery {
   cursor?: string;
 }
 
+/** A configured source as claim() and initJournal record it. */
 export interface SourceIdentity { sourceId: string; generation: string; kind: "kafka" | "fixture" }
 
+/** Store size against its budgets, in bytes, for status and readiness. The memory store reports its spool as its size. */
 export interface StoreUsage {
   sizeBytes: number;
   limitBytes: number;
@@ -176,6 +210,7 @@ export interface StoreUsage {
   schemaVersion: number;
 }
 
+/** Synchronous decision-state store for source failures (see the module comment), implemented by SqliteIncidentStore and MemoryIncidentStore. */
 export interface IncidentStore {
   readonly kind: "sqlite" | "memory";
   readonly path: string | null;
@@ -298,6 +333,7 @@ export interface IncidentStore {
   close(): void;
 }
 
+/** The operator mutations journaled as operations, one per OperatorApi mutation. */
 export type OperationKind = "retry-current" | "reassess" | "reopen-circuit" | "retire-boundary" | "redrive";
 
 /** One operator mutation, recorded before it acts and finished with its result (ADR-15C §1, spec §8.3). */
@@ -316,6 +352,7 @@ export interface StoredOperation {
   completedAt: string | null;
 }
 
+/** What beginOperation records: the operation's identity and request hash, and `at`, the time it started. */
 export type NewOperation = Pick<StoredOperation, "operationId" | "kind" | "sourceId" | "failureId" | "requestHash"> & { at: string };
 
 /** Operations retained for idempotency and audit (F41); the oldest finished ones are pruned beyond this. */
@@ -324,11 +361,14 @@ export const MAX_OPERATIONS = 10_000;
 export const MAX_OPERATION_ID = 128;
 /** A finished operation's result limit, in bytes of canonical JSON. */
 export const MAX_OPERATION_RESULT_BYTES = 16 * 1024;
+/** Every OperationKind, for checking beginOperation's input. */
 export const OPERATION_KINDS: readonly OperationKind[] = ["retry-current", "reassess", "reopen-circuit", "retire-boundary", "redrive"];
 
 /** Spec §13 budgets. */
 export const JOURNAL_LIMIT_BYTES = 256 * 1024 * 1024;
+/** Budget for locally stored evidence: the sum of evidenceBytes over every stored copy. */
 export const SPOOL_LIMIT_BYTES = 16 * 1024 * 1024;
+/** History events kept per incident; the oldest are dropped as new ones are added. */
 export const MAX_EVENTS_PER_INCIDENT = 200;
 /**
  * How long local fixture evidence is kept: seven days, Kafka's default
@@ -338,6 +378,7 @@ export const LOCAL_EVIDENCE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** A mutation named a revision (of an incident, boundary or circuit) or a prior boundary that is no longer current. */
 export class StaleRevisionError extends StreamOtterError {
+  /** `failureId` names whatever holds the stale revision (an incident, boundary or source); `message` replaces the incident wording. */
   constructor(failureId: string, expected: number, actual: number, message = `Incident ${failureId} is at revision ${actual}, not ${expected}.`) {
     super("INVALID_REQUEST", { message, details: { status: 409, reason: "stale-revision" } });
   }
@@ -348,18 +389,22 @@ export function conflict(reason: string, message: string, details: Record<string
   return new StreamOtterError("INVALID_REQUEST", { message, details: { status: 409, reason, ...details } });
 }
 
+/** The 404 refusal for a failure ID the store does not hold. */
 export function unknownIncident(failureId: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message: `Unknown incident ${failureId}.`, details: { status: 404 } });
 }
 
+/** The 404 refusal for a boundary ID the store does not hold. */
 export function unknownBoundary(boundaryId: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message: `Unknown recovery boundary ${boundaryId}.`, details: { status: 404 } });
 }
 
+/** The 404 refusal for an operation ID the store does not hold. */
 export function unknownOperation(operationId: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message: `Unknown operation ${operationId}.`, details: { status: 404 } });
 }
 
+/** Input the store refuses as malformed (HTTP 400), with a machine-readable reason. Nothing was written. */
 function invalid(reason: string, message: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message, details: { status: 400, reason } });
 }
@@ -583,10 +628,12 @@ export function compareFinished(a: StoredOperation, b: StoredOperation): number 
   return byCompleted !== 0 ? byCompleted : compareText(a.startedAt, b.startedAt);
 }
 
+/** Code-unit order rather than locale order, so ISO times sort chronologically. */
 function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** The OVERLOADED refusal ("journal-full") for a write past a budget. Nothing is evicted to make room. */
 export function storeFull(message: string): StreamOtterError {
   return new StreamOtterError("OVERLOADED", { message, details: { reason: "journal-full" } });
 }
@@ -611,15 +658,18 @@ export function applyPolicy(record: IncidentRecord, policy: FailurePolicy): stri
   return note;
 }
 
+/** Bytes an evidence copy counts against the spool budget: key, value, and each header's UTF-8 name and value. */
 export function evidenceBytes(evidence: RawEvidence): number {
   return (evidence.key?.byteLength ?? 0) + (evidence.value?.byteLength ?? 0)
     + evidence.headers.reduce((sum, header) => sum + Buffer.byteLength(header.name) + header.value.byteLength, 0);
 }
 
+/** The memory store's opaque page cursor: the insertion index to resume from. */
 function encodeCursor(index: number): string {
   return Buffer.from(`m:${index}`).toString("base64url");
 }
 
+/** Reads a cursor made by encodeCursor (0 when there is none); anything else is INVALID_REQUEST. */
 function decodeCursor(cursor: string | undefined): number {
   if (cursor === undefined) return 0;
   const match = /^m:(\d{1,9})$/.exec(Buffer.from(cursor, "base64url").toString("utf8"));
@@ -627,6 +677,7 @@ function decodeCursor(cursor: string | undefined): number {
   return Number(match[1]);
 }
 
+/** A list() page size: 50 when unset, otherwise an integer from 1 to 200, or INVALID_REQUEST. */
 export function clampLimit(limit: number | undefined): number {
   if (limit === undefined) return 50;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new StreamOtterError("INVALID_REQUEST", { message: "limit must be an integer from 1 to 200." });
@@ -638,7 +689,9 @@ export function clampLimit(limit: number | undefined): number {
  * reports it as "memory" so nobody mistakes it for the journal.
  */
 export class MemoryIncidentStore implements IncidentStore {
+  /** Always "memory", so status never reports this store as durable. */
   readonly kind = "memory" as const;
+  /** Always null: nothing is written to disk. */
   readonly path = null;
   readonly #incidents = new Map<string, IncidentRecord>();
   readonly #events = new Map<string, IncidentEvent[]>();
@@ -657,6 +710,7 @@ export class MemoryIncidentStore implements IncidentStore {
   readonly #spoolLimitBytes: number;
   readonly #maxOperations: number;
 
+  /** Limits default to 10,000 incidents, SPOOL_LIMIT_BYTES of evidence and MAX_OPERATIONS operations. */
   constructor(options: { maxIncidents?: number; spoolLimitBytes?: number; maxOperations?: number } = {}) {
     this.#maxIncidents = options.maxIncidents ?? 10_000;
     this.#spoolLimitBytes = options.spoolLimitBytes ?? SPOOL_LIMIT_BYTES;
@@ -680,15 +734,18 @@ export class MemoryIncidentStore implements IncidentStore {
     }
   }
 
+  /** A copy of the incident, or null. */
   get(failureId: string): IncidentRecord | null {
     const record = this.#incidents.get(failureId);
     return record === undefined ? null : structuredClone(record);
   }
 
+  /** Copies of the incident's newest `limit` history events, oldest first. */
   events(failureId: string, limit = MAX_EVENTS_PER_INCIDENT): IncidentEvent[] {
     return structuredClone((this.#events.get(failureId) ?? []).slice(-limit));
   }
 
+  /** See IncidentStore.observe. Full only by incident count (maxIncidents); the journal byte limit does not apply here. */
   observe(observation: NewObservation): ObservationResult {
     const { observedAt, ...fields } = observation;
     const existing = this.#incidents.get(observation.failureId);
@@ -739,6 +796,7 @@ export class MemoryIncidentStore implements IncidentStore {
     return { record: structuredClone(existing), created: false, conflict };
   }
 
+  /** See IncidentStore.update: applies the patch, increments the revision and records the event. */
   update(failureId: string, expectedRevision: number, patch: IncidentPatch, event: Omit<IncidentEvent, "at"> & { at?: string }): IncidentRecord {
     const existing = this.#incidents.get(failureId);
     if (existing === undefined) throw unknownIncident(failureId);
@@ -751,6 +809,7 @@ export class MemoryIncidentStore implements IncidentStore {
     return structuredClone(existing);
   }
 
+  /** One page of incidents in insertion order. */
   list(query: IncidentQuery): Page<IncidentRecord> {
     const limit = clampLimit(query.limit);
     const start = decodeCursor(query.cursor);
@@ -766,6 +825,7 @@ export class MemoryIncidentStore implements IncidentStore {
     return { items, nextCursor: index < this.#order.length ? encodeCursor(index) : null };
   }
 
+  /** Copies of the source's open incidents, oldest first. */
   open(sourceId: string): IncidentRecord[] {
     return this.#order
       .map(id => this.#incidents.get(id) as IncidentRecord)
@@ -773,6 +833,7 @@ export class MemoryIncidentStore implements IncidentStore {
       .map(record => structuredClone(record));
   }
 
+  /** Stores a copy of the evidence and when it was stored. Refuses (journal-full) past the spool budget, counting a replaced copy as freed. */
   putEvidence(failureId: string, evidence: RawEvidence): void {
     // Replacing a failure's evidence frees the old copy, so it does not count against the new one.
     const replaced = this.#evidence.get(failureId);
@@ -782,16 +843,19 @@ export class MemoryIncidentStore implements IncidentStore {
     this.#evidenceStoredAt.set(failureId, new Date().toISOString());
   }
 
+  /** A copy of the stored evidence, or null. */
   getEvidence(failureId: string): RawEvidence | null {
     const evidence = this.#evidence.get(failureId);
     return evidence === undefined ? null : structuredClone(evidence);
   }
 
+  /** Deletes the evidence and its storage time; a missing entry is not an error. */
   deleteEvidence(failureId: string): void {
     this.#evidence.delete(failureId);
     this.#evidenceStoredAt.delete(failureId);
   }
 
+  /** Deletes evidence stored before `storedBefore` (ISO times compared as text) and returns how many were deleted. */
   pruneEvidence(storedBefore: string): number {
     let pruned = 0;
     for (const [failureId, storedAt] of this.#evidenceStoredAt) {
@@ -802,16 +866,19 @@ export class MemoryIncidentStore implements IncidentStore {
     return pruned;
   }
 
+  /** A copy of the source's in-force boundary, or null. */
   boundary(sourceId: string): StoredBoundary | null {
     const boundary = this.#inForceBoundary(sourceId);
     return boundary === null ? null : structuredClone(boundary);
   }
 
+  /** A copy of a stored boundary in any state, or null. */
   getBoundary(boundaryId: string): StoredBoundary | null {
     const boundary = this.#boundaries.get(boundaryId);
     return boundary === undefined ? null : structuredClone(boundary);
   }
 
+  /** See IncidentStore.prepareAdvance. Every check runs before the first change, so a refusal leaves nothing half-applied. */
   prepareAdvance(input: PrepareAdvance): { record: IncidentRecord; boundary: StoredBoundary } {
     const context = checkPrepareAdvance(input);
     const existing = this.#incidents.get(input.failureId) ?? null;
@@ -835,6 +902,7 @@ export class MemoryIncidentStore implements IncidentStore {
     return { record: structuredClone(advanced.record), boundary: structuredClone(boundary) };
   }
 
+  /** See IncidentStore.retireBoundary; the source then has no boundary in force. */
   retireBoundary(boundaryId: string, expectedRevision: number, retirement: NonNullable<StoredBoundary["retirement"]>, at = new Date().toISOString()): StoredBoundary {
     const boundary = checkRetirement(boundaryId, this.#boundaries.get(boundaryId) ?? null, expectedRevision, retirement, failureId => this.#incidents.get(failureId) ?? null);
     const retired = endBoundary(boundary, retirement, at);
@@ -843,10 +911,12 @@ export class MemoryIncidentStore implements IncidentStore {
     return structuredClone(retired);
   }
 
+  /** A copy of the source's circuit, or the default closed one when none is stored. */
   circuit(sourceId: string): CircuitState {
     return structuredClone(this.#circuits.get(sourceId) ?? defaultCircuit(sourceId));
   }
 
+  /** See IncidentStore.updateCircuit; only the newest MAX_CIRCUIT_ADVANCES advances are kept. */
   updateCircuit(sourceId: string, expectedRevision: number, next: Pick<CircuitState, "state" | "advances" | "openedAt" | "reason">): CircuitState {
     const current = this.circuit(sourceId);
     if (current.revision !== expectedRevision) {
@@ -857,6 +927,7 @@ export class MemoryIncidentStore implements IncidentStore {
     return structuredClone(updated);
   }
 
+  /** See IncidentStore.beginOperation. Only the operation count is limited here; the journal byte limit does not apply. */
   beginOperation(input: NewOperation): { operation: StoredOperation; created: boolean } {
     const operation = newOperation(input);
     const existing = this.#operations.get(operation.operationId);
@@ -870,6 +941,7 @@ export class MemoryIncidentStore implements IncidentStore {
     return { operation: structuredClone(operation), created: true };
   }
 
+  /** See IncidentStore.finishOperation; the result is stored in canonical form. */
   finishOperation(operationId: string, state: "completed" | "unknown", result: Json, at = new Date().toISOString()): StoredOperation {
     const canonical = checkOperationResult(state, result);
     const finished = finishedOperation(operationId, this.#operations.get(operationId) ?? null, state, canonical, at);
@@ -877,22 +949,26 @@ export class MemoryIncidentStore implements IncidentStore {
     return structuredClone(finished);
   }
 
+  /** A copy of the stored operation, or null. */
   getOperation(operationId: string): StoredOperation | null {
     const operation = this.#operations.get(operationId);
     return operation === undefined ? null : structuredClone(operation);
   }
 
+  /** See IncidentStore.abandonPendingOperations; returns them in insertion order. */
   abandonPendingOperations(at: string): StoredOperation[] {
     const abandoned = [...this.#operations.values()].filter(item => item.state === "pending").map(item => abandonedOperation(item, at));
     for (const operation of abandoned) this.#operations.set(operation.operationId, operation);
     return structuredClone(abandoned);
   }
 
+  /** Spool use against its budget. sizeBytes is the spool size, as nothing else is measured, and schemaVersion is always 1. */
   usage(): StoreUsage {
     const spoolBytes = [...this.#evidence.values()].reduce((sum, item) => sum + evidenceBytes(item), 0);
     return { sizeBytes: spoolBytes, limitBytes: JOURNAL_LIMIT_BYTES, spoolBytes, spoolLimitBytes: this.#spoolLimitBytes, schemaVersion: 1 };
   }
 
+  /** Does nothing: there is no file or lock to release. */
   close(): void {
     // Nothing to release.
   }

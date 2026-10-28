@@ -15,6 +15,7 @@ type Reply = (result: Result<unknown>) => void;
 
 interface CachedResult { fingerprint: string; result: Result<unknown>; expiresAt: number }
 
+/** What a session needs from the gateway that owns it; GatewayRuntime implements it. */
 export interface SessionOwner {
   readonly core: GatewayCore;
   channel(name: string): ChannelRuntime | undefined;
@@ -30,10 +31,15 @@ const RECEIPT_KEYS = new Set(["subscriptionId", "epoch", "sequence"]);
  * per-connection rate and size limits, and owns its subscriptions.
  */
 export class ClientSession implements SubscriptionHost {
+  /** Random ID of this connection, sent to the client in the hello frame. */
   readonly connectionId = newId();
+  /** The principal the connection authenticated as, fixed for its lifetime. */
   readonly principal: Principal;
+  /** Opaque project, tenant and subject key sent in the hello frame; see identityKey(). */
   readonly identityKey: string;
+  /** The development preview session this connection authenticated through, or null for an application token. */
   readonly previewSessionId: string | null;
+  /** This connection's pending-byte budget: chained to the gateway's, and the parent of each subscription's. */
   readonly connectionBudget: ByteBudget;
   readonly #owner: SessionOwner;
   readonly #transport: ConnectionTransport;
@@ -44,6 +50,7 @@ export class ClientSession implements SubscriptionHost {
   #expiryTimer: { clear(): void } | null = null;
   #closed = false;
 
+  /** Creates the session for an authenticated connection; nothing is sent until open(). */
   constructor(options: {
     owner: SessionOwner;
     transport: ConnectionTransport;
@@ -62,18 +69,22 @@ export class ClientSession implements SubscriptionHost {
     this.#expiresAtMs = parseUtcTimestamp(this.principal.expiresAt);
   }
 
+  /** True once the session has torn down, by close(), transport closure, expiry, or a client that stopped reading. */
   get closed(): boolean {
     return this.#closed;
   }
 
+  /** Number of subscriptions this connection holds. */
   get subscriptionCount(): number {
     return this.#subscriptions.size;
   }
 
+  /** Iterates the subscriptions this connection holds. */
   subscriptions(): IterableIterator<ServerSubscription> {
     return this.#subscriptions.values();
   }
 
+  /** Sends the hello frame and schedules closure for when the principal's authentication expires. */
   open(): void {
     this.#transport.sendHello({
       ...CAPABILITIES,
@@ -86,18 +97,22 @@ export class ClientSession implements SubscriptionHost {
 
   // --- SubscriptionHost ------------------------------------------------------------
 
+  /** Sends a subscription state frame unless the session is closed or the client has stopped reading. */
   sendState(frame: SubscriptionFrame): void {
     if (!this.#closed && !this.#stalled()) this.#transport.sendState(frame);
   }
 
+  /** Sends a data frame unless the session is closed; data frames are bounded by the byte budgets rather than the stall check. */
   sendData(frame: DataFrame): void {
     if (!this.#closed) this.#transport.sendData(frame);
   }
 
+  /** Sends an error frame unless the session is closed or the client has stopped reading. */
   sendError(frame: ErrorFrame): void {
     if (!this.#closed && !this.#stalled()) this.#transport.sendError(frame);
   }
 
+  /** False once the session is closed, the client stopped reading, or authentication expired; an expiry found here closes the session in a microtask. */
   canDeliver(): boolean {
     if (this.#closed || this.#stalled()) return false;
     if (Date.now() >= this.#expiresAtMs) {
@@ -107,6 +122,7 @@ export class ClientSession implements SubscriptionHost {
     return true;
   }
 
+  /** Closes the connection with OVERLOADED because a data frame was not receipted within receiptTimeoutMs. */
   receiptTimedOut(): void {
     this.close(streamError("OVERLOADED", {
       message: "The client did not confirm receipt in time; reconnect to resynchronize.",
@@ -114,12 +130,14 @@ export class ClientSession implements SubscriptionHost {
     }));
   }
 
+  /** Forgets a subscription that ended itself with a terminal failure; does not dispose it. */
   removeSubscription(subscriptionId: string): void {
     this.#subscriptions.delete(subscriptionId);
   }
 
   // --- protocol handlers -----------------------------------------------------------
 
+  /** Handles so:subscribe: validates the request, answers a reused subscription ID idempotently, and starts a new subscription after acknowledging it. Unknown channels and versions, and in production invalid parameters, are answered FORBIDDEN. */
   handleSubscribe(payload: unknown, reply: unknown): void {
     if (this.#closed || this.#stalled()) return;
     this.#control("so:subscribe", payload, reply, SUBSCRIBE_KEYS, (request, requestId) => {
@@ -193,6 +211,7 @@ export class ClientSession implements SubscriptionHost {
     });
   }
 
+  /** Handles so:unsubscribe: disposes the subscription if this connection holds it and acknowledges either way. */
   handleUnsubscribe(payload: unknown, reply: unknown): void {
     if (this.#closed || this.#stalled()) return;
     // Releasing an existing subscription is never rate-limited: a client refused here would keep a
@@ -210,6 +229,7 @@ export class ClientSession implements SubscriptionHost {
     }, releases);
   }
 
+  /** Handles so:resync: acknowledges, then asks the subscription to resynchronize. */
   handleResync(payload: unknown, reply: unknown): void {
     if (this.#closed || this.#stalled()) return;
     this.#control("so:resync", payload, reply, CONTROL_KEYS, (request, requestId) => {
@@ -221,6 +241,7 @@ export class ClientSession implements SubscriptionHost {
     });
   }
 
+  /** Handles so:receipt, which has no acknowledgement: a well-formed receipt goes to its subscription, and an unknown subscription ID is ignored. */
   handleReceipt(payload: unknown): void {
     if (this.#closed || this.#stalled()) return;
     if (!isPlainObject(payload) || Object.keys(payload).some(key => !RECEIPT_KEYS.has(key))
@@ -233,6 +254,7 @@ export class ClientSession implements SubscriptionHost {
     this.#subscriptions.get(payload["subscriptionId"])?.onReceipt(payload["epoch"], payload["sequence"]);
   }
 
+  /** Answers an event outside protocol version 1 with UNSUPPORTED_CAPABILITY, through its callback when it has one; counts against the control-request rate. */
   handleUnknown(event: string, args: readonly unknown[]): void {
     if (this.#closed || this.#stalled() || !this.#protocolErrorAllowed()) return;
     const error = streamError("UNSUPPORTED_CAPABILITY", {

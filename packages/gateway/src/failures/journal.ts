@@ -34,7 +34,9 @@ import {
  */
 
 export const JOURNAL_FILE = "journal.sqlite";
+/** The ownership lock beside the journal, naming the gateway that holds it. */
 export const LOCK_FILE = "journal.lock";
+/** The owner-only subdirectory of the state directory that holds the operator socket and its token. */
 export const RUN_DIRECTORY = "run";
 /** The first Node release whose `node:sqlite` loads without an ExperimentalWarning (API §11, D1). */
 export const NODE_SQLITE_FLOOR = "24.15.0";
@@ -151,6 +153,7 @@ const MIGRATIONS: readonly { version: number; sql: string }[] = [
 /** The schema version this build writes. A journal newer than this is refused, never downgraded. */
 export const JOURNAL_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
 
+/** Optional budget overrides for a journal handle. */
 export interface JournalLimits {
   /** Default JOURNAL_LIMIT_BYTES (256 MiB). */
   journalLimitBytes?: number;
@@ -160,6 +163,11 @@ export interface JournalLimits {
   maxOperations?: number;
 }
 
+/**
+ * The content of journal.lock: which gateway owns the journal, for people and for
+ * stale-lock recovery. projectId is null when the opener named no project and the
+ * journal has not been read yet.
+ */
 export interface JournalLock {
   pid: number;
   projectId: string | null;
@@ -167,6 +175,7 @@ export interface JournalLock {
   hostname: string;
 }
 
+/** Options for openJournal: the expected project, budget overrides and a stale-lock callback. */
 export interface OpenJournalOptions extends JournalLimits {
   /** When given, the journal must belong to this project. claim() checks it again. */
   projectId?: string;
@@ -186,10 +195,12 @@ export function nodeSqliteSupported(version: string): boolean {
   return major > 24 || (major === 24 && minor >= 15);
 }
 
+/** A StreamOtterError with the given code and a machine-readable details.reason. */
 function refuse(code: ErrorCode, reason: string, message: string, details: Record<string, Json> = {}): StreamOtterError {
   return new StreamOtterError(code, { message, details: { reason, ...details } });
 }
 
+/** Loads node:sqlite, or refuses (CONFIG_INVALID, "node-version") on a Node version where it is still experimental. */
 function requireNodeSqlite(): typeof import("node:sqlite") {
   const version = process.versions.node;
   if (!nodeSqliteSupported(version)) {
@@ -202,16 +213,19 @@ function requireNodeSqlite(): typeof import("node:sqlite") {
   return process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite");
 }
 
+/** The primary SQLite result code of a node:sqlite error (an extended code masked to its low byte), or null. */
 function sqliteErrcode(error: unknown): number | null {
   if (typeof error !== "object" || error === null) return null;
   const errcode = (error as { errcode?: unknown }).errcode;
   return typeof errcode === "number" ? errcode & 0xff : null;
 }
 
+/** The errno code (ENOENT, EEXIST and so on) of a Node error, or undefined. */
 function errnoCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null ? (error as NodeJS.ErrnoException).code : undefined;
 }
 
+/** lstat that returns null for a missing path and throws any other error. */
 function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path);
@@ -243,6 +257,7 @@ function checkProtected(path: string, stats: Stats, what: "directory" | "file", 
   }
 }
 
+/** Refuses a state directory that is missing ("state-dir-missing") or that others could tamper with ("state-dir-insecure"). */
 function checkStateDirectory(stateDirectory: string): void {
   const stats = lstatOrNull(stateDirectory);
   if (stats === null) {
@@ -252,6 +267,7 @@ function checkStateDirectory(stateDirectory: string): void {
   checkProtected(stateDirectory, stats, "directory", "state-dir-insecure");
 }
 
+/** Refuses a source list that names a source twice. */
 function validateSources(sources: readonly SourceIdentity[]): void {
   const seen = new Set<string>();
   for (const source of sources) {
@@ -421,6 +437,7 @@ function readLockFile(path: string): JournalLock | undefined {
  */
 const heldLocks = new Set<string>();
 
+/** True when the lock's pid is a live process; one this user may not signal counts as alive. */
 function ownerAlive(lock: JournalLock): boolean {
   try {
     process.kill(lock.pid, 0);
@@ -431,6 +448,7 @@ function ownerAlive(lock: JournalLock): boolean {
   }
 }
 
+/** The refusal for a journal that another live gateway owns. */
 function lockHeld(path: string, lock: JournalLock): StreamOtterError {
   return refuse("SOURCE_UNAVAILABLE", "journal-locked",
     `Another gateway owns this journal (pid ${lock.pid} on ${lock.hostname}, started ${lock.startedAt}; lock ${path}).`,
@@ -550,6 +568,7 @@ export function openJournal(stateDirectory: string, options: OpenJournalOptions 
   }
 }
 
+/** Turns an error from opening the journal into a SOURCE_UNAVAILABLE refusal with a reason; a StreamOtterError passes through unchanged. */
 function translateOpenError(error: unknown, path: string): unknown {
   if (error instanceof StreamOtterError) return error;
   const errcode = sqliteErrcode(error);
@@ -622,6 +641,7 @@ function encodeHeaders(headers: readonly HeaderBytes[]): Uint8Array {
   return buffer;
 }
 
+/** Reverses encodeHeaders; malformed bytes are refused as journal-corrupt. */
 function decodeHeaders(bytes: Uint8Array): HeaderBytes[] {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const corrupt = (): StreamOtterError => refuse("SOURCE_UNAVAILABLE", "journal-corrupt", "Stored evidence headers are malformed.");
@@ -646,10 +666,12 @@ function decodeHeaders(bytes: Uint8Array): HeaderBytes[] {
   return headers;
 }
 
+/** The journal's opaque page cursor: the seq of the last incident returned. */
 function encodeCursor(seq: number): string {
   return Buffer.from(`j:${seq}`).toString("base64url");
 }
 
+/** Reads a cursor made by encodeCursor (0 when there is none); anything else is INVALID_REQUEST. */
 function decodeCursor(cursor: string | undefined): number {
   if (cursor === undefined) return 0;
   const match = /^j:(\d{1,15})$/.exec(Buffer.from(cursor, "base64url").toString("utf8"));
@@ -678,6 +700,7 @@ interface BoundaryRow {
 const BOUNDARY_COLUMNS = `boundary_id, source_id, generation, state, revision, context, failure_ids, supersedes, created_at,
   retired_at, retirement_mode, retirement_reason, retirement_operation_id`;
 
+/** A boundaries row as a StoredBoundary, with its JSON columns parsed. */
 function boundaryFromRow(row: BoundaryRow): StoredBoundary {
   return {
     boundaryId: row.boundary_id,
@@ -708,6 +731,7 @@ interface OperationRow {
 
 const OPERATION_COLUMNS = "operation_id, kind, source_id, failure_id, request_hash, state, result, started_at, completed_at";
 
+/** An operations row as a StoredOperation, with its result parsed. */
 function operationFromRow(row: OperationRow): StoredOperation {
   return {
     operationId: row.operation_id,
@@ -729,7 +753,9 @@ interface CircuitRow { source_id: string; state: CircuitState["state"]; advances
  * the file, takes the lock and hands the open handle over; close() releases both.
  */
 export class SqliteIncidentStore implements IncidentStore {
+  /** Always "sqlite": the durable store. */
   readonly kind = "sqlite" as const;
+  /** The journal file's path. */
   readonly path: string;
   /** The lock of a dead gateway this store replaced when it opened, or null. */
   readonly replacedLock: JournalLock | null;
@@ -741,6 +767,7 @@ export class SqliteIncidentStore implements IncidentStore {
   readonly #statements = new Map<string, StatementSync>();
   #closed = false;
 
+  /** Takes over the open, inspected handle from openJournal and caps the file at the journal limit; `release` removes the lock on close(). */
   constructor(db: DatabaseSync, path: string, limits: JournalLimits, release: () => void, replacedLock: JournalLock | null = null) {
     this.#db = db;
     this.path = path;
@@ -754,6 +781,11 @@ export class SqliteIncidentStore implements IncidentStore {
     db.exec(`PRAGMA max_page_count = ${Math.max(1, Math.floor(this.#journalLimitBytes / pageSize))}`);
   }
 
+  /**
+   * See IncidentStore.claim. A stored source that is no longer configured is
+   * refused while it has open incidents; a changed generation or kind is recorded
+   * when nothing is open.
+   */
   claim(projectId: string, sources: readonly SourceIdentity[]): void {
     validateSources(sources);
     this.#write(() => {
@@ -796,11 +828,13 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** The stored incident, or null. */
   get(failureId: string): IncidentRecord | null {
     const row = this.#statement("SELECT seq, record FROM incidents WHERE failure_id = ?").get(failureId) as IncidentRow | undefined;
     return row === undefined ? null : JSON.parse(row.record) as IncidentRecord;
   }
 
+  /** The incident's newest `limit` events (at most MAX_EVENTS_PER_INCIDENT), oldest first. */
   events(failureId: string, limit = MAX_EVENTS_PER_INCIDENT): IncidentEvent[] {
     const rows = this.#statement("SELECT at, event, detail, operation_id FROM incident_events WHERE failure_id = ? ORDER BY id DESC LIMIT ?")
       .all(failureId, Number.isFinite(limit) ? Math.max(0, Math.min(Math.trunc(limit), MAX_EVENTS_PER_INCIDENT)) : MAX_EVENTS_PER_INCIDENT) as { at: string; event: IncidentEvent["event"]; detail: string | null; operation_id: string | null }[];
@@ -868,6 +902,10 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /**
+   * See IncidentStore.update. Committed with its event and not pre-admitted
+   * against the journal limit; only SQLite's page cap can refuse it for space.
+   */
   update(failureId: string, expectedRevision: number, patch: IncidentPatch, event: Omit<IncidentEvent, "at"> & { at?: string }): IncidentRecord {
     return this.#write(() => {
       const row = this.#statement("SELECT seq, record FROM incidents WHERE failure_id = ?").get(failureId) as IncidentRow | undefined;
@@ -886,6 +924,7 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** One page of incidents in insertion (seq) order. */
   list(query: IncidentQuery): Page<IncidentRecord> {
     const limit = clampLimit(query.limit);
     const after = decodeCursor(query.cursor);
@@ -903,11 +942,16 @@ export class SqliteIncidentStore implements IncidentStore {
     };
   }
 
+  /** The source's open incidents, oldest first. */
   open(sourceId: string): IncidentRecord[] {
     const rows = this.#statement("SELECT seq, record FROM incidents WHERE source_id = ? AND state = 'open' ORDER BY seq").all(sourceId) as unknown as IncidentRow[];
     return rows.map(row => JSON.parse(row.record) as IncidentRecord);
   }
 
+  /**
+   * Stores or replaces the failure's evidence. Refuses (journal-full) past the
+   * spool budget or the journal limit, counting a replaced copy as freed.
+   */
   putEvidence(failureId: string, evidence: RawEvidence): void {
     const bytes = evidenceBytes(evidence);
     const headers = encodeHeaders(evidence.headers);
@@ -924,6 +968,7 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** The stored evidence, or null; corrupt header bytes are refused as journal-corrupt. */
   getEvidence(failureId: string): RawEvidence | null {
     const row = this.#statement("SELECT key, value, headers FROM evidence WHERE failure_id = ?").get(failureId) as
       { key: Uint8Array | null; value: Uint8Array | null; headers: Uint8Array } | undefined;
@@ -931,20 +976,24 @@ export class SqliteIncidentStore implements IncidentStore {
     return { key: row.key, value: row.value, headers: decodeHeaders(row.headers) };
   }
 
+  /** Deletes the failure's evidence; a missing row is not an error. */
   deleteEvidence(failureId: string): void {
     this.#write(() => {
       this.#statement("DELETE FROM evidence WHERE failure_id = ?").run(failureId);
     });
   }
 
+  /** Deletes evidence stored before `storedBefore` and returns how many rows were deleted. */
   pruneEvidence(storedBefore: string): number {
     return this.#write(() => Number(this.#statement("DELETE FROM evidence WHERE stored_at < ?").run(storedBefore).changes));
   }
 
+  /** The source's in-force boundary, or null. */
   boundary(sourceId: string): StoredBoundary | null {
     return this.#inForceBoundary(sourceId);
   }
 
+  /** A stored boundary in any state, or null. */
   getBoundary(boundaryId: string): StoredBoundary | null {
     const row = this.#statement(`SELECT ${BOUNDARY_COLUMNS} FROM boundaries WHERE boundary_id = ?`).get(boundaryId) as BoundaryRow | undefined;
     return row === undefined ? null : boundaryFromRow(row);
@@ -985,6 +1034,7 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** See IncidentStore.retireBoundary, in one transaction. */
   retireBoundary(boundaryId: string, expectedRevision: number, retirement: NonNullable<StoredBoundary["retirement"]>, at = new Date().toISOString()): StoredBoundary {
     return this.#write(() => {
       const boundary = checkRetirement(boundaryId, this.getBoundary(boundaryId), expectedRevision, retirement, failureId => this.get(failureId));
@@ -994,12 +1044,14 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** The stored circuit, or the default closed one when none is stored. */
   circuit(sourceId: string): CircuitState {
     const row = this.#statement("SELECT source_id, state, advances, opened_at, reason, revision FROM circuits WHERE source_id = ?").get(sourceId) as CircuitRow | undefined;
     if (row === undefined) return defaultCircuit(sourceId);
     return { sourceId: row.source_id, state: row.state, advances: JSON.parse(row.advances) as string[], openedAt: row.opened_at, reason: row.reason, revision: row.revision };
   }
 
+  /** See IncidentStore.updateCircuit; refuses ("source-not-claimed") a source the journal does not know. */
   updateCircuit(sourceId: string, expectedRevision: number, next: Pick<CircuitState, "state" | "advances" | "openedAt" | "reason">): CircuitState {
     return this.#write(() => {
       const current = this.circuit(sourceId);
@@ -1035,6 +1087,7 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** See IncidentStore.finishOperation; the result is stored as its canonical JSON text. */
   finishOperation(operationId: string, state: "completed" | "unknown", result: Json, at = new Date().toISOString()): StoredOperation {
     const canonical = checkOperationResult(state, result);
     return this.#write(() => {
@@ -1045,11 +1098,13 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** The stored operation, or null. */
   getOperation(operationId: string): StoredOperation | null {
     const row = this.#statement(`SELECT ${OPERATION_COLUMNS} FROM operations WHERE operation_id = ?`).get(operationId) as OperationRow | undefined;
     return row === undefined ? null : operationFromRow(row);
   }
 
+  /** See IncidentStore.abandonPendingOperations; returns them in insertion order. */
   abandonPendingOperations(at: string): StoredOperation[] {
     return this.#write(() => {
       const rows = this.#statement(`SELECT ${OPERATION_COLUMNS} FROM operations WHERE state = 'pending' ORDER BY seq`).all() as unknown as OperationRow[];
@@ -1059,6 +1114,7 @@ export class SqliteIncidentStore implements IncidentStore {
     });
   }
 
+  /** The file's size (page count times page size) and the spool's use against their budgets, with the schema version. */
   usage(): StoreUsage {
     const schemaVersion = (this.#statement("SELECT schema_version FROM meta WHERE id = 1").get() as { schema_version: number }).schema_version;
     return {

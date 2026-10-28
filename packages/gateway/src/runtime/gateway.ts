@@ -42,6 +42,7 @@ import type { ConnectionTransport } from "../transport/types.ts";
 
 type LifecycleState = "idle" | "starting" | "running" | "stopping" | "stopped";
 
+/** The gateway's SourceRuntime, adding the transient-retry budget and a lock that serializes record processing with operator redrive. */
 class SourceRuntimeImpl implements SourceRuntime {
   readonly id: string;
   readonly config: ProjectConfig["sources"][string];
@@ -65,12 +66,14 @@ class SourceRuntimeImpl implements SourceRuntime {
     return this.status === "healthy";
   }
 
+  /** Runs `work` after every earlier exclusive task has settled, whether or not they failed. */
   exclusive<T>(work: () => Promise<T>): Promise<T> {
     const run = this.#lock.then(work, work);
     this.#lock = run.catch(() => undefined);
     return run;
   }
 
+  /** The source's public status; the reason is included only while it is not healthy. */
   summary(): SourceStatus {
     const status: SourceStatus = { sourceId: this.id, kind: this.config.kind, status: this.status };
     if (this.reason !== undefined && this.status !== "healthy") status.reason = this.reason;
@@ -101,11 +104,13 @@ export type OperatorPrepared =
   | { kind: "problem"; stage: "validate" | "map" | "queue"; code: ErrorCode; failureClass: FailureClass; reason: string; channel: string | null }
   | { kind: "abandon" };
 
+/** How a redrive ended: the evaluation's problem or abandonment, outputs that no longer hash to the approved plan (`changed`), or outputs admitted with per-result subscription counts. */
 export type RedriveOutcome =
   | Exclude<OperatorPrepared, { kind: "ok" }>
   | { kind: "changed"; evaluation: Extract<OperatorPrepared, { kind: "ok" }> }
   | { kind: "admitted"; evaluation: Extract<OperatorPrepared, { kind: "ok" }>; counts: Record<"queued" | "filtered" | "inactive" | "overflow", number> };
 
+/** Reduces an evaluation to operator metadata: each output's channel and revision, and the canonical mapped-output hash. */
 function describePrepared(prepared: Prepared): OperatorPrepared {
   if (prepared.kind !== "ok") return prepared;
   const outputs = prepared.outputs.map(output => ({ channel: output.channel.name, channelVersion: output.channel.version, revision: output.frame.revision }));
@@ -153,6 +158,7 @@ const TRANSIENT_RETRY_DELAYS_MS = [250, 1_000] as const;
 const HANDSHAKE_REJECTION_TRACES_PER_SECOND = 10;
 const HANDSHAKE_REJECTION_TRACE_BURST = 100;
 
+/** Waits `ms`; resolves true when the wait completes, or false as soon as `signal` is (or becomes) aborted. */
 function abortableDelay(ms: number, signal: AbortSignal): Promise<boolean> {
   if (signal.aborted) return Promise.resolve(false);
   return new Promise(resolve => {
@@ -213,20 +219,24 @@ export interface GatewayInternals {
 
 const internalsRegistry = new WeakMap<Gateway, GatewayInternals>();
 
+/** The internals of a gateway made by createGateway(); throws INVALID_REQUEST for any other object. */
 export function getGatewayInternals(gateway: Gateway): GatewayInternals {
   const internals = internalsRegistry.get(gateway);
   if (internals === undefined) throw new StreamOtterError("INVALID_REQUEST", { message: "Not a StreamOtter gateway instance." });
   return internals;
 }
 
+/** An INVALID_REQUEST error that the management API answers with 404. */
 function notFound(message: string): StreamOtterError {
   return new StreamOtterError("INVALID_REQUEST", { message, details: { status: 404 } });
 }
 
+/** A SOURCE_UNAVAILABLE error that the management API answers with 409. */
 function conflict(message: string): StreamOtterError {
   return new StreamOtterError("SOURCE_UNAVAILABLE", { message, details: { status: 409 } });
 }
 
+/** Throws CONFIG_INVALID unless the registry has authenticate, and authorize, map and snapshot for every configured channel, and no entry for an unconfigured one. */
 function validateHandlers(config: ProjectConfig, handlers: unknown): asserts handlers is HandlerRegistry<ChannelMap> {
   const issues: string[] = [];
   const registry = handlers as Partial<HandlerRegistry<ChannelMap>> | null;
@@ -258,6 +268,7 @@ function validateHandlers(config: ProjectConfig, handlers: unknown): asserts han
   }
 }
 
+/** Throws CONFIG_INVALID unless every fixture source has well-formed records registered and every development principal is valid. */
 function validateDevelopment(config: ProjectConfig, development: DevelopmentOptions | undefined): void {
   const issues: string[] = [];
   for (const [id, source] of Object.entries(config.sources)) {
@@ -286,6 +297,7 @@ function validateDevelopment(config: ProjectConfig, development: DevelopmentOpti
   }
 }
 
+/** Throws CONFIG_INVALID if production mode is given development options, a fixture source, or a plaintext Kafka connection. */
 function validateProduction(config: ProjectConfig, options: GatewayOptions<ChannelMap>): void {
   const issues: string[] = [];
   if (options.development !== undefined) issues.push("development options are rejected in production mode");
@@ -302,9 +314,13 @@ function validateProduction(config: ProjectConfig, options: GatewayOptions<Chann
 
 /** The V1 single-process gateway. Construct with createGateway(). */
 export class GatewayRuntime implements SessionOwner {
+  /** Services shared with every session and subscription. */
   readonly core: GatewayCore;
+  /** The validated project configuration. */
   readonly config: ProjectConfig;
+  /** Hex SHA-256 of the canonical project configuration. */
   readonly fingerprint: string;
+  /** The gateway mode, fixed at construction. */
   readonly mode: "development" | "production";
   readonly #handlers: HandlerRegistry<ChannelMap>;
   readonly #development: DevelopmentOptions | undefined;
@@ -348,6 +364,7 @@ export class GatewayRuntime implements SessionOwner {
   #activeChecks = 0;
   readonly #internal: InternalGatewayOptions;
 
+  /** Validates the mode, configuration, handler registry, health options, failure-handling options and handlers, and the mode's own rules, throwing on any problem, and builds the source and channel runtimes. Opens nothing. */
   constructor(options: GatewayOptions<ChannelMap>, internal: InternalGatewayOptions = {}) {
     this.#internal = internal;
     if (options.mode !== "development" && options.mode !== "production") {
@@ -412,6 +429,10 @@ export class GatewayRuntime implements SessionOwner {
 
   // --- public lifecycle ------------------------------------------------------------
 
+  /**
+   * Starts the health listener, failure handling, the Socket.IO server and every source, resolving to the client origin and path once all sources are ready within the startup deadline.
+   * Concurrent calls share one start, and a running gateway resolves to its address. A failed start rolls back to idle and may be tried again; a stopped gateway cannot restart.
+   */
   start(): Promise<{ origin: string; path: string }> {
     if (this.#state === "stopping" || this.#state === "stopped") {
       return Promise.reject(new StreamOtterError("INVALID_REQUEST", { message: "A stopped gateway cannot restart; construct a new instance." }));
@@ -425,12 +446,14 @@ export class GatewayRuntime implements SessionOwner {
     return starting;
   }
 
+  /** Stops the gateway; later calls return the same promise. Rolls back a start in progress, closes every session, then the health listener, operator socket, sources and failure handling, forcing closure if `timeoutMs` passes first. */
   stop(options?: { timeoutMs?: number }): Promise<void> {
     if (this.#stopping !== null) return this.#stopping;
     this.#stopping = this.#doStop(options?.timeoutMs ?? DEFAULT_STOP_TIMEOUT_MS);
     return this.#stopping;
   }
 
+  /** Records a revocation and ends matching access now: a channel selector fails matching subscriptions with FORBIDDEN, and a session or subject selector closes matching connections. Throws INVALID_REQUEST for a malformed selector. */
   async revoke(request: Revocation): Promise<{ closedSubscriptions: number; closedConnections: number }> {
     const selector = this.#validateRevocation(request);
     let canonicalParams: string | null = null;
@@ -462,6 +485,7 @@ export class GatewayRuntime implements SessionOwner {
     return { closedSubscriptions, closedConnections };
   }
 
+  /** Retries the held record of a paused source and returns its status; a healthy source is returned unchanged. Throws 404 for an unknown source and 409 when the gateway is not running or the source is neither paused nor healthy. */
   async resumeSource(sourceId: string): Promise<SourceStatus> {
     const source = this.#sources.get(sourceId);
     if (source === undefined) throw notFound(`Unknown source "${sourceId}".`);
@@ -482,16 +506,22 @@ export class GatewayRuntime implements SessionOwner {
 
   // --- SessionOwner ----------------------------------------------------------------
 
+  /** The channel runtime by name, or undefined if no such channel is configured. */
   channel(name: string): ChannelRuntime | undefined {
     return this.#channels.get(name);
   }
 
+  /** Forgets a session once it has torn down. */
   sessionClosed(session: ClientSession): void {
     this.#sessions.delete(session);
   }
 
   // --- transport callbacks ---------------------------------------------------------
 
+  /**
+   * Checks a Socket.IO handshake: gateway state, origin, auth payload, protocol version, token size and the connection limit, then a development preview token or the application's authenticate handler.
+   * Refusals are traced at a bounded rate. Success carries the frozen principal and the revocation position to recheck when the session opens.
+   */
   async authenticateHandshake(input: { auth: unknown; origin: string | undefined; signal?: AbortSignal }): Promise<{ ok: true; value: HandshakeResult } | { ok: false; error: StreamError }> {
     const requestId = newId();
     const reject = (code: ErrorCode, message?: string, retryable?: boolean) => {
@@ -614,6 +644,7 @@ export class GatewayRuntime implements SessionOwner {
     this.#untracedHandshakeRejections = 0;
   }
 
+  /** Creates and registers the session for an authenticated connection; closes it in a microtask if the gateway is no longer running or the principal was revoked since authentication. */
   openSession(result: HandshakeResult, transport: ConnectionTransport): ClientSession {
     const session = new ClientSession({
       owner: this,
@@ -1357,6 +1388,7 @@ export class GatewayRuntime implements SessionOwner {
 
   // --- development and management --------------------------------------------------
 
+  /** Builds the GatewayInternals view of this runtime used by the management server and CLI. */
   internals(): GatewayInternals {
     const runtime = this;
     return {

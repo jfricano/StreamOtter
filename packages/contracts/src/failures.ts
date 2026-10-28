@@ -232,6 +232,7 @@ export interface FailureHandlingContext {
   sources: ReadonlyMap<string, { kind: "kafka" | "fixture"; topics: readonly string[] }>;
 }
 
+/** Adds an UNKNOWN_KEY issue for each key of `value` that is not in `allowed`. */
 function unknownKeys(value: Record<string, unknown>, path: string, allowed: readonly string[], issues: ConfigIssue[]): void {
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) issues.push({ path: pointer(path, key), code: "UNKNOWN_KEY", message: `Unknown key "${key}".` });

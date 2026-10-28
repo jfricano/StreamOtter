@@ -6,6 +6,7 @@ import {
 import { CONTROL_CALLBACK_TIMEOUT_MS, HELLO_TIMEOUT_MS } from "@streamotter/contracts/internal";
 import { isDataFrame, isErrorFrame, isHello, isResult, isSubscriptionFrame } from "./frames.ts";
 
+/** Callbacks a Connection invokes for gateway frames; state and data frames are delivered only after the hello. */
 export interface ConnectionEvents {
   state(frame: SubscriptionFrame): void;
   data(frame: DataFrame): void;
@@ -19,6 +20,10 @@ export interface ConnectionEvents {
  * authenticated so:hello. Control requests are never buffered while disconnected.
  */
 export class Connection {
+  /**
+   * Resolves with the gateway's hello once the handshake completes. Rejects, and closes the
+   * connection, on a connect error, a ten-second timeout, an unsupported hello, or a disconnect first.
+   */
   readonly ready: Promise<Hello>;
   readonly #socket: Socket;
   readonly #events: ConnectionEvents;
@@ -27,6 +32,7 @@ export class Connection {
   #disconnectNotified = false;
   readonly #pending = new Set<(error: StreamError) => void>();
 
+  /** Opens a websocket-only socket that authenticates with the token and starts the handshake immediately. */
   constructor(options: { origin: string; path: string; token: string; events: ConnectionEvents }) {
     this.#events = options.events;
     this.#socket = io(options.origin, {
@@ -82,6 +88,7 @@ export class Connection {
     this.#socket.connect();
   }
 
+  /** True after a valid hello until the connection closes or drops. */
   get connected(): boolean {
     return this.#connected && !this.#closed;
   }
@@ -115,10 +122,12 @@ export class Connection {
     });
   }
 
+  /** Confirms SDK receipt of a data frame; dropped silently when not connected. */
   receipt(receipt: Receipt): void {
     if (this.connected) this.#socket.emit(EVENTS.receipt, receipt);
   }
 
+  /** Disconnects the socket and fails pending requests; idempotent. The disconnect callback fires only if the hello had arrived. */
   close(): void {
     if (this.#closed) return;
     this.#closed = true;

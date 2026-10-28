@@ -33,6 +33,7 @@ export interface CliIO {
   shutdownSignal: Promise<string>;
 }
 
+/** A failure with a message for stderr and the exit code the command returns. */
 class CliError extends Error {
   readonly exitCode: number;
 
@@ -55,10 +56,12 @@ ${OPERATOR_USAGE}
 
 Exit codes: 0 ok, 1 runtime failure or failed operation, 2 invalid usage or request, 3 refused, 4 unknown outcome.`;
 
+/** Configuration issues as indented `path  code: message` lines, `/` for the root. */
 function formatIssues(issues: readonly ConfigIssue[]): string {
   return issues.map(issue => `  ${issue.path || "/"}  ${issue.code}: ${issue.message}`).join("\n");
 }
 
+/** Reads, parses and validates a project configuration file; throws a CliError with exit 2 when it is missing, unreadable, not JSON or invalid. */
 async function loadConfig(path: string | undefined): Promise<{ config: ProjectConfig; path: string }> {
   if (path === undefined) throw new CliError(EXIT.invalid, "--config <path> is required.");
   const absolute = resolve(path);
@@ -79,6 +82,10 @@ async function loadConfig(path: string | undefined): Promise<{ config: ProjectCo
   return { config: parsed as ProjectConfig, path: absolute };
 }
 
+/**
+ * Imports a compiled handler module and returns its `handlers` and optional `development` exports.
+ * Refuses TypeScript sources and missing files with exit 2; an import that throws exits 1.
+ */
 async function loadHandlers(path: string | undefined): Promise<{ handlers: HandlerRegistry<never>; development: DevelopmentOptions | undefined }> {
   if (path === undefined) throw new CliError(EXIT.invalid, "--handlers <module> is required.");
   const absolute = resolve(path);
@@ -102,6 +109,7 @@ async function loadHandlers(path: string | undefined): Promise<{ handlers: Handl
   };
 }
 
+/** Gateway logger writing timestamped lines: info to stdout, warn and error to stderr, fields as JSON. */
 function cliLogger(io: CliIO): GatewayLogger {
   const line = (level: string, message: string, fields?: Readonly<Record<string, Json>>) =>
     `${new Date().toISOString()} ${level.padEnd(5)} ${message}${fields !== undefined && Object.keys(fields).length > 0 ? ` ${JSON.stringify(fields)}` : ""}`;
@@ -112,6 +120,7 @@ function cliLogger(io: CliIO): GatewayLogger {
   };
 }
 
+/** The installed workbench's built `dist` directory, or null when the package or its index.html is missing. */
 function workbenchDirectory(): string | null {
   try {
     const require = createRequire(import.meta.url);
@@ -123,6 +132,7 @@ function workbenchDirectory(): string | null {
   }
 }
 
+/** Prints the startup error and each source's diagnostics, stops the gateway, and throws a CliError (exit 2 for CONFIG_INVALID, else 1). */
 async function reportStartupFailure(io: CliIO, gateway: Gateway, error: unknown): Promise<never> {
   io.err(`Gateway startup failed: ${(error as Error).message}`);
   try {
@@ -146,12 +156,14 @@ async function unlessSignalled<T>(io: CliIO, step: Promise<T>): Promise<{ value:
   return Promise.race([step.then(value => ({ value })), io.shutdownSignal.then(signal => ({ signal }))]);
 }
 
+/** Handles a shutdown signal that arrived during startup: stops the gateway if one was created, then returns exit 0. */
 async function stopForSignal(io: CliIO, signal: string, gateway?: Gateway): Promise<number> {
   io.out(`Received ${signal}; shutting down gracefully.`);
   await gateway?.stop({ timeoutMs: 10_000 });
   return EXIT.ok;
 }
 
+/** Keeps a started gateway running until the shutdown signal, then stops it with a 10-second deadline. */
 async function runUntilSignal(io: CliIO, gateway: Gateway): Promise<number> {
   const signal = await io.shutdownSignal;
   io.out(`Received ${signal}; shutting down gracefully.`);
@@ -245,6 +257,10 @@ async function commandInitFailures(values: Record<string, unknown>, io: CliIO): 
   return EXIT.ok;
 }
 
+/**
+ * `init <directory>`: scaffolds a new project, refusing to overwrite any existing path, and removes
+ * what it created if a write fails partway through.
+ */
 async function commandInit(positionals: string[], io: CliIO): Promise<number> {
   const directory = positionals[0];
   if (directory === undefined || positionals.length > 1) throw new CliError(EXIT.invalid, "Usage: streamotter init <directory>");
@@ -295,6 +311,7 @@ async function commandInit(positionals: string[], io: CliIO): Promise<number> {
   return EXIT.ok;
 }
 
+/** `validate`: checks the configuration and prints its fingerprint, noting when the file is not in canonical form. */
 async function commandValidate(values: Record<string, unknown>, io: CliIO): Promise<number> {
   const { config, path } = await loadConfig(values["config"] as string | undefined);
   io.out(`${path} is valid.`);
@@ -305,6 +322,7 @@ async function commandValidate(values: Record<string, unknown>, io: CliIO): Prom
   return EXIT.ok;
 }
 
+/** `generate`: writes the generated client files, refusing to overwrite files that lack the generator's marker or are not regular files. */
 async function commandGenerate(values: Record<string, unknown>, io: CliIO): Promise<number> {
   const { config } = await loadConfig(values["config"] as string | undefined);
   const out = values["out"] as string | undefined;
@@ -331,6 +349,7 @@ async function commandGenerate(values: Record<string, unknown>, io: CliIO): Prom
   return EXIT.ok;
 }
 
+/** `dev`: starts a development gateway and the local management server with the workbench, prints their addresses and token, and runs until signalled. */
 async function commandDev(values: Record<string, unknown>, io: CliIO): Promise<number> {
   const { config, path } = await loadConfig(values["config"] as string | undefined);
   const loaded = await unlessSignalled(io, loadHandlers(values["handlers"] as string | undefined));
@@ -382,6 +401,7 @@ async function commandDev(values: Record<string, unknown>, io: CliIO): Promise<n
   return runUntilSignal(io, gateway);
 }
 
+/** `start`: starts a production gateway without management or development endpoints and runs until signalled. */
 async function commandStart(values: Record<string, unknown>, io: CliIO): Promise<number> {
   const { config, path } = await loadConfig(values["config"] as string | undefined);
   const loaded = await unlessSignalled(io, loadHandlers(values["handlers"] as string | undefined));

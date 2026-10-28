@@ -95,6 +95,7 @@ export function isWorkbenchApiOrigin(value: unknown): value is string {
   return url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname));
 }
 
+/** Length in Unicode code points, so a surrogate pair counts as one character. */
 function codePoints(text: string): number {
   let count = 0;
   for (const _ of text) count += 1;

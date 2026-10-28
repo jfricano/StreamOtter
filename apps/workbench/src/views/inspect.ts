@@ -17,6 +17,7 @@ const STAGES: [Trace["stage"], string][] = [
 const OUTCOME_TONE = { ok: "ok", filtered: "neutral", rejected: "warn", failed: "bad" } as const;
 const MAX_ROWS = 1_000;
 
+/** Draws the Inspect tab, keeping the latest 1,000 traces and polling every second while Follow is on. Returns the cleanup that stops the polling. */
 export function renderInspect(root: HTMLElement, state: WorkbenchState): () => void {
   const rows: Trace[] = [];
   let cursor: string | undefined;

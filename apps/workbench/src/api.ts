@@ -8,10 +8,14 @@ import {
 } from "@streamotter/contracts";
 import { isPlainObject, utf8ByteLength } from "@streamotter/contracts/internal";
 
+/** A failed management call: the error the API answered with, or one the client raised itself (session ended, operation not offered, request too large, response not a Result). */
 export class ApiError extends Error {
+  /** The HTTP status, or for a failure raised without a request the status it stands for (401, 403 or 413). */
   readonly status: number;
+  /** The response's StreamError, or one built here, with an empty `requestId`, when there was no request or no Result to read. */
   readonly error: StreamError;
 
+  /** Takes the StreamError's message as this error's message. */
   constructor(status: number, error: StreamError) {
     super(error.message);
     this.status = status;
@@ -56,6 +60,7 @@ export class ManagementApi {
   #operations: ReadonlySet<WorkbenchOperation> | null = null;
   #maxRequestBytes: number | null = null;
 
+  /** Throws when `target.apiOrigin` is set outside session mode. `onSessionEnded` runs at most once, when a session-mode request is first answered 401 or UNAUTHENTICATED. */
   constructor(target: ApiTarget, auth: ApiAuth, onSessionEnded: () => void = () => {}) {
     if (target.apiOrigin !== null && auth.mode !== "session") throw new Error("apiOrigin is allowed only in session mode.");
     this.#prefix = `${target.apiOrigin ?? ""}${target.apiBase}`;
@@ -124,21 +129,35 @@ export class ManagementApi {
 
   /** WHC-1 capability discovery. Never restricted: it is how the operations are learned. */
   workbench() { return this.#call<WorkbenchDiscovery>("workbench", "GET", "/workbench"); }
+  /** Each source's status, and `ready`: true while the gateway runs and every source is healthy. */
   health() { return this.#call<{ ready: boolean; sources: SourceStatus[] }>("health", "GET", "/health"); }
+  /** The protocol capabilities the gateway advertises to clients. */
   capabilities() { return this.#call<Capabilities>("capabilities", "GET", "/capabilities"); }
+  /** Every configured source with its current status. */
   sources() { return this.#call<{ items: SourceStatus[] }>("sources", "GET", "/sources"); }
+  /** The deployed channels: name, version, source, and parameter and payload schema names. */
   channels() { return this.#call<{ items: ChannelSummary[] }>("channels", "GET", "/channels"); }
+  /** The configuration the gateway is running, with its sha256 fingerprint. */
   config() { return this.#call<{ config: ProjectConfig; fingerprint: string }>("config", "GET", "/config"); }
+  /** The registered development principals that Preview can subscribe as. */
   principals() { return this.#call<{ items: DevelopmentPrincipalSummary[] }>("dev.principals", "GET", "/dev/principals"); }
+  /** Runs one source's staged connection diagnostics and returns every step, including those skipped after a failure. */
   checkSource(sourceId: string) { return this.#call<{ steps: DiagnosticStep[] }>("source-checks", "POST", "/source-checks", { sourceId }); }
+  /** Resumes a paused source at its uncommitted position, so the record that paused it is retried, and returns its new status. */
   resumeSource(sourceId: string) { return this.#call<SourceStatus>("sources.resume", "POST", "/sources/resume", { sourceId }); }
+  /** Checks a candidate configuration without applying it. Problems come back as `issues`, not as an error. */
   validate(config: Json) { return this.#call<{ valid: boolean; issues: ConfigIssue[] }>("config.validate", "POST", "/config/validate", { config }); }
+  /** The candidate as canonical streamotter.json, with its fingerprint. An invalid candidate fails with CONFIG_INVALID and its issues in `details.issues`. */
   export(config: Json) { return this.#call<{ filename: "streamotter.json"; content: string; fingerprint: string }>("config.export", "POST", "/config/export", { config }); }
+  /** Mints a short-lived gateway token that authenticates as a development principal, for Preview's client. */
   previewSession(fixturePrincipalRef: string) {
     return this.#call<{ token: string; expiresAt: string; previewSessionId: string }>("preview-sessions", "POST", "/preview-sessions", { fixturePrincipalRef });
   }
+  /** Moves a fixture source forward by `count` records (1 to 100) and returns how many it advanced. */
   advance(sourceId: string, count: number) { return this.#call<{ advanced: number }>("dev.fixtures.advance", "POST", "/dev/fixtures/advance", { sourceId, count }); }
+  /** Closes the gateway connections of one preview session, so Preview can show the client reconnect and resynchronize. */
   disconnect(previewSessionId: string) { return this.#call<null>("dev.disconnect", "POST", "/dev/disconnect", { previewSessionId }); }
+  /** A page of trace metadata from the gateway's bounded buffer. Undefined and empty filters are left out of the query. */
   traces(query: { limit?: number; cursor?: string; sourceId?: string; channel?: string; outcome?: string }) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
@@ -146,18 +165,27 @@ export class ManagementApi {
     return this.#call<Page<Trace>>("traces", "GET", `/traces${suffix}`);
   }
   // V1.1 failure operations (V1_1_API.md §9). Never raw evidence: no route offers it.
+  /** The gateway, the incident store, the quarantine topic, and every source's failure-handling state. */
   operatorStatus() { return this.#call<OperatorStatus>("operator.status", "GET", "/operator/status"); }
+  /** A page of incident summaries. Undefined and empty filters are left out of the query. */
   failures(query: ListFailuresRequest) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
     const suffix = params.size === 0 ? "" : `?${params.toString()}`;
     return this.#call<Page<IncidentSummary>>("failures.list", "GET", `/failures${suffix}`);
   }
+  /** One incident in full, with its explanation and history. */
   failure(failureId: string) { return this.#call<IncidentDetail>("failures.show", "GET", `/failures/${encodeURIComponent(failureId)}`); }
+  /** An incident's reproduction bundle, for a bug report. */
   exportFailure(failureId: string) { return this.#call<ReproductionBundle>("failures.export", "POST", "/failures/export", { failureId }); }
+  /** Runs an incident's record through the current mapping without delivering it, and issues a single-use redrive plan when a redrive would be allowed. */
   evaluate(request: EvaluateRequest) { return this.#call<EvaluationResult>("failures.evaluate", "POST", "/failures/evaluate", request); }
+  /** Executes a plan that `evaluate` issued. A stale plan or revision is refused in the result, not thrown. */
   redrive(request: RedriveRequest) { return this.#call<OperationResult>("failures.redrive", "POST", "/failures/redrive", request); }
+  /** Retries the record a source is held at. The retry never skips the record. */
   retryCurrent(request: RetryCurrentRequest) { return this.#call<OperationResult>("sources.retry-current", "POST", "/sources/retry-current", request); }
+  /** Runs a held quarantine-resync incident's recovery guard again. It never overrides an integrity failure. */
   reassess(request: ReassessRequest) { return this.#call<OperationResult>("sources.reassess", "POST", "/sources/reassess", request); }
+  /** Closes a source's open automatic-continuation circuit and clears the advances it counted. It approves no record: held records stay held. */
   reopenCircuit(request: ReopenCircuitRequest) { return this.#call<OperationResult>("sources.reopen-circuit", "POST", "/sources/reopen-circuit", request); }
 }

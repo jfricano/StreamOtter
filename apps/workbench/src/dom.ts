@@ -26,24 +26,29 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = 
   return element;
 }
 
+/** Replaces the target's children; null, undefined and false are skipped, and strings and numbers go in as text. */
 export function replace(target: Element, ...children: (Child | Child[])[]): void {
   target.replaceChildren(...children.flat().filter((child): child is Node | string | number => child !== null && child !== undefined && child !== false)
     .map(child => (child instanceof Node ? child : String(child))));
 }
 
+/** A short status label; `tone` is the CSS class that colors it. */
 export function pill(text: string, tone: "ok" | "warn" | "bad" | "info" | "neutral"): HTMLSpanElement {
   return h("span", { class: `pill ${tone}` }, text);
 }
 
+/** An ISO timestamp as the browser's local 24-hour time with milliseconds (14:03:07.042), or the input unchanged if it does not parse. */
 export function time(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : `${date.toLocaleTimeString([], { hour12: false })}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 }
 
+/** The first `length` characters of an id, for compact table cells; empty when the id is undefined. */
 export function short(id: string | undefined, length = 8): string {
   return id === undefined ? "" : id.slice(0, length);
 }
 
+/** The wording every surface uses for something this environment does not offer (WHC-1 §4). */
 export const UNAVAILABLE_TEXT = "Not available in this environment";
 
 /** Stands in for a control whose operations this environment does not offer. It never calls them. */

@@ -8,6 +8,7 @@ export type { FixtureRecord };
  * requested. A paused fixture keeps its position; resume retries that record.
  */
 export class FixtureSourceAdapter implements SourceAdapter {
+  /** Identifies this adapter as a development fixture source. */
   readonly kind = "fixture" as const;
   readonly #records: readonly FixtureRecord[];
   readonly #sink: SourceSink;
@@ -17,20 +18,24 @@ export class FixtureSourceAdapter implements SourceAdapter {
   #stopped = false;
   #chain: Promise<unknown> = Promise.resolve();
 
+  /** Creates an adapter at the first of `records`; `onCommit` is told each position it moves past. */
   constructor(records: readonly FixtureRecord[], sink: SourceSink, onCommit: (position: SourceRecord["position"]) => void) {
     this.#records = records;
     this.#sink = sink;
     this.#onCommit = onCommit;
   }
 
+  /** Index of the next record, the record count, and whether the source is paused there. */
   get position(): { index: number; total: number; paused: boolean } {
     return { index: this.#index, total: this.#records.length, paused: this.#paused };
   }
 
+  /** Reports the source healthy at once; a fixture has nothing to open. */
   async start(): Promise<void> {
     this.#sink.setStatus("healthy");
   }
 
+  /** Stops further processing and waits for the operations already queued to settle. */
   async stop(): Promise<void> {
     this.#stopped = true;
     await this.#chain.catch(() => undefined);
@@ -54,6 +59,7 @@ export class FixtureSourceAdapter implements SourceAdapter {
     return run;
   }
 
+  /** Clears a pause, reports the source healthy, and retries the held record once; does nothing unless paused. */
   async resume(): Promise<void> {
     const run = this.#chain.then(async () => {
       if (!this.#paused || this.#stopped) return;
@@ -84,6 +90,7 @@ export class FixtureSourceAdapter implements SourceAdapter {
     return run;
   }
 
+  /** Diagnostics for a fixture: its record count and position, with the network stages skipped. */
   async check(): Promise<DiagnosticStep[]> {
     return [
       { stage: "resolve", outcome: "ok", message: `Fixture with ${this.#records.length} records is registered.` },

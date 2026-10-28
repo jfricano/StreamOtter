@@ -5,6 +5,7 @@ import { candidateDiffers, type WorkbenchState } from "../state.ts";
 /** The last export's download link, released when the next export replaces it. */
 let exportUrl: string | null = null;
 
+/** Draws the Export tab: the candidate as a downloadable canonical streamotter.json, the CLI commands that verify it, and SDK usage. Nothing is written or applied. */
 export function renderExport(root: HTMLElement, state: WorkbenchState): void {
   const output = h("div", { class: "stack" });
   const button = h("button", { class: "primary", type: "button" }, "Export candidate");
