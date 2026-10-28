@@ -2,6 +2,8 @@
 
 # @streamotter/contracts
 
+[Website](https://streamotter.dev) · [Live demo](https://streamotter.dev/#live) · [Documentation](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md) · [Source](https://github.com/jfricano/StreamOtter)
+
 The public types, protocol constants, error vocabulary, and runtime validation shared by the StreamOtter gateway and browser SDK. Both are built on this package.
 
 **Most applications don't install it directly.** [`@streamotter/client`](https://www.npmjs.com/package/@streamotter/client) and [`@streamotter/gateway`](https://www.npmjs.com/package/@streamotter/gateway) re-export the types you need. Install this package when you build tooling around StreamOtter: editors, linters, or deployment checks for `streamotter.json`, or anything that must agree exactly with the gateway's rules.

@@ -3,7 +3,7 @@
   "version": "1.0.0-rc.1",
   "description": "StreamOtter command-line interface: init, validate, generate, dev (with the local workbench), and start.",
   "keywords": ["streamotter", "kafka", "socket.io", "realtime", "live-data", "state-sync", "cli", "codegen", "typescript"],
-  "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/cli#readme",
+  "homepage": "https://streamotter.dev",
   "bugs": { "url": "https://github.com/jfricano/StreamOtter/issues" },
   "repository": { "type": "git", "url": "git+https://github.com/jfricano/StreamOtter.git", "directory": "packages/cli" },
   "license": "MIT",

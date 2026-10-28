@@ -3,7 +3,7 @@
   "version": "1.0.0-rc.1",
   "description": "StreamOtter Node.js gateway: Kafka and fixture sources, application-owned access handlers, snapshot synchronization, and bounded Socket.IO delivery.",
   "keywords": ["streamotter", "kafka", "kafkajs", "socket.io", "websocket", "realtime", "live-data", "state-sync", "gateway", "typescript"],
-  "homepage": "https://github.com/jfricano/StreamOtter/tree/main/packages/gateway#readme",
+  "homepage": "https://streamotter.dev",
   "bugs": { "url": "https://github.com/jfricano/StreamOtter/issues" },
   "repository": { "type": "git", "url": "git+https://github.com/jfricano/StreamOtter.git", "directory": "packages/gateway" },
   "license": "MIT",

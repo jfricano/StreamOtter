@@ -99,3 +99,10 @@ If step 2 or 4 fails, move the day: nothing has been announced. Pup Patrol moves
 ## Rollback
 
 Never unpublish. If `1.0.0-rc.1` is broken and was published on `latest`: move `latest` back to `0.2.0-rc.1` for all six packages, deprecate `1.0.0-rc.1` with what is wrong, and fix forward as `1.0.0-rc.2` through the same checklist ([corrections](../../RELEASE_CHECKLIST.md#corrections-and-partial-releases)). Moving a distribution tag is a metadata correction and needs the owner's separate authorization. The journal schema is unchanged, so `0.2.0-rc.1` opens a journal the candidate wrote as it is. Going back brings back the defects listed under Fixed; for example, a source held for another Kafka cluster is no longer held at startup.
+
+
+## Public product links — October 24, 2026
+
+Outreach & Marketing prepared owner-approved discoverability updates: all six public package `homepage` fields point to https://streamotter.dev, and the root and package READMEs include Website / Live demo / Documentation / Source links. This is source preparation for the next normal release, not an npm publication or a change to the prepared version. The currently published npm listing retains its earlier metadata until the release owner publishes an approved version through the existing checklist.
+
+Author verification: all six manifests parse; their only changed JSON field is `homepage`; package versions, dependencies, exports and commands are unchanged. README rows use absolute public links and the live-demo anchor observed on the public site. `git diff --check` passed. No runtime behavior changed, so runtime tests were not rerun. The local checkout instruction references SOFTWARE_OPERATING_GUIDE.md and PR_WORKFLOW.md, but those files are unavailable; the available CLAUDE.md, CONTRIBUTING.md and existing release boundaries were followed. Jason retains merge and release approval.

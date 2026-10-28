@@ -2,6 +2,8 @@
 
 # StreamOtter
 
+[Website](https://streamotter.dev) · [Live demo](https://streamotter.dev/#live) · [Documentation](https://github.com/jfricano/StreamOtter/blob/main/docs/guides/getting-started.md) · [Source](https://github.com/jfricano/StreamOtter)
+
 Live state from Kafka in the browser, in a form you can trust. Browsers subscribe to **state channels**, not raw topics. Each view starts from an authoritative snapshot, then receives full-state updates in revision order, and is always either verifiably `live` or visibly `stale`, never silently wrong after a disconnect, a restart, or a slow client. Your own handlers decide who may see what.
 
 This package is StreamOtter in one install: the `streamotter` command (scaffold, validate, generate TypeScript types, develop with the local workbench, and run the production gateway), the Node.js gateway, and the browser SDK.
