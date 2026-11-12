@@ -8,8 +8,7 @@ dist/
 .local/
 coverage/
 tests/.generated-contracts/
-# Local instructions for Claude Code; not part of the published repository.
-CLAUDE.md
+# Private companion guides and local agent state remain excluded where listed.
 # Local Claude Code state. settings.json stays tracked: it holds the shared permission rules.
 /.claude/*
 !/.claude/settings.json
@@ -22,3 +21,6 @@ journal.lock
 
 # Weekly launch metrics snapshot (docs/promotion/PLAN.md): kept local, never quoted publicly
 docs/promotion/metrics.csv
+
+# Personal agent overrides stay local.
+CLAUDE.local.md
